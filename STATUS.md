@@ -99,17 +99,30 @@ Done so far in M0:
   repeat-run agreement, per-checkpoint agreement, seed divergence, headless-vs-windowed equivalence,
   real-time-vs-exact-tick equivalence, stall recovery, and event ordering.
 
-**Verified green: 132 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+- ✅ `amadeo-input`: `ActionId` (gameplay reads named actions, never keys), `InputState` with
+  `just_pressed`/`just_released` edge detection, `InputSource` implementations (null, scripted,
+  replay), and a `Recorder` that writes change-only recordings.
+- ✅ **The replay file format** — the project's first authored text format, built to the rules every
+  later format must follow (I1/I2): hand-writable, line-oriented, canonically ordered, byte-stable
+  round-trip, LF endings, and parse errors carrying line numbers. Rejects a tick-rate mismatch rather
+  than replaying it wrong (ADR 0007).
+- ✅ **Golden replay harness** with a committed fixture at
+  `crates/amadeo-app/tests/golden/walk_and_jump.replay`. A recording made once is replayed by every
+  later build and asserted against checkpoint state hashes. Regenerate deliberately with
+  `UPDATE_GOLDEN=1 cargo test -p amadeo-app --test golden_replay`.
+
+**Verified green: 180 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 Remaining in M0:
-1. `amadeo-input` — action mapping, deterministic sampling, record/replay of action streams.
-2. Golden replay harness — record an action stream to a file, replay it, assert per-checkpoint state
-   hashes. The determinism suite covers the properties; this adds the file format and the CLI path.
-3. Deferred command buffers with deterministic merge order (ADR 0005). Not yet built; `World`
-   mutations are immediate, which is correct but means systems cannot spawn or despawn safely from
-   inside a query closure. Needed before real gameplay systems.
-4. `amadeo-render` — window via winit, wgpu device, clear colour, and a null backend.
-5. **Q1 spike** (game logic hot-reload) — resolve with measurements. Blocks M1.
+1. Deferred command buffers with deterministic merge order (ADR 0005). Not yet built; `World`
+   mutations are immediate, which is correct but means systems cannot spawn or despawn from inside a
+   query closure, and cannot send events from one either. Needed before real gameplay systems.
+2. `amadeo-render` — window via winit, wgpu device, clear colour, and a null backend. The last piece
+   of the M0 exit gate: a coloured quad moving under live keyboard input.
+3. A `separate process` replay check. The golden test currently replays in-process against a
+   committed fixture, which covers "separate build" but not "separate process". Closing that needs
+   `amadeo-cli`, which is M1 work — noted so the gap is not forgotten.
+4. **Q1 spike** (game logic hot-reload) — resolve with measurements. Blocks M1.
 
 Known gaps deliberately left for later:
 - No bundle/spawn-with-components API, so building an entity with N components costs N archetype

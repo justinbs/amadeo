@@ -298,6 +298,55 @@ asset handles.)*
 
 ---
 
+## Golden replays: how behaviour is regression-tested
+
+This is the mechanism the whole project rests on, so it is worth understanding before you change
+anything in a simulation system.
+
+A **replay file** is a recorded stream of player actions plus expected world state hashes at
+particular ticks. It is plain text and you can edit it by hand:
+
+```text
+amadeo-replay 1
+tick-rate 60
+seed 1234
+ticks 300
+
+0 axis move_x 1.0
+20 button jump down
+22 button jump up
+
+checkpoint 60 667176d875001e4c
+checkpoint 300 0b6e103ad3a5261b
+```
+
+Replaying it re-runs the simulation through *exactly* the same code a live player would drive, and
+asserts the state hash at each checkpoint. If any simulation behaviour changed, the hashes stop
+matching.
+
+**When a golden test fails, do not regenerate the file to make it pass.** A changed hash means the
+simulation now behaves differently. That is either a bug you just introduced, or an intended change —
+and if it is intended, every other recorded replay in the project is invalidated at the same time,
+which is worth knowing before you commit.
+
+Once you are sure the change is correct:
+
+```bash
+UPDATE_GOLDEN=1 cargo test -p amadeo-app --test golden_replay
+```
+
+Then say so explicitly in the commit message.
+
+**Things that will break a golden replay without being "wrong":** changing `FIXED_DT` (ADR 0007),
+changing what `World::state_hash` includes, changing the hash algorithm, or changing system order.
+Each of those is a deliberate decision with an ADR attached, not something to do casually.
+
+**A useful debugging habit:** if a replay diverges, add more checkpoints. The first failing checkpoint
+brackets the tick range where behaviour changed, and from there `App::step` plus `world.iter` narrows
+it down quickly.
+
+---
+
 ## If you get stuck or disagree with something Claude did
 
 - **`git log` and the commit messages** are written to explain *why*. Start there.

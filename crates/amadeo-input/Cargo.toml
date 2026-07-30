@@ -1,6 +1,6 @@
 [package]
-name = "amadeo-app"
-description = "Fixed-timestep loop, system schedules, and app lifecycle for the Amadeo engine."
+name = "amadeo-input"
+description = "Action-based input with deterministic sampling, recording, and replay."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,11 +10,7 @@ rust-version.workspace = true
 [dependencies]
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
-amadeo-events.workspace = true
 thiserror.workspace = true
 
 [lints]
 workspace = true
-
-[dev-dependencies]
-amadeo-input.workspace = true

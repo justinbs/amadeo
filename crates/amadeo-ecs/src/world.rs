@@ -112,6 +112,23 @@ impl World {
         slot.into_any().downcast::<T>().ok().map(|boxed| *boxed)
     }
 
+    /// Temporarily takes a service out of the world, runs `f`, and puts it back.
+    ///
+    /// The service counterpart to [`World::with_resource_taken`], and it exists for the same reason:
+    /// a system usually needs the service *and* mutable access to the rest of the world, which a
+    /// plain `&mut` borrow of the service would forbid.
+    ///
+    /// Returns `None` without calling `f` if the service is absent.
+    pub fn with_service_taken<T: Service, R>(
+        &mut self,
+        f: impl FnOnce(&mut Self, &mut T) -> R,
+    ) -> Option<R> {
+        let mut service = self.remove_service::<T>()?;
+        let result = f(self, &mut service);
+        self.insert_service(service);
+        Some(result)
+    }
+
     /// Stores a resource, returning the previous value if one was present.
     pub fn insert_resource<T: Resource>(&mut self, value: T) -> Option<T> {
         let previous = self
