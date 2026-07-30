@@ -1,18 +1,23 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-07-30 (session 2)
-**Current phase:** Planning complete. **M0 not started.** No engine code written yet.
+**Last updated:** 2026-07-30 (session 3)
+**Current phase:** **M0 in progress.** The deterministic spine is built and tested; one item left.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private)
 
 ---
 
 ## Where we are
 
-Sessions 1–2 established scope, stack, and architecture. The repository contains planning documents
-only — no crates, no build, nothing runnable yet. This is intentional.
+Sessions 1–2 established scope, stack, and architecture. Session 3 built most of M0.
 
-**Toolchain is verified working end to end** (compile, link, run). No prerequisites outstanding.
-M0 can begin immediately.
+Seven crates exist and are tested: `amadeo-core`, `amadeo-ecs`, `amadeo-events`, `amadeo-input`,
+`amadeo-render`, `amadeo-app`. **228 tests passing**; fmt, clippy `-D warnings`, and rustdoc all clean.
+CI runs on Windows and Linux with a dedicated determinism job.
+
+The engine can run a deterministic simulation, record a session to a text replay file, and replay it
+against checkpoint state hashes. It cannot yet open a window — that is the one remaining M0 item.
+
+**No blockers.** Toolchain verified end to end.
 
 ### Decided
 - Name: **Amadeo**.
@@ -58,20 +63,16 @@ Verified on this machine (2026-07-30):
 | **Rust** | ✅ rustup + rustc 1.97.1 + cargo 1.97.1, target `stable-x86_64-pc-windows-msvc`, in `%USERPROFILE%\.cargo\bin` |
 | **MSVC build tools** | ✅ VS Build Tools 2022 17.14.37, MSVC 14.44.35207. Verified 2026-07-30: `cargo build` compiles **and links**, and the binary runs. |
 | Editor | ✅ VS Code + rust-analyzer v0.3.2989 |
-| **Toolchain status** | ⚠️ **Compiles but cannot execute — see Smart App Control below.** |
+| **Toolchain status** | ✅ **No blockers.** Compiles, links, runs, tests. |
 | Also missing | Python, cmake. Neither is needed. |
 | Gotcha — PATH | Installers update the persistent PATH but not running processes. VS Code's integrated terminal needs **VS Code itself** restarted, not just a new tab. |
-| **BLOCKER — Smart App Control** | Enabled and enforced. Blocks **every binary this project builds**, anywhere on disk — confirmed via event log (3118 Smart App Control Block, policy `{0283ac0f-…}`). `cargo check` and `cargo build` work; `cargo test`, `cargo clippy`, and running the engine are blocked. No workaround exists; it must be turned off (Windows Security → App & browser control → Smart App Control → Off), which is **one-way** and is Justin's call alone. Full detail and the corrected earlier analysis in `docs/07-working-with-the-code.md` §5. |
+| Smart App Control | **Resolved.** It was blocking every binary this project builds — confirmed via event log (3118, policy `{0283ac0f-…}`). Justin disabled it (one-way change on Win11). If a future machine hits `os error 4551`, this is why; see `docs/07-working-with-the-code.md` §5. |
 | Gotcha — winget | `winget install` on an already-installed package attempts an *upgrade* and silently ignores `--override`, so it cannot add a workload. Use the VS Installer to modify an existing install. |
+| Gotcha — wgpu | This project is on **wgpu 30**, which differs from most material online. Read the crate source under `~/.cargo/registry/src/*/wgpu-30.0.0/src/api/` rather than trusting search results. `docs/07` records the three changes that cost the most time. |
 
 ## Next actions
 
-**M0 is under way.** Workspace scaffolded; `amadeo-core` written and type-checking.
-
-**Blocked on one thing:** Smart App Control (see Environment). Code can be written and type-checked,
-but no test can run, so nothing can be *verified*. Justin must decide whether to disable SAC.
-
-Done so far in M0:
+**M0 is under way and unblocked.** Done so far, in the order it was built:
 - ✅ Cargo workspace, workspace lints (`unsafe_code = "forbid"`), toolchain pinned
 - ✅ Q5 resolved: 60 Hz fixed timestep (ADR 0007)
 - ✅ ECS storage strategy decided: safe archetype columns, no unsafe (ADR 0008)
