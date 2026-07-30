@@ -118,11 +118,18 @@ without eyes, the design is wrong and we find out before 3D and the editor pile 
 - Particles / VFX basics.
 - Save/load built on snapshots, with versioning and migration.
 - Input remapping UI, controller support.
-- First genre modules: `mod-tilemap`, plus one of `mod-platformer2d` / `mod-charcontroller3d`.
+- First genre modules, prioritised by the target game direction (`00-vision.md`):
+  **`mod-charcontroller3d`** (third-person movement, camera, ground detection), **`mod-behaviour`**
+  (AI state machines for creatures), **`mod-inventory`** (items, stacks, containers). 2D modules
+  (`mod-tilemap`, `mod-platformer2d`) drop to M6 unless a specific need arises.
 
 **Exit gate**
 1. **A small but genuinely complete game.** Title screen → playable loop → win and lose states →
    pause → save → quit → resume from save. With sound and music.
+   Per `00-vision.md`, the intended shape is a 3D vertical slice sharing the target game's DNA:
+   third-person character in a small handcrafted level, one creature with a few AI states that can be
+   approached and befriended, and a working inventory. Deliberately small in scope, deliberately
+   aligned in subsystems.
 2. Built collaboratively: Justin does some of it, Claude does some of it, in the same repo, with clean
    git history and no merge disasters.
 3. Runs at a stable 60fps on this machine, verified against declared budgets.

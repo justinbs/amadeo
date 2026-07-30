@@ -48,14 +48,13 @@ Native desktop first, Windows primary. Unified 2D and 3D. Web export planned for
 | [docs/04-subsystems.md](docs/04-subsystems.md) | Every subsystem: job, open decisions, milestone. |
 | [docs/05-roadmap.md](docs/05-roadmap.md) | Milestones M0–M6 with concrete exit gates. |
 | [docs/06-open-questions.md](docs/06-open-questions.md) | What's still undecided, and priorities. |
+| [docs/07-working-with-the-code.md](docs/07-working-with-the-code.md) | Setup, everyday commands, and the Rust patterns used here. |
 | [docs/adr/](docs/adr/) | Architecture decision records. |
 
 ## Getting started
 
-Nothing to build yet. Before M0 begins:
-
-```bash
-rustup toolchain install stable
-```
+Nothing to build yet. Setup instructions and the current blocker are in
+[docs/07-working-with-the-code.md](docs/07-working-with-the-code.md); live project state is in
+[STATUS.md](STATUS.md).
 
 Then read [docs/05-roadmap.md](docs/05-roadmap.md) § M0.

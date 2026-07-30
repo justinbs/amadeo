@@ -71,11 +71,37 @@ with the door left open where cheap.
 | Console platforms | NDAs, dev kits, certification. | wgpu abstracts the backend; not blocked structurally. |
 | Mobile / touch | Different input, perf, and packaging model. | Input action layer is device-agnostic by design. |
 | Visual scripting graphs | Large UI investment; a text-first engine serves both authors better. | Node graph could be authored as text and rendered by the editor later. |
-| Terrain, open-world streaming, large-scale vegetation | Specialist subsystems, only needed by a narrow genre. | Could arrive as a module. |
+| Terrain, open-world streaming, large-scale vegetation | Specialist subsystems, expensive, and not needed to prove the engine works. | **Yes, and now expected** — reclassified in session 2 once the target game direction was known (see §"Target game direction"). Out of scope through M5, but the renderer's culling architecture, world-coordinate precision, and chunked asset loading must not *preclude* it. |
 | Localization / i18n | Real, but not architecture-shaping this early. | Text assets go through the asset system, so retrofit is contained. |
 | Asset store / plugin marketplace | Requires users. We have two. | Module system already provides the extension shape. |
 | Writing our own physics engine | rapier is deterministic, maintained, and 2D+3D. Building this ourselves would consume an entire milestone for a worse result. | Wrapped behind engine traits, so it's replaceable. |
 | Supporting languages other than Rust for engine code | Fragmentation cost. | Game logic language is open question Q1; WASM would open this up. |
+
+## Target game direction
+
+Established session 2: the game Justin ultimately wants to make is **in the vein of Palworld** —
+third-person 3D, open world, creature collection and companionship, survival and crafting systems.
+A reference screenshot of the intended visual register (stylized-realistic outdoor environment, dense
+foliage, clear water, PBR materials, strong directional lighting) is the aesthetic target.
+
+**This is a direction, not the first deliverable.** Palworld is a studio product built by a team over
+years, and stating otherwise would make the roadmap fiction. What the direction is genuinely *for* is
+prioritization — it tells us which subsystems matter and in what order, and it changes several
+decisions:
+
+| Implication | Effect on the plan |
+|---|---|
+| 3D third-person is the primary mode | Confirms unified 2D/3D was the right call. `mod-charcontroller3d` becomes the priority module, ahead of 2D genre modules. |
+| Creatures with behaviour | Needs AI/behaviour state machines and skeletal animation state machines. Pulls animation work earlier and argues for these being one abstraction (`04-subsystems.md` §14). |
+| Survival / crafting / capture | `mod-inventory` becomes a priority module. Item definitions are a strong early test of the reflection + text-format design. |
+| Open world | Terrain and streaming move from "non-goal" to "deferred but expected" — see the table above. Affects culling architecture and coordinate precision, which are cheap to plan for and expensive to retrofit. |
+| Multiplayer (Palworld has co-op) | Stays deferred, but reinforces that determinism and snapshotting (ADR 0005) are the right foundation. Already the plan. |
+| That visual fidelity | Well beyond M2. Reached incrementally, and honestly not reached at all without significant art asset work, which is a separate problem from engine work. |
+
+**The realistic first 3D test** (M2–M3) is a vertical slice sharing that DNA rather than its scale: a
+third-person character in a small handcrafted 3D level, one creature with a few AI states you can
+approach and befriend, and a working inventory. Small enough to finish, and it exercises exactly the
+subsystems the long-term target needs — which is what a vertical slice is for.
 
 ## What "done enough to make games" looks like
 

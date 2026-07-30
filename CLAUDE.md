@@ -120,6 +120,31 @@ put it higher up the stack — pushing things down later is easy; pulling them o
 - **Docs:** every public item gets a doc comment. Doc comments are the agent's API surface — treat
   them as load-bearing, not decoration.
 
+### Legibility for a Rust-learning human — a hard requirement
+
+Justin wants to be able to **read, debug, and fix this codebase himself**, including in sessions where
+Claude isn't involved or has gotten stuck. He is not yet a Rust expert. This is a stated project
+requirement, not a preference, and it constrains how code gets written:
+
+- **Boring Rust beats clever Rust.** Prefer explicit types, plain functions, and obvious control flow.
+  Avoid deep generic nesting, trait gymnastics, complex lifetime puzzles, and macro magic unless there
+  is a real, stated reason. Where an exotic construct is genuinely necessary, comment *why* — not what.
+- **Comment the non-obvious Rust, not the obvious code.** `// the Arc is here because the asset loader
+  touches this from a worker thread` is useful. `// increment the counter` is noise.
+- **No unexplained idioms.** If a construct would make someone with three months of Rust stop and
+  squint (`impl Trait` in odd positions, `PhantomData`, interior mutability, `unsafe`), it needs a
+  one-line explanation next to it.
+- **Explain in prose when introducing a pattern.** When a session introduces a new architectural
+  pattern, add it to `docs/07-working-with-the-code.md` with a short worked example. That file is
+  Justin's map into the codebase and must stay current.
+- **Commit messages explain why.** He will read git history to understand how things came to be.
+- **Errors must be actionable by a human too**, not just structured for an agent. Same standard, both
+  audiences.
+
+The trade: some code will be slightly more verbose or slightly less optimal than peak-idiomatic Rust.
+That is an accepted and deliberate cost. A codebase only one author can maintain has already failed
+this project's core goal.
+
 ## 7. Traps specific to this project
 
 Things that will quietly destroy the design if allowed:
@@ -149,4 +174,5 @@ Things that will quietly destroy the design if allowed:
 | `docs/04-subsystems.md` | You're about to build a subsystem. Per-system requirements and decisions. |
 | `docs/05-roadmap.md` | Start of every session. Milestones and their exit gates. |
 | `docs/06-open-questions.md` | Before assuming any undecided thing. |
+| `docs/07-working-with-the-code.md` | Setup, commands, and the Rust patterns this engine uses. **Justin's map into the codebase — keep it current.** |
 | `docs/adr/` | You want to know why something is the way it is. |
