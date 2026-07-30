@@ -47,27 +47,50 @@ with. VS Code's integrated terminal inherits from the VS Code process — so aft
 **restart VS Code itself**, not just the terminal tab. A `command not recognized` error right after a
 successful install is almost always this.
 
-### 5. Known gotcha: Smart App Control blocks binaries run from temp directories
+### 5. Blocker: Smart App Control must be off to run anything we build
 
-**Smart App Control is enabled and enforced on this machine**
-(`VerifiedAndReputablePolicyState = 1`). Freshly compiled binaries are unsigned and have no
-reputation, so SAC blocks them when they are run from `AppData\Local\Temp` and similar locations:
+**Smart App Control blocks every binary this project produces.** It is reputation-based, and a
+freshly compiled debug binary is unsigned and has no reputation, so it is blocked — regardless of
+where it lives on disk.
 
 ```
-Program 'foo.exe' failed to run: An Application Control policy has blocked this file
+error: An Application Control policy has blocked this file. (os error 4551)
 ```
 
-**Verified 2026-07-30:** the same binary built and run from a normal user directory
-(`C:\Users\justi\Desktop\...`) executes fine. The block is location-sensitive, not a blanket ban on
-unsigned code.
+Confirmed 2026-07-30 from the Windows event log
+(`Microsoft-Windows-CodeIntegrity/Operational`): event **3118 "Smart App Control Block"** plus 3077,
+policy ID `{0283ac0f-fff1-49ae-ada1-8a933130cad6}`. It blocked both a test binary in the project's
+own `target/debug/deps` and `clippy-driver.exe` inside the rustup toolchain.
 
-**Therefore: always build and run inside the project directory. Never build to a temp path.** That is
-the normal workflow anyway, so this costs nothing.
+> **An earlier version of this section claimed the block was specific to temp directories. That was
+> wrong.** A single hello-world binary happened to pass, which suggested a location rule that does
+> not exist. SAC decides per-binary on reputation. Recorded here so nobody re-derives the wrong
+> conclusion from the same partial evidence.
 
-**Do not "fix" this by disabling Smart App Control.** On Windows 11, turning SAC off is a **one-way
-change** — re-enabling it requires reinstalling Windows. It is not needed here, and it is Justin's
-decision to make regardless, not something a session should reach for. If a binary won't run, check
-*where* it was built before touching any security setting.
+**What works and what doesn't under SAC:**
+
+| Command | Status |
+|---|---|
+| `cargo check` | works — compiles without executing |
+| `cargo build` | works — compiles and links |
+| `cargo test` | **blocked** — must execute the test binary |
+| `cargo clippy` | **blocked** — `clippy-driver.exe` is blocked |
+| running the engine | **blocked** |
+
+**There is no workaround.** SAC has no exclusion list (unlike Defender). Code signing does not help
+without a reputable certificate *and* accumulated reputation, which a per-build debug binary can never
+have. SAC is designed for machines that only run mainstream reputable software; it is fundamentally
+incompatible with compiling your own.
+
+**The fix is to turn Smart App Control off**, which only Justin can do:
+Windows Security → App & browser control → Smart App Control → **Off**.
+
+⚠️ **This is a one-way change.** Once off, re-enabling SAC requires reinstalling Windows. Defender
+antivirus, SmartScreen, and UAC are unaffected and remain active — this removes one extra layer, and
+leaves the configuration that the large majority of developer machines run.
+
+**Claude must never change this setting**, or any other security setting. Surface it and let Justin
+decide.
 
 ---
 

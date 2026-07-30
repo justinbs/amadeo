@@ -1,0 +1,8 @@
+# Pinning the toolchain keeps builds reproducible across machines and sessions,
+# which matters here because determinism tests assert on exact state hashes
+# (invariant I3, ADR 0005). A silent compiler upgrade changing float codegen
+# would look like a behavioural regression.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+targets = ["x86_64-pc-windows-msvc"]

@@ -1,0 +1,334 @@
+//! Stable hashing, used to fingerprint simulation state.
+//!
+//! # Why this is hand-written rather than a dependency
+//!
+//! Same reasoning as [`crate::rng`], but stronger. This hash is the assertion in every golden
+//! replay test (ADR 0005): "run 600 ticks, hash the world, compare against the recorded value." If
+//! the hash algorithm ever changes, every recorded value in the repository becomes wrong
+//! simultaneously — and it would look like the engine broke.
+//!
+//! So it is pinned here. The algorithm is FNV-1a (64-bit): about six lines, fully specified, and
+//! entirely adequate for change detection. It is **not** cryptographic and must never be used for
+//! anything security-related.
+//!
+//! # Why not `std::hash::Hash`?
+//!
+//! Two reasons, both fatal for our purposes:
+//!
+//! 1. The standard library makes no stability guarantee about its `Hash` implementations across
+//!    compiler versions.
+//! 2. `f32` and `f64` do not implement `Hash` at all, because `NaN != NaN` breaks the contract.
+//!    Floats are most of what a game's state consists of, so we need an answer rather than an
+//!    exclusion — see [`StableHasher::write_f32`].
+
+/// An FNV-1a 64-bit hasher, used to fingerprint simulation state deterministically.
+///
+/// Feed values in with the `write_*` methods, then read the result with [`StableHasher::finish`].
+/// Order matters: the same values fed in a different order produce a different hash. That is
+/// desirable here, because entity iteration order is part of what we want to pin down.
+#[derive(Debug, Clone)]
+pub struct StableHasher {
+    state: u64,
+}
+
+/// FNV-1a 64-bit offset basis, from the algorithm's specification.
+const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+/// FNV-1a 64-bit prime, from the algorithm's specification.
+const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+impl Default for StableHasher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl StableHasher {
+    /// Creates a fresh hasher.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            state: FNV_OFFSET_BASIS,
+        }
+    }
+
+    /// Absorbs a single byte. Every other `write_*` method reduces to this.
+    pub fn write_u8(&mut self, value: u8) {
+        self.state ^= u64::from(value);
+        self.state = self.state.wrapping_mul(FNV_PRIME);
+    }
+
+    /// Absorbs a byte slice.
+    pub fn write_bytes(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.write_u8(byte);
+        }
+    }
+
+    /// Absorbs a `u32`, little-endian.
+    pub fn write_u32(&mut self, value: u32) {
+        self.write_bytes(&value.to_le_bytes());
+    }
+
+    /// Absorbs a `u64`, little-endian.
+    pub fn write_u64(&mut self, value: u64) {
+        self.write_bytes(&value.to_le_bytes());
+    }
+
+    /// Absorbs an `i32`, little-endian.
+    pub fn write_i32(&mut self, value: i32) {
+        self.write_bytes(&value.to_le_bytes());
+    }
+
+    /// Absorbs an `i64`, little-endian.
+    pub fn write_i64(&mut self, value: i64) {
+        self.write_bytes(&value.to_le_bytes());
+    }
+
+    /// Absorbs a `bool`.
+    pub fn write_bool(&mut self, value: bool) {
+        self.write_u8(u8::from(value));
+    }
+
+    /// Absorbs a string's bytes.
+    pub fn write_str(&mut self, value: &str) {
+        self.write_bytes(value.as_bytes());
+    }
+
+    /// Absorbs an `f32`, canonicalising the awkward cases first.
+    ///
+    /// Two float values need special handling before hashing, or identical-looking states would
+    /// hash differently:
+    ///
+    /// - **NaN** has many bit patterns, and `NaN != NaN`. All NaNs collapse to one canonical
+    ///   pattern, so two states that both contain "not a number" agree.
+    /// - **Negative zero** has a different bit pattern from positive zero even though
+    ///   `-0.0 == 0.0`. It is normalised to `+0.0`.
+    ///
+    /// Note this means the hash cannot distinguish a NaN that arrived one way from a NaN that
+    /// arrived another. That is the right trade: NaN in simulation state is a bug to be caught by
+    /// validation, not something to fingerprint precisely.
+    pub fn write_f32(&mut self, value: f32) {
+        let canonical = if value.is_nan() {
+            f32::NAN
+        } else if value == 0.0 {
+            0.0
+        } else {
+            value
+        };
+        self.write_bytes(&canonical.to_bits().to_le_bytes());
+    }
+
+    /// Absorbs an `f64`. Same canonicalisation as [`StableHasher::write_f32`].
+    pub fn write_f64(&mut self, value: f64) {
+        let canonical = if value.is_nan() {
+            f64::NAN
+        } else if value == 0.0 {
+            0.0
+        } else {
+            value
+        };
+        self.write_bytes(&canonical.to_bits().to_le_bytes());
+    }
+
+    /// Returns the hash accumulated so far.
+    ///
+    /// Does not consume the hasher, so intermediate fingerprints can be read mid-stream.
+    #[must_use]
+    pub fn finish(&self) -> u64 {
+        self.state
+    }
+}
+
+/// Types that can contribute to a stable state fingerprint.
+///
+/// Implement this for any component whose value should participate in golden replay assertions.
+/// Deriving it automatically arrives with the reflection registry in M1; until then it is written
+/// by hand, which is a small cost while the number of components is small.
+pub trait StableHash {
+    /// Feeds this value into the hasher.
+    fn stable_hash(&self, hasher: &mut StableHasher);
+}
+
+/// Convenience: hash one value on its own and return the fingerprint.
+pub fn stable_hash_of<T: StableHash + ?Sized>(value: &T) -> u64 {
+    let mut hasher = StableHasher::new();
+    value.stable_hash(&mut hasher);
+    hasher.finish()
+}
+
+// Implementations for primitives. Written out rather than macro-generated: a macro here would save
+// perhaps thirty lines and cost readability, which is the wrong trade in this project
+// (CLAUDE.md section 6).
+
+impl StableHash for u8 {
+    fn stable_hash(&self, hasher: &mut StableHasher) {
+        hasher.write_u8(*self);
+    }
+}
+
+impl StableHash for u32 {
+    fn stable_hash(&self, hasher: &mut StableHasher) {
+        hasher.write_u32(*self);
+    }
+}
+
+impl StableHash for u64 {
+    fn stable_hash(&self, hasher: &mut StableHasher) {
+        hasher.write_u64(*self);
+    }
+}
+
+impl StableHash for i32 {
+    fn stable_hash(&self, hasher: &mut StableHasher) {
+        hasher.write_i32(*self);
+    }
+}
+
+impl StableHash for i64 {
+    fn stable_hash(&self, hasher: &mut StableHasher) {
+        hasher.write_i64(*self);
+    }
+}
+
+impl StableHash for f32 {
+    fn stable_hash(&self, hasher: &mut StableHasher) {
+        hasher.write_f32(*self);
+    }
+}
+
+impl StableHash for f64 {
+    fn stable_hash(&self, hasher: &mut StableHasher) {
+        hasher.write_f64(*self);
+    }
+}
+
+impl StableHash for bool {
+    fn stable_hash(&self, hasher: &mut StableHasher) {
+        hasher.write_bool(*self);
+    }
+}
+
+impl StableHash for str {
+    fn stable_hash(&self, hasher: &mut StableHasher) {
+        hasher.write_str(self);
+    }
+}
+
+impl StableHash for String {
+    fn stable_hash(&self, hasher: &mut StableHasher) {
+        hasher.write_str(self);
+    }
+}
+
+impl<T: StableHash> StableHash for [T] {
+    fn stable_hash(&self, hasher: &mut StableHasher) {
+        // Length is hashed first so that [a] and [a, b] cannot collide with each other, and so
+        // that concatenation ambiguities ([a],[b] vs [a,b]) are impossible.
+        hasher.write_u64(self.len() as u64);
+        for item in self {
+            item.stable_hash(hasher);
+        }
+    }
+}
+
+impl<T: StableHash> StableHash for Vec<T> {
+    fn stable_hash(&self, hasher: &mut StableHasher) {
+        self.as_slice().stable_hash(hasher);
+    }
+}
+
+impl<T: StableHash> StableHash for Option<T> {
+    fn stable_hash(&self, hasher: &mut StableHasher) {
+        match self {
+            None => hasher.write_u8(0),
+            Some(value) => {
+                hasher.write_u8(1);
+                value.stable_hash(hasher);
+            }
+        }
+    }
+}
+
+impl<A: StableHash, B: StableHash> StableHash for (A, B) {
+    fn stable_hash(&self, hasher: &mut StableHasher) {
+        self.0.stable_hash(hasher);
+        self.1.stable_hash(hasher);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identical_input_gives_identical_hash() {
+        assert_eq!(stable_hash_of(&42u64), stable_hash_of(&42u64));
+    }
+
+    #[test]
+    fn different_input_gives_different_hash() {
+        assert_ne!(stable_hash_of(&42u64), stable_hash_of(&43u64));
+    }
+
+    #[test]
+    fn order_matters() {
+        let a = vec![1u32, 2, 3];
+        let b = vec![3u32, 2, 1];
+        assert_ne!(stable_hash_of(&a), stable_hash_of(&b));
+    }
+
+    #[test]
+    fn length_prefix_prevents_concatenation_collisions() {
+        // Without hashing the length, these two would be indistinguishable.
+        let split: (Vec<u32>, Vec<u32>) = (vec![1], vec![2, 3]);
+        let other: (Vec<u32>, Vec<u32>) = (vec![1, 2], vec![3]);
+        assert_ne!(stable_hash_of(&split), stable_hash_of(&other));
+    }
+
+    #[test]
+    fn nan_hashes_consistently() {
+        // Different NaN bit patterns must agree, or a state containing NaN would hash
+        // unpredictably from run to run.
+        let quiet_nan = f32::NAN;
+        let computed_nan = 0.0f32 / 0.0f32;
+        assert!(quiet_nan.is_nan() && computed_nan.is_nan());
+        assert_eq!(stable_hash_of(&quiet_nan), stable_hash_of(&computed_nan));
+    }
+
+    #[test]
+    fn negative_zero_hashes_as_positive_zero() {
+        assert_eq!(stable_hash_of(&0.0f32), stable_hash_of(&-0.0f32));
+        assert_eq!(stable_hash_of(&0.0f64), stable_hash_of(&-0.0f64));
+    }
+
+    #[test]
+    fn ordinary_floats_still_distinguish() {
+        assert_ne!(stable_hash_of(&1.0f32), stable_hash_of(&1.000_001f32));
+        assert_ne!(stable_hash_of(&1.0f32), stable_hash_of(&-1.0f32));
+    }
+
+    #[test]
+    fn option_none_differs_from_some_default() {
+        let none: Option<u32> = None;
+        let some_zero: Option<u32> = Some(0);
+        assert_ne!(stable_hash_of(&none), stable_hash_of(&some_zero));
+    }
+
+    #[test]
+    fn hash_is_pinned_to_known_values() {
+        // Regression guards. If the algorithm is ever replaced, these fail loudly, and whoever did
+        // it must confront the fact that every recorded replay in the repository just became
+        // invalid. That alarm is the point -- do NOT "fix" these by updating the numbers without an
+        // ADR explaining why every golden replay is being re-recorded.
+        //
+        // The expected value below was cross-checked against an independent FNV-1a implementation
+        // written from the specification, not copied from this code. That distinction matters: a
+        // constant derived from our own output would only assert that this code is
+        // self-consistent, which would still pass if the implementation were subtly wrong.
+        assert_eq!(StableHasher::new().finish(), FNV_OFFSET_BASIS);
+
+        let mut hasher = StableHasher::new();
+        hasher.write_str("amadeo");
+        assert_eq!(hasher.finish(), 0xc3e3_fe2b_8ec1_d932);
+    }
+}

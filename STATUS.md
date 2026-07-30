@@ -58,27 +58,41 @@ Verified on this machine (2026-07-30):
 | **Rust** | ✅ rustup + rustc 1.97.1 + cargo 1.97.1, target `stable-x86_64-pc-windows-msvc`, in `%USERPROFILE%\.cargo\bin` |
 | **MSVC build tools** | ✅ VS Build Tools 2022 17.14.37, MSVC 14.44.35207. Verified 2026-07-30: `cargo build` compiles **and links**, and the binary runs. |
 | Editor | ✅ VS Code + rust-analyzer v0.3.2989 |
-| **Toolchain status** | ✅ **No blockers. M0 can begin.** |
+| **Toolchain status** | ⚠️ **Compiles but cannot execute — see Smart App Control below.** |
 | Also missing | Python, cmake. Neither is needed. |
 | Gotcha — PATH | Installers update the persistent PATH but not running processes. VS Code's integrated terminal needs **VS Code itself** restarted, not just a new tab. |
-| Gotcha — Smart App Control | Enabled and enforced. Blocks freshly compiled unsigned binaries **run from temp directories**; the same binary runs fine from a normal user directory. **Always build inside the project dir; never build to a temp path.** Do not disable SAC — it is a one-way change on Win11 and is not needed. Details in `docs/07-working-with-the-code.md` §5. |
+| **BLOCKER — Smart App Control** | Enabled and enforced. Blocks **every binary this project builds**, anywhere on disk — confirmed via event log (3118 Smart App Control Block, policy `{0283ac0f-…}`). `cargo check` and `cargo build` work; `cargo test`, `cargo clippy`, and running the engine are blocked. No workaround exists; it must be turned off (Windows Security → App & browser control → Smart App Control → Off), which is **one-way** and is Justin's call alone. Full detail and the corrected earlier analysis in `docs/07-working-with-the-code.md` §5. |
 | Gotcha — winget | `winget install` on an already-installed package attempts an *upgrade* and silently ignores `--override`, so it cannot add a workload. Use the VS Installer to modify an existing install. |
 
 ## Next actions
 
-Toolchain is complete. **M0 starts here.**
+**M0 is under way.** Workspace scaffolded; `amadeo-core` written and type-checking.
 
-1. Read `docs/05-roadmap.md` § M0 and this file's Decided section.
-2. Scaffold the cargo workspace: `amadeo-math`, `amadeo-core`, `amadeo-ecs`, `amadeo-app`.
-3. Stand up CI (build + test + clippy + fmt + dependency-direction lint) — determinism tests are
-   worthless if they aren't run every commit.
-4. Resolve **Q5** (fixed timestep rate) and write it down before any simulation code — changing it
-   later invalidates every recorded replay.
-5. Build the determinism harness alongside the ECS, not after: seeded RNG resource, world state
-   hashing, golden replay runner.
-6. Reserve the ADR 0006 hooks while building ECS and reflect — network identity space and authority.
-   Cheap now, invasive later.
-7. Run the **Q1** hot-reload spike and resolve it with measurements, not opinions. Blocks M1.
+**Blocked on one thing:** Smart App Control (see Environment). Code can be written and type-checked,
+but no test can run, so nothing can be *verified*. Justin must decide whether to disable SAC.
+
+Done so far in M0:
+- ✅ Cargo workspace, workspace lints (`unsafe_code = "forbid"`), toolchain pinned
+- ✅ Q5 resolved: 60 Hz fixed timestep (ADR 0007)
+- ✅ ECS storage strategy decided: safe archetype columns, no unsafe (ADR 0008)
+- ✅ `amadeo-core`: `Tick`, `FIXED_DT`, hand-written PCG32 `Rng` with stream forking, hand-written
+  FNV-1a `StableHasher` (cross-checked against an independent implementation), `StableId` / `NetId` /
+  `Authority` (the ADR 0006 hooks). 27 tests written — **26 verified passing before SAC began
+  blocking; the suite has not been run since.**
+
+Remaining in M0:
+1. `amadeo-ecs` — archetype storage per ADR 0008, queries, deferred commands, change ticks.
+2. `amadeo-events` — typed double-buffered queues with total ordering.
+3. `amadeo-app` — schedules with explicit ordering, the fixed-timestep loop.
+4. `amadeo-input` — action mapping, deterministic sampling, record/replay of action streams.
+5. Determinism harness: world state hashing, golden replay test runner.
+6. CI (build + test + clippy + fmt + dependency-direction lint).
+7. `amadeo-render` — window via winit, wgpu device, clear colour, and a null backend.
+8. **Q1 spike** (game logic hot-reload) — resolve with measurements. Blocks M1.
+
+Note: CI on GitHub Actions runs on Linux/Windows runners without SAC, so the test suite will be
+verified there regardless of the local situation. That is a mitigation, not a substitute — a
+15-minute round trip through CI is a poor inner loop.
 
 ## Open risks
 

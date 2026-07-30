@@ -1,0 +1,50 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/justinbs/amadeo"
+rust-version = "1.97"
+
+[workspace.dependencies]
+# Internal crates, in dependency order (see CLAUDE.md section 4). Entries are added here as each
+# crate is created, so this list doubles as a record of what exists.
+amadeo-core = { path = "crates/amadeo-core", version = "0.1.0" }
+
+# External.
+thiserror = "2"
+
+# Lints applied to every crate in the workspace via `[lints] workspace = true`.
+#
+# `unsafe_code = "forbid"` is an architectural commitment, not a style preference:
+# ADR 0008 chose a safe ECS storage design specifically so this could hold in the
+# engine's most-read crate. Lifting it anywhere needs an ADR.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+# Correctness and clarity. Deliberately not a maximalist lint set --
+# noisy lints get ignored, and ignored lints are worse than absent ones.
+todo = "warn"
+unimplemented = "warn"
+dbg_macro = "warn"
+
+# Not configured here: a lint banning HashMap/HashSet in simulation paths (invariant I3).
+# clippy's `disallowed_types` is crate-global, and HashMap is perfectly fine outside the
+# deterministic zone, so a blanket warning would be noise that gets ignored. The real guard is
+# the golden replay tests, which fail loudly on any nondeterminism. Revisit if a path-scoped
+# lint becomes available.
+
+[profile.dev]
+# Engine dev builds are run, not just compiled, so a little optimisation in
+# dependencies pays for itself. Our own crates stay unoptimised for fast rebuilds.
+opt-level = 0
+
+[profile.dev.package."*"]
+opt-level = 2
