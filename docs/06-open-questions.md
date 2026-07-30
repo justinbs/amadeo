@@ -155,6 +155,18 @@ background task, not after.
 
 ---
 
+## Q11 · P2 · Agent introspection across a client/server split
+
+Once M6 lands, does `world.query` report the server's authoritative state or a client's predicted
+state? Both are useful for different debugging tasks, so this may need to be an explicit target
+parameter on the RPC rather than a single choice.
+
+Worth deciding before M6 rather than during it. Networked gameplay is the hardest thing in this project
+to debug, which makes it the place where good introspection pays off most — and the place where bad
+introspection hurts most.
+
+---
+
 ## Q10 · P2 · One dimension per project, or both simultaneously?
 
 Whether a project selects 2D or 3D at build time (simpler, smaller binaries, cleaner physics choice)
@@ -179,3 +191,7 @@ be less coupled than they look. Decide in M2.
 | Physics engine | rapier, wrapped behind engine traits | `adr/0002` |
 | Writing our own physics | No | `00-vision.md` non-goals |
 | Building on Bevy | No — reference material, not a dependency | `adr/0002` |
+| Human-legibility of the code | Hard requirement — boring Rust over clever Rust | `CLAUDE.md` §6 |
+| Target games | Palworld, Schedule I, Inside the Backrooms — used as a prioritisation signal | `00-vision.md` |
+| First game to finish | Single-player first-person atmospheric horror slice, at M3 | `00-vision.md` |
+| Multiplayer | No longer a non-goal. Client-server with server authority; hooks reserved M0–M2, netcode at M6 | `adr/0006` |

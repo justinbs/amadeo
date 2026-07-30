@@ -91,6 +91,11 @@ without eyes, the design is wrong and we find out before 3D and the editor pile 
 - ADR on 2D/3D coexistence (see `04-subsystems.md` §4) — decided *before* code.
 - Render graph proper: declared passes, resource dependencies, transient targets.
 - 3D: mesh rendering, PBR materials, directional + point lights, shadow maps, frustum culling.
+- **Configurable post-process stack and atmosphere** — the three target games span stylised-realistic
+  outdoors, low-poly, and dark atmospheric interiors, so the renderer must not bake in a look
+  (`00-vision.md` § Divergent). Fog/volumetrics and strong dynamic point lighting are requirements
+  here, not polish — M3's horror slice depends on them.
+- Culling architecture must not preclude later world streaming (see non-goals table).
 - glTF import — meshes, materials, scene hierarchy, skins.
 - Shader/material strategy per its ADR; WGSL organization and variant handling.
 - `amadeo-physics` — rapier 2D and 3D behind engine traits. Rigid bodies, colliders, joints,
@@ -118,21 +123,34 @@ without eyes, the design is wrong and we find out before 3D and the editor pile 
 - Particles / VFX basics.
 - Save/load built on snapshots, with versioning and migration.
 - Input remapping UI, controller support.
-- First genre modules, prioritised by the target game direction (`00-vision.md`):
-  **`mod-charcontroller3d`** (third-person movement, camera, ground detection), **`mod-behaviour`**
-  (AI state machines for creatures), **`mod-inventory`** (items, stacks, containers). 2D modules
-  (`mod-tilemap`, `mod-platformer2d`) drop to M6 unless a specific need arises.
+- First genre modules, prioritised by the target games (`00-vision.md`):
+  **`mod-charcontroller3d`** (movement, ground detection) with the **camera rig as a separate module**
+  so first- and third-person are both supported — Schedule I and Backrooms are first-person, Palworld
+  is third; **`mod-behaviour`** (AI state machines: patrol, pursue, search, flee);
+  **`mod-inventory`** (items, stacks, containers); **`mod-interaction`** (look-at, pick up, use).
+  2D modules (`mod-tilemap`, `mod-platformer2d`) drop to M7 unless a specific need arises.
 
 **Exit gate**
-1. **A small but genuinely complete game.** Title screen → playable loop → win and lose states →
-   pause → save → quit → resume from save. With sound and music.
-   Per `00-vision.md`, the intended shape is a 3D vertical slice sharing the target game's DNA:
-   third-person character in a small handcrafted level, one creature with a few AI states that can be
-   approached and befriended, and a working inventory. Deliberately small in scope, deliberately
-   aligned in subsystems.
-2. Built collaboratively: Justin does some of it, Claude does some of it, in the same repo, with clean
+
+**A single-player first-person atmospheric horror slice** — Inside the Backrooms in shape, not in
+scale. Chosen in session 2 as the smallest genuinely finishable complete game that is also the hardest
+test of the renderer. Reasoning in `00-vision.md` § The first game to actually finish.
+
+1. **Complete, not a demo.** Title screen → playable loop → lose state (caught) and win state (escape)
+   → pause → save → quit → resume from save. With sound design and music.
+2. **Bounded procedural interiors** — assembled from handcrafted room pieces, not one static level.
+   Tests the scene composition and prefab-instancing design under real use.
+3. **At least one pursuing entity** with distinct AI states (idle, search, pursue, lose interest),
+   driven by `mod-behaviour`.
+4. **Inventory and interaction** — pick up and use at least a flashlight and a key-type item.
+5. **Atmosphere holds up.** A dark corridor with a moving flashlight that reads as genuinely
+   atmospheric. This is the renderer's real exam: dynamic lighting, shadow quality, fog, and a
+   post-process stack. If this works, the other two art directions are easier.
+6. **Audio carries weight.** Spatialised sound, occlusion or at least attenuation, reactive music or
+   stingers. Horror lives or dies here, which makes it a good forcing function for the audio system.
+7. Built collaboratively: Justin does some of it, Claude does some of it, in the same repo, with clean
    git history and no merge disasters.
-3. Runs at a stable 60fps on this machine, verified against declared budgets.
+8. Runs at a stable 60fps on this machine, verified against declared budgets.
 
 ---
 
@@ -179,17 +197,41 @@ is the enforcement mechanism for I5.
 
 ---
 
-## M6+ — Modules and Actual Games
+## M6 — Co-op Multiplayer
+
+*Goal: make the co-op the target games all require. Additive, because the hooks were reserved in
+M0–M2 (ADR 0006).*
+
+**Build**
+- Transport and connection lifecycle (join, leave, timeout, reconnect).
+- Snapshot delta encoding, bandwidth management, interest management.
+- Client-side prediction and server reconciliation for movement and interaction.
+- Server-authoritative physics; the dedicated server comes largely free from invariant I7.
+- Replication driven by the `amadeo-reflect` annotations added back in M1.
+
+**Exit gate**
+1. The M3 horror slice runs in 2–4 player co-op, listen-server and dedicated-server.
+2. Movement feels correct on a client with 100ms simulated latency.
+3. A client joining mid-session receives correct world state.
+4. Single-player still works, unchanged, through the same code path.
+
+**Scope discipline:** ADR 0006 authorises no networking machinery before this milestone. If earlier
+milestones start growing transport or prediction code, push it back here.
+
+---
+
+## M7+ — Modules and Actual Games
 
 The engine becomes infrastructure and attention moves to games. Module work continues indefinitely —
 per `01-architecture.md`, modules are the vocabulary I compose with, and every good module reduces how
 much novel code a new game needs.
 
-Candidates: `mod-topdown`, `mod-dialogue`, `mod-turnbased`, `mod-inventory`, `mod-vfx`,
-`mod-pathfinding`.
+Toward the target games: `mod-worldclock` (day/night, NPC schedules — Schedule I and Palworld both need
+it), `mod-crafting`, `mod-building` (base/property placement), `mod-creature` (companion AI, taming),
+`mod-pathfinding`, `mod-dialogue`, `mod-vfx`. 2D modules (`mod-tilemap`, `mod-topdown`) land here.
 
-Deferred items become live options here, in rough order of value: multiplayer (determinism and
-snapshots are already in place for rollback), localization, mobile, visual scripting.
+Remaining deferred items become live options: terrain and world streaming (needed for a Palworld-scale
+open world), localization, mobile, visual scripting.
 
 ---
 

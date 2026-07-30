@@ -70,7 +70,11 @@ system.
 ⚠️ **Entity ID scheme.** Generational indices are the obvious choice. But the scene format needs
 *stable, human-meaningful* IDs that survive reordering and merges (I2) — so there are two ID spaces
 (authoring identity vs runtime handle) and a mapping between them. Design both together; retrofitting
-stable authoring IDs is painful.
+stable authoring IDs is painful. **Also design the network identity space here** (ADR 0006) — a third
+space, shared across processes. Nearly free while designing the other two, invasive later.
+⚠️ **Authority.** An explicit notion of who owns an entity, per ADR 0006, even though it is always
+`Local` until M6. Systems written against it from the start stay correct; systems that assume universal
+write access all need revisiting.
 ⚠️ **Query API ergonomics.** This is the single most-used API in the engine, by both authors. Worth
 prototyping two or three shapes and judging which reads best, rather than copying one from another
 engine reflexively.
@@ -193,6 +197,9 @@ answer and adds proc-macro compile cost. Almost certainly worth it.
 ⚠️ **How rich is the metadata?** Field names and types are the minimum. Ranges, units, tooltips, and
 enum variants are what make generated inspectors and agent guidance genuinely good. Decide the
 attribute vocabulary early — adding it later means touching every component.
+⚠️ **Replication annotations** (ADR 0006). Sync policy, interpolation hint, and authority belong in this
+same vocabulary. Add them in M1 while components are being authored and their semantics are freshest —
+not in a later sweep across the entire engine. Unused until M6, and that is fine.
 ⚠️ **Versioning and migration.** When a component gains or renames a field, old scene files must still
 load. Needs a version tag and migration hooks, or every format change breaks every saved project.
 
@@ -323,6 +330,25 @@ rot.
 ⚠️ Doc comments are the agent's primary API surface — treat them as load-bearing.
 ⚠️ A cookbook of worked examples ("how do I make a thing patrol") is disproportionately valuable to an
 agent, because a working example beats a signature every time.
+
+---
+
+## 20. Networking — `amadeo-net` · hooks M0–M2, built M6
+
+**Job:** co-op multiplayer. All three target games require it (`00-vision.md`).
+
+✅ **Client-server with server authority and client prediction** — explicitly not deterministic
+lockstep. ADR 0006.
+✅ Hooks reserved during M0–M2; no transport code before M6. The cheap-now vs expensive-later split is
+tabulated in ADR 0006.
+✅ Dedicated server comes almost free from invariant I7 (everything headless-capable).
+
+⚠️ Transport choice (QUIC vs a reliable-UDP library) — M6.
+⚠️ Interest management for open worlds — matters at Palworld scale, not for bounded interiors.
+⚠️ **How the agent interface layer behaves across a client/server split.** Does `world.query` target the
+server's authoritative state or a client's predicted state? Both are legitimately useful. Worth deciding
+before M6, since it determines how debuggable networked gameplay is — and networked gameplay is the
+hardest thing in this project to debug without good introspection.
 
 ---
 

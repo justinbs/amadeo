@@ -25,10 +25,19 @@ begin immediately.
 - Determinism is a hard invariant, designed in from tick zero. See `docs/adr/0005`.
 - **Code must stay legible to a Rust-learning human.** Justin intends to read, debug, and fix the
   codebase himself. Boring Rust over clever Rust; accepted cost in verbosity. `CLAUDE.md` §6.
-- **Target game direction: Palworld-like** — third-person 3D, open world, creature collection,
-  survival/crafting. Reprioritises modules toward `mod-charcontroller3d`, `mod-behaviour`,
-  `mod-inventory`; reclassifies terrain/streaming from non-goal to deferred-but-expected.
-  See `docs/00-vision.md` § Target game direction.
+- **Target games: Palworld, Schedule I, Inside the Backrooms.** Deliberately different genres, scales,
+  and art directions — used as a prioritisation signal. The intersection defines the core; the
+  divergence defines what must stay pluggable. See `docs/00-vision.md` § Target games.
+- **Renderer must not bake in an art style.** Configurable post-process stack, flexible dynamic
+  lighting, fog/volumetrics. The three targets span stylised-realistic outdoors, low-poly, and dark
+  atmospheric interiors.
+- **Camera rig is separate from the character controller** — the targets are a mix of first- and
+  third-person.
+- **Multiplayer is no longer a non-goal.** All three targets are co-op. Client-server with server
+  authority and client prediction (*not* deterministic lockstep). Hooks reserved during M0–M2, netcode
+  built at M6. See `docs/adr/0006`.
+- **First game to finish: single-player first-person atmospheric horror slice** at M3 — smallest
+  genuinely finishable complete game, and the hardest test of the renderer.
 
 ### Not yet decided (blocking)
 - **Q1: How game logic is authored and hot-reloaded.** Rust dylib vs WASM vs embedded scripting.
@@ -76,6 +85,9 @@ Verified on this machine (2026-07-30):
   Repo initialized. No code.
 - **S2 (2026-07-30):** GitHub remote added (personal account; note the *global* git identity on this
   machine is a work account, so this repo carries a local override — do not remove it). Rust verified
-  installed; MSVC build tools confirmed missing and blocking. Added human-legibility requirement to
-  `CLAUDE.md` §6 and created `docs/07-working-with-the-code.md`. Target game direction captured and
-  module priorities reordered toward 3D. No code.
+  installed; MSVC build tools confirmed missing and blocking; rust-analyzer installed. Added
+  human-legibility requirement to `CLAUDE.md` §6 and created `docs/07-working-with-the-code.md`.
+  Three target games captured, module priorities reordered toward 3D, renderer required to stay
+  art-direction-agnostic. **Multiplayer promoted from non-goal to planned M6 with hooks reserved in
+  M0–M2 (ADR 0006)** — the largest plan change so far. M3's exit gate set to a horror slice with
+  concrete criteria. No code.

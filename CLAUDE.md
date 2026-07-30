@@ -162,6 +162,13 @@ Things that will quietly destroy the design if allowed:
    type, and you find out three milestones later.
 6. **Building breadth before the spine works.** Ten half-subsystems can't run a game. One thin
    working slice can.
+7. **Forgetting the reserved multiplayer hooks.** All three target games are co-op. ADR 0006 reserves
+   network identity, replication metadata, and authority during M0–M2 — while those systems are being
+   written for the first time. Skipping them means a sweep across every component later. Equally: do
+   **not** build transport or prediction code before M6; that's scope creep in the other direction.
+8. **Baking an art style into the renderer.** The target games span stylised-realistic outdoors,
+   low-poly, and dark atmospheric interiors. A pipeline tuned for one is a pipeline that can't do the
+   others. Post-process and lighting stay configurable.
 
 ## 8. Reading order for the design docs
 

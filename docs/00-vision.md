@@ -67,7 +67,7 @@ with the door left open where cheap.
 | Not doing | Reasoning | Door left open? |
 |---|---|---|
 | Competing with UE5 on visual fidelity | Ray tracing, virtualized geometry, and global illumination are multi-year specialist efforts and irrelevant to the games we want to make. | Render graph abstraction allows adding passes later. |
-| Multiplayer / netcode | Enormous scope multiplier; touches every subsystem. | **Yes, meaningfully** — determinism + snapshot/rollback are exactly the substrate rollback netcode needs. Deferred, not designed out. |
+| ~~Multiplayer / netcode~~ | **No longer a non-goal.** Reclassified in session 2: all three target games are co-op. Promoted to a planned milestone (M6) with architectural hooks reserved during M0–M2. See ADR 0006 and § Multiplayer below. |
 | Console platforms | NDAs, dev kits, certification. | wgpu abstracts the backend; not blocked structurally. |
 | Mobile / touch | Different input, perf, and packaging model. | Input action layer is device-agnostic by design. |
 | Visual scripting graphs | Large UI investment; a text-first engine serves both authors better. | Node graph could be authored as text and rendered by the editor later. |
@@ -77,31 +77,75 @@ with the door left open where cheap.
 | Writing our own physics engine | rapier is deterministic, maintained, and 2D+3D. Building this ourselves would consume an entire milestone for a worse result. | Wrapped behind engine traits, so it's replaceable. |
 | Supporting languages other than Rust for engine code | Fragmentation cost. | Game logic language is open question Q1; WASM would open this up. |
 
-## Target game direction
+## Target games
 
-Established session 2: the game Justin ultimately wants to make is **in the vein of Palworld** —
-third-person 3D, open world, creature collection and companionship, survival and crafting systems.
-A reference screenshot of the intended visual register (stylized-realistic outdoor environment, dense
-foliage, clear water, PBR materials, strong directional lighting) is the aesthetic target.
+Established session 2. Justin named three reference games, deliberately spanning different genres,
+scales, and art directions:
 
-**This is a direction, not the first deliverable.** Palworld is a studio product built by a team over
-years, and stating otherwise would make the roadmap fiction. What the direction is genuinely *for* is
-prioritization — it tells us which subsystems matter and in what order, and it changes several
-decisions:
-
-| Implication | Effect on the plan |
+| Game | Shape |
 |---|---|
-| 3D third-person is the primary mode | Confirms unified 2D/3D was the right call. `mod-charcontroller3d` becomes the priority module, ahead of 2D genre modules. |
-| Creatures with behaviour | Needs AI/behaviour state machines and skeletal animation state machines. Pulls animation work earlier and argues for these being one abstraction (`04-subsystems.md` §14). |
-| Survival / crafting / capture | `mod-inventory` becomes a priority module. Item definitions are a strong early test of the reflection + text-format design. |
-| Open world | Terrain and streaming move from "non-goal" to "deferred but expected" — see the table above. Affects culling architecture and coordinate precision, which are cheap to plan for and expensive to retrofit. |
-| Multiplayer (Palworld has co-op) | Stays deferred, but reinforces that determinism and snapshotting (ADR 0005) are the right foundation. Already the plan. |
-| That visual fidelity | Well beyond M2. Reached incrementally, and honestly not reached at all without significant art asset work, which is a separate problem from engine work. |
+| **Palworld** | 3D third-person, open world, creature collection and companionship, survival and crafting, base building, co-op. Stylised-realistic outdoors. |
+| **Schedule I** | 3D first-person business/dealing simulation, NPC daily schedules, economy and production chains, property management, co-op. Low-poly stylised. |
+| **Inside the Backrooms** | 3D first-person co-op horror, bounded procedural interiors, pursuing entities, inventory and puzzles. Dark atmospheric realism. |
 
-**The realistic first 3D test** (M2–M3) is a vertical slice sharing that DNA rather than its scale: a
-third-person character in a small handcrafted 3D level, one creature with a few AI states you can
-approach and befriend, and a working inventory. Small enough to finish, and it exercises exactly the
-subsystems the long-term target needs — which is what a vertical slice is for.
+**Three different games are a better specification than one.** The intersection tells us what belongs
+in the core; the divergence tells us what must stay pluggable. That distinction *is* the
+genre-agnostic design (G1), and it is now grounded in real targets rather than speculation.
+
+### Common to all three → core, not modules
+
+- 3D real-time with a character controller
+- **Autonomous NPC/entity AI with behaviour states** — pals, customers and police, pursuing entities
+- Inventory and item systems
+- An interaction system (pick up, use, talk)
+- Persistence
+- **Co-op multiplayer** — all three. See below; this changed the plan.
+
+### Two of three → priority modules
+
+Survival/crafting resource loops, base or property management, a world clock driving day/night and
+NPC schedules.
+
+### Divergent → must never be baked in
+
+| Axis | Spread | Consequence |
+|---|---|---|
+| Camera | First-person (Schedule I, Backrooms) vs third-person (Palworld) | The camera rig must be **separate** from the character controller. |
+| Art direction | Stylised-realistic outdoor / low-poly / dark atmospheric interior | **The renderer cannot bake in a look.** Configurable post-process stack, flexible dynamic lighting, and fog/volumetrics are first-class requirements — not a Palworld-shaped pipeline. |
+| Scale | Open world vs bounded interiors | Streaming eventually; bounded levels first. Culling architecture must not preclude it. |
+| Pace | Relaxed simulation vs tense horror | Audio and lighting carry disproportionate weight; both need real investment, not a checkbox. |
+
+### Multiplayer: reclassified
+
+All three targets are co-op, so treating multiplayer as a non-goal was wrong once the targets were
+known. Networking is the most painful retrofit in engine development — it touches entity identity,
+authority, state replication, and every gameplay system simultaneously.
+
+Decision (ADR 0006): **reserve the architectural hooks during M0–M2, build the netcode at M6.** The
+cheap structural half gets decided while the relevant systems are being written; the expensive half
+waits. Note that invariant I7 (everything headless-capable) already gives us a dedicated server as
+close to a side effect.
+
+Correcting an earlier framing: determinism does not by itself supply the networking model here. Co-op
+survival games use **client-server with server authority and client prediction**, not deterministic
+lockstep. Determinism remains valuable — a reproducible server simulation is far easier to debug — but
+it is not the architecture.
+
+### The first game to actually finish
+
+**A single-player first-person atmospheric horror slice**, in the vein of Inside the Backrooms. This is
+M3's exit gate.
+
+Chosen because it is the smallest genuinely *finishable* complete game — bounded interiors, a handful
+of entities, short runtime — while being the **hardest test of the renderer**: if it can produce a
+convincing dark corridor with a flashlight and real atmosphere, the other two art directions are
+easier. It exercises entity AI, inventory, interaction, procedural level assembly, and audio, which is
+where horror lives or dies. Short horror games are a respected format, so small does not mean
+unfinished.
+
+Palworld-scale remains the long-term direction, not an early deliverable — it is a studio product built
+by a team over years, and that fidelity is as much an art-asset problem as an engine one. Stating
+otherwise would make this roadmap fiction.
 
 ## What "done enough to make games" looks like
 
