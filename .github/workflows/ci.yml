@@ -54,18 +54,21 @@ jobs:
       # that -- it would pass even if results varied between runs. Running the suite repeatedly in
       # separate processes catches nondeterminism that comes from address-space layout, hash seeds,
       # or iteration order, which is exactly the class of bug that silently voids golden replays.
+      # Deliberately NOT --all-features: this job is about simulation determinism, which the GPU
+      # backend cannot affect (it is a Service and excluded from the state hash, ADR 0009). Building
+      # wgpu three times over would multiply this job's runtime for no additional coverage.
       - name: Run the suite three times in separate processes
         shell: bash
         run: |
           for attempt in 1 2 3; do
             echo "--- attempt $attempt ---"
-            cargo test --workspace --all-features -- --test-threads=1
+            cargo test --workspace -- --test-threads=1
           done
 
       # Debug and release builds must agree too. A mismatch usually means a float optimisation or an
       # overflow check is changing behaviour, both of which break replay portability.
       - name: Release build must agree with debug
-        run: cargo test --workspace --all-features --release
+        run: cargo test --workspace --release
 
   docs:
     name: docs build without warnings

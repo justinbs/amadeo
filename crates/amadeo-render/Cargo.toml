@@ -12,9 +12,17 @@ amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 thiserror.workspace = true
 
-# Note: wgpu and winit are deliberately absent. This crate defines the abstraction and the null
-# backend, both of which must build and test with no GPU and no window (invariant I7). The wgpu
-# backend arrives behind a feature flag so headless builds and CI stay lean.
+# GPU backend dependencies, all optional. The abstraction and the null backend must build and test
+# with no GPU and no window (invariant I7), and these add roughly 200 transitive crates -- so a
+# headless build, CI, and every determinism test stay lean by simply not enabling `gpu`.
+bytemuck = { version = "1", optional = true, features = ["derive"] }
+pollster = { version = "1", optional = true }
+wgpu = { version = "30", optional = true }
+
+[features]
+default = []
+# Enables the wgpu backend. Requires a GPU at runtime; the null backend remains available either way.
+gpu = ["dep:wgpu", "dep:bytemuck", "dep:pollster"]
 
 [lints]
 workspace = true

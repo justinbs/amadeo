@@ -128,11 +128,9 @@ Done so far in M0:
 **Verified green: 228 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 Remaining in M0:
-1. **The wgpu backend and a window.** `amadeo-render` deliberately has no wgpu or winit dependency
-   yet — the abstraction and null backend build and test with no GPU (invariant I7). The real backend
-   goes behind a feature flag so headless builds and CI stay lean. This is the last piece of the exit
-   gate: a coloured quad moving under live keyboard input. **Adds ~200 transitive crates and will
-   slow builds noticeably** (ADR 0002's known weakness).
+1. **A window.** The wgpu backend exists and compiles (`--features gpu`), but nothing opens a window
+   yet. Needs winit plus a demo binary in `games/` that owns the event loop and wires keyboard input
+   to actions. That binary is the M0 exit gate: a coloured quad moving under live keyboard input.
 2. A `separate process` replay check. The golden test currently replays in-process against a
    committed fixture, which covers "separate build" but not "separate process". Closing that needs
    `amadeo-cli`, which is M1 work — noted so the gap is not forgotten.

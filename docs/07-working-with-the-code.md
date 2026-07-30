@@ -293,6 +293,38 @@ plugin setup (invariant I3).
 The consequence to know: adding an unconstrained system can shift the relative order of other
 unconstrained systems. If order matters, say so with `before`/`after`.
 
+### The `gpu` feature — why the GPU backend is opt-in
+
+`amadeo-render` builds and tests **without wgpu by default**:
+
+```bash
+cargo test --workspace                                  # no GPU code compiled at all
+cargo check -p amadeo-render --features gpu             # adds wgpu, ~200 crates
+```
+
+The abstraction and `NullBackend` have no GPU dependency, which is what invariant I7 actually needs —
+headless is how tests run, how CI runs, and how a dedicated server will work. Making the real backend
+opt-in keeps the everyday loop fast; a full `cargo test --workspace` stays a couple of seconds instead
+of minutes.
+
+CI compiles the `gpu` feature so it cannot silently rot, but the determinism job deliberately does
+not: rendering is a `Service` and cannot affect the state hash, so building wgpu three times over
+would add runtime and no coverage.
+
+**A note on wgpu versions.** wgpu makes breaking changes across major versions and this project is on
+**wgpu 30**. Much of what you find online targets older versions and will not compile. Three things
+that moved recently and cost time to rediscover:
+
+- `Instance::new` takes the descriptor **by value**, built via
+  `InstanceDescriptor::new_without_display_handle_from_env()` — there is no `Default`.
+- `Surface::get_current_texture` returns a `CurrentSurfaceTexture` **enum**, not a `Result`. Several
+  variants (`Outdated`, `Lost`, `Timeout`, `Occluded`) mean "skip this frame", not "fail".
+- Presentation is `Queue::present(texture)`, not a method on the texture.
+
+If you need an API shape, read the source in
+`~/.cargo/registry/src/*/wgpu-30.0.0/src/api/` rather than trusting a search result. It is faster and
+it is definitive.
+
 ### Deferred commands — changing structure from inside a query
 
 You cannot spawn or despawn while a query is running. The borrow checker rejects it, and it is right

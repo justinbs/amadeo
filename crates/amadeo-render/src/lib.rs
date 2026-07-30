@@ -36,9 +36,13 @@
 
 mod backend;
 mod components;
+#[cfg(feature = "gpu")]
+mod gpu;
 
 pub use backend::{FrameData, NullBackend, QuadInstance, RenderBackend, RenderError};
 pub use components::{Camera2d, Quad, Transform2d};
+#[cfg(feature = "gpu")]
+pub use gpu::WgpuBackend;
 
 use amadeo_ecs::{Service, World};
 
