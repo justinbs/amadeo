@@ -99,16 +99,6 @@ Needs an ADR in M1.
 
 ---
 
-## Q5 · P1 · Fixed timestep rate?
-
-60Hz is conventional and cheap. 120Hz gives better physics fidelity and input latency at 2x
-simulation cost. Some engines decouple physics substeps from the logic tick.
-
-**Changing this later invalidates every recorded replay**, so decide in M0 and write it down.
-Prior: 60Hz logic tick, with configurable physics substeps.
-
----
-
 ## Q6 · P2 · Editor in-process or separate process?
 
 Separate process is architecturally purer — it *forces* the RPC protocol to be complete, so a gap
@@ -195,3 +185,9 @@ be less coupled than they look. Decide in M2.
 | Target games | Palworld, Schedule I, Inside the Backrooms — used as a prioritisation signal | `00-vision.md` |
 | First game to finish | Single-player first-person atmospheric horror slice, at M3 | `00-vision.md` |
 | Multiplayer | No longer a non-goal. Client-server with server authority; hooks reserved M0–M2, netcode at M6 | `adr/0006` |
+| **Q5** — fixed timestep rate | 60 Hz logic tick, configurable physics substeps | `adr/0007` |
+| ECS storage strategy | Archetype tables, columns as concrete `Vec<T>` behind a safe trait object, downcast once per archetype per query. No `unsafe` | `adr/0008` |
+| Where non-simulation globals live | Two stores: `Resource` (hashed) and `Service` (not hashed), enforced by trait bounds | `adr/0009` |
+| `ComponentId` derivation | Hash of the type *name*, never `TypeId` — `TypeId` is not stable across builds | `adr/0008` |
+| System ordering tie-break | Alphabetical by label, never registration order | `amadeo-app` schedule docs |
+| Spawning from a command buffer | `spawn_with(closure)` rather than a reserved-id handle; new entity not referenceable by other commands in the same batch | `amadeo-ecs` commands docs |

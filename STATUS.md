@@ -160,10 +160,34 @@ Known gaps deliberately left for later:
 | Determinism erodes silently as features land. | Golden-replay tests in CI from M0. Every subsystem PR adds one. |
 | Editor drifts into being the source of truth. | I1/I5 enforced by making the editor an RPC client with no privileged path. Round-trip byte-stability test in CI. |
 
+## Reading order for a fresh session
+
+If you are starting cold, this is the shortest path to being useful:
+
+1. `CLAUDE.md` — invariants (§2), what exists (§4), how to verify (§4b), traps (§7).
+2. This file's **Decided** and **Next actions** sections.
+3. `docs/07-working-with-the-code.md` — the Rust patterns this engine uses and why. Skip if you
+   already know the codebase.
+4. `docs/adr/` — read 0005 (determinism), 0008 (ECS storage), 0009 (resource vs service) before
+   touching `amadeo-ecs`. Read 0003 and 0004 before touching anything about scenes or the editor.
+5. `docs/06-open-questions.md` — before assuming anything undecided.
+
+Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
+
 ## Session log
 
-- **S1 (2026-07-30):** Scope, stack, and architecture decided. Planning docs and 5 ADRs written.
-  Repo initialized. No code.
+- **S1 (2026-07-30):** Scope, stack, and architecture decided. Planning docs and ADRs 0001–0005
+  written. Repo initialized. No code.
+- **S2 (2026-07-30):** Target games captured (Palworld / Schedule I / Inside the Backrooms);
+  multiplayer promoted from non-goal to planned M6 with hooks reserved (ADR 0006); M3's exit gate set
+  to a horror slice. Human-legibility requirement added to `CLAUDE.md` §6. GitHub remote added.
+  Toolchain verified; Smart App Control found blocking and disabled by Justin. No engine code.
+- **S3 (2026-07-30):** M0 implementation. In order: workspace + CI + `amadeo-core` (ADR 0007 fixed
+  timestep, ADR 0008 ECS storage); `amadeo-ecs` archetype storage; `amadeo-events` +
+  `amadeo-app` schedules and loop + the resource/service split (ADR 0009, found by a failing test);
+  `amadeo-input` + the `.replay` text format + golden replay harness; deferred commands;
+  `amadeo-render` abstraction and null backend. 228 tests. Remaining: wgpu backend, then the Q1 spike.
+  Visual-design preference recorded in `CLAUDE.md` §6.
 - **S2 (2026-07-30):** GitHub remote added (personal account; note the *global* git identity on this
   machine is a work account, so this repo carries a local override — do not remove it). Rust verified
   installed; MSVC build tools confirmed missing and blocking; rust-analyzer installed. Added

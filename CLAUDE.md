@@ -54,31 +54,49 @@ Rationale and rejected alternatives: `docs/02-tech-stack.md` and `docs/adr/0002`
 ## 4. Repository layout & dependency order
 
 Crates are listed in dependency order. **A crate may only depend on crates above it.**
+`✅` exists and is tested. `—` planned, not yet written.
 
 ```
 crates/
-  amadeo-math        vectors, matrices, quaternions, rects, curves. No engine deps.
-  amadeo-core        ids, handles, arenas, error model, logging, time, config
-  amadeo-reflect     type registry, schema emission, canonical (de)serialization
-  amadeo-ecs         archetype SoA storage, queries, schedules, change detection, commands
-  amadeo-events      typed event bus, deferred queues, documented ordering
-  amadeo-assets      virtual FS, async load, import pipeline, cache, hot-reload watch
-  amadeo-input       device -> action mapping, deterministic input capture/replay
-  amadeo-render      render graph over wgpu, 2D batcher + 3D pipeline, materials, cameras
-  amadeo-audio       mixer, buses, spatialization (null backend required)
-  amadeo-physics     rapier integration behind engine traits
-  amadeo-anim        sprite anim, skeletal, state machines, tweens
-  amadeo-ui          retained-mode game UI: layout, theming, focus navigation
-  amadeo-scene       scene-tree authoring model, prefabs, instancing, text format
-  amadeo-script      game-logic host (shape pending Q1)
-  amadeo-agent       Agent Interface Layer: RPC, introspection, snapshots, replay, capture
-  amadeo-app         plugin/module registration, main loop, lifecycle
-  amadeo-editor      graphical editor. A CLIENT of amadeo-agent. No privileged access.
-  amadeo-cli         the `amadeo` binary: new/run/check/fmt/test/replay/inspect/build/export
+— amadeo-math        vectors, matrices, quaternions, rects, curves. No engine deps.
+✅ amadeo-core        Tick, FIXED_DT, Rng (PCG32), StableHasher (FNV-1a), StableId/NetId/Authority
+— amadeo-reflect     type registry, schema emission, canonical (de)serialization
+✅ amadeo-ecs         archetype SoA storage, queries, resources, services, deferred commands
+✅ amadeo-events      typed double-buffered queues, EventClock total ordering
+— amadeo-assets      virtual FS, async load, import pipeline, cache, hot-reload watch
+✅ amadeo-input       action mapping, InputState, recording/replay, the .replay text format
+✅ amadeo-render      RenderBackend trait, NullBackend, Quad/Transform2d/Camera2d. wgpu pending.
+— amadeo-audio       mixer, buses, spatialization (null backend required)
+— amadeo-physics     rapier integration behind engine traits
+— amadeo-anim        sprite anim, skeletal, state machines, tweens
+— amadeo-ui          retained-mode game UI: layout, theming, focus navigation
+— amadeo-scene       scene-tree authoring model, prefabs, instancing, text format
+— amadeo-script      game-logic host (shape pending Q1)
+— amadeo-agent       Agent Interface Layer: RPC, introspection, snapshots, replay, capture
+✅ amadeo-app         Stage/Schedule, fixed-timestep loop, SimRng
+— amadeo-editor      graphical editor. A CLIENT of amadeo-agent. No privileged access.
+— amadeo-cli         the `amadeo` binary: new/run/check/fmt/test/replay/inspect/build/export
 modules/             optional, genre-flavored. Core NEVER depends on these.
 games/               actual games built with the engine
 docs/                design docs and ADRs
 ```
+
+**Note:** `Transform2d` currently lives in `amadeo-render` because that is its only consumer. It
+moves to `amadeo-scene` in M1 along with the hierarchy components. Do not build on its location.
+
+## 4b. Verifying the build
+
+Everything must be green before a commit. These four are what CI runs:
+
+```
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+```
+
+Golden replays live in `crates/amadeo-app/tests/golden/`. If one fails, read
+`docs/07-working-with-the-code.md` § Golden replays **before** regenerating it.
 
 **Where does new code go?** If it needs to know what a game *is about*, it belongs in `modules/` or
 `games/`. If it's a mechanism with no opinion about genre, it belongs in a crate. When in doubt,
