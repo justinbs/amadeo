@@ -20,6 +20,12 @@ use std::fmt;
 pub trait InputSource: fmt::Debug + Send + Sync {
     /// Applies this tick's changes to the input state.
     fn apply(&mut self, tick: Tick, state: &mut InputState);
+
+    /// Mutable upcast, so a windowing layer can reach its own concrete source.
+    ///
+    /// Needed because the driver stores the source as a trait object, but a live source has to be
+    /// fed by whatever is receiving OS events — and that code knows the concrete type.
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
 
 /// An input source that produces nothing. Used for headless runs with no player.
@@ -28,6 +34,10 @@ pub struct NullSource;
 
 impl InputSource for NullSource {
     fn apply(&mut self, _tick: Tick, _state: &mut InputState) {}
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 /// Plays back a [`Recording`].
@@ -61,6 +71,10 @@ impl InputSource for ReplaySource {
         for change in self.recording.changes_at(tick) {
             apply_change(change, state);
         }
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 }
 
@@ -112,6 +126,73 @@ impl InputSource for ScriptedSource {
                 apply_change(change, state);
             }
         }
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+}
+
+/// An input source fed by real devices.
+///
+/// # How this stays replay-safe
+///
+/// Whatever is receiving OS events writes the *current* value of each action here as it happens.
+/// Once per tick the loop copies those values into [`InputState`], and a [`Recorder`] writes down
+/// what changed.
+///
+/// The trait requires sources to be pure with respect to the tick, and this one satisfies that in
+/// the way that matters: within a single tick it holds a fixed snapshot, so applying it twice for
+/// the same tick produces the same result. What it cannot do is reproduce a *past* tick — that is
+/// exactly what recording is for, and why a live session and its replay use different sources.
+///
+/// Deliberately knows nothing about keyboards, gamepads, or windowing. It stores action names and
+/// values, so the platform layer owns the key-to-action mapping and this crate keeps no dependency
+/// on any windowing library.
+#[derive(Debug, Default, Clone)]
+pub struct LiveSource {
+    buttons: BTreeMap<ActionId, bool>,
+    axes: BTreeMap<ActionId, f32>,
+}
+
+impl LiveSource {
+    /// Creates a source with every action at rest.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets a button's current physical state.
+    pub fn set_button(&mut self, action: &str, pressed: bool) {
+        self.buttons.insert(ActionId::new(action), pressed);
+    }
+
+    /// Sets an axis's current value.
+    pub fn set_axis(&mut self, action: &str, value: f32) {
+        self.axes.insert(ActionId::new(action), value);
+    }
+
+    /// Sets an axis from a pair of opposing keys, the common keyboard case.
+    ///
+    /// Both held cancels to zero, which is the behaviour players expect from opposed movement keys.
+    pub fn set_axis_from_keys(&mut self, action: &str, negative: bool, positive: bool) {
+        let value = f32::from(positive) - f32::from(negative);
+        self.set_axis(action, value);
+    }
+}
+
+impl InputSource for LiveSource {
+    fn apply(&mut self, _tick: Tick, state: &mut InputState) {
+        for (action, pressed) in &self.buttons {
+            state.set_button(*action, *pressed);
+        }
+        for (action, value) in &self.axes {
+            state.set_axis(*action, *value);
+        }
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 }
 

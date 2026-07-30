@@ -1,0 +1,22 @@
+[package]
+name = "quad-demo"
+description = "M0 exit gate: a quad you can move, in a real window, on the real engine loop."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+amadeo-app.workspace = true
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-input.workspace = true
+amadeo-render = { workspace = true, features = ["gpu"] }
+
+anyhow = "1"
+winit = "0.30"
+
+[lints]
+workspace = true

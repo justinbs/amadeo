@@ -129,9 +129,10 @@ Verified on this machine (2026-07-30):
 **Verified green: 228 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 Remaining in M0:
-1. **A window.** The wgpu backend exists and compiles (`--features gpu`), but nothing opens a window
-   yet. Needs winit plus a demo binary in `games/` that owns the event loop and wires keyboard input
-   to actions. That binary is the M0 exit gate: a coloured quad moving under live keyboard input.
+1. **Visual confirmation of `quad-demo`.** `cargo run -p quad-demo` builds, opens a window, initialises
+   wgpu, and runs the loop without error (verified). Whether the quad is actually visible and moves
+   has NOT been confirmed -- that needs eyes on the screen. This is precisely the gap M1's
+   `render.capture` closes, and a good early illustration of why that milestone matters.
 2. A `separate process` replay check. The golden test currently replays in-process against a
    committed fixture, which covers "separate build" but not "separate process". Closing that needs
    `amadeo-cli`, which is M1 work — noted so the gap is not forgotten.

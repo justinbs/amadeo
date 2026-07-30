@@ -38,7 +38,9 @@ mod state;
 
 pub use action::{ActionId, ActionKind};
 pub use recording::{InputChange, Recording, ReplayError};
-pub use source::{InputDriver, InputSource, NullSource, Recorder, ReplaySource, ScriptedSource};
+pub use source::{
+    InputDriver, InputSource, LiveSource, NullSource, Recorder, ReplaySource, ScriptedSource,
+};
 pub use state::InputState;
 
 use amadeo_ecs::World;
