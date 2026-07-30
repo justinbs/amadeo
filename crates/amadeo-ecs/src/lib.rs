@@ -60,8 +60,13 @@
 mod archetype;
 mod component;
 mod entity;
+mod resource;
+mod service;
+mod type_hash;
 mod world;
 
 pub use component::{Component, ComponentId};
 pub use entity::Entity;
+pub use resource::{Resource, ResourceId};
+pub use service::{Service, ServiceId};
 pub use world::World;

@@ -1,0 +1,15 @@
+[package]
+name = "amadeo-events"
+description = "Typed, double-buffered event queues with a deterministic total order."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+
+[lints]
+workspace = true

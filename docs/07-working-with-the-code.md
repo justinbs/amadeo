@@ -237,7 +237,63 @@ Returning an *iterator* that yields `&mut` from multiple columns requires higher
 bounds and a hand-written iterator type — a lot of hard-to-read Rust for a modest ergonomic gain. The
 closure form does the same job in a way you can read. This is a deliberate call under `CLAUDE.md` §6.
 
-*(More entries land as the engine takes shape: the reflection derive macro, system scheduling, and
+### `Resource` vs `Service` — the split that keeps replays honest
+
+Both are single-instance globals living in the `World`, and both are reachable from a system. The
+difference is whether they count as simulation state:
+
+```rust
+// Simulation state: hashed, so it participates in replay assertions. Requires StableHash.
+impl Resource for SimRng {}
+
+// Engine machinery: NOT hashed. Deliberately does not require StableHash.
+impl Service for RenderCount {}
+```
+
+The rule: if two runs disagreeing about it means they have *diverged*, it is a `Resource`. If it is
+machinery — a GPU device, an asset cache, a frame counter — it is a `Service`.
+
+The compiler enforces the important direction. `Service` does not require `StableHash`, and `Resource`
+does, so a `wgpu::Device` simply cannot be filed as a resource. Full reasoning in ADR 0009, including
+how a failing test found this gap.
+
+Watch the *other* direction, which the compiler cannot catch: filing genuine simulation state as a
+`Service` would silently exclude it from replay assertions.
+
+### `with_resource_taken` — using a resource and the world at once
+
+A system often needs a resource *and* to iterate entities: "for each enemy, roll against the shared
+RNG". Holding `&mut` to the resource borrows the whole world, so the query cannot run.
+
+```rust
+world.with_resource_taken::<SimRng, ()>(|world, rng| {
+    world.for_each_mut::<Velocity>(|_entity, velocity| {
+        velocity.x += rng.0.range_f32(-0.01, 0.01);
+    });
+});
+```
+
+It lifts the resource out for the duration and puts it back afterwards. Slightly unusual, and the
+straightforward alternative to interior mutability or `unsafe`.
+
+### System ordering is alphabetical, not registration order
+
+```rust
+app.add_system(Stage::Simulation, system("jitter", jitter).after("bounce"));
+app.add_system(Stage::Simulation, system("integrate", integrate));
+app.add_system(Stage::Simulation, system("bounce", bounce).after("integrate"));
+// Runs: integrate, bounce, jitter
+```
+
+Constraints are resolved by topological sort. **Systems with no constraint between them run in
+alphabetical label order**, never in the order they were registered — registration order depends on
+how the app was assembled, and letting that decide execution order would make results depend on
+plugin setup (invariant I3).
+
+The consequence to know: adding an unconstrained system can shift the relative order of other
+unconstrained systems. If order matters, say so with `before`/`after`.
+
+*(More entries land as the engine takes shape: the reflection derive macro, deferred commands, and
 asset handles.)*
 
 ---

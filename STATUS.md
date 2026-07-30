@@ -85,24 +85,44 @@ Done so far in M0:
 - ✅ CI: fmt, clippy `-D warnings`, tests on Windows + Linux, a **determinism job** that runs the
   suite three times in separate processes plus a release build, and a rustdoc job.
 
-**Verified green: 74 tests passing, clippy clean under `-D warnings`, fmt clean.**
+- ✅ `Resource` (simulation state, hashed) and `Service` (engine machinery, **not** hashed) as two
+  separate stores on `World`, with the distinction enforced by trait bounds — ADR 0009. Found by a
+  failing determinism test rather than by design foresight.
+- ✅ `amadeo-events`: typed double-buffered queues, a shared `EventClock` giving a total order across
+  event types, and a `WorldEvents` extension trait. Events written on tick N are readable on N+1.
+- ✅ `amadeo-app`: `Stage`, `Schedule` with `before`/`after` constraints resolved by topological sort
+  with **alphabetical tie-breaking** (so registration order cannot influence results), the
+  fixed-timestep loop with both `run_ticks` (deterministic, ignores wall time) and
+  `advance_real_time` (accumulator, capped at 8 ticks/frame to prevent a catch-up spiral), and
+  `SimRng`.
+- ✅ Determinism integration suite (`crates/amadeo-app/tests/determinism.rs`) — 14 tests covering
+  repeat-run agreement, per-checkpoint agreement, seed divergence, headless-vs-windowed equivalence,
+  real-time-vs-exact-tick equivalence, stall recovery, and event ordering.
+
+**Verified green: 132 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 Remaining in M0:
-1. `amadeo-events` — typed double-buffered queues with total ordering.
-2. `amadeo-app` — schedules with explicit ordering, the fixed-timestep loop.
-3. `amadeo-input` — action mapping, deterministic sampling, record/replay of action streams.
-4. Golden replay harness — record an action stream, replay it, assert per-checkpoint state hashes.
-5. Deferred command buffers with deterministic merge order (ADR 0005). Not yet built; `World`
-   mutations are currently immediate, which is fine while there is no scheduler.
-6. `amadeo-render` — window via winit, wgpu device, clear colour, and a null backend.
-7. **Q1 spike** (game logic hot-reload) — resolve with measurements. Blocks M1.
+1. `amadeo-input` — action mapping, deterministic sampling, record/replay of action streams.
+2. Golden replay harness — record an action stream to a file, replay it, assert per-checkpoint state
+   hashes. The determinism suite covers the properties; this adds the file format and the CLI path.
+3. Deferred command buffers with deterministic merge order (ADR 0005). Not yet built; `World`
+   mutations are immediate, which is correct but means systems cannot spawn or despawn safely from
+   inside a query closure. Needed before real gameplay systems.
+4. `amadeo-render` — window via winit, wgpu device, clear colour, and a null backend.
+5. **Q1 spike** (game logic hot-reload) — resolve with measurements. Blocks M1.
 
 Known gaps deliberately left for later:
 - No bundle/spawn-with-components API, so building an entity with N components costs N archetype
   migrations. Correct but wasteful; optimise when it shows up in a profile.
-- No `Resource` concept yet (global state like the RNG seed). Needed by `amadeo-app`.
 - Query shapes are limited to one and two components. Extend when a real system needs more, not
   speculatively.
+- Events cannot be sent from inside a query closure (the world is already borrowed). Current
+  workaround is to collect then send, as `bounce` does in the determinism tests. Deferred commands
+  will fix this properly.
+- No parallel system execution. ADR 0005 permits it only where access is provably disjoint, and the
+  scheduler does not yet track access patterns.
+- `SimRng`'s `StableHash` goes through its `Debug` output, which works but is inelegant. Revisit when
+  the reflection registry lands in M1 and can expose the state fields directly.
 
 ## Open risks
 

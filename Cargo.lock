@@ -3,6 +3,16 @@
 version = 4
 
 [[package]]
+name = "amadeo-app"
+version = "0.1.0"
+dependencies = [
+ "amadeo-core",
+ "amadeo-ecs",
+ "amadeo-events",
+ "thiserror",
+]
+
+[[package]]
 name = "amadeo-core"
 version = "0.1.0"
 dependencies = [
@@ -14,6 +24,14 @@ name = "amadeo-ecs"
 version = "0.1.0"
 dependencies = [
  "amadeo-core",
+]
+
+[[package]]
+name = "amadeo-events"
+version = "0.1.0"
+dependencies = [
+ "amadeo-core",
+ "amadeo-ecs",
 ]
 
 [[package]]

@@ -3,6 +3,8 @@
 use crate::archetype::Archetype;
 use crate::component::{Column, Component, ComponentId, TypedColumn};
 use crate::entity::{Entity, EntityLocation, EntityStore};
+use crate::resource::{Resource, ResourceId, ResourceSlot};
+use crate::service::{Service, ServiceId, ServiceSlot};
 use amadeo_core::{StableHasher, Tick};
 use std::collections::BTreeMap;
 
@@ -34,6 +36,13 @@ pub struct World {
     /// `BTreeMap`, not `HashMap`: archetype creation order feeds into archetype indices, and a hash
     /// map's iteration order is not reproducible across builds (invariant I3).
     archetype_index: BTreeMap<Vec<ComponentId>, usize>,
+    /// Single-instance global simulation state.
+    ///
+    /// `BTreeMap` again, so [`World::state_hash`] visits resources in a reproducible order.
+    resources: BTreeMap<ResourceId, Box<dyn ResourceSlot>>,
+    /// Engine machinery — caches, devices, counters. **Excluded from [`World::state_hash`]**, which
+    /// is the whole reason it is a separate store from `resources`. See [`Service`].
+    services: BTreeMap<ServiceId, Box<dyn ServiceSlot>>,
     /// The current simulation tick. Advanced by the app loop, never by gameplay code.
     tick: Tick,
 }
@@ -58,8 +67,111 @@ impl World {
             entities: EntityStore::default(),
             archetypes: vec![empty],
             archetype_index,
+            resources: BTreeMap::new(),
+            services: BTreeMap::new(),
             tick: Tick::ZERO,
         }
+    }
+
+    /// Stores an engine service, returning the previous value if one was present.
+    ///
+    /// Services are **not** part of [`World::state_hash`]. Use this for caches, devices, and
+    /// counters; use [`World::insert_resource`] for anything that should influence replay
+    /// assertions.
+    pub fn insert_service<T: Service>(&mut self, value: T) -> Option<T> {
+        let previous = self.services.insert(ServiceId::of::<T>(), Box::new(value));
+        previous.and_then(|slot| slot.into_any().downcast::<T>().ok().map(|boxed| *boxed))
+    }
+
+    /// Shared access to a service.
+    #[must_use]
+    pub fn service<T: Service>(&self) -> Option<&T> {
+        self.services
+            .get(&ServiceId::of::<T>())?
+            .as_any()
+            .downcast_ref::<T>()
+    }
+
+    /// Mutable access to a service.
+    pub fn service_mut<T: Service>(&mut self) -> Option<&mut T> {
+        self.services
+            .get_mut(&ServiceId::of::<T>())?
+            .as_any_mut()
+            .downcast_mut::<T>()
+    }
+
+    /// Whether a service of this type is present.
+    #[must_use]
+    pub fn has_service<T: Service>(&self) -> bool {
+        self.services.contains_key(&ServiceId::of::<T>())
+    }
+
+    /// Removes a service and returns it.
+    pub fn remove_service<T: Service>(&mut self) -> Option<T> {
+        let slot = self.services.remove(&ServiceId::of::<T>())?;
+        slot.into_any().downcast::<T>().ok().map(|boxed| *boxed)
+    }
+
+    /// Stores a resource, returning the previous value if one was present.
+    pub fn insert_resource<T: Resource>(&mut self, value: T) -> Option<T> {
+        let previous = self
+            .resources
+            .insert(ResourceId::of::<T>(), Box::new(value));
+        // The map is keyed by type, so anything stored under this key is a `T`. A failed downcast
+        // would mean the keying is broken, which is an engine bug rather than a caller error.
+        previous.and_then(|slot| slot.into_any().downcast::<T>().ok().map(|boxed| *boxed))
+    }
+
+    /// Shared access to a resource.
+    #[must_use]
+    pub fn resource<T: Resource>(&self) -> Option<&T> {
+        self.resources
+            .get(&ResourceId::of::<T>())?
+            .as_any()
+            .downcast_ref::<T>()
+    }
+
+    /// Mutable access to a resource.
+    pub fn resource_mut<T: Resource>(&mut self) -> Option<&mut T> {
+        self.resources
+            .get_mut(&ResourceId::of::<T>())?
+            .as_any_mut()
+            .downcast_mut::<T>()
+    }
+
+    /// Whether a resource of this type is present.
+    #[must_use]
+    pub fn has_resource<T: Resource>(&self) -> bool {
+        self.resources.contains_key(&ResourceId::of::<T>())
+    }
+
+    /// Removes a resource and returns it.
+    pub fn remove_resource<T: Resource>(&mut self) -> Option<T> {
+        let slot = self.resources.remove(&ResourceId::of::<T>())?;
+        slot.into_any().downcast::<T>().ok().map(|boxed| *boxed)
+    }
+
+    /// Temporarily takes a resource out of the world, runs `f`, and puts it back.
+    ///
+    /// # Why this exists
+    ///
+    /// A system frequently needs a resource *and* mutable access to the world at once — "for every
+    /// entity, roll against the shared RNG". Holding `&mut T` from [`World::resource_mut`] borrows
+    /// the whole world, so the query cannot run.
+    ///
+    /// Removing the resource for the duration sidesteps that without `unsafe` or interior
+    /// mutability. The resource is restored even if `f` panics is **not** guaranteed — a panic in a
+    /// system is a bug, and the world is not expected to be reused afterwards.
+    ///
+    /// Returns `None` without calling `f` if the resource is absent.
+    pub fn with_resource_taken<T: Resource, R>(
+        &mut self,
+        f: impl FnOnce(&mut Self, &mut T) -> R,
+    ) -> Option<R> {
+        let mut resource = self.remove_resource::<T>()?;
+        let result = f(self, &mut resource);
+        self.insert_resource(resource);
+        Some(result)
     }
 
     /// The current simulation tick.
@@ -351,11 +463,14 @@ impl World {
     /// - entities are hashed in **entity order**, not storage order, so that `swap_remove` churn and
     ///   archetype layout cannot change the result;
     /// - each entity's components are hashed in sorted component id order;
+    /// - resources are hashed in sorted resource id order;
     /// - the tick is included, since state at tick 100 is not the same state as at tick 200.
     ///
-    /// Deliberately excluded: archetype indices, row numbers, free-list contents, and change ticks.
-    /// Those are allocator bookkeeping, not simulation state, and including them would make the hash
-    /// sensitive to implementation details rather than behaviour.
+    /// Deliberately excluded: archetype indices, row numbers, free-list contents, change ticks, and
+    /// **all services**. Those are allocator bookkeeping and engine machinery, not simulation state.
+    /// Including them would make the hash sensitive to implementation details and to machine
+    /// configuration — and would break invariant I7, since a windowed run touches render services
+    /// that a headless run never creates.
     #[must_use]
     pub fn state_hash(&self) -> u64 {
         // Collect and sort so the hash is independent of physical storage order.
@@ -375,6 +490,15 @@ impl World {
             hasher.write_u32(entity.generation());
             self.archetypes[archetype_index].stable_hash_row(row, &mut hasher);
         }
+
+        // Resources are simulation state too. `BTreeMap` iteration is sorted by id, so this order is
+        // reproducible without any extra sorting.
+        hasher.write_u64(self.resources.len() as u64);
+        for (id, slot) in &self.resources {
+            hasher.write_u64(id.raw());
+            slot.stable_hash_value(&mut hasher);
+        }
+
         hasher.finish()
     }
 }
@@ -755,6 +879,157 @@ mod tests {
     #[test]
     fn empty_worlds_hash_identically() {
         assert_eq!(World::new().state_hash(), World::new().state_hash());
+    }
+
+    // --- Resources ---
+
+    #[derive(Debug, PartialEq)]
+    struct Score(u32);
+
+    impl StableHash for Score {
+        fn stable_hash(&self, hasher: &mut StableHasher) {
+            self.0.stable_hash(hasher);
+        }
+    }
+    impl crate::Resource for Score {}
+
+    #[test]
+    fn resources_round_trip() {
+        let mut world = World::new();
+        assert!(!world.has_resource::<Score>());
+        assert_eq!(world.resource::<Score>(), None);
+
+        assert_eq!(world.insert_resource(Score(10)), None);
+        assert!(world.has_resource::<Score>());
+        assert_eq!(world.resource::<Score>(), Some(&Score(10)));
+
+        // Inserting again returns the displaced value.
+        assert_eq!(world.insert_resource(Score(20)), Some(Score(10)));
+        assert_eq!(world.resource::<Score>(), Some(&Score(20)));
+
+        world.resource_mut::<Score>().expect("present").0 = 30;
+        assert_eq!(world.resource::<Score>(), Some(&Score(30)));
+
+        assert_eq!(world.remove_resource::<Score>(), Some(Score(30)));
+        assert!(!world.has_resource::<Score>());
+        assert_eq!(world.remove_resource::<Score>(), None);
+    }
+
+    #[test]
+    fn with_resource_taken_allows_world_access() {
+        let mut world = World::new();
+        let a = world.spawn();
+        let b = world.spawn();
+        world.insert(a, Tag(1));
+        world.insert(b, Tag(2));
+        world.insert_resource(Score(0));
+
+        // The point of this helper: mutate entities and a resource in the same pass, which a plain
+        // `resource_mut` borrow would forbid.
+        let visited = world
+            .with_resource_taken::<Score, usize>(|world, score| {
+                let mut count = 0;
+                world.for_each_mut::<Tag>(|_entity, tag| {
+                    score.0 += tag.0;
+                    tag.0 *= 2;
+                    count += 1;
+                });
+                count
+            })
+            .expect("resource present");
+
+        assert_eq!(visited, 2);
+        assert_eq!(world.resource::<Score>(), Some(&Score(3)));
+        assert_eq!(world.get::<Tag>(a), Some(&Tag(2)));
+        // The resource must be back in the world afterwards.
+        assert!(world.has_resource::<Score>());
+    }
+
+    #[test]
+    fn with_resource_taken_reports_absence_without_running() {
+        let mut world = World::new();
+        let mut ran = false;
+        let result = world.with_resource_taken::<Score, ()>(|_world, _score| ran = true);
+        assert_eq!(result, None);
+        assert!(!ran, "closure must not run when the resource is missing");
+    }
+
+    // --- Services: the non-simulation counterpart to resources ---
+
+    #[derive(Debug, PartialEq)]
+    struct FrameCounter(u32);
+    impl crate::Service for FrameCounter {}
+
+    #[test]
+    fn services_round_trip() {
+        let mut world = World::new();
+        assert!(!world.has_service::<FrameCounter>());
+
+        assert_eq!(world.insert_service(FrameCounter(1)), None);
+        assert_eq!(world.service::<FrameCounter>(), Some(&FrameCounter(1)));
+
+        world.service_mut::<FrameCounter>().expect("present").0 = 9;
+        assert_eq!(world.service::<FrameCounter>(), Some(&FrameCounter(9)));
+
+        assert_eq!(world.insert_service(FrameCounter(2)), Some(FrameCounter(9)));
+        assert_eq!(
+            world.remove_service::<FrameCounter>(),
+            Some(FrameCounter(2))
+        );
+        assert!(!world.has_service::<FrameCounter>());
+    }
+
+    #[test]
+    fn services_are_excluded_from_the_state_hash() {
+        // The property that makes invariant I7 hold: a windowed run creates render-side state that a
+        // headless run never does, and the two must still agree on simulation state.
+        let baseline = World::new().state_hash();
+
+        let mut with_service = World::new();
+        with_service.insert_service(FrameCounter(0));
+        assert_eq!(with_service.state_hash(), baseline);
+
+        // Mutating a service must not move the hash either.
+        with_service
+            .service_mut::<FrameCounter>()
+            .expect("present")
+            .0 = 12_345;
+        assert_eq!(with_service.state_hash(), baseline);
+    }
+
+    #[test]
+    fn services_and_resources_are_separate_stores() {
+        // Same-named concepts must not collide across the two stores.
+        let mut world = World::new();
+        world.insert_resource(Score(1));
+        world.insert_service(FrameCounter(2));
+
+        assert!(world.has_resource::<Score>());
+        assert!(world.has_service::<FrameCounter>());
+        assert_eq!(world.remove_resource::<Score>(), Some(Score(1)));
+        assert!(
+            world.has_service::<FrameCounter>(),
+            "removing a resource must not disturb services"
+        );
+    }
+
+    #[test]
+    fn resources_participate_in_the_state_hash() {
+        let mut with_low = World::new();
+        with_low.insert_resource(Score(1));
+
+        let mut with_high = World::new();
+        with_high.insert_resource(Score(2));
+
+        assert_ne!(with_low.state_hash(), with_high.state_hash());
+
+        // And identical resource state agrees.
+        let mut also_low = World::new();
+        also_low.insert_resource(Score(1));
+        assert_eq!(with_low.state_hash(), also_low.state_hash());
+
+        // Presence itself matters, not just value.
+        assert_ne!(with_low.state_hash(), World::new().state_hash());
     }
 
     #[test]

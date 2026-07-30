@@ -145,6 +145,33 @@ The trade: some code will be slightly more verbose or slightly less optimal than
 That is an accepted and deliberate cost. A codebase only one author can maintain has already failed
 this project's core goal.
 
+### Visual design: do not ship the default "AI app" look
+
+Applies to the editor (M4), the game UI system and its default theme (M3), any tooling UI, and any
+document or page produced for this project. Justin raised this explicitly and disliked the house style
+that LLM-generated interfaces converge on.
+
+**Avoid the tell-tale defaults:**
+- `Inter` / `system-ui` / `-apple-system` as the typeface, and font stacks chosen by not choosing
+- purple-to-blue gradients, and gradient text
+- uniform large border radii on everything; glassmorphism; frosted translucent panels
+- centred hero layouts with vast empty margins
+- emoji as section markers or button icons
+- soft grey drop shadows on floating white cards
+- the generic "clean minimal SaaS" arrangement applied regardless of what the thing is
+
+**Aim for instead:**
+- A typeface picked deliberately, with some character. For a game engine, the right references are
+  professional creative tools — Blender, Houdini, Ableton, Reaper, Nuke — not landing pages.
+- **Information density over whitespace.** This is a tool for people doing sustained detailed work.
+  Dense, legible, and quick to scan beats airy and sparse. Pro tools look busy because they are.
+- Deliberate, slightly idiosyncratic colour. Committed choices, not hedged neutrals.
+- Sharp or mixed corner treatments; visible structure; real dividers rather than implied ones.
+- Personality. It is allowed to look like *something* rather than like nothing.
+
+If a design decision could be described as "what an AI would produce by default", that is the signal
+to choose differently. When in doubt, look at how a mature creative tool solves the same problem.
+
 ## 7. Traps specific to this project
 
 Things that will quietly destroy the design if allowed:

@@ -14,6 +14,8 @@ rust-version = "1.97"
 # crate is created, so this list doubles as a record of what exists.
 amadeo-core = { path = "crates/amadeo-core", version = "0.1.0" }
 amadeo-ecs = { path = "crates/amadeo-ecs", version = "0.1.0" }
+amadeo-events = { path = "crates/amadeo-events", version = "0.1.0" }
+amadeo-app = { path = "crates/amadeo-app", version = "0.1.0" }
 
 # External.
 thiserror = "2"

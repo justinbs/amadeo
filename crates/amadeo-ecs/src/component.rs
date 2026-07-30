@@ -4,6 +4,7 @@
 //! safe trait object, downcast once per archetype per query rather than once per entity. That keeps
 //! structure-of-arrays cache behaviour in the inner loop with no `unsafe` anywhere.
 
+use crate::type_hash::hash_type_name;
 use amadeo_core::{StableHash, StableHasher, Tick};
 use std::any::Any;
 use std::fmt;
@@ -65,14 +66,7 @@ impl ComponentId {
     /// The id for component type `T`.
     #[must_use]
     pub fn of<T: Component>() -> Self {
-        Self::from_type_name(std::any::type_name::<T>())
-    }
-
-    /// Derives an id from a type name. Separated out so it can be tested directly.
-    fn from_type_name(name: &str) -> Self {
-        let mut hasher = StableHasher::new();
-        hasher.write_str(name);
-        ComponentId(hasher.finish())
+        ComponentId(hash_type_name::<T>())
     }
 
     /// The raw hash value, for diagnostics and serialisation.
@@ -283,8 +277,10 @@ mod tests {
     #[test]
     fn component_id_derives_from_type_name() {
         // Pinned so an accidental switch to TypeId (which is not stable across builds) is caught.
-        let expected = ComponentId::from_type_name(std::any::type_name::<Position>());
-        assert_eq!(ComponentId::of::<Position>(), expected);
+        assert_eq!(
+            ComponentId::of::<Position>().raw(),
+            hash_type_name::<Position>()
+        );
     }
 
     #[test]
