@@ -1,7 +1,7 @@
 # Amadeo — Current Status
 
 **Last updated:** 2026-07-30 (session 2)
-**Current phase:** Planning (pre-M0). No engine code written yet.
+**Current phase:** Planning complete. **M0 not started.** No engine code written yet.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private)
 
 ---
@@ -11,8 +11,8 @@
 Sessions 1–2 established scope, stack, and architecture. The repository contains planning documents
 only — no crates, no build, nothing runnable yet. This is intentional.
 
-**One prerequisite outstanding:** MSVC build tools (see Environment below). Once installed, M0 can
-begin immediately.
+**Toolchain is verified working end to end** (compile, link, run). No prerequisites outstanding.
+M0 can begin immediately.
 
 ### Decided
 - Name: **Amadeo**.
@@ -56,19 +56,29 @@ Verified on this machine (2026-07-30):
 | RAM | 40 GB |
 | Installed | Node 24.16, npm 11.13, git 2.53, Java 25 |
 | **Rust** | ✅ rustup + rustc 1.97.1 + cargo 1.97.1, target `stable-x86_64-pc-windows-msvc`, in `%USERPROFILE%\.cargo\bin` |
-| **Missing — BLOCKING** | **MSVC build tools.** Verified 2026-07-30: `cargo build` on a bare `cargo new` project fails at the link step (`linking with link.exe failed`). No VS installer and no Windows SDK present. Fix: `winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"` |
+| **MSVC build tools** | ✅ VS Build Tools 2022 17.14.37, MSVC 14.44.35207. Verified 2026-07-30: `cargo build` compiles **and links**, and the binary runs. |
+| Editor | ✅ VS Code + rust-analyzer v0.3.2989 |
+| **Toolchain status** | ✅ **No blockers. M0 can begin.** |
 | Also missing | Python, cmake. Neither is needed. |
-| Gotcha | Installers update the persistent PATH but not running processes. VS Code's integrated terminal needs **VS Code itself** restarted, not just a new tab. |
+| Gotcha — PATH | Installers update the persistent PATH but not running processes. VS Code's integrated terminal needs **VS Code itself** restarted, not just a new tab. |
+| Gotcha — Smart App Control | Enabled and enforced. Blocks freshly compiled unsigned binaries **run from temp directories**; the same binary runs fine from a normal user directory. **Always build inside the project dir; never build to a temp path.** Do not disable SAC — it is a one-way change on Win11 and is not needed. Details in `docs/07-working-with-the-code.md` §5. |
+| Gotcha — winget | `winget install` on an already-installed package attempts an *upgrade* and silently ignores `--override`, so it cannot add a workload. Use the VS Installer to modify an existing install. |
 
 ## Next actions
 
-1. **Install MSVC build tools** (command above). This is the only remaining blocker.
-2. Verify with `cargo build` on a throwaway `cargo new` project — must link, not just compile.
-3. Install the `rust-analyzer` VS Code extension (see `docs/07-working-with-the-code.md`).
-4. Read `docs/05-roadmap.md` § M0.
-5. Scaffold the workspace: `amadeo-math`, `amadeo-core`, `amadeo-ecs`, `amadeo-app`.
-6. Stand up CI early — determinism tests are worthless if they aren't run every commit.
-7. Run the M0 hot-reload spike to resolve Q1 with measurements, not opinions.
+Toolchain is complete. **M0 starts here.**
+
+1. Read `docs/05-roadmap.md` § M0 and this file's Decided section.
+2. Scaffold the cargo workspace: `amadeo-math`, `amadeo-core`, `amadeo-ecs`, `amadeo-app`.
+3. Stand up CI (build + test + clippy + fmt + dependency-direction lint) — determinism tests are
+   worthless if they aren't run every commit.
+4. Resolve **Q5** (fixed timestep rate) and write it down before any simulation code — changing it
+   later invalidates every recorded replay.
+5. Build the determinism harness alongside the ECS, not after: seeded RNG resource, world state
+   hashing, golden replay runner.
+6. Reserve the ADR 0006 hooks while building ECS and reflect — network identity space and authority.
+   Cheap now, invasive later.
+7. Run the **Q1** hot-reload spike and resolve it with measurements, not opinions. Blocks M1.
 
 ## Open risks
 

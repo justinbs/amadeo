@@ -47,6 +47,28 @@ with. VS Code's integrated terminal inherits from the VS Code process — so aft
 **restart VS Code itself**, not just the terminal tab. A `command not recognized` error right after a
 successful install is almost always this.
 
+### 5. Known gotcha: Smart App Control blocks binaries run from temp directories
+
+**Smart App Control is enabled and enforced on this machine**
+(`VerifiedAndReputablePolicyState = 1`). Freshly compiled binaries are unsigned and have no
+reputation, so SAC blocks them when they are run from `AppData\Local\Temp` and similar locations:
+
+```
+Program 'foo.exe' failed to run: An Application Control policy has blocked this file
+```
+
+**Verified 2026-07-30:** the same binary built and run from a normal user directory
+(`C:\Users\justi\Desktop\...`) executes fine. The block is location-sensitive, not a blanket ban on
+unsigned code.
+
+**Therefore: always build and run inside the project directory. Never build to a temp path.** That is
+the normal workflow anyway, so this costs nothing.
+
+**Do not "fix" this by disabling Smart App Control.** On Windows 11, turning SAC off is a **one-way
+change** — re-enabling it requires reinstalling Windows. It is not needed here, and it is Justin's
+decision to make regardless, not something a session should reach for. If a binary won't run, check
+*where* it was built before touching any security setting.
+
 ---
 
 ## Everyday commands
