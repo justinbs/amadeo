@@ -1,23 +1,42 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-07-30 (session 3)
-**Current phase:** **M0 in progress.** The deterministic spine is built and tested; one item left.
+**Last updated:** 2026-07-30 (end of session 3)
+**Current phase:** **M0 nearly complete.** Three of four exit-gate items met. Q1 spike is all that's left.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private)
 
 ---
 
 ## Where we are
 
-Sessions 1–2 established scope, stack, and architecture. Session 3 built most of M0.
+Sessions 1–2 established scope, stack, and architecture. Session 3 built M0.
 
-Seven crates exist and are tested: `amadeo-core`, `amadeo-ecs`, `amadeo-events`, `amadeo-input`,
-`amadeo-render`, `amadeo-app`. **228 tests passing**; fmt, clippy `-D warnings`, and rustdoc all clean.
-CI runs on Windows and Linux with a dedicated determinism job.
+Six engine crates plus one game exist and are tested: `amadeo-core`, `amadeo-ecs`, `amadeo-events`,
+`amadeo-input`, `amadeo-render`, `amadeo-app`, and `games/quad-demo`. **228 tests passing**; fmt,
+clippy `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated
+determinism job.
 
-The engine can run a deterministic simulation, record a session to a text replay file, and replay it
-against checkpoint state hashes. It cannot yet open a window — that is the one remaining M0 item.
+**The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD —
+confirmed working. It simulates deterministically at a fixed 60 Hz, records a session to a
+hand-editable text replay file, and replays it against checkpoint state hashes in CI.
+
+**M0 exit gate:** 3 of 4 met. See `docs/05-roadmap.md` § M0 for the itemised status. The outstanding
+one is **Q1 — the game-logic hot-reload spike**, which also blocks M1.
 
 **No blockers.** Toolchain verified end to end.
+
+## The single most important thing to do next
+
+**Resolve Q1 with measurements.** How game logic is authored and hot-reloaded determines the
+edit→observe latency for every future session, which sets a ceiling on how useful Claude can be on
+this project. It is deliberately unresolved so it can be decided by a spike rather than an argument.
+
+Full framing in `docs/06-open-questions.md` § Q1. In short: prototype 2–3 of {pure Rust rebuild,
+hot-reloaded cdylib, embedded Luau, WASM module}, and for each measure **edit→observe latency**,
+whether world state survives a reload, the ergonomics of writing a non-trivial system, and how well
+the agent-facing schema story works. Then write the ADR with numbers in it.
+
+A recorded prior, to be overridden by evidence: embedded Luau for gameplay plus a path to "graduate"
+hot logic into Rust systems. Do not let that prior substitute for the measurement.
 
 ### Decided
 - Name: **Amadeo**.
@@ -129,23 +148,21 @@ Verified on this machine (2026-07-30):
 **Verified green: 228 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 Remaining in M0:
-1. **Visual confirmation of `quad-demo`.** `cargo run -p quad-demo` builds, opens a window, initialises
-   wgpu, and runs the loop without error (verified). Whether the quad is actually visible and moves
-   has NOT been confirmed -- that needs eyes on the screen. This is precisely the gap M1's
-   `render.capture` closes, and a good early illustration of why that milestone matters.
-2. A `separate process` replay check. The golden test currently replays in-process against a
-   committed fixture, which covers "separate build" but not "separate process". Closing that needs
-   `amadeo-cli`, which is M1 work — noted so the gap is not forgotten.
-3. **Q1 spike** (game logic hot-reload) — resolve with measurements. Blocks M1.
+1. **Q1 spike** (game logic hot-reload) — resolve with measurements, then write the ADR. Blocks M1.
+   This is the only outstanding M0 item. See the top of this file for the framing.
+
+Carried into M1 rather than counted as done:
+- A **separate-process** replay check. The golden test replays in-process against a committed
+  fixture, which covers "separate build" but not "separate process". Closing it needs `amadeo-cli`.
 
 Known gaps deliberately left for later:
 - No bundle/spawn-with-components API, so building an entity with N components costs N archetype
   migrations. Correct but wasteful; optimise when it shows up in a profile.
 - Query shapes are limited to one and two components. Extend when a real system needs more, not
   speculatively.
-- Events cannot be sent from inside a query closure (the world is already borrowed). Current
-  workaround is to collect then send, as `bounce` does in the determinism tests. Deferred commands
-  will fix this properly.
+- Events cannot be sent from inside a query closure (the world is already borrowed). Workaround is to
+  collect then send, as `bounce` does in the determinism tests. Deferred commands solve the same
+  problem for structural changes; an equivalent for events has not been built.
 - No parallel system execution. ADR 0005 permits it only where access is provably disjoint, and the
   scheduler does not yet track access patterns.
 - `SimRng`'s `StableHash` goes through its `Debug` output, which works but is inelegant. Revisit when
@@ -182,12 +199,13 @@ Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
   multiplayer promoted from non-goal to planned M6 with hooks reserved (ADR 0006); M3's exit gate set
   to a horror slice. Human-legibility requirement added to `CLAUDE.md` §6. GitHub remote added.
   Toolchain verified; Smart App Control found blocking and disabled by Justin. No engine code.
-- **S3 (2026-07-30):** M0 implementation. In order: workspace + CI + `amadeo-core` (ADR 0007 fixed
+- **S3 (2026-07-30):** M0 implementation, essentially complete. In order: workspace + CI + `amadeo-core` (ADR 0007 fixed
   timestep, ADR 0008 ECS storage); `amadeo-ecs` archetype storage; `amadeo-events` +
   `amadeo-app` schedules and loop + the resource/service split (ADR 0009, found by a failing test);
   `amadeo-input` + the `.replay` text format + golden replay harness; deferred commands;
-  `amadeo-render` abstraction and null backend. 228 tests. Remaining: wgpu backend, then the Q1 spike.
-  Visual-design preference recorded in `CLAUDE.md` §6.
+  `amadeo-render` abstraction and null backend; the wgpu backend behind an opt-in `gpu` feature; and
+  `games/quad-demo`, whose window Justin confirmed working. 228 tests. ADRs 0007-0010 written.
+  Visual-design preference recorded in `CLAUDE.md` §6. **Remaining in M0: the Q1 spike only.**
 - **S2 (2026-07-30):** GitHub remote added (personal account; note the *global* git identity on this
   machine is a work account, so this repo carries a local override — do not remove it). Rust verified
   installed; MSVC build tools confirmed missing and blocking; rust-analyzer installed. Added

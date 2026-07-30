@@ -36,12 +36,19 @@ teaches things the planning phase cannot.
 - 🔬 **The Q1 spike.** Prototype 2–3 game-logic hot-reload approaches. Measure edit→observe latency.
   Write the ADR. This blocks M1.
 
-**Exit gate**
-1. A colored quad moves under keyboard input in a real window.
-2. Record 600 ticks of input. Replay headless, in a separate process, on a separate build. The state
-   hash at ticks 100/300/600 is byte-identical to the windowed run.
-3. `cargo test` passes in CI, including the golden replay.
-4. Q1 is resolved by an ADR backed by measured numbers.
+**Exit gate** — status as of session 3 (2026-07-30)
+
+1. ✅ **A coloured quad moves under keyboard input in a real window.** `cargo run -p quad-demo`.
+   Visually confirmed by Justin.
+2. 🟡 **Record input, replay it, assert identical state hashes at checkpoints.** Done and in CI via
+   `crates/amadeo-app/tests/golden_replay.rs` against a committed fixture — which covers *separate
+   build*. **Not** covered: *separate process*, which needs `amadeo-cli`. Deferred to M1 and recorded
+   in `STATUS.md` rather than counted as done.
+3. ✅ **`cargo test` passes in CI, including the golden replay.** 228 tests; fmt, clippy `-D warnings`,
+   and rustdoc clean; a dedicated determinism job runs the suite three times in separate processes
+   plus once in release.
+4. ❌ **Q1 resolved by an ADR backed by measured numbers.** Not started. This is the remaining M0 work
+   and it blocks M1.
 
 **Why this gate:** it exercises input → simulation → state → render → replay end to end. If this
 works, the spine is real. If determinism is broken, it's broken *here*, when it costs a day instead

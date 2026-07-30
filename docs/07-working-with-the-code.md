@@ -108,6 +108,11 @@ None of these work until M0 scaffolds the workspace. Recorded here so they're in
 | `cargo clippy` | Lints. Catches real bugs, not just style. Worth running before committing. |
 | `cargo fmt` | Auto-formats. Never argue about formatting. |
 | `cargo doc --open` | Builds and opens the API docs generated from doc comments. |
+| `cargo run -p quad-demo` | Runs the demo game in a window. WASD or arrows to move, Escape to quit. |
+
+**Seeing something on screen.** `quad-demo` is the only thing that opens a window today. If you want
+to check that a rendering change works, that is where to look — and note the first build after
+touching anything GPU-related takes minutes, because it compiles wgpu.
 
 **Reading a Rust error message.** rustc errors are unusually good — the useful part is usually below
 the first line. Look for `help:` and `note:`; they frequently contain the exact fix. `cargo build`
