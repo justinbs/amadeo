@@ -16,6 +16,7 @@ amadeo-core = { path = "crates/amadeo-core", version = "0.1.0" }
 amadeo-ecs = { path = "crates/amadeo-ecs", version = "0.1.0" }
 amadeo-events = { path = "crates/amadeo-events", version = "0.1.0" }
 amadeo-input = { path = "crates/amadeo-input", version = "0.1.0" }
+amadeo-render = { path = "crates/amadeo-render", version = "0.1.0" }
 amadeo-app = { path = "crates/amadeo-app", version = "0.1.0" }
 
 # External.

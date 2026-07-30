@@ -17,9 +17,14 @@ use std::collections::BTreeMap;
 /// | Need | Method |
 /// |---|---|
 /// | read one component across entities | [`World::iter`] |
+/// | read two components across entities | [`World::iter_pair`] |
 /// | write one component across entities | [`World::for_each_mut`] |
 /// | write one, read another | [`World::for_each_pair_mut`] |
 /// | read/write a single entity | [`World::get`], [`World::get_mut`] |
+///
+/// Reads return iterators; writes take closures. **Prefer a read query whenever the data is only
+/// being read** — the mutable versions mark every visited component as changed, which would make
+/// change detection useless for a system that never actually writes.
 ///
 /// Mutable iteration takes a closure rather than returning an iterator. That avoids the
 /// higher-ranked lifetime machinery a mutable multi-component iterator would need, which is the kind
@@ -432,6 +437,31 @@ impl World {
             .flatten()
     }
 
+    /// Iterates every entity that has both `A` and `B`, read-only.
+    ///
+    /// The read-only counterpart to [`World::for_each_pair_mut`]. Returns an iterator rather than
+    /// taking a closure because shared borrows need none of the lifetime machinery mutable ones do.
+    ///
+    /// Prefer this over the mutable version whenever the data is only being read — the mutable one
+    /// marks every visited component as changed, which would make change detection meaningless for
+    /// a system that never actually writes.
+    pub fn iter_pair<A: Component, B: Component>(&self) -> impl Iterator<Item = (Entity, &A, &B)> {
+        self.archetypes
+            .iter()
+            .filter_map(|archetype| {
+                let (entities, a_values, b_values) = archetype.entities_with_pair::<A, B>()?;
+                Some(
+                    entities
+                        .iter()
+                        .copied()
+                        .zip(a_values.iter())
+                        .zip(b_values.iter())
+                        .map(|((entity, a), b)| (entity, a, b)),
+                )
+            })
+            .flatten()
+    }
+
     /// Calls `f` for every entity with component `T`, with mutable access.
     ///
     /// Every visited component is marked changed at the current tick, whether or not `f` writes to
@@ -778,6 +808,55 @@ mod tests {
             Some(&Position { x: 100.0, y: 100.0 }),
             "an entity without Velocity must not be touched"
         );
+    }
+
+    #[test]
+    fn iter_pair_visits_only_entities_with_both() {
+        let mut world = World::new();
+
+        let both = world.spawn();
+        world.insert(both, Position { x: 1.0, y: 2.0 });
+        world.insert(both, Velocity { x: 3.0, y: 4.0 });
+
+        let only_position = world.spawn();
+        world.insert(only_position, Position { x: 9.0, y: 9.0 });
+
+        let found: Vec<(f32, f32)> = world
+            .iter_pair::<Position, Velocity>()
+            .map(|(_, position, velocity)| (position.x, velocity.x))
+            .collect();
+        assert_eq!(found, vec![(1.0, 3.0)]);
+    }
+
+    #[test]
+    fn iter_pair_does_not_mark_components_changed() {
+        // The whole reason this exists alongside `for_each_pair_mut`: a reader such as the renderer
+        // must not flag every entity it looks at as modified.
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.insert(entity, Position { x: 0.0, y: 0.0 });
+        world.insert(entity, Velocity { x: 0.0, y: 0.0 });
+
+        world.advance_tick();
+        world.advance_tick();
+        let before = world.changed_tick::<Position>(entity);
+
+        assert_eq!(world.iter_pair::<Position, Velocity>().count(), 1);
+        assert_eq!(world.changed_tick::<Position>(entity), before);
+    }
+
+    #[test]
+    fn iter_pair_allows_the_same_component_twice() {
+        // Two shared borrows of one column are fine, unlike the mutable version which must refuse.
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.insert(entity, Position { x: 7.0, y: 8.0 });
+
+        let found: Vec<f32> = world
+            .iter_pair::<Position, Position>()
+            .map(|(_, first, second)| first.x + second.y)
+            .collect();
+        assert_eq!(found, vec![15.0]);
     }
 
     #[test]

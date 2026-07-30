@@ -196,6 +196,23 @@ impl Archetype {
             .collect()
     }
 
+    /// Row entities alongside read-only access to two components' values.
+    ///
+    /// The read-only counterpart to [`Archetype::entities_with_pair_mut`]. Needed because a reader
+    /// such as the renderer must not touch change ticks — marking every drawn entity as modified
+    /// each frame would make change detection useless, and rendering is required to be read-only
+    /// with respect to simulation (ADR 0005).
+    ///
+    /// Unlike the mutable version this needs no disjoint-borrow trick, since two shared borrows of
+    /// the same slice are fine. It also permits `A` and `B` to be the same type.
+    pub(crate) fn entities_with_pair<A: Component, B: Component>(
+        &self,
+    ) -> Option<(&[Entity], &[A], &[B])> {
+        let column_a = self.column::<A>()?;
+        let column_b = self.column::<B>()?;
+        Some((&self.entities, column_a.values(), column_b.values()))
+    }
+
     /// Row entities alongside mutable access to one component's values.
     ///
     /// Returned together because `entities` and `columns` are separate fields, so the borrow can be

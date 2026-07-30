@@ -117,12 +117,22 @@ Done so far in M0:
   *during* a flush wait for the next one, deliberately — an unbounded loop inside one flush would
   hang, which is far worse to diagnose than a one-stage delay.
 
-**Verified green: 200 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+- ✅ `amadeo-render` **abstraction and null backend** — `Transform2d`, `Quad`, `Camera2d`, the
+  `RenderBackend` trait, `NullBackend` (records what *would* have been drawn, so draw calls are
+  assertable with no GPU), and the `render_quads` collection pass. Draw order is by explicit
+  `Quad::layer` with a stable sort, never by iteration order.
+- ✅ `World::iter_pair` — a read-only two-component query, added because the renderer needed one:
+  the mutable version would mark every drawn entity as changed each frame and make change detection
+  worthless.
+
+**Verified green: 228 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 Remaining in M0:
-1. `amadeo-render` — window via winit, wgpu device, clear colour, and a null backend. The last piece
-   of the M0 exit gate: a coloured quad moving under live keyboard input. **Note this adds ~200
-   transitive crates and will slow builds noticeably** (ADR 0002's known weakness).
+1. **The wgpu backend and a window.** `amadeo-render` deliberately has no wgpu or winit dependency
+   yet — the abstraction and null backend build and test with no GPU (invariant I7). The real backend
+   goes behind a feature flag so headless builds and CI stay lean. This is the last piece of the exit
+   gate: a coloured quad moving under live keyboard input. **Adds ~200 transitive crates and will
+   slow builds noticeably** (ADR 0002's known weakness).
 2. A `separate process` replay check. The golden test currently replays in-process against a
    committed fixture, which covers "separate build" but not "separate process". Closing that needs
    `amadeo-cli`, which is M1 work — noted so the gap is not forgotten.

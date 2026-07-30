@@ -1,0 +1,20 @@
+[package]
+name = "amadeo-render"
+description = "Rendering abstraction for the Amadeo engine, with a required null backend."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+thiserror.workspace = true
+
+# Note: wgpu and winit are deliberately absent. This crate defines the abstraction and the null
+# backend, both of which must build and test with no GPU and no window (invariant I7). The wgpu
+# backend arrives behind a feature flag so headless builds and CI stay lean.
+
+[lints]
+workspace = true
