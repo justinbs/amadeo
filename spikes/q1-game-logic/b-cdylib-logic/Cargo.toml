@@ -1,0 +1,19 @@
+[package]
+name = "b-cdylib-logic"
+description = "Q1 candidate B: the gameplay half, built as a dynamic library the host reloads at runtime."
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+# Both, deliberately:
+#   cdylib -- the loadable artefact the host opens with libloading
+#   rlib   -- lets `cargo test` compile this crate normally, which a bare cdylib cannot do
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+amadeo-app.workspace = true
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-render.workspace = true
+scenario.workspace = true

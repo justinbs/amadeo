@@ -1,5 +1,9 @@
 # Rust
 /target/
+# Spikes are separate cargo workspaces (see spikes/README.md), so they each have their own
+# build directory. Their Cargo.lock files ARE committed — a spike whose measurements cannot be
+# reproduced against the same dependency versions is not evidence.
+/spikes/**/target/
 **/*.rs.bk
 *.pdb
 

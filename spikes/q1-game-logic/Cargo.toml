@@ -1,0 +1,41 @@
+# The Q1 spike: how game logic is authored and hot-reloaded.
+#
+# A SEPARATE WORKSPACE from the engine, deliberately, for three reasons:
+#
+# 1. Feature unification. If these crates were members of the engine workspace, enabling a
+#    feature here would change what the engine build compiles -- which would corrupt the very
+#    baseline this spike exists to measure.
+# 2. `unsafe_code = "forbid"`. The cdylib host needs `unsafe` to call across an FFI boundary,
+#    and `forbid` cannot be locally overridden. That is a finding, not an obstacle to route
+#    around, so it is recorded in ADR 0011 rather than quietly relaxed in the engine workspace.
+# 3. Cost. `cargo test --workspace` in the engine must stay at a couple of seconds. mlua builds
+#    a C toolchain; wasmtime is ~200 crates. Neither belongs in the everyday loop.
+#
+# The engine crates are consumed by relative path, so this measures the real engine.
+
+[workspace]
+resolver = "3"
+members = ["scenario", "a-rust", "b-cdylib-logic", "b-cdylib-host", "c-luau", "d-wasm-host"]
+
+# `d-wasm-logic` is deliberately absent: it builds for wasm32-unknown-unknown and has its own
+# workspace, so it must not be swept into a host-target build.
+exclude = ["d-wasm-logic"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace.dependencies]
+amadeo-core = { path = "../../crates/amadeo-core" }
+amadeo-ecs = { path = "../../crates/amadeo-ecs" }
+amadeo-app = { path = "../../crates/amadeo-app" }
+amadeo-render = { path = "../../crates/amadeo-render" }
+scenario = { path = "scenario" }
+
+# Matches the engine's dev profile so compile-time numbers are comparable.
+[profile.dev]
+opt-level = 0
+
+[profile.dev.package."*"]
+opt-level = 2

@@ -1,0 +1,13 @@
+[package]
+name = "a-rust"
+description = "Q1 candidate A: gameplay compiled into the binary. The baseline every other option is judged against."
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+amadeo-app.workspace = true
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-render.workspace = true
+scenario.workspace = true

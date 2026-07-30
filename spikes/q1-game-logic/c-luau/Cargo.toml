@@ -1,0 +1,18 @@
+[package]
+name = "c-luau"
+description = "Q1 candidate C: gameplay in Luau, embedded via mlua. The option the recorded prior favoured."
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+amadeo-app.workspace = true
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-render.workspace = true
+scenario.workspace = true
+
+# `luau` builds Roblox's Luau from vendored C++ source, so this needs a working C++ toolchain
+# (the MSVC build tools this machine already has). No `send` feature: a Lua VM is not `Sync`, and
+# forcing it to look like it is would be a lie the engine would eventually trip over.
+mlua = { version = "0.12", features = ["luau"] }

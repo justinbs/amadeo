@@ -1,0 +1,18 @@
+[package]
+name = "d-wasm-host"
+description = "Q1 candidate D: the engine half, which JIT-compiles and instantiates the gameplay module."
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+amadeo-app.workspace = true
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-render.workspace = true
+scenario.workspace = true
+
+# `cranelift` is the JIT. Its compile time for our 18 KB module is the reload cost being measured,
+# so the default (optimising) backend is the honest thing to measure rather than a fast-but-slow-code
+# alternative a real engine would not ship.
+wasmtime = { version = "47", default-features = false, features = ["cranelift", "runtime", "std"] }

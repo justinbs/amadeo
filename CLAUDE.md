@@ -46,8 +46,10 @@ stop and raise it instead of working around it.
   retained-mode system — do not confuse the two.
 - **Primary target:** native desktop, Windows first. Web export is a later milestone, not a
   parallel obligation.
-- **Game logic authoring:** **UNDECIDED — this is the highest-priority open question.** See
-  `docs/06-open-questions.md` Q1. Do not assume an answer; do not build around one until it's settled.
+- **Game logic authoring:** **Rust systems in the game crate.** No scripting layer, no dynamic
+  reload. Settled by measured spike — ADR 0011, evidence in `spikes/q1-game-logic/`. WASM is the
+  pre-selected escape hatch if a gameplay rebuild ever sustains above 5 s; check by re-running
+  `spikes/q1-game-logic/measure.ps1`, not by impression.
 
 Rationale and rejected alternatives: `docs/02-tech-stack.md` and `docs/adr/0002`.
 
@@ -71,7 +73,7 @@ crates/
 — amadeo-anim        sprite anim, skeletal, state machines, tweens
 — amadeo-ui          retained-mode game UI: layout, theming, focus navigation
 — amadeo-scene       scene-tree authoring model, prefabs, instancing, text format
-— amadeo-script      game-logic host (shape pending Q1)
+✖ amadeo-script      NOT BUILT. ADR 0011: game logic is plain Rust in the game crate.
 — amadeo-agent       Agent Interface Layer: RPC, introspection, snapshots, replay, capture
 ✅ amadeo-app         Stage/Schedule, fixed-timestep loop, SimRng
 — amadeo-editor      graphical editor. A CLIENT of amadeo-agent. No privileged access.
@@ -79,6 +81,8 @@ crates/
 modules/             optional, genre-flavored. Core NEVER depends on these.
 games/               actual games built with the engine
 docs/                design docs and ADRs
+spikes/              separate cargo workspaces holding the evidence behind an ADR. Frozen once
+                     written; excluded from the engine workspace. See spikes/README.md.
 ```
 
 **Note:** `Transform2d` currently lives in `amadeo-render` because that is its only consumer. It

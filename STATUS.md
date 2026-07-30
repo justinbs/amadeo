@@ -1,14 +1,15 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-07-30 (end of session 3)
-**Current phase:** **M0 nearly complete.** Three of four exit-gate items met. Q1 spike is all that's left.
+**Last updated:** 2026-07-31 (end of session 4)
+**Current phase:** **M0 COMPLETE.** All four exit-gate items met. M1 is unblocked and not started.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private)
 
 ---
 
 ## Where we are
 
-Sessions 1–2 established scope, stack, and architecture. Session 3 built M0.
+Sessions 1–2 established scope, stack, and architecture. Session 3 built M0. Session 4 closed it by
+resolving Q1.
 
 Six engine crates plus one game exist and are tested: `amadeo-core`, `amadeo-ecs`, `amadeo-events`,
 `amadeo-input`, `amadeo-render`, `amadeo-app`, and `games/quad-demo`. **228 tests passing**; fmt,
@@ -19,24 +20,55 @@ determinism job.
 confirmed working. It simulates deterministically at a fixed 60 Hz, records a session to a
 hand-editable text replay file, and replays it against checkpoint state hashes in CI.
 
-**M0 exit gate:** 3 of 4 met. See `docs/05-roadmap.md` § M0 for the itemised status. The outstanding
-one is **Q1 — the game-logic hot-reload spike**, which also blocks M1.
+**M0 exit gate: 4 of 4.** See `docs/05-roadmap.md` § M0. Gate item 2 is met in the "separate build"
+sense; the "separate process" half is carried into M1 because it needs `amadeo-cli`.
 
 **No blockers.** Toolchain verified end to end.
 
 ## The single most important thing to do next
 
-**Resolve Q1 with measurements.** How game logic is authored and hot-reloaded determines the
-edit→observe latency for every future session, which sets a ceiling on how useful Claude can be on
-this project. It is deliberately unresolved so it can be decided by a spike rather than an argument.
+**Start M1.** Q1 is closed, so nothing is gated any more. `docs/05-roadmap.md` § M1 has the list; the
+exit gate is a complete small 2D game built by Claude with zero editor use.
 
-Full framing in `docs/06-open-questions.md` § Q1. In short: prototype 2–3 of {pure Rust rebuild,
-hot-reloaded cdylib, embedded Luau, WASM module}, and for each measure **edit→observe latency**,
-whether world state survives a reload, the ergonomics of writing a non-trivial system, and how well
-the agent-facing schema story works. Then write the ADR with numbers in it.
+Two items in M1 were reprioritised by what the Q1 spike measured, and are worth doing early:
 
-A recorded prior, to be overridden by evidence: embedded Luau for gameplay plus a path to "graduate"
-hot logic into Rust systems. Do not let that prior substitute for the measurement.
+1. **`snapshot.take` / `snapshot.restore`.** The spike found that re-simulation, not compilation, is
+   what actually degrades the iteration loop — 47 ms to reach 30 s of simulated time, 382 ms to reach
+   5 minutes, growing linearly forever. Snapshots fix that; nothing else does.
+2. **Widen ECS queries past two components.** The benchmark needed three at once and could not say
+   so, forcing a collect-and-write-back workaround that is now on shipping code's critical path.
+
+## Q1 is resolved — ADR 0011
+
+**Game logic is Rust systems in the game crate.** No scripting layer, no dynamic reload,
+no `amadeo-script`.
+
+Four candidates were prototyped and measured against one shared benchmark (a three-state enemy AI
+over 64 entities, 1800 ticks). Everything is in `spikes/q1-game-logic/`, re-runnable via
+`measure.ps1`.
+
+| | edit → observe | state survives | hash vs native Rust | µs/tick |
+|---|---|---|---|---|
+| **A** pure Rust | 0.95 s (2.1 s in the real game) | no | reference | 4.6 |
+| **B** cdylib | 0.69 s | yes | ✅ identical | 4.6 |
+| **C** Luau | 0.4 ms | yes | ❌ **differs** | 109.7 |
+| **D** WASM | 0.63 s | yes | ✅ identical | 5.7 |
+
+**The recorded Luau prior was refuted, and it is worth knowing why.** Luau is not nondeterministic —
+it reproduces perfectly across processes. But its numbers are `f64` and components are `f32`, so it
+computes something *different* from the Rust reference: the two agree at tick 1 and diverge at tick 2.
+That kills the prior's central mechanism specifically, because "graduate hot logic from Luau into
+Rust" changes behaviour and invalidates every golden replay taken before the move.
+
+**The premise behind the whole question was also wrong at this scale.** Q1 was written to avoid a
+feared 30-second rebuild. Measured: **0.9 s** for a gameplay edit, **2.0 s** for `quad-demo` (which
+links wgpu and winit), **3.2 s** for an engine-crate edit rebuilding everything downstream. There was
+no crisis to solve, so the decision is to not pay a permanent architectural cost for it.
+
+**WASM is reserved, not rejected.** It is bit-identical to native Rust (verified across two
+optimisation levels) at 1.24× runtime cost, and it is the same artefact M5's web export needs. ADR
+0011 names it as the escape hatch behind a measured threshold — a gameplay rebuild sustaining above
+5 s. Check by re-running the spike, not by impression.
 
 ### Decided
 - Name: **Amadeo**.
@@ -62,11 +94,14 @@ hot logic into Rust systems. Do not let that prior substitute for the measuremen
   built at M6. See `docs/adr/0006`.
 - **First game to finish: single-player first-person atmospheric horror slice** at M3 — smallest
   genuinely finishable complete game, and the hardest test of the renderer.
+- **Game logic is plain Rust in the game crate.** No scripting layer, no hot reload. WASM reserved as
+  a pre-selected escape hatch behind a measured threshold. See `docs/adr/0011`.
+- **`spikes/` exists** for prototypes that answer a question with a measurement. Separate cargo
+  workspaces, frozen once their ADR is written. See `spikes/README.md`.
 
 ### Not yet decided (blocking)
-- **Q1: How game logic is authored and hot-reloaded.** Rust dylib vs WASM vs embedded scripting.
-  This determines the entire iteration loop and must be settled by a measured spike in M0 before
-  any subsystem work depends on it. See `docs/06-open-questions.md`.
+
+Nothing is blocking. Q1, the last P0, closed in session 4.
 
 ## Environment
 
@@ -145,11 +180,14 @@ Verified on this machine (2026-07-30):
   the mutable version would mark every drawn entity as changed each frame and make change detection
   worthless.
 
+- ✅ **The Q1 spike** (session 4) — four candidates for game-logic authoring and hot reload,
+  prototyped against one shared benchmark and measured. Resolved by ADR 0011: **plain Rust**.
+  Prototypes and numbers in `spikes/q1-game-logic/`; re-run with `measure.ps1`. Established the
+  `spikes/` convention (separate workspaces, frozen after their ADR).
+
 **Verified green: 228 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
-Remaining in M0:
-1. **Q1 spike** (game logic hot-reload) — resolve with measurements, then write the ADR. Blocks M1.
-   This is the only outstanding M0 item. See the top of this file for the framing.
+**M0 is complete.** Nothing remains.
 
 Carried into M1 rather than counted as done:
 - A **separate-process** replay check. The golden test replays in-process against a committed
@@ -158,8 +196,13 @@ Carried into M1 rather than counted as done:
 Known gaps deliberately left for later:
 - No bundle/spawn-with-components API, so building an entity with N components costs N archetype
   migrations. Correct but wasteful; optimise when it shows up in a profile.
-- Query shapes are limited to one and two components. Extend when a real system needs more, not
-  speculatively.
+- **Query shapes are limited to one and two components.** No longer speculative: the Q1 benchmark
+  needed three at once (`Enemy` write, `Transform2d` read, `Velocity` write) and had to collect into
+  a `Vec` and write back by handle. That workaround is now the documented idiom
+  (`docs/07-working-with-the-code.md`), and widening queries is on the M1 list.
+- **`Service` requires `Send + Sync`**, which excludes any non-`Sync` runtime from living in the
+  world — found when neither script VM in the Q1 spike could be stored there. Harmless today, will
+  bite the audio mixer and asset loader in M3. Filed as **Q12**.
 - Events cannot be sent from inside a query closure (the world is already borrowed). Workaround is to
   collect then send, as `bounce` does in the determinism tests. Deferred commands solve the same
   problem for structural changes; an equivalent for events has not been built.
@@ -173,7 +216,8 @@ Known gaps deliberately left for later:
 | Risk | Mitigation |
 |---|---|
 | Scope is genuinely very large (unified 2D/3D + editor + AI layer ≈ rebuilding Godot). | Vertical slices with hard exit gates. Reuse proven crates for solved problems instead of writing them. Ruthless non-goals list in `docs/00-vision.md`. |
-| Rust compile times degrade the agent iteration loop. | Q1 spike exists precisely to solve this. Keep crates small and the dependency graph shallow. |
+| Rust compile times degrade the agent iteration loop. | **Measured, session 4:** 0.9 s for a gameplay edit, 3.2 s for a full downstream rebuild — not currently a problem (ADR 0011). Now depends on keeping the crate graph small and shallow, which has become load-bearing rather than hygiene. Re-run `spikes/q1-game-logic/measure.ps1` when the engine has grown; WASM is the pre-selected answer if the threshold is crossed. |
+| **Re-simulation cost, not compile time, degrades the loop.** Getting back to the moment of interest grows linearly with session length (~21 µs/tick; 382 ms to reach 5 simulated minutes). | Snapshot/restore, promoted to an M1 priority by ADR 0011. |
 | Determinism erodes silently as features land. | Golden-replay tests in CI from M0. Every subsystem PR adds one. |
 | Editor drifts into being the source of truth. | I1/I5 enforced by making the editor an RPC client with no privileged path. Round-trip byte-stability test in CI. |
 
@@ -187,6 +231,8 @@ If you are starting cold, this is the shortest path to being useful:
    already know the codebase.
 4. `docs/adr/` — read 0005 (determinism), 0008 (ECS storage), 0009 (resource vs service) before
    touching `amadeo-ecs`. Read 0003 and 0004 before touching anything about scenes or the editor.
+   Read **0011** before proposing a scripting language or a hot-reload mechanism — it was decided by
+   measurement, and reopening it needs numbers.
 5. `docs/06-open-questions.md` — before assuming anything undecided.
 
 Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
@@ -195,10 +241,15 @@ Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
 
 - **S1 (2026-07-30):** Scope, stack, and architecture decided. Planning docs and ADRs 0001–0005
   written. Repo initialized. No code.
-- **S2 (2026-07-30):** Target games captured (Palworld / Schedule I / Inside the Backrooms);
-  multiplayer promoted from non-goal to planned M6 with hooks reserved (ADR 0006); M3's exit gate set
-  to a horror slice. Human-legibility requirement added to `CLAUDE.md` §6. GitHub remote added.
-  Toolchain verified; Smart App Control found blocking and disabled by Justin. No engine code.
+- **S2 (2026-07-30):** Target games captured (Palworld / Schedule I / Inside the Backrooms), module
+  priorities reordered toward 3D, and the renderer required to stay art-direction-agnostic.
+  **Multiplayer promoted from non-goal to planned M6 with hooks reserved in M0–M2 (ADR 0006)** — the
+  largest plan change so far. M3's exit gate set to a horror slice with concrete criteria.
+  Human-legibility requirement added to `CLAUDE.md` §6 and `docs/07-working-with-the-code.md`
+  created. GitHub remote added (personal account; the *global* git identity on this machine is a
+  work account, so this repo carries a local override — do not remove it). Rust verified installed,
+  MSVC build tools confirmed missing and blocking, rust-analyzer installed; Smart App Control found
+  blocking and disabled by Justin. No engine code.
 - **S3 (2026-07-30):** M0 implementation, essentially complete. In order: workspace + CI + `amadeo-core` (ADR 0007 fixed
   timestep, ADR 0008 ECS storage); `amadeo-ecs` archetype storage; `amadeo-events` +
   `amadeo-app` schedules and loop + the resource/service split (ADR 0009, found by a failing test);
@@ -206,11 +257,20 @@ Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
   `amadeo-render` abstraction and null backend; the wgpu backend behind an opt-in `gpu` feature; and
   `games/quad-demo`, whose window Justin confirmed working. 228 tests. ADRs 0007-0010 written.
   Visual-design preference recorded in `CLAUDE.md` §6. **Remaining in M0: the Q1 spike only.**
-- **S2 (2026-07-30):** GitHub remote added (personal account; note the *global* git identity on this
-  machine is a work account, so this repo carries a local override — do not remove it). Rust verified
-  installed; MSVC build tools confirmed missing and blocking; rust-analyzer installed. Added
-  human-legibility requirement to `CLAUDE.md` §6 and created `docs/07-working-with-the-code.md`.
-  Three target games captured, module priorities reordered toward 3D, renderer required to stay
-  art-direction-agnostic. **Multiplayer promoted from non-goal to planned M6 with hooks reserved in
-  M0–M2 (ADR 0006)** — the largest plan change so far. M3's exit gate set to a horror slice with
-  concrete criteria. No code.
+- **S4 (2026-07-31):** **M0 closed.** The Q1 spike, run as a measurement rather than an argument:
+  four candidates (pure Rust, hot-reloaded cdylib, embedded Luau, WASM) implementing one shared
+  benchmark — a three-state enemy AI over 64 entities — with agreement between them tested by state
+  hash rather than by inspection. **ADR 0011: game logic is plain Rust in the game crate**, WASM
+  reserved as an escape hatch behind a measured threshold.
+
+  The recorded Luau prior was refuted, and specifically: Luau is perfectly deterministic but its
+  `f64` arithmetic computes something *different* from `f32` components, diverging at tick 2. That
+  breaks the prior's own central mechanism — graduating a system from Luau to Rust would change its
+  behaviour and invalidate every golden replay taken before the move. Luau was also 24× slower, of
+  which ~78% turned out to be the marshalling binding rather than the language.
+
+  The question's premise was also wrong at this scale: the feared 30-second rebuild measured at
+  0.9–3.2 s. Two engine gaps surfaced along the way — `Service: Send + Sync` excludes any non-`Sync`
+  runtime (filed as Q12), and the two-component query limit is now confirmed as a real constraint
+  rather than a speculative one. Established the `spikes/` convention. No engine code changed;
+  still 228 tests.

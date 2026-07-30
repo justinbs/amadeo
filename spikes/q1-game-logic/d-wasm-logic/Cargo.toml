@@ -1,0 +1,22 @@
+# Its own workspace: this crate is built for `wasm32-unknown-unknown`, not for the host target,
+# so it must not be swept into the spike workspace's normal build.
+[workspace]
+
+[package]
+name = "d-wasm-logic"
+description = "Q1 candidate D: the gameplay half, compiled to a WebAssembly module the host instantiates."
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+
+[profile.release]
+# Small and fast to JIT-compile. The module is reloaded on every gameplay edit, so the host-side
+# compile time of the artefact is part of this candidate's edit->observe latency.
+opt-level = "s"
+lto = true
+panic = "abort"

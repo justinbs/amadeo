@@ -33,10 +33,10 @@ teaches things the planning phase cannot.
 - `amadeo-app` — fixed-timestep loop, schedules with explicit ordering, plugin registration.
 - Determinism harness: seeded RNG resource, world state hashing, golden replay test runner.
 - `amadeo-render` — window via winit, wgpu device init, clear to a color, and a **null backend**.
-- 🔬 **The Q1 spike.** Prototype 2–3 game-logic hot-reload approaches. Measure edit→observe latency.
-  Write the ADR. This blocks M1.
+- ✅ **The Q1 spike.** Four approaches prototyped and measured against one shared benchmark;
+  resolved by ADR 0011. `spikes/q1-game-logic/`.
 
-**Exit gate** — status as of session 3 (2026-07-30)
+**Exit gate** — status as of session 4 (2026-07-31): **M0 complete.**
 
 1. ✅ **A coloured quad moves under keyboard input in a real window.** `cargo run -p quad-demo`.
    Visually confirmed by Justin.
@@ -47,8 +47,10 @@ teaches things the planning phase cannot.
 3. ✅ **`cargo test` passes in CI, including the golden replay.** 228 tests; fmt, clippy `-D warnings`,
    and rustdoc clean; a dedicated determinism job runs the suite three times in separate processes
    plus once in release.
-4. ❌ **Q1 resolved by an ADR backed by measured numbers.** Not started. This is the remaining M0 work
-   and it blocks M1.
+4. ✅ **Q1 resolved by an ADR backed by measured numbers.** ADR 0011. Four candidates prototyped and
+   measured against one shared benchmark in `spikes/q1-game-logic/`. Decision: **game logic is Rust,
+   compiled in**; WASM reserved as an escape hatch behind a stated threshold. The premise the
+   question was built on — a 30-second rebuild — measured at **0.9–3.2 s** and does not hold.
 
 **Why this gate:** it exercises input → simulation → state → render → replay end to end. If this
 works, the spine is real. If determinism is broken, it's broken *here*, when it costs a day instead
@@ -74,7 +76,16 @@ of a milestone.
 - `amadeo-assets` — virtual FS, handles, async load with load-order isolation, hot reload, import
   pipeline, text sidecar metadata, placeholder assets on failure.
 - 2D rendering — sprite batcher, textures, cameras, layers/sorting, transform hierarchy.
-- Game logic layer, per the Q1 decision.
+- Game logic layer, per the Q1 decision: **nothing to build.** ADR 0011 settled this as "Rust systems
+  in the game crate", which is what `games/quad-demo` already does. `amadeo-script` is not created.
+- **`snapshot.take` / `snapshot.restore`, treated as the iteration-loop priority rather than as two
+  more RPC methods.** ADR 0011 measured re-simulation, not compilation, as the thing that actually
+  degrades the edit→observe loop: 47 ms to reach 30 s of simulated time, 382 ms to reach 5 minutes,
+  growing linearly forever. Acceptance test: restoring to tick N beats re-simulating to tick N at
+  N = 18 000.
+- **Widen ECS queries past two components.** The Q1 benchmark needed three at once (`Enemy` write,
+  `Transform2d` read, `Velocity` write) and had to collect into a `Vec` and write back by handle.
+  Under ADR 0011 that overhead is on shipping code's critical path, not just a benchmark's.
 
 **Exit gate**
 1. **A complete small 2D game — built entirely by Claude with zero editor use and zero human

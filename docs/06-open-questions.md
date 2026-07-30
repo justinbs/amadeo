@@ -7,56 +7,6 @@ Priority: **P0** blocks work now · **P1** needed for the current milestone · *
 
 ---
 
-## Q1 · P0 · How is game logic authored and hot-reloaded?
-
-**The highest-priority unresolved question in the project.** It determines the edit→observe loop,
-which determines how effective I can be as a collaborator. Everything else can be adjusted later;
-this one shapes the whole engine's ergonomics.
-
-The problem: Rust's compile times are the chosen stack's real weakness. If changing an enemy's speed
-requires a 30-second engine rebuild, iteration dies — tolerable for a human, corrosive for an agent
-doing twenty iterations to tune one behavior.
-
-**Option A — Pure Rust, no scripting layer.**
-Game logic is Rust systems in the game crate. Rely on small crates, `cargo check`, and `lld` to keep
-rebuilds tolerable.
-*For:* one language, full type safety, no API duplication, maximum performance, simplest engine.
-*Against:* every gameplay tweak is a rebuild. Even 10s is painful at high iteration counts. No live
-tweaking of a running game.
-
-**Option B — Rust game logic as a hot-reloaded dynamic library.**
-Game crate compiles to a `cdylib`; the engine reloads it and preserves world state across reloads.
-*For:* keeps one language and full type safety; reload is seconds not tens of seconds.
-*Against:* genuinely fiddly — state must survive the swap, no `#[repr(Rust)]` types across the
-boundary, statics reset, debugging gets harder, and Windows DLL locking is its own adventure. Known to
-be brittle in practice.
-
-**Option C — Embedded scripting language.**
-Gameplay in a scripting language, engine in Rust. Candidates: **Luau** (typed Lua, fast, sandboxed,
-enormous training corpus via Roblox), Lua via `mlua`, or `rhai` (Rust-native, easy binding, slower and
-much less well-known to me).
-*For:* instant reload, live tweaking, sandboxing, easy to inspect. Typed Luau is genuinely pleasant
-for gameplay and its ubiquity means I write it accurately.
-*Against:* two languages. Every engine API must be bound and kept in sync — a classic engine tarpit.
-Performance ceiling for hot logic. Type safety across the boundary is weaker.
-
-**Option D — WASM as the game-logic boundary.**
-Game logic compiles to WASM (from Rust now, other languages later); engine hosts it via `wasmtime`.
-*For:* hot-swap a module cleanly, deterministic by spec, sandboxed, language-agnostic later, and the
-same logic runs on native and web.
-*Against:* boundary serialization cost, most complex to implement well, and ECS access across the
-boundary needs careful design to not be slow.
-
-**Recommendation:** run the spike in M0 and decide on measurements. My prior is **B or C, with a
-leaning toward C (Luau) for gameplay plus the ability to "graduate" hot logic into Rust systems** —
-that combination gives instant iteration where it matters and full performance where it matters, and
-the graduation path means the scripting layer never becomes a performance ceiling.
-
-**The spike must measure, for each option:** edit→observe latency, whether world state survives
-reload, ergonomics of writing a non-trivial system, and how well the agent-facing schema story works.
-
----
-
 ## Q2 · P1 · Which concrete syntax for scene files?
 
 Arguably the most user-visible decision in the project — it's the file both authors literally type
@@ -96,6 +46,30 @@ Prior: **stable paths as primary identity, plus a rename-tracking tool** (`amade
 references). Prioritizes legibility, and the refactoring pain is tooling-solvable.
 
 Needs an ADR in M1.
+
+---
+
+## Q12 · P1 · `Service: Send + Sync` excludes every non-`Sync` runtime
+
+Found by the Q1 spike (ADR 0011), which could not put a script VM in the world.
+
+`Service` requires `Send + Sync`, added speculatively so the scheduler could run systems in parallel
+later. Neither `mlua::Lua` nor `wasmtime::Store` is `Sync`, so **neither candidate could store its
+runtime in the `World` at all** — both had to hide it in an `Rc<RefCell<..>>` captured by the system
+closure, where `world.resources` and the rest of the introspection layer cannot see it.
+
+Q1 was resolved in a direction that makes this moot for scripting. It is **not** moot generally:
+`kira`'s audio manager, an asset loader holding a file watcher, and a `wgpu` surface are all likely
+to hit the same wall in M3.
+
+Options: relax `Service` to `Send` only and gate parallelism on a narrower bound; keep `Sync` and add
+a `LocalService` store for main-thread-only machinery; or wrap offenders in a `Mutex` and pay for a
+lock the single-threaded simulation does not need.
+
+Prior: **a separate `LocalService` store.** It keeps the parallel-execution promise honest for things
+that can keep it, and stays visible to introspection — which is the actual loss today.
+
+Decide when the first real offender lands, which is M3 at the latest. Do not decide speculatively.
 
 ---
 
@@ -191,3 +165,4 @@ be less coupled than they look. Decide in M2.
 | `ComponentId` derivation | Hash of the type *name*, never `TypeId` — `TypeId` is not stable across builds | `adr/0008` |
 | System ordering tie-break | Alphabetical by label, never registration order | `amadeo-app` schedule docs |
 | Spawning from a command buffer | `spawn_with(closure)` rather than a reserved-id handle; new entity not referenceable by other commands in the same batch | `amadeo-ecs` commands docs |
+| **Q1** — game logic authoring and hot reload | **Rust, compiled in. No scripting layer.** WASM reserved as the escape hatch behind a measured threshold; snapshots promoted as the real iteration-loop fix | `adr/0011` |

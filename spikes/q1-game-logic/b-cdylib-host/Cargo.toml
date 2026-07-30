@@ -1,0 +1,22 @@
+[package]
+name = "b-cdylib-host"
+description = "Q1 candidate B: the engine half, which loads and reloads the gameplay library at runtime."
+version.workspace = true
+edition.workspace = true
+publish = false
+
+# NOTE: deliberately does NOT depend on `b-cdylib-logic`.
+#
+# A dependency would mean an edit to the gameplay crate rebuilds the host too, which is exactly the
+# cost option B claims to avoid — measuring it that way would flatter option A and slander option B.
+# The price is that the boundary (symbol names, signature, ABI version) is duplicated by hand on both
+# sides with nothing checking they agree. That is a finding, recorded in ADR 0011.
+
+[dependencies]
+amadeo-app.workspace = true
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-render.workspace = true
+scenario.workspace = true
+
+libloading = "0.8"

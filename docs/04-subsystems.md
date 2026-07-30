@@ -223,15 +223,31 @@ per-line formatting makes git merges tractable. This is a formatting constraint 
 collaboration, and it's why "whatever the serializer emits" is not acceptable.
 ⚠️ **Scene composition.** Sub-scene instancing, additive loading, streaming.
 
-## 10. Game Logic Authoring & Hot Reload — `amadeo-script` · M0 spike, M1 build
+## 10. Game Logic Authoring & Hot Reload — **no crate** · resolved in M0
 
 **Job:** how gameplay code gets written and how fast a change becomes visible.
 
-🔬 **This is open question Q1 and the highest-priority unresolved item in the project.** It determines
-the iteration loop, which determines how effective I can be. Resolve by measured spike in M0. Options
-and trade-offs in `06-open-questions.md`.
+✅ **Resolved by measured spike — ADR 0011.** Game logic is **Rust systems in the game crate**. There
+is no `amadeo-script`, no scripting VM, and no dynamic reload. Four candidates were prototyped and
+measured in `spikes/q1-game-logic/`; the headline is that a one-line gameplay edit rebuilds in
+0.9–2.0 s, so the compile-time crisis this subsystem was invented to solve does not exist at this
+scale.
 
-Do not build subsystems in a way that presumes an answer.
+✅ **The escape hatch is chosen in advance.** If a gameplay rebuild sustains above 5 s, or getting
+back to the state of interest sustains above 2 s once snapshots exist, the answer is **WASM via
+wasmtime** — measured bit-identical to native Rust at 1.24× runtime cost. Re-run
+`spikes/q1-game-logic/measure.ps1` before invoking it; the trigger is a number, not a feeling.
+
+⚠️ **The real iteration-loop investment is snapshot/restore**, not reload. Re-simulating to the point
+of interest is the only cost that grows with session length (linear, ~21 µs/tick). Promoted to an M1
+priority in `05-roadmap.md`.
+
+⚠️ **Luau remains available outside the deterministic zone.** Its `f64` arithmetic does not agree
+with `f32` components, which rules it out for simulation — but menus, quest triggers, and dialogue
+are not simulation, and its 0.4 ms reload is real. A separate ADR at M3 if it is wanted.
+
+⚠️ **Keeping the crate graph small and shallow is now load-bearing.** ADR 0011 rests on the measured
+rebuild times, and those degrade if the graph grows wide or deep.
 
 ## 11. Input — `amadeo-input` · M0
 
@@ -360,7 +376,7 @@ The order matters more than the list. Dependencies run downward:
 1. math, core, ECS, determinism & time     ← the spine, M0. Nothing works without it.
 2. reflection & schema                     ← unlocks serialization, editor, and agent at once
 3. events, input, app loop                 ← M0
-4. Q1 spike: game logic & hot reload       ← M0, blocking. Resolve with measurements.
+4. Q1 spike: game logic & hot reload       ← M0. ✅ Resolved by measurement (ADR 0011): no crate.
 5. scene format + agent interface layer    ← M1. The collaboration surface goes live here.
 6. assets, 2D rendering                    ← M1
 7. 3D rendering, physics                   ← M2

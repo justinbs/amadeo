@@ -1,0 +1,12 @@
+[package]
+name = "scenario"
+description = "The shared benchmark: one non-trivial gameplay system, so every Q1 candidate is measured on identical work."
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-app.workspace = true
+amadeo-render.workspace = true
