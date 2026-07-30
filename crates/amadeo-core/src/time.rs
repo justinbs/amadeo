@@ -60,7 +60,10 @@ impl Tick {
     /// Returns `false` for `every_n == 0` rather than dividing by zero.
     #[must_use]
     pub fn is_multiple_of(self, every_n: u64) -> bool {
-        every_n != 0 && self.0 % every_n == 0
+        // The explicit zero guard is deliberate and differs from `u64::is_multiple_of`, which
+        // treats 0 as dividing 0. Here "every 0 ticks" means "never", which is the useful answer
+        // for a cadence and avoids a surprising every-frame trigger from an unset interval.
+        every_n != 0 && self.0.is_multiple_of(every_n)
     }
 }
 

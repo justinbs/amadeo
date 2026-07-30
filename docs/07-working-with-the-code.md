@@ -155,8 +155,90 @@ fn load_config(path: &Path) -> Result<Config, ConfigError> {
 You will not see `unwrap()` or `expect()` in engine crates outside tests — those crash on failure, and
 `CLAUDE.md` §6 forbids them here. If you see one in engine code, it's a bug.
 
-*(More entries land as the engine takes shape: ECS queries, the borrow checker in system parameters,
-handles vs. references, the reflection derive macro.)*
+### Type erasure with `Any` — how one table holds columns of different types
+
+An archetype needs to store a `Vec<Position>` next to a `Vec<Velocity>` in the same list. Rust has no
+"list of different types", so the columns are stored as `Box<dyn Column>` (a trait object) and
+recovered with a **downcast**:
+
+```rust
+// Stored erased...
+let column: &Box<dyn Column> = &self.columns[index];
+// ...and recovered as the concrete type.
+let typed: &TypedColumn<Position> = column.as_any().downcast_ref::<TypedColumn<Position>>()?;
+let values: &[Position] = typed.values();   // a plain contiguous slice
+```
+
+`downcast_ref` returns `Option` because the cast is checked at runtime — it fails if the type is wrong
+rather than misinterpreting memory. That check is why this approach needs no `unsafe`.
+
+The `as_any()` step exists because a trait object cannot be downcast directly; it has to be turned
+into `&dyn Any` first. It looks like boilerplate and is genuinely required.
+
+**Why this is fast anyway:** the downcast happens once per archetype per query, not once per entity.
+A query over 10,000 entities in 5 archetypes does 5 downcasts, then iterates plain slices. See
+ADR 0008.
+
+### `get_disjoint_mut` — two mutable borrows from one slice
+
+A system like "move each position by its velocity" needs `&mut` to one column and `&` to another, at
+the same time, from the same `Vec`. The borrow checker cannot prove two dynamic indices differ, so it
+refuses the obvious code.
+
+`slice::get_disjoint_mut` does that check at runtime:
+
+```rust
+// Returns Err if the indices overlap, so aliasing is impossible.
+let [slot_a, slot_b] = self.columns.get_disjoint_mut([index_a, index_b]).ok()?;
+```
+
+This is the single trick that makes multi-component mutable queries work without `unsafe`. If you see
+it, that is what it is for.
+
+### Generational indices — catching use-after-free without a crash
+
+`Entity` is an index plus a generation counter. Despawning bumps the generation, so an old handle no
+longer matches:
+
+```rust
+let entity = world.spawn();   // index 0, generation 0
+world.despawn(entity);        // slot 0 is now generation 1
+let reused = world.spawn();   // index 0, generation 1 -- same slot, new identity
+
+world.get::<Position>(entity)  // None: generation 0 != 1
+```
+
+Without the generation, the stale handle would silently address whoever occupies the slot next —
+producing wrong behaviour rather than an error. This pattern shows up throughout the engine for any
+handle into a reusable slot.
+
+### `BTreeMap` instead of `HashMap` — determinism, not preference
+
+Anywhere iteration order can influence simulation results, the engine uses `BTreeMap`/`BTreeSet`.
+`HashMap` iteration order varies between runs and builds, which would make state hashes disagree and
+silently void every golden replay test (invariant I3).
+
+`HashMap` is fine outside the deterministic zone — asset caches, editor state, tooling. Inside it, it
+is a bug.
+
+### Closures for mutable iteration, iterators for reads
+
+```rust
+// Read: a normal iterator.
+for (entity, position) in world.iter::<Position>() { }
+
+// Write: a closure.
+world.for_each_pair_mut::<Position, Velocity>(|entity, position, velocity| {
+    position.x += velocity.x;
+});
+```
+
+Returning an *iterator* that yields `&mut` from multiple columns requires higher-ranked lifetime
+bounds and a hand-written iterator type — a lot of hard-to-read Rust for a modest ergonomic gain. The
+closure form does the same job in a way you can read. This is a deliberate call under `CLAUDE.md` §6.
+
+*(More entries land as the engine takes shape: the reflection derive macro, system scheduling, and
+asset handles.)*
 
 ---
 

@@ -13,6 +13,7 @@ rust-version = "1.97"
 # Internal crates, in dependency order (see CLAUDE.md section 4). Entries are added here as each
 # crate is created, so this list doubles as a record of what exists.
 amadeo-core = { path = "crates/amadeo-core", version = "0.1.0" }
+amadeo-ecs = { path = "crates/amadeo-ecs", version = "0.1.0" }
 
 # External.
 thiserror = "2"

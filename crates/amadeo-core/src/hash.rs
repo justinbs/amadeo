@@ -288,11 +288,18 @@ mod tests {
     #[test]
     fn nan_hashes_consistently() {
         // Different NaN bit patterns must agree, or a state containing NaN would hash
-        // unpredictably from run to run.
-        let quiet_nan = f32::NAN;
-        let computed_nan = 0.0f32 / 0.0f32;
-        assert!(quiet_nan.is_nan() && computed_nan.is_nan());
-        assert_eq!(stable_hash_of(&quiet_nan), stable_hash_of(&computed_nan));
+        // unpredictably from run to run. Negating a NaN flips its sign bit, producing a genuinely
+        // different bit pattern that is still NaN -- exactly the case the canonicalisation exists
+        // to collapse.
+        let positive_nan = f32::NAN;
+        let negative_nan = -f32::NAN;
+        assert!(positive_nan.is_nan() && negative_nan.is_nan());
+        assert_ne!(
+            positive_nan.to_bits(),
+            negative_nan.to_bits(),
+            "test is pointless if the bit patterns already match"
+        );
+        assert_eq!(stable_hash_of(&positive_nan), stable_hash_of(&negative_nan));
     }
 
     #[test]

@@ -77,22 +77,32 @@ Done so far in M0:
 - ✅ ECS storage strategy decided: safe archetype columns, no unsafe (ADR 0008)
 - ✅ `amadeo-core`: `Tick`, `FIXED_DT`, hand-written PCG32 `Rng` with stream forking, hand-written
   FNV-1a `StableHasher` (cross-checked against an independent implementation), `StableId` / `NetId` /
-  `Authority` (the ADR 0006 hooks). 27 tests written — **26 verified passing before SAC began
-  blocking; the suite has not been run since.**
+  `Authority` (the ADR 0006 hooks).
+- ✅ `amadeo-ecs`: generational `Entity` handles, `ComponentId` derived from type *name* (not
+  `TypeId`, which is not build-stable), type-erased-but-safe archetype columns, archetype migration
+  on component add/remove, `iter` / `for_each_mut` / `for_each_pair_mut` queries, per-row change
+  ticks, and `World::state_hash`.
+- ✅ CI: fmt, clippy `-D warnings`, tests on Windows + Linux, a **determinism job** that runs the
+  suite three times in separate processes plus a release build, and a rustdoc job.
+
+**Verified green: 74 tests passing, clippy clean under `-D warnings`, fmt clean.**
 
 Remaining in M0:
-1. `amadeo-ecs` — archetype storage per ADR 0008, queries, deferred commands, change ticks.
-2. `amadeo-events` — typed double-buffered queues with total ordering.
-3. `amadeo-app` — schedules with explicit ordering, the fixed-timestep loop.
-4. `amadeo-input` — action mapping, deterministic sampling, record/replay of action streams.
-5. Determinism harness: world state hashing, golden replay test runner.
-6. CI (build + test + clippy + fmt + dependency-direction lint).
-7. `amadeo-render` — window via winit, wgpu device, clear colour, and a null backend.
-8. **Q1 spike** (game logic hot-reload) — resolve with measurements. Blocks M1.
+1. `amadeo-events` — typed double-buffered queues with total ordering.
+2. `amadeo-app` — schedules with explicit ordering, the fixed-timestep loop.
+3. `amadeo-input` — action mapping, deterministic sampling, record/replay of action streams.
+4. Golden replay harness — record an action stream, replay it, assert per-checkpoint state hashes.
+5. Deferred command buffers with deterministic merge order (ADR 0005). Not yet built; `World`
+   mutations are currently immediate, which is fine while there is no scheduler.
+6. `amadeo-render` — window via winit, wgpu device, clear colour, and a null backend.
+7. **Q1 spike** (game logic hot-reload) — resolve with measurements. Blocks M1.
 
-Note: CI on GitHub Actions runs on Linux/Windows runners without SAC, so the test suite will be
-verified there regardless of the local situation. That is a mitigation, not a substitute — a
-15-minute round trip through CI is a poor inner loop.
+Known gaps deliberately left for later:
+- No bundle/spawn-with-components API, so building an entity with N components costs N archetype
+  migrations. Correct but wasteful; optimise when it shows up in a profile.
+- No `Resource` concept yet (global state like the RNG seed). Needed by `amadeo-app`.
+- Query shapes are limited to one and two components. Extend when a real system needs more, not
+  speculatively.
 
 ## Open risks
 

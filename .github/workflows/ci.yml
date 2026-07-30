@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # Warnings are failures. Determinism guards are worth nothing if they can be ignored.
+  RUSTFLAGS: -D warnings
+
+jobs:
+  check:
+    name: fmt + clippy
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Formatting
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows is the primary target (ADR 0002). Linux is included as a cheap cross-check that
+        # nothing has quietly grown a platform assumption -- worth catching now rather than at M5
+        # when web and other targets arrive.
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Tests
+        run: cargo test --workspace --all-features
+
+  determinism:
+    name: determinism (repeat runs must agree)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Invariant I3 says the same inputs produce the same state. A single test run cannot show
+      # that -- it would pass even if results varied between runs. Running the suite repeatedly in
+      # separate processes catches nondeterminism that comes from address-space layout, hash seeds,
+      # or iteration order, which is exactly the class of bug that silently voids golden replays.
+      - name: Run the suite three times in separate processes
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            echo "--- attempt $attempt ---"
+            cargo test --workspace --all-features -- --test-threads=1
+          done
+
+      # Debug and release builds must agree too. A mismatch usually means a float optimisation or an
+      # overflow check is changing behaviour, both of which break replay portability.
+      - name: Release build must agree with debug
+        run: cargo test --workspace --all-features --release
+
+  docs:
+    name: docs build without warnings
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Doc comments are the agent's primary API surface (docs/03-ai-native-design.md Pillar 2), so
+      # a broken intra-doc link is a real defect rather than cosmetic.
+      - name: rustdoc
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --all-features
