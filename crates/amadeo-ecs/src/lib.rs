@@ -58,6 +58,7 @@
 //! - [`World::state_hash`] sorts by entity before hashing, so storage churn cannot change the result.
 
 mod archetype;
+mod commands;
 mod component;
 mod entity;
 mod resource;
@@ -65,6 +66,7 @@ mod service;
 mod type_hash;
 mod world;
 
+pub use commands::{Command, Commands};
 pub use component::{Component, ComponentId};
 pub use entity::Entity;
 pub use resource::{Resource, ResourceId};

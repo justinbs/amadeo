@@ -10,7 +10,7 @@
 
 use amadeo_app::{App, SimRng, Stage, system};
 use amadeo_core::{FIXED_DT, FIXED_DT_NANOS, StableHash, StableHasher};
-use amadeo_ecs::{Component, Service, World};
+use amadeo_ecs::{Commands, Component, Service, World};
 use amadeo_events::{Event, WorldEvents};
 
 // --- Test world definitions ---
@@ -400,4 +400,123 @@ fn tick_count_advances_exactly_once_per_step() {
     assert_eq!(app.tick().0, 1);
     app.run_ticks(10).expect("resolves");
     assert_eq!(app.tick().0, 11);
+}
+
+// --- Deferred commands inside the loop ---
+//
+// Spawning and despawning churns entity slots, archetype rows, and the free list. All three feed
+// into the state hash, so if command ordering or slot reuse were nondeterministic these tests would
+// catch it. Doing this in the running loop rather than in isolation is the point: the flush happens
+// once per stage, and a per-stage flush is exactly where an ordering mistake would hide.
+
+/// Counts down, and despawns itself at zero.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Lifetime(i32);
+
+impl StableHash for Lifetime {
+    fn stable_hash(&self, hasher: &mut StableHasher) {
+        hasher.write_i32(self.0);
+    }
+}
+impl Component for Lifetime {}
+
+/// Ages every entity and queues a despawn for the expired ones.
+fn expire(world: &mut World) {
+    world.with_service_taken::<Commands, ()>(|world, commands| {
+        world.for_each_mut::<Lifetime>(|entity, lifetime| {
+            lifetime.0 -= 1;
+            if lifetime.0 <= 0 {
+                commands.despawn(entity);
+            }
+        });
+    });
+}
+
+/// Spawns entities periodically, with a lifetime and position derived from the tick.
+///
+/// Two per spawn tick, and only one of them gets a `Position`, so entities land in two different
+/// archetypes — that is what makes the churn exercise archetype migration rather than one flat table.
+fn spawn_periodically(world: &mut World) {
+    let tick = world.tick();
+    if !tick.is_multiple_of(7) {
+        return;
+    }
+    let lifetime = 5 + (tick.0 % 11) as i32;
+    let x = tick.0 as f32;
+
+    world.with_service_taken::<Commands, ()>(|_world, commands| {
+        commands.spawn_with(move |world, entity| {
+            world.insert(entity, Lifetime(lifetime));
+        });
+        commands.spawn_with(move |world, entity| {
+            world.insert(entity, Lifetime(lifetime + 2));
+            world.insert(entity, Position { x, y: 0.0 });
+        });
+    });
+}
+
+fn build_churn_app(seed: u64) -> App {
+    let mut app = App::with_seed(seed);
+    app.add_system(Stage::Simulation, system("expire", expire));
+    app.add_system(
+        Stage::Simulation,
+        system("spawn_periodically", spawn_periodically).after("expire"),
+    );
+    for i in 0..4i32 {
+        let entity = app.world.spawn();
+        app.world.insert(entity, Lifetime(3 + i * 2));
+    }
+    app
+}
+
+#[test]
+fn spawn_and_despawn_churn_stays_deterministic() {
+    let mut first = build_churn_app(5);
+    let mut second = build_churn_app(5);
+
+    first.run_ticks(300).expect("schedule resolves");
+    second.run_ticks(300).expect("schedule resolves");
+
+    assert_eq!(
+        first.state_hash(),
+        second.state_hash(),
+        "entity slot reuse or command ordering is not deterministic"
+    );
+}
+
+#[test]
+fn churn_agrees_at_every_checkpoint() {
+    let mut first = build_churn_app(9);
+    let mut second = build_churn_app(9);
+
+    for _ in 0..30 {
+        first.run_ticks(10).expect("resolves");
+        second.run_ticks(10).expect("resolves");
+        assert_eq!(
+            first.state_hash(),
+            second.state_hash(),
+            "diverged by tick {}",
+            first.tick().0
+        );
+    }
+}
+
+#[test]
+fn the_churn_fixture_actually_churns() {
+    // Guards against the two tests above passing because nothing is ever spawned or removed.
+    let mut app = build_churn_app(5);
+    let start = app.world.entity_count();
+
+    app.run_ticks(100).expect("resolves");
+    let after = app.world.entity_count();
+
+    assert!(
+        app.world.archetype_count() >= 2,
+        "expected archetype churn, saw {} archetypes",
+        app.world.archetype_count()
+    );
+    assert!(
+        after != start || after > 0,
+        "expected the entity population to move: {start} -> {after}"
+    );
 }

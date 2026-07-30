@@ -2,7 +2,7 @@
 
 use crate::schedule::{Schedule, ScheduleError, Stage, SystemConfig};
 use amadeo_core::{FIXED_DT_NANOS, Rng, StableHash, StableHasher, Tick};
-use amadeo_ecs::{Resource, Service, World};
+use amadeo_ecs::{Commands, Resource, Service, World};
 use amadeo_events::{Event, WorldEvents};
 use std::collections::BTreeMap;
 
@@ -93,6 +93,9 @@ impl App {
     pub fn with_seed(seed: u64) -> Self {
         let mut world = World::new();
         world.insert_resource(SimRng(Rng::new(seed)));
+        // Installed by default: a system that wants to spawn or despawn from inside a query needs
+        // this, and having to remember to add it would be a confusing first failure.
+        world.insert_service(Commands::new());
         Self {
             world,
             schedules: BTreeMap::new(),
@@ -169,7 +172,9 @@ impl App {
     ///
     /// The order here is the deterministic zone from ADR 0005:
     ///
-    /// 1. `PreSimulation`, `Simulation`, `PostSimulation`, in that order
+    /// 1. `PreSimulation`, `Simulation`, `PostSimulation`, in that order, with **queued commands
+    ///    flushed after each stage** — so a spawn queued during `PreSimulation` exists by the time
+    ///    `Simulation` runs, rather than a stage later
     /// 2. event buffers swap, so this tick's events become readable next tick
     /// 3. the tick counter advances
     ///
@@ -179,6 +184,9 @@ impl App {
             if let Some(schedule) = self.schedules.get_mut(&stage) {
                 schedule.run(&mut self.world)?;
             }
+            // Flushing per stage rather than once per tick keeps stage boundaries meaningful: a
+            // system in a later stage sees the structural changes an earlier stage requested.
+            self.world.flush_commands();
         }
 
         for (_, swap) in &self.event_swaps {

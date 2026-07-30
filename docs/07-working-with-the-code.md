@@ -293,8 +293,40 @@ plugin setup (invariant I3).
 The consequence to know: adding an unconstrained system can shift the relative order of other
 unconstrained systems. If order matters, say so with `before`/`after`.
 
-*(More entries land as the engine takes shape: the reflection derive macro, deferred commands, and
-asset handles.)*
+### Deferred commands — changing structure from inside a query
+
+You cannot spawn or despawn while a query is running. The borrow checker rejects it, and it is right
+to: removing an entity mid-iteration would reorder the rows being walked.
+
+Queue the change instead:
+
+```rust
+world.with_service_taken::<Commands, ()>(|world, commands| {
+    world.for_each_mut::<Health>(|entity, health| {
+        if health.0 <= 0.0 {
+            commands.despawn(entity);       // queued, not applied
+        }
+    });
+});
+// The app flushes after every stage; nothing to call by hand in a normal system.
+```
+
+Spawning takes a closure, because the new entity does not exist until the flush:
+
+```rust
+commands.spawn_with(|world, entity| {
+    world.insert(entity, Position { x: 0.0, y: 0.0 });
+});
+```
+
+**The limitation to know:** a spawned entity's handle is not available to other commands in the same
+batch, so you cannot make two newly spawned entities reference each other until the next flush. Rare
+in practice; if it stops being rare, the design gets revisited.
+
+Commands apply in the order they were queued, which with a single-threaded schedule is fully
+determined by system order — so no extra sorting is needed for determinism.
+
+*(More entries land as the engine takes shape: the reflection derive macro and asset handles.)*
 
 ---
 

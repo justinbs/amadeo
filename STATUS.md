@@ -111,18 +111,22 @@ Done so far in M0:
   later build and asserted against checkpoint state hashes. Regenerate deliberately with
   `UPDATE_GOLDEN=1 cargo test -p amadeo-app --test golden_replay`.
 
-**Verified green: 180 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+- ✅ **Deferred commands** — `Commands` service with `despawn`, `insert`, `remove`, `spawn_with`, and
+  a `queue` escape hatch. Systems can now change structure from inside a query. The app flushes after
+  every stage, so a change requested in `PreSimulation` is visible in `Simulation`. Commands queued
+  *during* a flush wait for the next one, deliberately — an unbounded loop inside one flush would
+  hang, which is far worse to diagnose than a one-stage delay.
+
+**Verified green: 200 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 Remaining in M0:
-1. Deferred command buffers with deterministic merge order (ADR 0005). Not yet built; `World`
-   mutations are immediate, which is correct but means systems cannot spawn or despawn from inside a
-   query closure, and cannot send events from one either. Needed before real gameplay systems.
-2. `amadeo-render` — window via winit, wgpu device, clear colour, and a null backend. The last piece
-   of the M0 exit gate: a coloured quad moving under live keyboard input.
-3. A `separate process` replay check. The golden test currently replays in-process against a
+1. `amadeo-render` — window via winit, wgpu device, clear colour, and a null backend. The last piece
+   of the M0 exit gate: a coloured quad moving under live keyboard input. **Note this adds ~200
+   transitive crates and will slow builds noticeably** (ADR 0002's known weakness).
+2. A `separate process` replay check. The golden test currently replays in-process against a
    committed fixture, which covers "separate build" but not "separate process". Closing that needs
    `amadeo-cli`, which is M1 work — noted so the gap is not forgotten.
-4. **Q1 spike** (game logic hot-reload) — resolve with measurements. Blocks M1.
+3. **Q1 spike** (game logic hot-reload) — resolve with measurements. Blocks M1.
 
 Known gaps deliberately left for later:
 - No bundle/spawn-with-components API, so building an entity with N components costs N archetype
