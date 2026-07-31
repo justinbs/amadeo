@@ -456,6 +456,23 @@ by the `Component` trait, so forgetting one is a compile error rather than a hol
 Doc comments are not decoration here — they are what an agent reads to understand a field without
 the source. Full reasoning in ADR 0012.
 
+**On a reflected type, `///` and `//` now mean different things.** A `///` comment is printed
+verbatim by `amadeo describe`, so it is read by someone — or something — that has never seen the file
+and wants to know what the type is *for*. Implementation history is noise there:
+
+```rust
+/// Where an entity is in 2D space.
+///
+/// Position is in world units, rotation in radians counter-clockwise.
+// Moved here from `amadeo-render` by ADR 0015 — true, useful to a maintainer, and pure noise in a
+// schema dump. So it is `//`, not `///`.
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+pub struct Transform2d { /* ... */ }
+```
+
+Rule of thumb: **`///` answers "how do I use this", `//` answers "why is it like this".** Both are
+worth writing; only the first is worth shipping in the schema.
+
 **A gotcha worth knowing:** the trait and its derive share a name, so `use amadeo_core::StableHash;`
 imports both. That looks like it should be a conflict and is not — Rust keeps macros and types in
 separate namespaces, and `Debug` works the same way.

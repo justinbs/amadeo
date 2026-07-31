@@ -80,7 +80,8 @@ crates/
 🟡 amadeo-scene       the .scene text format (ADR 0014): parser, canonical writer, instantiate into
                      a World. Prefab instancing and hierarchy-as-components still pending.
 ✖ amadeo-script      NOT BUILT. ADR 0011: game logic is plain Rust in the game crate.
-— amadeo-agent       Agent Interface Layer: RPC, introspection, snapshots, replay, capture
+🟡 amadeo-agent       describe (schema as JSON), entity/query introspection, a deterministic JSON
+                     writer. Read-only. RPC transport, snapshots, and capture pending — see Q14.
 ✅ amadeo-app         Stage/Schedule, fixed-timestep loop, SimRng
 — amadeo-editor      graphical editor. A CLIENT of amadeo-agent. No privileged access.
 — amadeo-cli         the `amadeo` binary: new/run/check/fmt/test/replay/inspect/build/export

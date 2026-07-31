@@ -3,7 +3,7 @@
 use crate::component::Component;
 use crate::entity::Entity;
 use crate::world::World;
-use amadeo_reflect::{ReflectError, TypeInfo, TypeRegistry, Value};
+use amadeo_reflect::{Reflect, ReflectError, TypeInfo, TypeRegistry, Value};
 use std::collections::BTreeMap;
 
 /// Inserts a component of one concrete type, reached through a plain function pointer.
@@ -16,6 +16,13 @@ use std::collections::BTreeMap;
 /// gives type-erased construction with no `dyn`, no downcast, and no allocation.
 type Inserter = fn(&mut World, Entity, &Value) -> Result<(), ReflectError>;
 
+/// Reads a component of one concrete type back out as a [`Value`], if the entity has one.
+///
+/// The counterpart to [`Inserter`], and what makes introspection possible: without it there is no
+/// way to ask "what components does this entity have" without knowing the types statically, which
+/// is exactly what an agent cannot do (`docs/03-ai-native-design.md` Pillar 3).
+type Reader = fn(&World, Entity) -> Option<Value>;
+
 /// The monomorphised body behind each [`Inserter`].
 ///
 /// Non-capturing, so `insert_component::<Health>` is a `fn` value that can live in a map.
@@ -27,6 +34,11 @@ fn insert_component<T: Component>(
     let component = T::from_value(value)?;
     world.insert(entity, component);
     Ok(())
+}
+
+/// The monomorphised body behind each [`Reader`].
+fn read_component<T: Component>(world: &World, entity: Entity) -> Option<Value> {
+    world.get::<T>(entity).map(Reflect::to_value)
 }
 
 /// What can go wrong building a component by name.
@@ -79,6 +91,8 @@ pub struct ComponentRegistry {
     types: TypeRegistry,
     /// Constructors, keyed by the same canonical names. `BTreeMap` so listings are reproducible.
     inserters: BTreeMap<String, Inserter>,
+    /// Readers, keyed identically. Registered in the same call, so the two cannot disagree.
+    readers: BTreeMap<String, Reader>,
 }
 
 impl ComponentRegistry {
@@ -99,6 +113,7 @@ impl ComponentRegistry {
     pub fn register<T: Component>(&mut self) -> Result<(), amadeo_reflect::RegistryError> {
         self.types.register::<T>()?;
         self.inserters.insert(T::type_name(), insert_component::<T>);
+        self.readers.insert(T::type_name(), read_component::<T>);
         Ok(())
     }
 
@@ -170,6 +185,36 @@ impl ComponentRegistry {
             name: name.to_string(),
             source,
         })
+    }
+
+    /// Reads one component off an entity as a [`Value`], by name.
+    ///
+    /// Returns `None` if the entity does not have that component — including when the name is not
+    /// registered at all. That conflation is deliberate for a *read*: the caller is asking "is this
+    /// here", and both answers are "no". Use [`ComponentRegistry::contains`] to tell them apart.
+    #[must_use]
+    pub fn get(&self, world: &World, entity: Entity, name: &str) -> Option<Value> {
+        self.readers.get(name).and_then(|read| read(world, entity))
+    }
+
+    /// Every registered component this entity has, as values, sorted by name.
+    ///
+    /// This is what makes an entity inspectable without knowing its types statically — the question
+    /// an agent actually asks (`docs/03-ai-native-design.md` Pillar 3). Costs one lookup per
+    /// *registered* component type, which is fine for introspection and would not be for a hot loop.
+    ///
+    /// A component that was never registered is invisible here. Under invariant I8 that cannot
+    /// happen by accident — `Component: Reflect` makes registration possible for every component,
+    /// and the registry is the only way a scene can build one.
+    #[must_use]
+    pub fn components_of(&self, world: &World, entity: Entity) -> BTreeMap<String, Value> {
+        let mut found = BTreeMap::new();
+        for (name, read) in &self.readers {
+            if let Some(value) = read(world, entity) {
+                found.insert(name.clone(), value);
+            }
+        }
+        found
     }
 }
 
@@ -310,6 +355,65 @@ mod tests {
         let mut registry = registry();
         registry.register::<Health>().expect("second is a no-op");
         assert_eq!(registry.len(), 2);
+    }
+
+    #[test]
+    fn an_entity_can_be_inspected_without_knowing_its_types() {
+        // The question an agent asks and static Rust cannot answer: "what is on this entity?"
+        let registry = registry();
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.insert(entity, Health { current: 42.0 });
+        world.insert(entity, Player);
+
+        let found = registry.components_of(&world, entity);
+        assert_eq!(
+            found.keys().collect::<Vec<_>>(),
+            vec!["Health", "Player"],
+            "sorted, so a dump of this is diffable"
+        );
+        assert_eq!(
+            found["Health"],
+            Value::structure([("current", Value::F32(42.0))])
+        );
+    }
+
+    #[test]
+    fn reading_reports_absence_the_same_way_for_missing_and_unregistered() {
+        let registry = registry();
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.insert(entity, Player);
+
+        assert!(registry.get(&world, entity, "Player").is_some());
+        assert_eq!(registry.get(&world, entity, "Health"), None, "not present");
+        assert_eq!(registry.get(&world, entity, "Nonsense"), None, "not a type");
+        // `contains` is what tells the two apart when that matters.
+        assert!(registry.contains("Health"));
+        assert!(!registry.contains("Nonsense"));
+    }
+
+    #[test]
+    fn a_component_survives_a_write_then_read_through_the_registry() {
+        // Both halves are type-erased, so this is the round trip an RPC `set_component` followed by
+        // a `world.entity` would make.
+        let registry = registry();
+        let mut world = World::new();
+        let entity = world.spawn();
+
+        let written = Value::structure([("current", Value::F32(12.5))]);
+        registry
+            .insert(&mut world, entity, "Health", &written)
+            .expect("writes");
+        assert_eq!(registry.get(&world, entity, "Health"), Some(written));
+    }
+
+    #[test]
+    fn an_empty_entity_reports_nothing_rather_than_failing() {
+        let registry = registry();
+        let mut world = World::new();
+        let entity = world.spawn();
+        assert!(registry.components_of(&world, entity).is_empty());
     }
 
     #[test]

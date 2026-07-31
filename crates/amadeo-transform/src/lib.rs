@@ -43,8 +43,13 @@ use amadeo_reflect::Reflect;
 
 /// Where an entity is in 2D space.
 ///
-/// Moved here from `amadeo-render` by ADR 0015: the renderer was its first consumer, not its owner.
-/// Physics, animation, and the scene format all need it too, and all sit above this crate.
+/// Position is in world units, rotation in radians counter-clockwise, and scale multiplies each
+/// axis independently.
+// Not a doc comment: `///` on a reflected type is the description `amadeo describe` prints, so it is
+// read by an agent that has never seen this file and wants to know what the type is *for*.
+// Implementation history is noise there. Moved here from `amadeo-render` by ADR 0015 — the renderer
+// was its first consumer, not its owner, and physics, animation, and the scene format all need it
+// too.
 #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct Transform2d {
     /// Position in world units.
@@ -83,25 +88,22 @@ impl Component for Transform2d {}
 
 /// The entity this one is a child of.
 ///
-/// # Hierarchy is data
+/// A scene file expresses nesting by indentation; loading one turns that nesting into `Parent`
+/// links. There is no `Children` component — iterate `Parent` to find an entity's children.
 ///
-/// ADR 0004 chose a scene *tree* for authoring and an ECS for runtime, with the tree persisting as
-/// components rather than as a separate structure. This is that component. A scene file expresses
-/// nesting by indentation; loading one turns that nesting into `Parent` links.
-///
-/// # There is deliberately no `Children`
-///
-/// It would be a denormalised cache of what this already says, and two representations of one fact
-/// drift apart — a despawn that updates one and not the other leaves a dangling reference. Iterating
-/// children means scanning `Parent`, which is fine at current scale. A `Children` component arrives
-/// when a system needs it to not be, and it will need a story for keeping the two in step.
-///
-/// # A dangling `Parent` is possible
-///
-/// Despawning a parent does not despawn or fix up its children — nothing watches for that yet. The
-/// handle simply goes stale, and `world.get::<Transform2d>(parent.0)` returns `None` rather than
-/// misbehaving, because generational indices make that detectable (see [`Entity`]). Cascade-despawn
-/// belongs with the propagation system.
+/// **A `Parent` can go stale.** Despawning a parent does not despawn or fix up its children, so the
+/// handle simply stops resolving: looking a component up through it returns `None` rather than
+/// misbehaving.
+// Design notes, kept out of the reflected description because an agent reading `amadeo describe`
+// wants to know how to use the type, not why it is shaped this way:
+//
+// ADR 0004 chose a scene tree for authoring and an ECS for runtime, with the tree persisting as
+// components rather than as a separate structure. This is that component.
+//
+// `Children` is absent because it would be a denormalised cache of what this already says, and two
+// representations of one fact drift apart — a despawn updating one and not the other leaves a
+// dangling reference. It arrives when a system needs fast child iteration, with a story for keeping
+// the two in step. Cascade-despawn belongs with the propagation system (ADR 0015).
 #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct Parent(pub Entity);
 

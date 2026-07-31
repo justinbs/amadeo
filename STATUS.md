@@ -27,11 +27,16 @@ sense; the "separate process" half is carried into M1 because it needs `amadeo-c
 
 ## The single most important thing to do next
 
-**`amadeo-agent` v1 and `amadeo-cli`** — the point where the reflection registry becomes
-`amadeo describe` and Pillar 2 stops being latent. Nothing is blocked; this is simply the largest
-remaining piece of M1's exit gate, since gates 1, 2, and 4 all describe working *through* the CLI and
-RPC rather than through Rust. `amadeo-cli` also closes M0's carried-over separate-process replay
-check.
+**Resolve Q14 — where `amadeo describe` actually runs.** It is P0 because it decides the shape of
+`amadeo-cli`, which is most of what remains in M1's exit gate, and it should be settled *before* the
+CLI is written rather than during.
+
+The problem is a consequence of ADR 0011 that the roadmap did not anticipate: game logic is compiled
+into the game binary, so **a standalone `amadeo` CLI cannot know a game's components**. `fmt` and
+`new` work standalone; `check`, `describe`, `inspect`, `run`, and `replay` all need the game's
+registry. Three ways out are laid out in `docs/06-open-questions.md`; the prior is that the CLI
+launches the game and talks to it over RPC, since I5 demands CLI/RPC parity and M4's editor needs
+that transport regardless.
 
 Then, in order:
 
@@ -43,8 +48,9 @@ Then, in order:
 3. **2D rendering** — sprite batcher, textures, layers. Wants Q3 settled first, which is also what
    `GlobalTransform` propagation is waiting on.
 
-**Three things are undecided rather than unbuilt**, all in `docs/06-open-questions.md`:
+**Four things are undecided rather than unbuilt**, all in `docs/06-open-questions.md`:
 
+- **Q14 — where `describe` runs.** P0, above; blocks the shape of `amadeo-cli`.
 - **Q3 — how 2D and 3D coexist.** Blocks both the sprite renderer and transform propagation.
 - **Q7 — prefab override semantics.** The format records overrides visibly (the I1 requirement), but
   what they *mean* when a prefab changes under an instance is undesigned. Study Unity's and Godot's
@@ -244,7 +250,14 @@ Verified on this machine (2026-07-30):
   since render, physics, and animation all sit *below* `amadeo-scene` and all need transforms.
   Scenes now materialise their nesting as real `Parent` components instead of just recording it.
 
-**Verified green: 363 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+- ✅ **`amadeo-agent`, read half** — `describe` renders the registry as JSON (Pillar 2: "what can I
+  do?"), `entity` and `query` render the live world (Pillar 3: "what did I just do?"), on a
+  hand-written JSON writer whose objects are sorted so a dump is diffable. `ComponentRegistry` gained
+  a type-erased *reader* to match its inserter, and `World::entities()` lists live entities in a
+  stable order so introspection does not show churn that did not happen. All read-only, so looking at
+  a world cannot perturb it.
+
+**Verified green: 392 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 **The golden replay did not need regenerating**, which was not guaranteed. The derive sorts fields by
 name, so any component whose fields were not already alphabetical changes fingerprint. The committed
@@ -354,4 +367,8 @@ Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
   engine's real components. That surfaced a contradiction between two docs about where hierarchy
   components live, resolved by **ADR 0015** with a new `amadeo-transform` crate — and a second trap
   found on the way, filed as Q13: a component's id is the hash of its *fully-qualified path*, so
-  moving a type between crates silently invalidates every state hash containing it. 363 tests.
+  moving a type between crates silently invalidates every state hash containing it. Finished with
+  the read half of `amadeo-agent` — `describe`, `entity`, `query`, and a deterministic JSON writer —
+  which made Pillar 2 real and surfaced **Q14**: under ADR 0011 a standalone CLI cannot know a
+  game's components, so the roadmap's `amadeo-cli` shape needs rethinking before it is written.
+  392 tests.

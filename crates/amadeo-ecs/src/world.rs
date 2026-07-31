@@ -230,6 +230,29 @@ impl World {
         self.entities.contains(entity)
     }
 
+    /// Every live entity, sorted by index then generation.
+    ///
+    /// # Why sorted, and why that costs an allocation
+    ///
+    /// Entities are stored archetype by archetype, and `swap_remove` shuffles rows, so storage order
+    /// is deterministic but arbitrary and changes as entities come and go. Anything *derived* from
+    /// this list — an introspection dump, a listing an agent diffs between two ticks — would inherit
+    /// that churn and show spurious changes.
+    ///
+    /// Sorting is the same choice [`World::state_hash`] makes, for the same reason. It allocates, so
+    /// this is an introspection and tooling API, not something to call from a system: a query wants
+    /// [`World::iter`] and friends, which walk contiguous slices and allocate nothing.
+    #[must_use]
+    pub fn entities(&self) -> Vec<Entity> {
+        let mut found: Vec<Entity> = self
+            .archetypes
+            .iter()
+            .flat_map(|archetype| archetype.entities().iter().copied())
+            .collect();
+        found.sort_unstable_by_key(|entity| (entity.index(), entity.generation()));
+        found
+    }
+
     /// Creates an entity with no components.
     ///
     /// Components are added with [`World::insert`]. Each insert moves the entity to a new archetype,
@@ -928,6 +951,45 @@ mod tests {
             .map(|(_, first, second)| first.x + second.y)
             .collect();
         assert_eq!(found, vec![15.0]);
+    }
+
+    #[test]
+    fn entities_are_listed_in_a_stable_order_despite_storage_churn() {
+        // The property an introspection dump depends on: two worlds holding the same entities list
+        // them the same way, however they got there. `swap_remove` shuffles storage order, so
+        // without sorting this would show spurious changes between ticks.
+        let mut world = World::new();
+        let mut handles = Vec::new();
+        for index in 0..5u32 {
+            let entity = world.spawn();
+            world.insert(entity, Tag(index));
+            handles.push(entity);
+        }
+
+        // Despawn from the middle, which pulls the last row into the hole.
+        world.despawn(handles[1]);
+        world.despawn(handles[3]);
+
+        let listed = world.entities();
+        assert_eq!(listed.len(), 3);
+        assert_eq!(
+            listed,
+            vec![handles[0], handles[2], handles[4]],
+            "listing must be by index, not by where storage happens to have put things"
+        );
+    }
+
+    #[test]
+    fn listing_entities_spans_archetypes() {
+        let mut world = World::new();
+        let bare = world.spawn();
+        let tagged = world.spawn();
+        world.insert(tagged, Tag(1));
+        let positioned = world.spawn();
+        world.insert(positioned, Position { x: 0.0, y: 0.0 });
+
+        assert_eq!(world.entities(), vec![bare, tagged, positioned]);
+        assert_eq!(World::new().entities(), Vec::new());
     }
 
     #[test]

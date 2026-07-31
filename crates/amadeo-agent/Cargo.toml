@@ -1,0 +1,20 @@
+[package]
+name = "amadeo-agent"
+description = "The agent interface layer: schema description and world introspection, rendered as JSON."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-reflect.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+# Tests describe and inspect the engine's real components rather than invented ones.
+amadeo-transform.workspace = true

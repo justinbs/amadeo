@@ -81,9 +81,11 @@ of a milestone.
 - ✅ **`amadeo-transform`** (ADR 0015) — `Transform2d` moved out of `amadeo-render`, plus `Parent`.
   Settles where hierarchy lives; scenes now load their tree as real components. `GlobalTransform`
   and propagation wait on Q3, alongside the 2D renderer.
-- `amadeo-agent` v1 — JSON-RPC server: `world.query`, `world.entity`, `world.spawn`,
-  `world.set_component`, `sim.step`, `sim.pause`, `events.since`, `scene.load`/`save`,
-  `render.capture`, `render.describe`, `replay.*`, `snapshot.*`.
+- 🟡 `amadeo-agent` v1 — the **read** half exists: `describe` (the schema as JSON), `entity` and
+  `query` (the live world), and a deterministic JSON writer whose output is sorted and therefore
+  diffable. Still to do: the mutating calls (`world.spawn`, `world.set_component`, `sim.step`,
+  `sim.pause`), `events.since`, `scene.load`/`save`, `render.capture`/`describe`, `replay.*`,
+  `snapshot.*` — and the JSON-RPC transport itself, which is blocked on **Q14**.
 - Protocol spec in `docs/protocol/`, versioned.
 - `amadeo-cli` — `new`, `run`, `check`, `fmt`, `test`, `describe`, `inspect`, `replay`.
 - `amadeo-assets` — virtual FS, handles, async load with load-order isolation, hot reload, import
