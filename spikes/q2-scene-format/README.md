@@ -88,6 +88,117 @@ project already built to exactly these rules: hand-writable, line-oriented, cano
 byte-stable round-trip, and parse errors carrying line numbers. It works, it is small, and it is a
 template rather than a leap.
 
+## Each candidate in full, including the long-term consequences
+
+The two audiences are affected differently, and in one case *oppositely*, so they are listed
+separately throughout.
+
+### RON
+
+**For.** Rust-native, so it maps onto the `Value` model with no impedance. Mature parser. Comments
+and trailing commas — the latter matters more than it sounds, because appending an item does not
+touch the line above it, which keeps diffs to exactly the added lines. Nesting is natural.
+
+**Against.** Nearly **twice the size** of the custom format for identical content. Punctuation-dense:
+parentheses, braces, colons, commas, and quotes on every key. And the headline feature is unusable —
+RON is worth choosing for typed enums, and the component set must stay open because modules add
+components (I4), so components degrade to an untyped map. What remains is a verbose JSON with better
+comments.
+
+**Long-term for Justin.** It reads like a Rust literal, which becomes more comfortable as his Rust
+improves — a genuine plus while learning. But it is the most error-prone of the four to hand-edit: an
+unbalanced paren three levels deep produces an error pointing somewhere unhelpful. No meaningful
+editor support.
+
+**Long-term for Claude.** Written accurately from priors. The real cost is 2× tokens per scene —
+every scene read costs double the context, which compounds across a session spent moving around a
+level.
+
+### TOML
+
+**For.** By far the most familiar; universally highlighted, universally tooled, and the skill
+transfers everywhere. Excellent line-oriented diffs. The flat design makes every entity independent,
+which makes it the most **greppable** and the most **merge-proof** of the four — adding an entity is
+a pure append with no structural context to conflict over. Godot's `.tscn` and Unity's YAML are both
+effectively flat, which is real evidence rather than a coincidence.
+
+**Against.** The hierarchy is not in the file. `[[entity.children.children]]` is unusable, so the
+tree flattens into `parent = "a1"` references and you reconstruct it by following ids. Array-of-table
+rules are a well-known source of surprise.
+
+**Long-term for Justin.** Lowest learning cost, best tooling, most transferable knowledge. Against
+that: reading a level means rebuilding a tree in his head from a flat list, and *he* is the one who
+reads a scene to understand it. Note the mitigation, though — **after M4 he has an editor**, which
+shows him the tree regardless. The flat file hurts him less in year two than in year one.
+
+**Long-term for Claude.** The **lowest syntax-error rate of the four** — TOML is the format written
+most reliably. Flat structure is genuinely easier to manipulate: appending an entity needs no
+indentation context. Greppability makes introspection cheaper. The cost is more id bookkeeping, which
+is a class of mistake agents are prone to, and losing structural information that would otherwise aid
+reasoning about a scene.
+
+### KDL
+
+**For.** The data model *is* node + properties + children, which is a scene tree by construction.
+Nesting costs one indent and nothing else. Real spec, free parser, comments, reasonably compact.
+
+**Against.** Smallest ecosystem of the three standard formats, and editor support is thin in
+practice. **KDL v2 changed the syntax meaningfully** (`#true`, `#null`), so v1/v2 confusion is a live
+hazard rather than a theoretical one. Lists are awkward: a vector is positional arguments (fine), but
+a list of vectors needs child nodes with `-` (less fine). Error messages belong to someone else's
+parser, and Pillar 5 makes error quality a functional requirement. Telling a component from a child
+entity relies on convention.
+
+**Long-term for Justin.** Probably the easiest nested option to hand-edit — no closing punctuation to
+match. But it is a format learned for this project alone, and the tooling will always be thinner than
+TOML's.
+
+**Long-term for Claude.** ⚠️ **This is the format Claude is least reliable at.** KDL is materially
+less represented in training data than TOML, JSON, or RON, and the v1→v2 split makes emitting stale
+syntax a live failure mode — on the single most common artefact in the project. Compounding it, the
+error messages that would catch those mistakes are not ours to improve. This is the strongest
+argument against KDL and it does not appear in any measurement above.
+
+### Custom
+
+**For.** Most compact by a wide margin. Tree visible, one indent per level, no closing punctuation to
+mismatch. **We own the error messages**, which Pillar 5 says is a functional requirement rather than
+a nicety. We own canonical formatting, so I2's byte-stability becomes structural instead of something
+a formatter has to be careful about. The syntax can evolve to fit sub-scenes, streaming, and override
+semantics exactly, rather than being bent around a general-purpose format. And `.replay` is a working
+precedent in this repository, built to precisely these rules.
+
+**Against.** We own the parser, the formatter, and any editor support that ever exists. No syntax
+highlighting, no LSP, no GitHub rendering — unless we build them. Indentation sensitivity brings the
+Python problem, though `amadeo fmt` normalises it. A parser bug is ours to debug. Anyone new learns a
+format that exists nowhere else.
+
+**Long-term for Justin.** The best *reading* experience: least noise, structure visible, half the
+scrolling of RON. The worst *editing* experience without tooling — no highlighting means a typo is
+invisible until `amadeo check` runs, so the quality of that command matters enormously. Two
+mitigations: he gets an editor at M4 and mostly stops hand-editing, and the parser is engine code he
+would need to be able to debug — but a line-oriented recursive-descent parser is one of the more
+approachable things in this codebase, considerably easier to follow than the ECS.
+
+**Long-term for Claude.** Fewest tokens per scene means more of a level fits in context at once,
+which compounds over hundreds of sessions. Reading the format spec each session is a real cost, but
+the *schema* has to be read for any format anyway. The decisive point is that the errors are ours: an
+agent's only feedback channel is the error message, and here we can make it say exactly what to fix.
+The risk is pattern-matching to YAML and emitting subtly wrong syntax — self-correcting, precisely
+because we control the diagnostics.
+
+## The decision really turns on two questions
+
+1. **Must the hierarchy be visible in the file?** If yes, TOML is out. If the editor is the primary
+   way anyone reads a scene, TOML's flatness is a much smaller cost and its tooling a much larger
+   benefit.
+2. **Is owning a parser worth better errors and half the file size?** That is custom versus KDL.
+
+There is also an asymmetry worth naming: **after M4, Justin's hand-editing burden drops sharply and
+Claude's does not.** That argues for optimising the format for the agent — which favours compactness
+and controllable errors, and argues against KDL specifically, since that is where agent accuracy is
+weakest.
+
 ## Recommendation
 
 **The custom format, with KDL as the fallback** if the appetite for owning a parser is lower than I
