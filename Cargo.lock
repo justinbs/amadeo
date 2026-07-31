@@ -108,6 +108,7 @@ dependencies = [
  "amadeo-core",
  "amadeo-ecs",
  "amadeo-reflect",
+ "amadeo-transform",
  "bytemuck",
  "pollster",
  "thiserror 2.0.19",
@@ -122,7 +123,17 @@ dependencies = [
  "amadeo-ecs",
  "amadeo-reflect",
  "amadeo-render",
+ "amadeo-transform",
  "thiserror 2.0.19",
+]
+
+[[package]]
+name = "amadeo-transform"
+version = "0.1.0"
+dependencies = [
+ "amadeo-core",
+ "amadeo-ecs",
+ "amadeo-reflect",
 ]
 
 [[package]]
@@ -1408,6 +1419,7 @@ dependencies = [
  "amadeo-input",
  "amadeo-reflect",
  "amadeo-render",
+ "amadeo-transform",
  "anyhow",
  "winit",
 ]

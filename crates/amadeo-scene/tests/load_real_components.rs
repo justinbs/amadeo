@@ -7,8 +7,9 @@
 //! A test using invented components would prove the plumbing. This proves the engine.
 
 use amadeo_ecs::{ComponentRegistry, World};
-use amadeo_render::{Quad, Transform2d};
+use amadeo_render::Quad;
 use amadeo_scene::{instantiate, parse, to_text};
+use amadeo_transform::Transform2d;
 
 /// A fragment of the sort of level M3's horror slice needs.
 const SCENE: &str = "\

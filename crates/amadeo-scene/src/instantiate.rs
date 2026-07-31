@@ -6,6 +6,7 @@
 
 use crate::document::{SceneDocument, SceneEntity};
 use amadeo_ecs::{ComponentRegistry, Entity, RegistryError, World};
+use amadeo_transform::Parent;
 use std::collections::BTreeMap;
 
 /// What can go wrong turning a document into entities.
@@ -64,13 +65,9 @@ pub struct Instantiated {
     pub entities: BTreeMap<String, Entity>,
     /// Child authoring id to parent authoring id, for every non-root entity.
     ///
-    /// **Recorded rather than materialised.** The file expresses hierarchy by nesting, and turning
-    /// that into `Parent`/`Children` components needs those components to exist — which is blocked
-    /// on where they should live. `CLAUDE.md` §4 says hierarchy components move to `amadeo-scene`
-    /// alongside `Transform2d`; `docs/04-subsystems.md` §3 lists them under `amadeo-ecs`. Those
-    /// cannot both be right: `amadeo-render` sits *below* `amadeo-scene`, so transform propagation
-    /// in M2 could not reach a `Parent` that lived up here. Resolving that is a decision with an
-    /// ADR, not something to settle in passing.
+    /// The hierarchy is also **materialised** as [`Parent`] components on the entities themselves
+    /// (ADR 0015) — this map is the authoring-id view of the same fact, for anything resolving a
+    /// reference by id without walking the world.
     pub parents: BTreeMap<String, String>,
 }
 
@@ -115,6 +112,7 @@ fn build(
     result: &mut Instantiated,
     created: &mut Vec<Entity>,
 ) -> Result<(), InstantiateError> {
+    // Roots pass `None` as their parent, so nothing at the top level gets a `Parent` component.
     for entity in &document.entities {
         spawn_entity(entity, None, registry, world, result, created)?;
     }
@@ -124,7 +122,7 @@ fn build(
 /// Creates one entity and everything beneath it.
 fn spawn_entity(
     source: &SceneEntity,
-    parent: Option<&str>,
+    parent: Option<(&str, Entity)>,
     registry: &ComponentRegistry,
     world: &mut World,
     result: &mut Instantiated,
@@ -146,8 +144,15 @@ fn spawn_entity(
     let entity = world.spawn();
     created.push(entity);
     result.entities.insert(source.id.clone(), entity);
-    if let Some(parent) = parent {
-        result.parents.insert(source.id.clone(), parent.to_string());
+
+    if let Some((parent_id, parent_entity)) = parent {
+        result
+            .parents
+            .insert(source.id.clone(), parent_id.to_string());
+        // The file expresses hierarchy by nesting; this is where that becomes data the engine can
+        // query (ADR 0004, ADR 0015). Inserted before the entity's own components so that a
+        // component failing later still rolls the whole thing back.
+        world.insert(entity, Parent(parent_entity));
     }
 
     for (name, value) in &source.components {
@@ -160,7 +165,14 @@ fn spawn_entity(
     }
 
     for child in &source.children {
-        spawn_entity(child, Some(&source.id), registry, world, result, created)?;
+        spawn_entity(
+            child,
+            Some((&source.id, entity)),
+            registry,
+            world,
+            result,
+            created,
+        )?;
     }
 
     Ok(())
@@ -238,7 +250,7 @@ entity hero \"Hero\"
     }
 
     #[test]
-    fn nesting_becomes_a_recorded_parent_relationship() {
+    fn nesting_becomes_real_parent_components() {
         let source = "\
 scene level
 version 1
@@ -254,9 +266,40 @@ entity room \"Room\"
         let loaded = instantiate(&document, &registry(), &mut world).expect("instantiates");
 
         assert_eq!(world.entity_count(), 3);
+
+        // The map view, by authoring id.
         assert_eq!(loaded.parents.get("lamp").map(String::as_str), Some("room"));
         assert_eq!(loaded.parents.get("bulb").map(String::as_str), Some("lamp"));
         assert_eq!(loaded.parents.get("room"), None, "a root has no parent");
+
+        // And the same fact as queryable components, which is what the engine actually reads.
+        let room = loaded.entities["room"];
+        let lamp = loaded.entities["lamp"];
+        let bulb = loaded.entities["bulb"];
+
+        assert_eq!(world.get::<Parent>(lamp).map(|p| p.0), Some(room));
+        assert_eq!(world.get::<Parent>(bulb).map(|p| p.0), Some(lamp));
+        assert!(
+            !world.has::<Parent>(room),
+            "a root gets no Parent component"
+        );
+    }
+
+    #[test]
+    fn a_parent_link_survives_being_written_and_read_as_a_component() {
+        // Guards the thing that would silently half-work: `Parent` is inserted directly rather than
+        // through the registry, so nothing in the scene path would notice if it stopped being a
+        // usable component.
+        let document =
+            parse("scene s\nversion 1\n\nentity a \"A\"\n\n  entity b \"B\"\n").expect("parses");
+        let mut world = World::new();
+        let loaded = instantiate(&document, &registry(), &mut world).expect("instantiates");
+
+        let children: Vec<_> = world
+            .iter::<Parent>()
+            .map(|(entity, parent)| (entity, parent.0))
+            .collect();
+        assert_eq!(children, vec![(loaded.entities["b"], loaded.entities["a"])]);
     }
 
     #[test]

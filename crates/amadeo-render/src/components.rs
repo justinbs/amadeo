@@ -4,51 +4,6 @@ use amadeo_core::StableHash;
 use amadeo_ecs::{Component, Resource};
 use amadeo_reflect::Reflect;
 
-/// Where an entity is in 2D space.
-///
-/// # Where this lives
-///
-/// A transform is a foundational concept that physics, animation, and the scene tree will all want,
-/// so this is **not** its permanent home. It sits here for M0 because the renderer is currently its
-/// only consumer, and inventing a crate to hold one struct would be premature. It moves to
-/// `amadeo-scene` when the scene tree lands in M1, along with the `Parent`/`Children` hierarchy and
-/// the `GlobalTransform` propagation described in ADR 0004.
-#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
-pub struct Transform2d {
-    /// Position in world units.
-    #[reflect(unit = "world units", sync = "on_change", interpolate = "linear")]
-    pub position: [f32; 2],
-    /// Rotation in radians, counter-clockwise.
-    #[reflect(unit = "rad", sync = "on_change", interpolate = "angular")]
-    pub rotation: f32,
-    /// Scale multiplier on each axis.
-    #[reflect(sync = "on_change", interpolate = "linear")]
-    pub scale: [f32; 2],
-}
-
-impl Default for Transform2d {
-    fn default() -> Self {
-        Self {
-            position: [0.0, 0.0],
-            rotation: 0.0,
-            scale: [1.0, 1.0],
-        }
-    }
-}
-
-impl Transform2d {
-    /// A transform at a position, unrotated and unscaled.
-    #[must_use]
-    pub fn at(x: f32, y: f32) -> Self {
-        Self {
-            position: [x, y],
-            ..Self::default()
-        }
-    }
-}
-
-impl Component for Transform2d {}
-
 /// A flat coloured rectangle.
 ///
 /// The simplest thing that can be drawn, and enough to prove the whole pipeline: simulation to
@@ -157,21 +112,6 @@ mod tests {
     use amadeo_core::hash::stable_hash_of;
 
     #[test]
-    fn transform_defaults_to_identity() {
-        let transform = Transform2d::default();
-        assert_eq!(transform.position, [0.0, 0.0]);
-        assert_eq!(transform.scale, [1.0, 1.0]);
-        assert_eq!(transform.rotation, 0.0);
-    }
-
-    #[test]
-    fn transform_at_sets_position_only() {
-        let transform = Transform2d::at(3.0, -4.0);
-        assert_eq!(transform.position, [3.0, -4.0]);
-        assert_eq!(transform.scale, [1.0, 1.0]);
-    }
-
-    #[test]
     fn quad_builder_reads_clearly() {
         let quad = Quad::new(2.0, 3.0, [1.0, 0.0, 0.0, 1.0]).on_layer(5);
         assert_eq!(quad.size, [2.0, 3.0]);
@@ -180,14 +120,6 @@ mod tests {
 
     #[test]
     fn components_hash_by_value() {
-        assert_eq!(
-            stable_hash_of(&Transform2d::at(1.0, 2.0)),
-            stable_hash_of(&Transform2d::at(1.0, 2.0))
-        );
-        assert_ne!(
-            stable_hash_of(&Transform2d::at(1.0, 2.0)),
-            stable_hash_of(&Transform2d::at(1.0, 2.1))
-        );
         // Layer is part of the value, so a layer change is a state change.
         assert_ne!(
             stable_hash_of(&Quad::default()),

@@ -78,10 +78,9 @@ of a milestone.
   into entities atomically. **Still to do:** materialising hierarchy as components (blocked on where
   `Parent` lives — see below), prefab instancing (needs `amadeo-assets`), and prefab override
   *semantics* (Q7).
-- **Decide where the hierarchy components live.** `CLAUDE.md` §4 says `Parent`/`Children` move to
-  `amadeo-scene` with `Transform2d`; `docs/04-subsystems.md` §3 lists them under `amadeo-ecs`. Those
-  cannot both hold — `amadeo-render` sits *below* `amadeo-scene`, so M2's transform propagation could
-  not reach a `Parent` up there. Needs an ADR before scenes can load their own hierarchy.
+- ✅ **`amadeo-transform`** (ADR 0015) — `Transform2d` moved out of `amadeo-render`, plus `Parent`.
+  Settles where hierarchy lives; scenes now load their tree as real components. `GlobalTransform`
+  and propagation wait on Q3, alongside the 2D renderer.
 - `amadeo-agent` v1 — JSON-RPC server: `world.query`, `world.entity`, `world.spawn`,
   `world.set_component`, `sim.step`, `sim.pause`, `events.since`, `scene.load`/`save`,
   `render.capture`, `render.describe`, `replay.*`, `snapshot.*`.

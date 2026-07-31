@@ -15,6 +15,7 @@ amadeo-ecs.workspace = true
 amadeo-input.workspace = true
 amadeo-reflect.workspace = true
 amadeo-render = { workspace = true, features = ["gpu"] }
+amadeo-transform.workspace = true
 
 anyhow = "1"
 winit = "0.30"

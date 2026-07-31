@@ -7,7 +7,8 @@
 //!
 //! ```
 //! use amadeo_ecs::World;
-//! use amadeo_render::{Camera2d, NullBackend, Quad, Renderer, Transform2d, render_quads};
+//! use amadeo_render::{Camera2d, NullBackend, Quad, Renderer, render_quads};
+//! use amadeo_transform::Transform2d;
 //!
 //! let mut world = World::new();
 //! world.insert_resource(Camera2d::default());
@@ -40,11 +41,14 @@ mod components;
 mod gpu;
 
 pub use backend::{FrameData, NullBackend, QuadInstance, RenderBackend, RenderError};
-pub use components::{Camera2d, Quad, Transform2d};
+pub use components::{Camera2d, Quad};
 #[cfg(feature = "gpu")]
 pub use gpu::WgpuBackend;
 
 use amadeo_ecs::{Service, World};
+// Not re-exported: `Transform2d` belongs to `amadeo-transform` (ADR 0015), and two import paths to
+// one type is exactly the sort of thing that makes people wonder whether they are the same type.
+use amadeo_transform::Transform2d;
 
 /// The label the app layer registers [`render_quads`] under.
 pub const RENDER_QUADS: &str = "render_quads";

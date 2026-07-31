@@ -25,9 +25,8 @@ use amadeo_core::{FIXED_DT, StableHash};
 use amadeo_ecs::{Component, World};
 use amadeo_input::{ActionId, InputDriver, InputState, LiveSource, SAMPLE_INPUT, sample_input};
 use amadeo_reflect::Reflect;
-use amadeo_render::{
-    Camera2d, Quad, RENDER_QUADS, Renderer, Transform2d, WgpuBackend, render_quads,
-};
+use amadeo_render::{Camera2d, Quad, RENDER_QUADS, Renderer, WgpuBackend, render_quads};
+use amadeo_transform::Transform2d;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};

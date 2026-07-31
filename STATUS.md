@@ -27,18 +27,11 @@ sense; the "separate process" half is carried into M1 because it needs `amadeo-c
 
 ## The single most important thing to do next
 
-**Decide where the hierarchy components live — it is a blocker, and it is a genuine contradiction
-between two docs rather than an oversight.**
-
-`CLAUDE.md` §4 says `Parent`/`Children` move to `amadeo-scene` alongside `Transform2d` in M1.
-`docs/04-subsystems.md` §3 lists hierarchy under `amadeo-ecs`. **Those cannot both be right**:
-`amadeo-render` sits *below* `amadeo-scene` in the crate order, so M2's transform propagation could
-never reach a `Parent` that lived up in `amadeo-scene`.
-
-It blocks real work now. `instantiate` creates a scene's entities but **records** the parent
-relationships rather than materialising them, because there is no component to put them in. A scene
-that loses its hierarchy on load is not finished. Needs an ADR, and it probably wants `Transform2d`
-moved in the same change.
+**`amadeo-agent` v1 and `amadeo-cli`** — the point where the reflection registry becomes
+`amadeo describe` and Pillar 2 stops being latent. Nothing is blocked; this is simply the largest
+remaining piece of M1's exit gate, since gates 1, 2, and 4 all describe working *through* the CLI and
+RPC rather than through Rust. `amadeo-cli` also closes M0's carried-over separate-process replay
+check.
 
 Then, in order:
 
@@ -47,15 +40,21 @@ Then, in order:
    inelegant since M0), and map support in `Reflect` for `InputState`.
 2. **`snapshot.take` / `snapshot.restore`.** The Q1 spike found re-simulation, not compilation, is
    what degrades the iteration loop — 382 ms to reach 5 simulated minutes, growing linearly.
-3. **`amadeo-agent` v1 and `amadeo-cli`**, which together turn the reflection registry into
-   `amadeo describe` and make Pillar 2 real rather than latent. `amadeo-cli` also closes M0's
-   carried-over separate-process replay check.
+3. **2D rendering** — sprite batcher, textures, layers. Wants Q3 settled first, which is also what
+   `GlobalTransform` propagation is waiting on.
 
-**Two things are undecided rather than unbuilt.** Q7 — prefab override *semantics* — is the nearest:
-the format records overrides visibly (the I1 requirement) but what they mean when a prefab changes
-under an instance is undesigned; `docs/06` suggests studying Unity's and Godot's failure modes first.
-And prefab *instancing* needs `amadeo-assets` to resolve a path at all, which is why `instantiate`
-currently refuses a `from` line with an error that says exactly that.
+**Three things are undecided rather than unbuilt**, all in `docs/06-open-questions.md`:
+
+- **Q3 — how 2D and 3D coexist.** Blocks both the sprite renderer and transform propagation.
+- **Q7 — prefab override semantics.** The format records overrides visibly (the I1 requirement), but
+  what they *mean* when a prefab changes under an instance is undesigned. Study Unity's and Godot's
+  failure modes first.
+- **Q13 — `ComponentId` from code location vs canonical name.** Found while moving `Transform2d`:
+  a component's id is the hash of its *fully-qualified path*, so moving a type between crates
+  invalidates every state hash containing it. Free this time; not always.
+
+Prefab *instancing* is unbuilt rather than undecided — it needs `amadeo-assets` to resolve a path at
+all, which is why `instantiate` refuses a `from` line with an error saying exactly that.
 
 ## Q1 is resolved — ADR 0011
 
@@ -239,7 +238,13 @@ Verified on this machine (2026-07-30):
   has no schema, and must still fill an `f32` field. Floats accept any numeric value; integers stay
   strict, since an out-of-range integer is a mistake rather than an approximation.
 
-**Verified green: 355 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+- ✅ **`amadeo-transform`** (ADR 0015) — a new crate holding `Transform2d` (moved out of
+  `amadeo-render`) and `Parent`. Resolves a straight contradiction between `CLAUDE.md` §4 and
+  `docs/04` §3 about where hierarchy lives; the `CLAUDE.md` note was a dependency-direction error,
+  since render, physics, and animation all sit *below* `amadeo-scene` and all need transforms.
+  Scenes now materialise their nesting as real `Parent` components instead of just recording it.
+
+**Verified green: 363 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 **The golden replay did not need regenerating**, which was not guaranteed. The derive sorts fields by
 name, so any component whose fields were not already alphabetical changes fingerprint. The committed
@@ -346,5 +351,7 @@ Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
   discriminate — diffs are identical in all four — so the spike narrowed it to two and Justin chose
   the custom format. `amadeo-scene` built to it (**ADR 0014**) — parser, canonical writer, and then
   layer 2: `ComponentRegistry` and `instantiate`, so a scene file now loads into a `World` using the
-  engine's real components. Surfaced a blocker: the two docs disagree about where `Parent` lives.
-  355 tests.
+  engine's real components. That surfaced a contradiction between two docs about where hierarchy
+  components live, resolved by **ADR 0015** with a new `amadeo-transform` crate — and a second trap
+  found on the way, filed as Q13: a component's id is the hash of its *fully-qualified path*, so
+  moving a type between crates silently invalidates every state hash containing it. 363 tests.

@@ -6,7 +6,8 @@
 //! exactly this data once `amadeo-cli` exists.
 
 use amadeo_reflect::{Reflect, SyncPolicy, TypeRegistry, Value};
-use amadeo_render::{Camera2d, Quad, Transform2d};
+use amadeo_render::{Camera2d, Quad};
+use amadeo_transform::Transform2d;
 
 #[test]
 fn the_engines_components_register_and_are_discoverable_by_name() {

@@ -65,11 +65,14 @@ crates/
 — amadeo-math        vectors, matrices, quaternions, rects, curves. No engine deps.
 ✅ amadeo-core        Tick, FIXED_DT, Rng (PCG32), StableHasher (FNV-1a), StableId/NetId/Authority
 ✅ amadeo-reflect     Value tree, TypeInfo schema, TypeRegistry. ADR 0012.
-✅ amadeo-ecs         archetype SoA storage, queries, resources, services, deferred commands
+✅ amadeo-ecs         archetype SoA storage, queries, resources, services, deferred commands,
+                     ComponentRegistry (builds a component from a name + a Value)
+✅ amadeo-transform   Transform2d, Parent. The spatial vocabulary render/physics/anim/scene share.
+                     ADR 0015. GlobalTransform and propagation arrive with M2.
 ✅ amadeo-events      typed double-buffered queues, EventClock total ordering
 — amadeo-assets      virtual FS, async load, import pipeline, cache, hot-reload watch
 ✅ amadeo-input       action mapping, InputState, recording/replay, the .replay text format
-✅ amadeo-render      RenderBackend trait, NullBackend, Quad/Transform2d/Camera2d. wgpu pending.
+✅ amadeo-render      RenderBackend trait, NullBackend, Quad/Camera2d. wgpu behind the `gpu` feature.
 — amadeo-audio       mixer, buses, spatialization (null backend required)
 — amadeo-physics     rapier integration behind engine traits
 — amadeo-anim        sprite anim, skeletal, state machines, tweens
@@ -88,8 +91,14 @@ spikes/              separate cargo workspaces holding the evidence behind an AD
                      written; excluded from the engine workspace. See spikes/README.md.
 ```
 
-**Note:** `Transform2d` currently lives in `amadeo-render` because that is its only consumer. It
-moves to `amadeo-scene` in M1 along with the hierarchy components. Do not build on its location.
+**Note:** an earlier version of this section said `Transform2d` would move to `amadeo-scene` with the
+hierarchy components. **That was wrong** and ADR 0015 corrects it: `amadeo-render`, `amadeo-physics`,
+and `amadeo-anim` all sit *below* `amadeo-scene` and all need transforms, so I6 makes that placement
+impossible. They live in `amadeo-transform`.
+
+**Careful:** `ComponentId` is the hash of a type's *fully-qualified* path, so **moving a component
+between crates or modules changes its id and every state hash containing it**. Check what a move
+invalidates before making one — see open question Q13.
 
 ## 4b. Verifying the build
 

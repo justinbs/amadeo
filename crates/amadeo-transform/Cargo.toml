@@ -1,0 +1,16 @@
+[package]
+name = "amadeo-transform"
+description = "The spatial vocabulary render, physics, animation, and scene all share: transforms and hierarchy."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-reflect.workspace = true
+
+[lints]
+workspace = true

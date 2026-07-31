@@ -18,6 +18,7 @@ amadeo-derive = { path = "crates/amadeo-derive", version = "0.1.0" }
 amadeo-core = { path = "crates/amadeo-core", version = "0.1.0" }
 amadeo-reflect = { path = "crates/amadeo-reflect", version = "0.1.0" }
 amadeo-ecs = { path = "crates/amadeo-ecs", version = "0.1.0" }
+amadeo-transform = { path = "crates/amadeo-transform", version = "0.1.0" }
 amadeo-events = { path = "crates/amadeo-events", version = "0.1.0" }
 amadeo-input = { path = "crates/amadeo-input", version = "0.1.0" }
 amadeo-render = { path = "crates/amadeo-render", version = "0.1.0" }

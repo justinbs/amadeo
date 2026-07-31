@@ -29,6 +29,37 @@ Needs an ADR in M1.
 
 ---
 
+## Q13 · P1 · Should `ComponentId` come from the code location or the canonical name?
+
+Found while moving `Transform2d` for ADR 0015.
+
+`ComponentId` is the FNV-1a hash of `std::any::type_name::<T>()`, which is the **fully-qualified
+path**. ADR 0008 chose the name over `TypeId` because `TypeId` is not build-stable — that reasoning
+holds. What it did not consider is that the *path* couples a component's identity to where its code
+lives: moving `amadeo_render::components::Transform2d` to `amadeo_transform::Transform2d` changed its
+id, and would have invalidated every state hash containing it.
+
+It happened to be free this time — nothing committed asserted a hash containing `Transform2d`. It
+will not always be. As written, a pure refactor (moving a type, renaming a module) is a
+replay-invalidating change, and nothing warns you.
+
+**The alternative:** hash `TypeInfo::name` instead — the canonical name that already exists because
+`Component: Reflect` (ADR 0013), and which is *already* what a scene file writes. Then the ECS's
+identity and the file's identity are literally the same string, moving code is free, and
+`#[reflect(name = "...")]` lets a Rust type be renamed without changing identity.
+
+**The cost:** two components with the same short name in different modules would collide. Today the
+full path makes that impossible. `TypeRegistry::register` already rejects a name collision with a
+clear message — but registration is not *enforced*, so an unregistered pair could silently share an
+id and corrupt archetype lookup. Closing that means either enforcing registration or accepting the
+risk.
+
+Prior: **switch to the canonical name**, because one name for one component across the ECS, the
+registry, and the file is worth more than a collision case the registry already detects. Wants a
+decision before many replays exist.
+
+---
+
 ## Q12 · P1 · `Service: Send + Sync` excludes every non-`Sync` runtime
 
 Found by the Q1 spike (ADR 0011), which could not put a script VM in the world.

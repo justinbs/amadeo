@@ -11,6 +11,7 @@ rust-version.workspace = true
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 amadeo-reflect.workspace = true
+amadeo-transform.workspace = true
 thiserror.workspace = true
 
 # GPU backend dependencies, all optional. The abstraction and the null backend must build and test

@@ -1,5 +1,7 @@
 //! Entity handles and the allocator that hands them out.
 
+use amadeo_core::StableHash;
+use amadeo_reflect::Reflect;
 use std::fmt;
 
 /// A handle to an entity in a running [`World`](crate::World).
@@ -16,7 +18,15 @@ use std::fmt;
 /// Reusing slots without a generation would let a stale handle silently address whatever entity
 /// landed in the slot next — a use-after-free with no crash, producing wrong behaviour instead of an
 /// error. Bumping the generation on despawn makes the stale handle detectably invalid instead.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+///
+/// # Why it is `Reflect` despite never appearing in a file
+///
+/// A component may *hold* one — `Parent` in `amadeo-transform` does — and `Component: Reflect`
+/// (ADR 0013) means anything a component contains has to be reflectable too. It reflects as
+/// `{ generation, index }`, which is useful for introspecting a live world and meaningless in a
+/// saved one. Anything writing a world back out to a scene file must derive structure from these
+/// handles rather than serialise them; see ADR 0015.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, StableHash, Reflect)]
 pub struct Entity {
     /// Index into the entity slot table.
     index: u32,
