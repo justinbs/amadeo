@@ -40,14 +40,15 @@
 //!
 //! # What is not here yet
 //!
-//! **The transport.** There is no JSON-RPC server and no socket — this is the library that one would
-//! be built on. The process model is genuinely undecided and interacts with ADR 0011: because game
-//! logic is compiled into the game binary, a standalone `amadeo` CLI *cannot know a game's
-//! components*, so `describe` and `check` for a real project have to run inside that binary or talk
-//! to it. Filed as **Q14**.
+//! **The transport.** There is no JSON-RPC server yet — this is the library one is built on. The
+//! process model was the open part, and **ADR 0016 settled it**: because ADR 0011 compiles game logic
+//! into the game binary, that binary is the only process that knows a game's components, so it hosts
+//! the agent and `amadeo-cli` launches it and talks over stdio. The first transport is one-shot
+//! batch: one invocation is one fresh deterministic run.
 //!
 //! **JSON parsing.** [`Json`] writes; nothing reads. The RPC server needs a parser, and that is a
-//! larger piece than the writer.
+//! larger piece than the writer. ADR 0016 keeps it hand-written and in this crate, next to the
+//! writer, rather than taking a dependency.
 //!
 //! **`render.capture` and `render.describe`.** The agent's eyes. They need the 2D renderer, which
 //! needs Q3 settled.

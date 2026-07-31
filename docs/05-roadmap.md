@@ -85,9 +85,17 @@ of a milestone.
   `query` (the live world), and a deterministic JSON writer whose output is sorted and therefore
   diffable. Still to do: the mutating calls (`world.spawn`, `world.set_component`, `sim.step`,
   `sim.pause`), `events.since`, `scene.load`/`save`, `render.capture`/`describe`, `replay.*`,
-  `snapshot.*` — and the JSON-RPC transport itself, which is blocked on **Q14**.
-- Protocol spec in `docs/protocol/`, versioned.
-- `amadeo-cli` — `new`, `run`, `check`, `fmt`, `test`, `describe`, `inspect`, `replay`.
+  `snapshot.*` — and the JSON-RPC transport, whose shape **Q14 settled (ADR 0016)**: a hand-written
+  JSON parser to match the existing writer, one-shot batch dispatch, served from inside the game
+  binary. The mutating calls and the persistent session wait for M4's editor to need them.
+- **`App` owns a `ComponentRegistry`** (ADR 0016) — `App::register_component::<T>()`, so a game
+  registers once. Today no game registers at all, so `describe` would report an empty schema for
+  `quad-demo`'s own components.
+- Protocol spec in `docs/protocol/`, versioned, written against the batch method set first.
+- `amadeo-cli` — `new`, `run`, `check`, `fmt`, `test`, `describe`, `inspect`, `replay`. Per ADR 0016,
+  `new` and `fmt` run standalone; everything else spawns the game binary in agent mode via
+  `cargo run -p <package> -- --amadeo-agent` and talks to it over stdio. `amadeo replay` is also what
+  closes M0's carried-over **separate-process** replay check.
 - `amadeo-assets` — virtual FS, handles, async load with load-order isolation, hot reload, import
   pipeline, text sidecar metadata, placeholder assets on failure.
 - 2D rendering — sprite batcher, textures, cameras, layers/sorting, transform hierarchy.

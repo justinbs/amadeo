@@ -81,10 +81,14 @@ crates/
                      a World. Prefab instancing and hierarchy-as-components still pending.
 ✖ amadeo-script      NOT BUILT. ADR 0011: game logic is plain Rust in the game crate.
 🟡 amadeo-agent       describe (schema as JSON), entity/query introspection, a deterministic JSON
-                     writer. Read-only. RPC transport, snapshots, and capture pending — see Q14.
+                     writer. Read-only. JSON parser, RPC dispatch, snapshots, and capture pending;
+                     their shape is fixed by ADR 0016.
 ✅ amadeo-app         Stage/Schedule, fixed-timestep loop, SimRng
 — amadeo-editor      graphical editor. A CLIENT of amadeo-agent. No privileged access.
-— amadeo-cli         the `amadeo` binary: new/run/check/fmt/test/replay/inspect/build/export
+— amadeo-cli         the `amadeo` binary: new/run/check/fmt/test/replay/inspect/build/export.
+                     ADR 0016: `new` and `fmt` are standalone; everything else spawns the game binary
+                     in agent mode and talks to it over stdio, because only that process knows the
+                     game's components.
 modules/             optional, genre-flavored. Core NEVER depends on these.
 games/               actual games built with the engine
 docs/                design docs and ADRs

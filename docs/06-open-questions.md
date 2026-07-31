@@ -29,40 +29,6 @@ Needs an ADR in M1.
 
 ---
 
-## Q14 · P0 · Where does `amadeo describe` actually run?
-
-**ADR 0011 has a consequence the roadmap did not anticipate.** Game logic is compiled into the game
-binary, so a standalone `amadeo` CLI **cannot know a game's components**. It can only ever describe
-the engine's own.
-
-`docs/05-roadmap.md` lists `amadeo-cli` with `describe` and `inspect` as though it were a standalone
-tool. For a real project it cannot be. The commands split cleanly:
-
-| Command | Needs the game's registry? |
-|---|---|
-| `new`, `fmt` | no — scaffolding and pure syntax |
-| `check`, `describe`, `inspect`, `run`, `replay` | **yes** |
-
-Three ways out:
-
-1. **The game binary hosts the agent.** `cargo run -p mygame -- describe`. Simplest and always
-   correct, but every game must wire it up, and `amadeo describe` stops being one command.
-2. **The CLI launches the game and talks to it over RPC.** `amadeo describe` spawns the binary with
-   a flag, connects, asks, prints. Keeps one entry point and is the shape the editor needs at M4
-   anyway (I5 says the editor is an RPC client). Costs a transport before anything else works.
-3. **A generated manifest.** The game writes its schema to a file at build time; the CLI reads it.
-   Fast and offline, but it is a cache, and a stale cache describing a component that no longer
-   exists is exactly the "plausible but wrong" failure Pillar 2 is meant to eliminate.
-
-Prior: **(2), with (1) available underneath it.** The transport has to exist for M4 regardless, I5
-demands CLI/RPC parity, and building it now means the parity is real from the first command rather
-than retrofitted. (1) falls out for free as the thing the CLI launches.
-
-**P0 because it blocks the shape of `amadeo-cli`**, which is most of what remains in M1's exit gate.
-Decide before writing the CLI, not during.
-
----
-
 ## Q13 · P1 · Should `ComponentId` come from the code location or the canonical name?
 
 Found while moving `Transform2d` for ADR 0015.
@@ -214,3 +180,5 @@ be less coupled than they look. Decide in M2.
 | Reflection shape | Value tree plus two derives, not dynamic field access; metadata vocabulary fixed | `adr/0012` |
 | Is reflection optional? | No — `Component: Reflect` makes I8 a compiler-enforced bound | `adr/0013` |
 | **Q2** — scene file syntax | **A custom, indentation-based, line-oriented format.** Chosen by Justin from four hand-written candidates; TOML is the fallback, *not* KDL | `adr/0014` |
+| Where hierarchy components live | `amadeo-transform`, below `amadeo-scene` — render, physics, and anim all need transforms | `adr/0015` |
+| **Q14** — where `describe` runs | **The game binary hosts the agent; `amadeo-cli` launches it and speaks JSON-RPC over stdio.** First transport is one-shot batch, not a live session; `App` owns the `ComponentRegistry`; the JSON parser is hand-written | `adr/0016` |

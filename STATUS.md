@@ -1,8 +1,9 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-07-31 (end of session 5)
+**Last updated:** 2026-07-31 (session 6)
 **Current phase:** **M0 complete. M1 well under way** — reflection, the scene format, and the agent's
-read layer all landed. What remains is mostly the CLI/RPC surface, and that is blocked on **Q14**.
+read layer all landed. What remains is mostly the CLI/RPC surface, and **Q14 has now settled its
+shape (ADR 0016)**, so it is unblocked and ready to build.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private) — **nothing pushed yet**
 
 ---
@@ -31,23 +32,34 @@ Three things work end to end today:
 half is carried into M1 because it needs `amadeo-cli`.
 
 **M1 exit gate: 1 of 5.** Gate 3 (scene round-trip byte-identical) is done. Gates 1, 2, and 4 all
-describe working *through* the CLI and RPC, which is exactly what Q14 blocks. Gate 5 (golden replays
-still pass) holds.
+describe working *through* the CLI and RPC — unbuilt, but no longer undesigned now that ADR 0016 has
+fixed their shape. Gate 5 (golden replays still pass) holds.
 
-**No toolchain blockers.** One design blocker: **Q14**, below.
+**No blockers of any kind.** Q14 was the last one; it closed in session 6.
 
 ## The single most important thing to do next
 
-**Resolve Q14 — where `amadeo describe` actually runs.** It is P0 because it decides the shape of
-`amadeo-cli`, which is most of what remains in M1's exit gate, and it should be settled *before* the
-CLI is written rather than during.
+**Build `amadeo-agent`'s transport and `amadeo-cli` on top of it, to the shape ADR 0016 just fixed.**
+This is most of what remains in M1's exit gate, and the design work is now done.
 
-The problem is a consequence of ADR 0011 that the roadmap did not anticipate: game logic is compiled
-into the game binary, so **a standalone `amadeo` CLI cannot know a game's components**. `fmt` and
-`new` work standalone; `check`, `describe`, `inspect`, `run`, and `replay` all need the game's
-registry. Three ways out are laid out in `docs/06-open-questions.md`; the prior is that the CLI
-launches the game and talks to it over RPC, since I5 demands CLI/RPC parity and M4's editor needs
-that transport regardless.
+Q14 asked where `amadeo describe` actually runs, because ADR 0011 has a consequence the roadmap did
+not anticipate: game logic is compiled into the game binary, so **a standalone `amadeo` CLI cannot
+know a game's components**. ADR 0016 settles it in four parts:
+
+1. **The game binary is the agent host.** It is the only process holding the registry, the world, and
+   the systems at once — the same argument ADR 0010 used to put the event loop there.
+2. **`App` owns the `ComponentRegistry`**, so a game registers a component in one place.
+   Worth knowing: *no game registers anything today*, so `describe` on `quad-demo` would currently
+   report an empty schema for its own `Velocity` and `Player`.
+3. **`amadeo-cli` launches the game and speaks JSON-RPC over stdio**, via
+   `cargo run -p <package> -- --amadeo-agent`. `new` and `fmt` stay standalone.
+4. **One-shot batch first, hand-written JSON parser.** Each invocation is a fresh deterministic run
+   that exits — reproducible by construction. The persistent session and the mutating calls
+   (`sim.step`, `world.set_component`) wait for M4's editor to need them.
+
+Build order that falls out: the JSON parser, then the method dispatch, then `--amadeo-agent` in
+`quad-demo`, then the CLI as a launcher. `amadeo replay` closes M0's carried-over separate-process
+check on the way.
 
 Then, in order:
 
@@ -59,10 +71,10 @@ Then, in order:
 3. **2D rendering** — sprite batcher, textures, layers. Wants Q3 settled first, which is also what
    `GlobalTransform` propagation is waiting on.
 
-**Four things are undecided rather than unbuilt**, all in `docs/06-open-questions.md`:
+**Three things are undecided rather than unbuilt**, all in `docs/06-open-questions.md`:
 
-- **Q14 — where `describe` runs.** P0, above; blocks the shape of `amadeo-cli`.
-- **Q3 — how 2D and 3D coexist.** Blocks both the sprite renderer and transform propagation.
+- **Q3 — how 2D and 3D coexist.** Blocks both the sprite renderer and transform propagation. Now the
+  highest-priority open question, since Q14 closed.
 - **Q7 — prefab override semantics.** The format records overrides visibly (the I1 requirement), but
   what they *mean* when a prefab changes under an instance is undesigned. Study Unity's and Godot's
   failure modes first.
@@ -134,9 +146,12 @@ optimisation levels) at 1.24× runtime cost, and it is the same artefact M5's we
 - **`spikes/` exists** for prototypes that answer a question with a measurement. Separate cargo
   workspaces, frozen once their ADR is written. See `spikes/README.md`.
 
+- **Q14 resolved — the game binary hosts the agent; the CLI launches it.** One-shot JSON-RPC over
+  stdio, hand-written parser, `App` owns the `ComponentRegistry`. See `docs/adr/0016`.
+
 ### Not yet decided (blocking)
 
-Nothing is blocking. Q1, the last P0, closed in session 4.
+Nothing is blocking. Q14, the last P0, closed in session 6.
 
 ## Environment
 
@@ -383,3 +398,23 @@ Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
   which made Pillar 2 real and surfaced **Q14**: under ADR 0011 a standalone CLI cannot know a
   game's components, so the roadmap's `amadeo-cli` shape needs rethinking before it is written.
   392 tests.
+- **S6 (2026-07-31):** **Q14 resolved — ADR 0016**, deliberately as a decision session with no code,
+  since the answer fixes the shape of `amadeo-cli` and most of what remains in M1.
+
+  Reading the code rather than the roadmap changed the framing twice. First, **option 1 was never a
+  competing option** — the game binary is the only process holding the registry, the world, and the
+  systems at once, which is the same argument ADR 0010 used to put the event loop there, so hosting
+  the agent in the game is the substrate all three options are built on and the only live question is
+  what wraps it. Second, **the registry has no home**: `ComponentRegistry` is built ad hoc in tests
+  and nowhere else, and `quad-demo` registers nothing, so `describe` would today report an empty
+  schema for a real game's own components. ADR 0016 puts the registry on `App` for the same reason
+  ADR 0013 made `Component: Reflect` a compiler-enforced bound — registering in one place and
+  spawning in another is how a component ends up invisible to the agent.
+
+  Two sub-decisions the question had not asked. **One-shot batch before a live session**: each CLI
+  invocation is a fresh deterministic run that exits, which is *more* reproducible than attaching and
+  covers M1's exit gate; `sim.step` and the mutating calls wait for M4's editor to actually need a
+  connection that outlives one question. And **the JSON parser is hand-written**, joining the writer
+  already in `amadeo-agent` — `serde_json` was considered and rejected as the first real dependency
+  beyond `thiserror` in a workspace that has hand-rolled PCG32, FNV-1a, and two text formats on
+  legibility grounds. No engine code changed; 393 tests, baseline verified green.
