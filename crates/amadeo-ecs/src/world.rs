@@ -18,8 +18,10 @@ use std::collections::BTreeMap;
 /// |---|---|
 /// | read one component across entities | [`World::iter`] |
 /// | read two components across entities | [`World::iter_pair`] |
+/// | read three components across entities | [`World::iter_triple`] |
 /// | write one component across entities | [`World::for_each_mut`] |
 /// | write one, read another | [`World::for_each_pair_mut`] |
+/// | write two, read a third | [`World::for_each_triple_mut`] |
 /// | read/write a single entity | [`World::get`], [`World::get_mut`] |
 ///
 /// Reads return iterators; writes take closures. **Prefer a read query whenever the data is only
@@ -502,6 +504,96 @@ impl World {
         }
     }
 
+    /// Iterates every entity that has all three of `A`, `B`, and `C`, read-only.
+    ///
+    /// The read-only counterpart to [`World::for_each_triple_mut`]. Permits repeated types, since
+    /// shared borrows never conflict.
+    pub fn iter_triple<A: Component, B: Component, C: Component>(
+        &self,
+    ) -> impl Iterator<Item = (Entity, &A, &B, &C)> {
+        self.archetypes
+            .iter()
+            .filter_map(|archetype| {
+                let (entities, a_values, b_values, c_values) =
+                    archetype.entities_with_triple::<A, B, C>()?;
+                Some(
+                    entities
+                        .iter()
+                        .copied()
+                        .zip(a_values.iter())
+                        .zip(b_values.iter())
+                        .zip(c_values.iter())
+                        .map(|(((entity, a), b), c)| (entity, a, b, c)),
+                )
+            })
+            .flatten()
+    }
+
+    /// Calls `f` for every entity with all three of `A`, `B`, and `C`, writing `A` and `B` and
+    /// reading `C`.
+    ///
+    /// Does nothing if any two of the three types are the same.
+    ///
+    /// # When to reach for this
+    ///
+    /// The shape a behaviour system tends to want: update some state, set a movement value, and
+    /// read a position to decide both. Before this existed the only way to express it was to collect
+    /// into a `Vec` and write back by entity handle, which costs an allocation and a location lookup
+    /// per entity.
+    ///
+    /// ```
+    /// # use amadeo_core::{StableHash, StableHasher};
+    /// # use amadeo_ecs::{Component, World};
+    /// # #[derive(Debug, Clone, Copy, PartialEq)] struct Health(f32);
+    /// # #[derive(Debug, Clone, Copy, PartialEq)] struct Shield(f32);
+    /// # #[derive(Debug, Clone, Copy, PartialEq)] struct Incoming(f32);
+    /// # impl StableHash for Health { fn stable_hash(&self, h: &mut StableHasher) { self.0.stable_hash(h); } }
+    /// # impl StableHash for Shield { fn stable_hash(&self, h: &mut StableHasher) { self.0.stable_hash(h); } }
+    /// # impl StableHash for Incoming { fn stable_hash(&self, h: &mut StableHasher) { self.0.stable_hash(h); } }
+    /// # impl Component for Health {}
+    /// # impl Component for Shield {}
+    /// # impl Component for Incoming {}
+    /// # let mut world = World::new();
+    /// # let entity = world.spawn();
+    /// # world.insert(entity, Health(100.0));
+    /// # world.insert(entity, Shield(30.0));
+    /// # world.insert(entity, Incoming(50.0));
+    /// // Shields absorb first, then health takes the remainder.
+    /// world.for_each_triple_mut::<Shield, Health, Incoming>(|_entity, shield, health, incoming| {
+    ///     let absorbed = incoming.0.min(shield.0);
+    ///     shield.0 -= absorbed;
+    ///     health.0 -= incoming.0 - absorbed;
+    /// });
+    ///
+    /// assert_eq!(world.get::<Shield>(entity), Some(&Shield(0.0)));
+    /// assert_eq!(world.get::<Health>(entity), Some(&Health(80.0)));
+    /// ```
+    ///
+    /// `A` and `B` are both marked changed at the current tick, whether or not `f` writes to them.
+    /// If one of them is only being read, use [`World::iter_triple`] or restructure — a spurious
+    /// change mark makes change detection less useful for every other system.
+    pub fn for_each_triple_mut<A: Component, B: Component, C: Component>(
+        &mut self,
+        mut f: impl FnMut(Entity, &mut A, &mut B, &C),
+    ) {
+        let tick = self.tick;
+        for archetype in &mut self.archetypes {
+            if let Some((entities, a_values, b_values, c_values)) =
+                archetype.entities_with_triple_mut::<A, B, C>(tick)
+            {
+                for (((entity, a), b), c) in entities
+                    .iter()
+                    .copied()
+                    .zip(a_values.iter_mut())
+                    .zip(b_values.iter_mut())
+                    .zip(c_values.iter())
+                {
+                    f(entity, a, b, c);
+                }
+            }
+        }
+    }
+
     /// A fingerprint of all simulation state in this world.
     ///
     /// This is the value golden replay tests assert on (ADR 0005). Two worlds that reached the same
@@ -857,6 +949,135 @@ mod tests {
             .map(|(_, first, second)| first.x + second.y)
             .collect();
         assert_eq!(found, vec![15.0]);
+    }
+
+    #[test]
+    fn iter_triple_visits_only_entities_with_all_three() {
+        let mut world = World::new();
+
+        let all_three = world.spawn();
+        world.insert(all_three, Position { x: 1.0, y: 2.0 });
+        world.insert(all_three, Velocity { x: 3.0, y: 4.0 });
+        world.insert(all_three, Tag(7));
+
+        let only_two = world.spawn();
+        world.insert(only_two, Position { x: 9.0, y: 9.0 });
+        world.insert(only_two, Velocity { x: 9.0, y: 9.0 });
+
+        let found: Vec<(f32, f32, u32)> = world
+            .iter_triple::<Position, Velocity, Tag>()
+            .map(|(_, position, velocity, tag)| (position.x, velocity.x, tag.0))
+            .collect();
+        assert_eq!(found, vec![(1.0, 3.0, 7)]);
+    }
+
+    #[test]
+    fn iter_triple_does_not_mark_components_changed() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.insert(entity, Position { x: 0.0, y: 0.0 });
+        world.insert(entity, Velocity { x: 0.0, y: 0.0 });
+        world.insert(entity, Tag(1));
+
+        world.advance_tick();
+        world.advance_tick();
+        let before = world.changed_tick::<Position>(entity);
+
+        assert_eq!(world.iter_triple::<Position, Velocity, Tag>().count(), 1);
+        assert_eq!(world.changed_tick::<Position>(entity), before);
+    }
+
+    #[test]
+    fn for_each_triple_mut_writes_two_and_reads_one() {
+        let mut world = World::new();
+
+        let moving = world.spawn();
+        world.insert(moving, Position { x: 0.0, y: 0.0 });
+        world.insert(moving, Velocity { x: 2.0, y: -1.0 });
+        world.insert(moving, Tag(10));
+
+        // Missing Tag, so it must not be visited.
+        let untagged = world.spawn();
+        world.insert(untagged, Position { x: 100.0, y: 100.0 });
+        world.insert(untagged, Velocity { x: 5.0, y: 5.0 });
+
+        world.for_each_triple_mut::<Position, Velocity, Tag>(|_entity, position, velocity, tag| {
+            // Both mutable arguments are written, and the third is only read.
+            position.x += velocity.x * tag.0 as f32;
+            velocity.x = 0.0;
+        });
+
+        assert_eq!(
+            world.get::<Position>(moving),
+            Some(&Position { x: 20.0, y: 0.0 })
+        );
+        assert_eq!(
+            world.get::<Velocity>(moving),
+            Some(&Velocity { x: 0.0, y: -1.0 })
+        );
+        assert_eq!(
+            world.get::<Position>(untagged),
+            Some(&Position { x: 100.0, y: 100.0 }),
+            "an entity missing the third component must not be touched"
+        );
+    }
+
+    #[test]
+    fn for_each_triple_mut_leaves_the_read_component_unchanged() {
+        // The point of C being a shared borrow: reading it must not defeat change detection.
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.insert(entity, Position { x: 0.0, y: 0.0 });
+        world.insert(entity, Velocity { x: 1.0, y: 1.0 });
+        world.insert(entity, Tag(1));
+
+        world.advance_tick();
+        world.advance_tick();
+
+        world.for_each_triple_mut::<Position, Velocity, Tag>(|_e, _p, _v, _t| {});
+
+        assert_eq!(world.changed_tick::<Position>(entity), Some(Tick(2)));
+        assert_eq!(world.changed_tick::<Velocity>(entity), Some(Tick(2)));
+        assert_eq!(
+            world.changed_tick::<Tag>(entity),
+            Some(Tick::ZERO),
+            "the read-only component must keep its original change tick"
+        );
+    }
+
+    #[test]
+    fn for_each_triple_mut_refuses_repeated_types() {
+        // Two mutable borrows of one column cannot be handed out, so the query does nothing rather
+        // than aliasing. Checked in release too, since `get_disjoint_mut` rejects the overlap.
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.insert(entity, Position { x: 1.0, y: 1.0 });
+        world.insert(entity, Velocity { x: 1.0, y: 1.0 });
+
+        let mut visited = 0;
+        // Deliberately not wrapped in `catch_unwind`: in debug this trips a `debug_assert`, which is
+        // the intended loud failure for a programming error. The release behaviour -- visit nothing
+        // -- is what the return value of `get_disjoint_mut` produces.
+        if !cfg!(debug_assertions) {
+            world.for_each_triple_mut::<Position, Position, Velocity>(|_e, _a, _b, _c| {
+                visited += 1;
+            });
+            assert_eq!(visited, 0);
+        }
+    }
+
+    #[test]
+    fn iter_triple_allows_the_same_component_repeatedly() {
+        // Unlike the mutable version, shared borrows of one column are fine.
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.insert(entity, Position { x: 3.0, y: 4.0 });
+
+        let found: Vec<f32> = world
+            .iter_triple::<Position, Position, Position>()
+            .map(|(_, a, b, c)| a.x + b.y + c.x)
+            .collect();
+        assert_eq!(found, vec![10.0]);
     }
 
     #[test]

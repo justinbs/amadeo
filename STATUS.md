@@ -196,10 +196,9 @@ Carried into M1 rather than counted as done:
 Known gaps deliberately left for later:
 - No bundle/spawn-with-components API, so building an entity with N components costs N archetype
   migrations. Correct but wasteful; optimise when it shows up in a profile.
-- **Query shapes are limited to one and two components.** No longer speculative: the Q1 benchmark
-  needed three at once (`Enemy` write, `Transform2d` read, `Velocity` write) and had to collect into
-  a `Vec` and write back by handle. That workaround is now the documented idiom
-  (`docs/07-working-with-the-code.md`), and widening queries is on the M1 list.
+- Query shapes reach three components (`iter_triple`, `for_each_triple_mut` — writes two, reads one),
+  added in session 5 because the Q1 benchmark needed exactly that and had to work around it. Four or
+  more, or a different mutability split, still needs collect-and-write-back. Extend on demand.
 - **`Service` requires `Send + Sync`**, which excludes any non-`Sync` runtime from living in the
   world — found when neither script VM in the Q1 spike could be stored there. Harmless today, will
   bite the audio mixer and asset loader in M3. Filed as **Q12**.

@@ -83,9 +83,8 @@ of a milestone.
   degrades the edit→observe loop: 47 ms to reach 30 s of simulated time, 382 ms to reach 5 minutes,
   growing linearly forever. Acceptance test: restoring to tick N beats re-simulating to tick N at
   N = 18 000.
-- **Widen ECS queries past two components.** The Q1 benchmark needed three at once (`Enemy` write,
-  `Transform2d` read, `Velocity` write) and had to collect into a `Vec` and write back by handle.
-  Under ADR 0011 that overhead is on shipping code's critical path, not just a benchmark's.
+- ✅ **Widen ECS queries past two components.** Done: `iter_triple` and `for_each_triple_mut` (writes
+  two, reads one). Four or more is deferred until a real system needs it.
 
 **Exit gate**
 1. **A complete small 2D game — built entirely by Claude with zero editor use and zero human

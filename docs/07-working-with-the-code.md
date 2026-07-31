@@ -363,47 +363,58 @@ in practice; if it stops being rare, the design gets revisited.
 Commands apply in the order they were queued, which with a single-threaded schedule is fully
 determined by system order — so no extra sorting is needed for determinism.
 
-### Writing a gameplay system — three components at once
+### Writing a gameplay system
 
 Game logic is **plain Rust in the game crate**. There is no scripting language and no hot reload;
 ADR 0011 settled that by measurement, and `spikes/q1-game-logic/README.md` has the numbers. In
-practice that means a gameplay system is just a function, exactly like `integrate` in `quad-demo`.
+practice a gameplay system is just a function, exactly like `integrate` in `quad-demo`.
 
-The one shape worth knowing in advance: **queries handle at most two components**, and real systems
-often want three. "For each enemy, look at where it is, and set its velocity" needs `Enemy` (write),
-`Transform2d` (read), and `Velocity` (write) — which does not fit `for_each_pair_mut`.
-
-The pattern is **collect, decide, write back**:
+A behaviour system usually wants three components at once — update some state, set a movement value,
+and read a position to decide both. That is `for_each_triple_mut`, which **writes the first two and
+reads the third**:
 
 ```rust
 fn enemy_ai(world: &mut World) {
-    // 1. Copy out what the decision needs. `iter_pair` is read-only, so nothing is
-    //    marked changed just for being looked at.
-    let enemies: Vec<(Entity, Enemy, [f32; 2])> = world
-        .iter_pair::<Enemy, Transform2d>()
-        .map(|(entity, enemy, transform)| (entity, *enemy, transform.position))
-        .collect();
-
-    // 2. Decide. A plain function, easy to unit test on its own.
+    // A resource and the entities, in the same pass. `with_resource_taken` lifts the RNG out
+    // so the query can still borrow the world -- see the entry above.
     world.with_resource_taken::<SimRng, ()>(|world, rng| {
-        for (entity, mut enemy, position) in enemies {
-            let velocity = decide(&mut enemy, position, rng);
-
-            // 3. Write back by handle.
-            if let Some(slot) = world.get_mut::<Enemy>(entity) { *slot = enemy; }
-            if let Some(slot) = world.get_mut::<Velocity>(entity) { *slot = velocity; }
-        }
+        world.for_each_triple_mut::<Enemy, Velocity, Transform2d>(
+            |_entity, enemy, velocity, transform| {
+                *velocity = decide(enemy, transform.position, rng);
+            },
+        );
     });
 }
 ```
 
-It costs one `Vec` allocation and a hash lookup per write. That is real but small — the whole thing
-runs in ~4.6 µs/tick for 64 entities in release. Widening queries past two components is on the M1
-list; until then this is the idiom, and `spikes/q1-game-logic/a-rust/src/ai.rs` is a worked example.
+**Order the type parameters by how you use them, not by importance.** The two written components come
+first, the read-only one last. Getting it wrong is a compile error only if the types differ in
+mutability needs — otherwise it silently marks the wrong component as changed, which quietly degrades
+change detection for every other system.
 
-**Why `decide` is a separate function.** Keeping the branching logic out of the query closure means
-it is a pure function of its inputs, so it can be tested without building a world. Worth doing for
-anything more complicated than a single assignment.
+**Why `decide` is a separate function.** Keeping the branching logic out of the query closure makes it
+a pure function of its inputs, so it can be tested without building a world. Worth doing for anything
+more complicated than a single assignment. `spikes/q1-game-logic/a-rust/src/ai.rs` is a worked
+example — though note it predates `for_each_triple_mut` and uses the older collect-and-write-back
+workaround below, because a spike is frozen once its ADR is written.
+
+**If you need four components, or a different mutability split**, the fallback is collect, decide,
+write back:
+
+```rust
+let enemies: Vec<(Entity, Enemy, [f32; 2])> = world
+    .iter_pair::<Enemy, Transform2d>()
+    .map(|(entity, enemy, transform)| (entity, *enemy, transform.position))
+    .collect();
+
+for (entity, mut enemy, position) in enemies {
+    // ...decide...
+    if let Some(slot) = world.get_mut::<Enemy>(entity) { *slot = enemy; }
+}
+```
+
+It costs an allocation and a location lookup per write. Prefer a real query; extend the query API when
+a real system needs a shape it does not have, rather than speculatively.
 
 *(More entries land as the engine takes shape: the reflection derive macro and asset handles.)*
 

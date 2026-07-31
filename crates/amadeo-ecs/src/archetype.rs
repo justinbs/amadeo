@@ -4,6 +4,15 @@ use crate::component::{Column, Component, ComponentId, TypedColumn};
 use crate::entity::Entity;
 use amadeo_core::{StableHasher, Tick};
 
+/// One archetype's rows for a read-only three-component query: entities, then each column's values.
+///
+/// A named alias purely because the bare tuple trips clippy's `type_complexity`. It carries no
+/// meaning the tuple does not.
+type TripleRead<'a, A, B, C> = (&'a [Entity], &'a [A], &'a [B], &'a [C]);
+
+/// One archetype's rows for a three-component query that writes `A` and `B` and reads `C`.
+type TripleMut<'a, A, B, C> = (&'a [Entity], &'a mut [A], &'a mut [B], &'a [C]);
+
 /// A table of entities that all have exactly the same set of component types.
 ///
 /// Columns are stored in a `Vec` parallel to `component_ids`, and `component_ids` is kept sorted.
@@ -253,6 +262,69 @@ impl Archetype {
         Some((&self.entities, column_a.values_mut(tick), column_b.values()))
     }
 
+    /// Row entities alongside read-only access to three components' values.
+    ///
+    /// Like [`Archetype::entities_with_pair`], needs no disjoint-borrow trick and permits repeated
+    /// types, because shared borrows of the same slice do not conflict.
+    pub(crate) fn entities_with_triple<A: Component, B: Component, C: Component>(
+        &self,
+    ) -> Option<TripleRead<'_, A, B, C>> {
+        let column_a = self.column::<A>()?;
+        let column_b = self.column::<B>()?;
+        let column_c = self.column::<C>()?;
+        Some((
+            &self.entities,
+            column_a.values(),
+            column_b.values(),
+            column_c.values(),
+        ))
+    }
+
+    /// Row entities, mutable access to `A` and `B`'s values, and shared access to `C`'s.
+    ///
+    /// The primitive behind three-component mutable queries. `None` if any column is absent or if
+    /// any two of the three types are the same.
+    ///
+    /// # Why two writes and one read
+    ///
+    /// This is the shape a real system needed — the Q1 spike's enemy AI writes its behaviour state
+    /// and its velocity while reading its transform (ADR 0011). The write-one-read-two shape is not
+    /// provided because nothing has needed it yet; adding query shapes on demand rather than
+    /// speculatively is the policy this module already follows.
+    pub(crate) fn entities_with_triple_mut<A: Component, B: Component, C: Component>(
+        &mut self,
+        tick: Tick,
+    ) -> Option<TripleMut<'_, A, B, C>> {
+        let index_a = self.column_index(ComponentId::of::<A>())?;
+        let index_b = self.column_index(ComponentId::of::<B>())?;
+        let index_c = self.column_index(ComponentId::of::<C>())?;
+        if index_a == index_b || index_a == index_c || index_b == index_c {
+            debug_assert!(
+                false,
+                "entities_with_triple_mut called with the same component type more than once"
+            );
+            return None;
+        }
+
+        // Three disjoint indices, checked at runtime. Same trick as the pair version -- this is what
+        // makes a multi-component mutable query possible with no `unsafe`.
+        let [slot_a, slot_b, slot_c] = self
+            .columns
+            .get_disjoint_mut([index_a, index_b, index_c])
+            .ok()?;
+        let column_a = slot_a.as_any_mut().downcast_mut::<TypedColumn<A>>()?;
+        let column_b = slot_b.as_any_mut().downcast_mut::<TypedColumn<B>>()?;
+        // `C` is read-only, so a shared downcast -- which is what keeps its change ticks untouched.
+        let column_c = slot_c.as_any().downcast_ref::<TypedColumn<C>>()?;
+
+        Some((
+            &self.entities,
+            column_a.values_mut(tick),
+            column_b.values_mut(tick),
+            column_c.values(),
+        ))
+    }
+
     /// Feeds one row's components into a state fingerprint, in sorted component order.
     ///
     /// Sorted order is what makes the hash reproducible: it does not depend on the order components
@@ -353,6 +425,66 @@ mod tests {
 
         let positions = archetype.column::<Position>().expect("has positions");
         assert_eq!(positions.values(), &[Position(11.0), Position(22.0)]);
+        archetype.debug_assert_rectangular();
+    }
+
+    #[test]
+    fn triple_access_writes_two_columns_and_reads_a_third() {
+        #[derive(Debug, Clone, Copy, PartialEq)]
+        struct Mass(f32);
+        impl StableHash for Mass {
+            fn stable_hash(&self, hasher: &mut StableHasher) {
+                self.0.stable_hash(hasher);
+            }
+        }
+        impl Component for Mass {}
+
+        let mut pairs: Vec<(ComponentId, Box<dyn Column>)> = vec![
+            (
+                ComponentId::of::<Position>(),
+                Box::new(TypedColumn::<Position>::new()),
+            ),
+            (
+                ComponentId::of::<Speed>(),
+                Box::new(TypedColumn::<Speed>::new()),
+            ),
+            (
+                ComponentId::of::<Mass>(),
+                Box::new(TypedColumn::<Mass>::new()),
+            ),
+        ];
+        pairs.sort_by_key(|(id, _)| *id);
+        let (ids, columns): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
+        let mut archetype = Archetype::new(ids, columns);
+
+        archetype.push_entity(Entity::new(0, 0));
+        assert!(archetype.push_component(Position(1.0), Tick::ZERO));
+        assert!(archetype.push_component(Speed(10.0), Tick::ZERO));
+        assert!(archetype.push_component(Mass(2.0), Tick::ZERO));
+
+        let (entities, positions, speeds, masses) = archetype
+            .entities_with_triple_mut::<Position, Speed, Mass>(Tick(1))
+            .expect("all three columns present");
+        assert_eq!(entities.len(), 1);
+
+        // Two disjoint mutable borrows plus a shared one, from the same column slice.
+        for ((position, speed), mass) in positions
+            .iter_mut()
+            .zip(speeds.iter_mut())
+            .zip(masses.iter())
+        {
+            position.0 += speed.0 / mass.0;
+            speed.0 = 0.0;
+        }
+
+        assert_eq!(
+            archetype.column::<Position>().expect("present").values(),
+            &[Position(6.0)]
+        );
+        assert_eq!(
+            archetype.column::<Speed>().expect("present").values(),
+            &[Speed(0.0)]
+        );
         archetype.debug_assert_rectangular();
     }
 
