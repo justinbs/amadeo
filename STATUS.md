@@ -1,9 +1,9 @@
 # Amadeo — Current Status
 
 **Last updated:** 2026-07-31 (session 6)
-**Current phase:** **M0 complete. M1 well under way** — reflection, the scene format, and the agent's
-read layer all landed. What remains is mostly the CLI/RPC surface, and **Q14 has now settled its
-shape (ADR 0016)**, so it is unblocked and ready to build.
+**Current phase:** **M0 complete. M1 well under way** — reflection, the scene format, the agent's read
+layer, **and the agent protocol plus a working `amadeo` CLI** have all landed. What remains in M1 is
+the 2D renderer (blocked on Q3), assets, snapshots, and the small game that closes the exit gate.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private) — **nothing pushed yet**
 
 ---
@@ -13,12 +13,12 @@ shape (ADR 0016)**, so it is unblocked and ready to build.
 Sessions 1–2 established scope, stack, and architecture. Session 3 built M0. Session 4 closed it by
 resolving Q1. Session 5 built most of M1's foundations.
 
-**Eleven crates plus one game**, all tested: `amadeo-derive`, `amadeo-core`, `amadeo-reflect`,
+**Twelve crates plus one game**, all tested: `amadeo-derive`, `amadeo-core`, `amadeo-reflect`,
 `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-input`, `amadeo-render`, `amadeo-scene`,
-`amadeo-agent`, `amadeo-app`, and `games/quad-demo`. **393 tests passing**; fmt, clippy `-D warnings`,
-and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
+`amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`. **454 tests passing**; fmt, clippy
+`-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
-Three things work end to end today:
+Four things work end to end today:
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -27,54 +27,54 @@ Three things work end to end today:
   instantiates into a `World` using the engine's real components, hierarchy included.
 - **The engine describes itself.** `amadeo_agent::describe` emits the full component schema as
   JSON — names, types, docs, units, ranges, replication — generated from the code, so never stale.
+- **The CLI talks to a running game.** `amadeo describe Velocity` describes a type defined in
+  `games/quad-demo`, answered over JSON-RPC by the game binary the CLI launched. Also `query`,
+  `entity`, `schedule`, `status`, `call`, and a standalone `fmt`. Verified: the same command in two
+  separate processes gives a byte-identical reply, state hash included.
 
 **M0 exit gate: 4 of 4.** Gate item 2 is met in the "separate build" sense; the "separate process"
 half is carried into M1 because it needs `amadeo-cli`.
 
-**M1 exit gate: 1 of 5.** Gate 3 (scene round-trip byte-identical) is done. Gates 1, 2, and 4 all
-describe working *through* the CLI and RPC — unbuilt, but no longer undesigned now that ADR 0016 has
-fixed their shape. Gate 5 (golden replays still pass) holds.
+**M1 exit gate: 1 of 5, with 2 and 4 now reachable.** Gate 3 (scene round-trip byte-identical) is
+done. Gates 2 and 4 describe verifying and authoring *through* the CLI and RPC, which now exist —
+gate 4 in particular ("`describe` output is sufficient to write a new component without reading
+engine source") is testable today by actually doing it. Gate 1 (a complete small 2D game) still needs
+the sprite renderer, so it waits on Q3. Gate 5 (golden replays still pass) holds.
 
-**No blockers of any kind.** Q14 was the last one; it closed in session 6.
+**No blockers of any kind.** Q14 was the last one; it closed in session 6 and was built the same
+session.
 
 ## The single most important thing to do next
 
-**Build `amadeo-agent`'s transport and `amadeo-cli` on top of it, to the shape ADR 0016 just fixed.**
-This is most of what remains in M1's exit gate, and the design work is now done.
+**Resolve Q3 — how 2D and 3D coexist in the renderer.** It is now the highest-priority open question
+and it blocks two separate things: the sprite renderer that M1's exit gate 1 needs, and
+`GlobalTransform` propagation, which has been waiting since ADR 0015.
 
-Q14 asked where `amadeo describe` actually runs, because ADR 0011 has a consequence the roadmap did
-not anticipate: game logic is compiled into the game binary, so **a standalone `amadeo` CLI cannot
-know a game's components**. ADR 0016 settles it in four parts:
-
-1. **The game binary is the agent host.** It is the only process holding the registry, the world, and
-   the systems at once — the same argument ADR 0010 used to put the event loop there.
-2. **`App` owns the `ComponentRegistry`**, so a game registers a component in one place.
-   Worth knowing: *no game registers anything today*, so `describe` on `quad-demo` would currently
-   report an empty schema for its own `Velocity` and `Player`.
-3. **`amadeo-cli` launches the game and speaks JSON-RPC over stdio**, via
-   `cargo run -p <package> -- --amadeo-agent`. `new` and `fmt` stay standalone.
-4. **One-shot batch first, hand-written JSON parser.** Each invocation is a fresh deterministic run
-   that exits — reproducible by construction. The persistent session and the mutating calls
-   (`sim.step`, `world.set_component`) wait for M4's editor to need them.
-
-Build order that falls out: the JSON parser, then the method dispatch, then `--amadeo-agent` in
-`quad-demo`, then the CLI as a launcher. `amadeo replay` closes M0's carried-over separate-process
-check on the way.
+It is the same shape of question as Q1 and Q2, both of which were settled by building the candidates
+rather than arguing about them — so the likely move is a `spikes/q3-2d-3d/` workspace with the
+options built far enough to compare. Three are written up in `docs/04-subsystems.md` §4: a unified
+orthographic pipeline with a specialised sprite batcher, two pipelines sharing a render graph, or 2D
+as a compositing layer over 3D. Expensive to reverse, so it wants an ADR before M1's 2D work rather
+than before M2's 3D work.
 
 Then, in order:
 
-1. **`Resource: Reflect`** — the other half of I8, deliberately deferred by ADR 0013. Needs `Rng`'s
+1. **`amadeo replay` and `amadeo check`.** The two CLI commands with the most leverage left.
+   `replay` finally closes M0's carried-over **separate-process** replay gate: cross-process
+   determinism is verified by hand today (same command, two processes, byte-identical reply) but is
+   not yet a CI test, and that is the one gap in an otherwise fully-guarded invariant.
+2. **`Resource: Reflect`** — the other half of I8, deliberately deferred by ADR 0013. Needs `Rng`'s
    state exposed so `SimRng` can reflect (retiring the `Debug`-based `StableHash` flagged as
-   inelegant since M0), and map support in `Reflect` for `InputState`.
-2. **`snapshot.take` / `snapshot.restore`.** The Q1 spike found re-simulation, not compilation, is
+   inelegant since M0), and map support in `Reflect` for `InputState`. Also what `world.resources`
+   in the protocol is waiting on.
+3. **`snapshot.take` / `snapshot.restore`.** The Q1 spike found re-simulation, not compilation, is
    what degrades the iteration loop — 382 ms to reach 5 simulated minutes, growing linearly.
-3. **2D rendering** — sprite batcher, textures, layers. Wants Q3 settled first, which is also what
-   `GlobalTransform` propagation is waiting on.
+4. **2D rendering** — sprite batcher, textures, layers. Blocked on Q3, above.
 
 **Three things are undecided rather than unbuilt**, all in `docs/06-open-questions.md`:
 
-- **Q3 — how 2D and 3D coexist.** Blocks both the sprite renderer and transform propagation. Now the
-  highest-priority open question, since Q14 closed.
+- **Q3 — how 2D and 3D coexist.** Blocks both the sprite renderer and transform propagation. The
+  highest-priority open question now that Q14 has closed, and the thing to do next.
 - **Q7 — prefab override semantics.** The format records overrides visibly (the I1 requirement), but
   what they *mean* when a prefab changes under an instance is undesigned. Study Unity's and Godot's
   failure modes first.
@@ -283,7 +283,42 @@ Verified on this machine (2026-07-30):
   stable order so introspection does not show churn that did not happen. All read-only, so looking at
   a world cannot perturb it.
 
-**Verified green: 392 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+### M1 continued (session 6)
+
+- ✅ **Q14 resolved — ADR 0016**, then built the same session. See the session log below for what
+  reading the code changed about the question.
+- ✅ **A JSON reader** in `amadeo-agent`, beside the writer that was already there, with a round-trip
+  test pinning the two together. Strict — no trailing commas, comments, or `NaN` — plus two
+  strictnesses past the spec, each because the alternative hides a bug: **duplicate object keys are
+  an error** rather than a silent last-one-wins overwrite into a `BTreeMap`, and **nesting is capped**
+  so a few thousand `[` arriving from a pipe is a message rather than a stack overflow.
+- ✅ **`App` owns a `ComponentRegistry`**, with `App::register_component::<T>()`. This was the gap
+  ADR 0016 found by reading code rather than docs: the registry was built ad hoc in tests and nowhere
+  else, and `quad-demo` registered nothing, so `describe` against a real game would have reported an
+  empty schema for the game's own types the first time anyone tried it.
+- ✅ **The protocol** (`amadeo-agent`) and **the host** (`amadeo-app`), split where I6 forces it —
+  `amadeo-agent` sits above `amadeo-app`, so it cannot reach down for `App`. It owns the JSON-RPC
+  envelope and the methods needing only a world; `amadeo-app` owns the stdin loop and the methods
+  needing the schedule or the tick count. A client never sees the seam. Spec in `docs/protocol/v1.md`.
+- ✅ **`quad-demo` hands over in one line**, sharing `build_simulation()` with the windowed path so an
+  answer about the inspected world is an answer about the game that actually runs (I7).
+- ✅ **`amadeo-cli`** — `describe`, `query`, `entity`, `schedule`, `status`, `call`, and `fmt`. The
+  ADR 0016 split is visible in `--help`: `fmt` runs in the CLI and never builds anything, everything
+  else launches the game through `cargo run` so a stale binary is rebuilt rather than answering for
+  code that no longer exists.
+
+**Verified green: 454 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+
+Two things found by running it rather than by thinking about it:
+
+- **PowerShell's pipe prepends a UTF-8 BOM**, and rejecting it produced an error pointing at an
+  invisible character — the least actionable message that parser could produce. A leading U+FEFF is
+  now skipped, and only a leading one.
+- **`state_hash` goes over the wire as a hex string**, not a number. It is a `u64`, JSON numbers are
+  `f64`, and above 2^53 a client silently reads a different value — which would break replay
+  assertions in the least visible way available.
+
+### Session 5 detail
 
 **The golden replay did not need regenerating**, which was not guaranteed. The derive sorts fields by
 name, so any component whose fields were not already alphabetical changes fingerprint. The committed
@@ -293,7 +328,10 @@ nothing asserts on them. Reasoning in ADR 0013 so nobody re-derives it from scra
 
 Carried into M1 rather than counted as done:
 - A **separate-process** replay check. The golden test replays in-process against a committed
-  fixture, which covers "separate build" but not "separate process". Closing it needs `amadeo-cli`.
+  fixture, which covers "separate build" but not "separate process". `amadeo-cli` now exists and
+  cross-process determinism has been **verified by hand** — the same `amadeo status --ticks 600` in
+  two processes returns a byte-identical reply, state hash included — but it is still not a CI test.
+  Closing it properly needs `amadeo replay`.
 
 Known gaps deliberately left for later:
 - No bundle/spawn-with-components API, so building an entity with N components costs N archetype
@@ -333,7 +371,8 @@ If you are starting cold, this is the shortest path to being useful:
 4. `docs/adr/` — read 0005 (determinism), 0008 (ECS storage), 0009 (resource vs service) before
    touching `amadeo-ecs`. Read 0003 and 0004 before touching anything about scenes or the editor.
    Read **0011** before proposing a scripting language or a hot-reload mechanism — it was decided by
-   measurement, and reopening it needs numbers.
+   measurement, and reopening it needs numbers. Read **0016** plus `docs/protocol/v1.md` before
+   touching the CLI, the agent, or anything about process boundaries.
 5. `docs/06-open-questions.md` — before assuming anything undecided.
 
 Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
@@ -398,8 +437,9 @@ Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
   which made Pillar 2 real and surfaced **Q14**: under ADR 0011 a standalone CLI cannot know a
   game's components, so the roadmap's `amadeo-cli` shape needs rethinking before it is written.
   392 tests.
-- **S6 (2026-07-31):** **Q14 resolved — ADR 0016**, deliberately as a decision session with no code,
-  since the answer fixes the shape of `amadeo-cli` and most of what remains in M1.
+- **S6 (2026-07-31):** **Q14 resolved — ADR 0016 — and then built.** The decision came first and
+  alone, deliberately: it fixes the shape of `amadeo-cli` and most of what remained in M1, and was
+  worth settling before writing the CLI rather than during.
 
   Reading the code rather than the roadmap changed the framing twice. First, **option 1 was never a
   competing option** — the game binary is the only process holding the registry, the world, and the
@@ -417,4 +457,13 @@ Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
   connection that outlives one question. And **the JSON parser is hand-written**, joining the writer
   already in `amadeo-agent` — `serde_json` was considered and rejected as the first real dependency
   beyond `thiserror` in a workspace that has hand-rolled PCG32, FNV-1a, and two text formats on
-  legibility grounds. No engine code changed; 393 tests, baseline verified green.
+  legibility grounds.
+
+  Then **built all of it**: the JSON reader, the registry on `App`, the protocol in `amadeo-agent`,
+  the host in `amadeo-app`, the one-line handover in `quad-demo`, and `amadeo-cli` itself. The thing
+  that now works is the point of the whole milestone — `amadeo describe Velocity` describes a type
+  defined in `games/quad-demo`, answered over JSON-RPC by a game binary that a CLI which has never
+  linked it went and launched. Two bugs were found by running it rather than by reasoning about it: a
+  UTF-8 BOM from PowerShell's own pipe producing an error that pointed at an invisible character, and
+  `state_hash` needing to be a hex string because a `u64` above 2^53 does not survive JSON's `f64`
+  numbers. 454 tests, all four §4b commands green. Q3 is now the top open question.
