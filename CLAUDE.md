@@ -80,15 +80,17 @@ crates/
 🟡 amadeo-scene       the .scene text format (ADR 0014): parser, canonical writer, instantiate into
                      a World. Prefab instancing and hierarchy-as-components still pending.
 ✖ amadeo-script      NOT BUILT. ADR 0011: game logic is plain Rust in the game crate.
-🟡 amadeo-agent       describe (schema as JSON), entity/query introspection, a deterministic JSON
-                     writer. Read-only. JSON parser, RPC dispatch, snapshots, and capture pending;
-                     their shape is fixed by ADR 0016.
-✅ amadeo-app         Stage/Schedule, fixed-timestep loop, SimRng
+🟡 amadeo-agent       the protocol: JSON reader and writer, JSON-RPC envelope, and the methods that
+                     need only a world + registry (describe, world.query/entity/list). Read-only.
+                     Mutation, snapshots, and capture pending. ADR 0016, spec in docs/protocol/v1.md.
+✅ amadeo-app         Stage/Schedule, fixed-timestep loop, SimRng, ComponentRegistry, and the agent
+                     *host* — serve_if_requested reads stdin and answers. The host lives here rather
+                     than in amadeo-agent because it needs App and I6 forbids reaching down.
 — amadeo-editor      graphical editor. A CLIENT of amadeo-agent. No privileged access.
-— amadeo-cli         the `amadeo` binary: new/run/check/fmt/test/replay/inspect/build/export.
-                     ADR 0016: `new` and `fmt` are standalone; everything else spawns the game binary
-                     in agent mode and talks to it over stdio, because only that process knows the
-                     game's components.
+🟡 amadeo-cli         the `amadeo` binary. Built: describe/query/entity/schedule/status/call/fmt.
+                     Pending: new/run/check/test/replay/build/export. ADR 0016: `fmt` is standalone;
+                     everything else spawns the game binary in agent mode and talks to it over stdio,
+                     because only that process knows the game's components.
 modules/             optional, genre-flavored. Core NEVER depends on these.
 games/               actual games built with the engine
 docs/                design docs and ADRs

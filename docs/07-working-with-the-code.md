@@ -110,6 +110,25 @@ None of these work until M0 scaffolds the workspace. Recorded here so they're in
 | `cargo doc --open` | Builds and opens the API docs generated from doc comments. |
 | `cargo run -p quad-demo` | Runs the demo game in a window. WASD or arrows to move, Escape to quit. |
 
+**Asking the engine about itself.** `amadeo` is built with `cargo build -p amadeo-cli` and lands at
+`target/debug/amadeo`. Run it from anywhere inside the project — it finds `amadeo.toml` by walking
+up, the way `cargo` and `git` do.
+
+| Command | What it does |
+|---|---|
+| `amadeo status --ticks 600` | tick, state hash, and what is registered, after 600 ticks |
+| `amadeo describe` | the whole component schema, as JSON |
+| `amadeo describe Velocity` | one type: fields, units, ranges, docs |
+| `amadeo query Transform2d Player` | entities carrying **all** of those components |
+| `amadeo entity 5` | one entity's components and values |
+| `amadeo schedule Simulation` | systems in resolved execution order |
+| `amadeo call <method> --params '{...}'` | any protocol method, so the CLI never lags the protocol |
+| `amadeo fmt <file>...` | rewrite scene files canonically; `--check` reports instead of fixing |
+
+Everything except `fmt` compiles and launches the game, because a game's components are Rust types in
+the game binary — see the pattern write-up below and `docs/protocol/v1.md`. `--compact` prints one
+line of JSON instead of indented.
+
 **Seeing something on screen.** `quad-demo` is the only thing that opens a window today. If you want
 to check that a rendering change works, that is where to look — and note the first build after
 touching anything GPU-related takes minutes, because it compiles wgpu.
@@ -526,7 +545,76 @@ scene naming a component that does not exist, which is what lets `amadeo fmt` wo
 module is not loaded. Checking that `Transform2d` exists and has a `position` field is layer 2,
 against the reflection registry, and is not built yet.
 
-*(More entries land as the engine takes shape: asset handles and the agent protocol.)*
+### Pattern: the game binary hosts the agent, and the CLI launches it
+
+The one that explains why `amadeo describe` is not a normal CLI command.
+
+**The problem.** ADR 0011 settled that game logic is plain Rust compiled into the game binary. So a
+game's components are Rust types that live in `games/mygame/`. The `amadeo` binary is compiled
+separately and has *never linked them* — it cannot construct one, describe its fields, or read its
+values. A standalone CLI could only ever describe the engine's own types, which is the least
+interesting half of the answer.
+
+**The shape (ADR 0016).** Three pieces, in three crates, each where the dependency order forces it:
+
+```text
+amadeo-cli     `amadeo describe Player`
+                 └─ spawns: cargo run -p quad-demo -- --amadeo-agent --ticks 300
+                            │
+games/quad-demo             ├─ main() calls serve_if_requested(&mut app)
+                            │
+amadeo-app                  ├─ serve(): reads stdin, routes, writes stdout
+                            │           answers schedule.list and sim.status itself
+amadeo-agent                └─ dispatch_world(): describe, world.query, world.entity
+                                       plus Request/Json — the protocol itself
+```
+
+The split between the last two is **not** taste. `amadeo-agent` sits above `amadeo-app` in the crate
+order (`CLAUDE.md` §4), so it may not reach down for `App`. It therefore owns the protocol, and
+`amadeo-app` owns the hosting. Adding a method that needs only a world goes in `amadeo-agent`; one
+that needs the schedule or the tick loop goes in `amadeo-app`. A client never sees the seam — an
+unknown method lists both halves in one list.
+
+**What a game has to do.** Two things, both small:
+
+```rust
+// 1. Register the components you use, so `describe` can see them and scenes can name them.
+app.register_component::<Transform2d>()?;
+app.register_component::<Velocity>()?;
+
+// 2. Hand over, before any window exists.
+if amadeo_app::serve_if_requested(&mut app)? {
+    return Ok(());
+}
+```
+
+Registration is the part that is easy to forget and silent when forgotten: an unregistered component
+works perfectly at runtime and is simply invisible to `describe`. That is why the registry lives on
+`App` rather than being built separately — one object, one place to register.
+
+**Why one invocation is one fresh run.** How far to simulate is `--ticks` at launch, never a method.
+So every question in a session sees the same world, and the same command twice gives the same answer
+twice:
+
+```bash
+amadeo status --ticks 600
+```
+
+That reproducibility is the point. A question an agent asks is a question it can put in a test —
+which is not true of poking at an attached, already-running process.
+
+**Two rules that will bite if broken.**
+
+1. **Never `println!` in a game outside agent mode's control.** stdout *is* the protocol. Diagnostics
+   go to `eprintln!`. The CLI reports a game that prints to stdout as sending "something that is not
+   JSON", which is the right error but an annoying one to chase.
+2. **The CLI goes through `cargo run`, deliberately**, so a stale binary is rebuilt rather than
+   answering with a schema for code that no longer exists. That costs a second or two and is the
+   whole reason a cached schema file was rejected.
+
+The full method list is `docs/protocol/v1.md`.
+
+*(More entries land as the engine takes shape: asset handles.)*
 
 ---
 

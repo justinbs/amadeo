@@ -1,0 +1,23 @@
+[package]
+name = "amadeo-cli"
+description = "The `amadeo` command: scaffolding and formatting standalone, everything else by launching the game."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "amadeo"
+path = "src/main.rs"
+
+[dependencies]
+amadeo-agent.workspace = true
+amadeo-scene.workspace = true
+
+# `anyhow` is allowed here and in games only (CLAUDE.md section 6). A CLI's errors are printed and
+# read, never matched on, so the typed-error discipline the library crates keep buys nothing here.
+anyhow = "1"
+
+[lints]
+workspace = true

@@ -85,17 +85,19 @@ of a milestone.
   `query` (the live world), and a deterministic JSON writer whose output is sorted and therefore
   diffable. Still to do: the mutating calls (`world.spawn`, `world.set_component`, `sim.step`,
   `sim.pause`), `events.since`, `scene.load`/`save`, `render.capture`/`describe`, `replay.*`,
-  `snapshot.*` — and the JSON-RPC transport, whose shape **Q14 settled (ADR 0016)**: a hand-written
-  JSON parser to match the existing writer, one-shot batch dispatch, served from inside the game
-  binary. The mutating calls and the persistent session wait for M4's editor to need them.
-- **`App` owns a `ComponentRegistry`** (ADR 0016) — `App::register_component::<T>()`, so a game
-  registers once. Today no game registers at all, so `describe` would report an empty schema for
-  `quad-demo`'s own components.
-- Protocol spec in `docs/protocol/`, versioned, written against the batch method set first.
-- `amadeo-cli` — `new`, `run`, `check`, `fmt`, `test`, `describe`, `inspect`, `replay`. Per ADR 0016,
-  `new` and `fmt` run standalone; everything else spawns the game binary in agent mode via
-  `cargo run -p <package> -- --amadeo-agent` and talks to it over stdio. `amadeo replay` is also what
-  closes M0's carried-over **separate-process** replay check.
+  `snapshot.*`. **The transport is built** (ADR 0016, Q14): hand-written JSON parser matching the
+  existing writer, JSON-RPC 2.0 over newline-delimited stdio, served from inside the game binary.
+  Methods: `describe`, `world.list`, `world.entity`, `world.query`, `schedule.list`, `sim.status` —
+  all read-only. The mutating calls and the persistent session wait for M4's editor to need them.
+- ✅ **`App` owns a `ComponentRegistry`** (ADR 0016) — `App::register_component::<T>()`, so a game
+  registers once. `quad-demo` registers its own `Velocity` and `Player` alongside `Transform2d` and
+  `Quad`, which is what makes `amadeo describe Velocity` describe a *game's* type.
+- ✅ Protocol spec in `docs/protocol/v1.md`, versioned, written against the batch method set.
+- 🟡 `amadeo-cli` — **built:** `describe`, `query`, `entity`, `schedule`, `status`, `call`, `fmt`.
+  **Still to do:** `new`, `run`, `check`, `test`, `replay`. Per ADR 0016 `fmt` runs standalone;
+  everything else spawns the game binary via `cargo run -p <package> -- --amadeo-agent` and talks to
+  it over stdio. `amadeo replay` is still what closes M0's carried-over **separate-process** replay
+  check — cross-process determinism is verified by hand today, not yet in CI.
 - `amadeo-assets` — virtual FS, handles, async load with load-order isolation, hot reload, import
   pipeline, text sidecar metadata, placeholder assets on failure.
 - 2D rendering — sprite batcher, textures, cameras, layers/sorting, transform hierarchy.

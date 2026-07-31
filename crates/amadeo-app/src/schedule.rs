@@ -34,6 +34,36 @@ impl Stage {
         Stage::PostSimulation,
     ];
 
+    /// Every stage, in the order they run.
+    pub const ALL: [Stage; 5] = [
+        Stage::PreSimulation,
+        Stage::Simulation,
+        Stage::PostSimulation,
+        Stage::Render,
+        Stage::Present,
+    ];
+
+    /// This stage's name, as it is written in text and on the wire.
+    ///
+    /// Spelled out rather than derived from `Debug`, because `Debug` output is a diagnostic
+    /// convenience that is allowed to change and this is part of the protocol.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Stage::PreSimulation => "PreSimulation",
+            Stage::Simulation => "Simulation",
+            Stage::PostSimulation => "PostSimulation",
+            Stage::Render => "Render",
+            Stage::Present => "Present",
+        }
+    }
+
+    /// Looks a stage up by name. Case-sensitive, matching [`Stage::name`].
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Stage> {
+        Stage::ALL.into_iter().find(|stage| stage.name() == name)
+    }
+
     /// Whether this stage runs inside the deterministic zone.
     #[must_use]
     pub fn is_deterministic(self) -> bool {

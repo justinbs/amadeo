@@ -56,7 +56,13 @@
 mod describe;
 mod inspect;
 mod json;
+mod parse;
+mod rpc;
 
 pub use describe::{DESCRIBE_FORMAT_VERSION, describe, describe_type};
 pub use inspect::{entity, query, value_to_json};
 pub use json::Json;
+pub use parse::{JsonError, JsonErrorKind, MAX_DEPTH};
+pub use rpc::{
+    PROTOCOL_VERSION, Request, RpcError, WORLD_METHODS, dispatch_world, failure, success,
+};

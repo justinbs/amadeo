@@ -23,8 +23,10 @@ use std::time::Instant;
 use amadeo_app::{App, Stage, system};
 use amadeo_core::{FIXED_DT, StableHash};
 use amadeo_ecs::{Component, World};
-use amadeo_input::{ActionId, InputDriver, InputState, LiveSource, SAMPLE_INPUT, sample_input};
-use amadeo_reflect::Reflect;
+use amadeo_input::{
+    ActionId, InputDriver, InputState, LiveSource, NullSource, SAMPLE_INPUT, sample_input,
+};
+use amadeo_reflect::{Reflect, RegistryError};
 use amadeo_render::{Camera2d, Quad, RENDER_QUADS, Renderer, WgpuBackend, render_quads};
 use amadeo_transform::Transform2d;
 use winit::application::ApplicationHandler;
@@ -105,21 +107,21 @@ fn clamp_to_view(world: &mut World) {
 /// The palette is deliberate rather than default — a cool near-black ground, muted slate markers, and
 /// a single warm amber for the thing you control, so the player reads instantly against everything
 /// else.
-fn build_app(backend: WgpuBackend) -> App {
+fn build_simulation() -> Result<App, RegistryError> {
     let mut app = App::new();
 
-    amadeo_input::install(
-        &mut app.world,
-        InputDriver::new(Box::new(LiveSource::new())),
-    );
+    // Registration is what puts a type into `amadeo describe` and lets a scene file name it
+    // (ADR 0016, invariant I8). Game components and engine components alike: the schema describes
+    // *this game*, not everything the engine could offer.
+    app.register_component::<Transform2d>()?;
+    app.register_component::<Quad>()?;
+    app.register_component::<Velocity>()?;
+    app.register_component::<Player>()?;
+
     app.insert_resource(Camera2d {
         center: [0.0, 0.0],
         height: 10.0,
     });
-
-    let mut renderer = Renderer::new(Box::new(backend));
-    renderer.clear_color = [0.043, 0.047, 0.055, 1.0];
-    app.insert_service(renderer);
 
     app.add_system(Stage::PreSimulation, system(SAMPLE_INPUT, sample_input));
     app.add_system(Stage::Simulation, system("apply_input", apply_input));
@@ -131,7 +133,6 @@ fn build_app(backend: WgpuBackend) -> App {
         Stage::PostSimulation,
         system("clamp_to_view", clamp_to_view),
     );
-    app.add_system(Stage::Render, system(RENDER_QUADS, render_quads));
 
     // Static markers, so movement is visible against something.
     for (x, y) in [
@@ -159,7 +160,36 @@ fn build_app(backend: WgpuBackend) -> App {
         Quad::new(1.0, 1.0, [0.898, 0.588, 0.243, 1.0]).on_layer(10),
     );
 
-    app
+    Ok(app)
+}
+
+/// The windowed game: the shared simulation, plus live input and a GPU renderer.
+fn build_app(backend: WgpuBackend) -> Result<App, RegistryError> {
+    let mut app = build_simulation()?;
+
+    amadeo_input::install(
+        &mut app.world,
+        InputDriver::new(Box::new(LiveSource::new())),
+    );
+
+    let mut renderer = Renderer::new(Box::new(backend));
+    renderer.clear_color = [0.043, 0.047, 0.055, 1.0];
+    app.insert_service(renderer);
+
+    app.add_system(Stage::Render, system(RENDER_QUADS, render_quads));
+
+    Ok(app)
+}
+
+/// The same simulation with no window, no GPU, and no keyboard — what the agent inspects.
+///
+/// Sharing `build_simulation` with the windowed path is the point: an answer the agent gives about
+/// this world is an answer about the game that actually runs (invariant I7). A separate headless
+/// setup would drift, and the drift would be invisible until it mattered.
+fn build_headless() -> Result<App, RegistryError> {
+    let mut app = build_simulation()?;
+    amadeo_input::install(&mut app.world, InputDriver::new(Box::new(NullSource)));
+    Ok(app)
 }
 
 // --- Windowing ---
@@ -245,11 +275,20 @@ impl ApplicationHandler for QuadDemo {
             }
         };
 
+        let app = match build_app(backend) {
+            Ok(app) => app,
+            Err(error) => {
+                eprintln!("could not build the game: {error}");
+                event_loop.exit();
+                return;
+            }
+        };
+
         println!("amadeo quad-demo — WASD or arrow keys to move, Escape to quit");
 
         self.running = Some(Running {
             window,
-            app: build_app(backend),
+            app,
             last_frame: Instant::now(),
         });
     }
@@ -333,6 +372,14 @@ impl ApplicationHandler for QuadDemo {
 }
 
 fn main() -> anyhow::Result<()> {
+    // ADR 0016: the game binary hosts the agent, because it is the only process that knows this
+    // game's components. One line, before any window exists — `--amadeo-agent` means answer
+    // questions on stdout and exit, not open a window.
+    let mut headless = build_headless()?;
+    if amadeo_app::serve_if_requested(&mut headless)? {
+        return Ok(());
+    }
+
     let event_loop = EventLoop::new()?;
     // Poll rather than Wait: this is a game, so a frame is due even when no input arrives.
     event_loop.set_control_flow(ControlFlow::Poll);

@@ -45,18 +45,29 @@ dependencies = [
  "amadeo-ecs",
  "amadeo-reflect",
  "amadeo-transform",
+ "thiserror 2.0.19",
 ]
 
 [[package]]
 name = "amadeo-app"
 version = "0.1.0"
 dependencies = [
+ "amadeo-agent",
  "amadeo-core",
  "amadeo-ecs",
  "amadeo-events",
  "amadeo-input",
  "amadeo-reflect",
  "thiserror 2.0.19",
+]
+
+[[package]]
+name = "amadeo-cli"
+version = "0.1.0"
+dependencies = [
+ "amadeo-agent",
+ "amadeo-scene",
+ "anyhow",
 ]
 
 [[package]]

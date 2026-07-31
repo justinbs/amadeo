@@ -51,8 +51,13 @@
 //! the app was assembled, and letting that influence execution order would make simulation results
 //! depend on plugin setup — the exact trap invariant I3 exists to close.
 
+mod agent;
 mod app;
 mod schedule;
 
+pub use agent::{
+    AGENT_FLAG, APP_METHODS, AgentError, AgentOptions, TICKS_FLAG, agent_options,
+    agent_options_from, serve, serve_if_requested,
+};
 pub use app::{App, SimRng};
 pub use schedule::{Schedule, ScheduleError, Stage, SystemConfig, system};

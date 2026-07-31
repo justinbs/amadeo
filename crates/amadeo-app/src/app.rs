@@ -2,8 +2,9 @@
 
 use crate::schedule::{Schedule, ScheduleError, Stage, SystemConfig};
 use amadeo_core::{FIXED_DT_NANOS, Rng, StableHash, StableHasher, Tick};
-use amadeo_ecs::{Commands, Resource, Service, World};
+use amadeo_ecs::{Commands, Component, ComponentRegistry, Resource, Service, World};
 use amadeo_events::{Event, WorldEvents};
+use amadeo_reflect::RegistryError;
 use std::collections::BTreeMap;
 
 /// The simulation's random number generator, seeded once and advanced deterministically.
@@ -64,6 +65,15 @@ type EventSwap = (&'static str, fn(&mut World));
 pub struct App {
     /// All simulation state.
     pub world: World,
+    /// Every component type this app can describe, build from a scene file, or show to an agent.
+    ///
+    /// It lives here, on the app, rather than being built separately and passed around, because
+    /// ADR 0016 makes the game binary the agent's host: whoever holds the `App` must be able to hand
+    /// over a registry without going looking for one. Keeping registration and spawning in the same
+    /// place is also what stops a component from working perfectly at runtime while being invisible
+    /// to `describe` — the failure ADR 0013 made `Component: Reflect` a compiler-enforced bound to
+    /// prevent, one level further up.
+    registry: ComponentRegistry,
     /// Systems, grouped by stage. `BTreeMap` so stages iterate in declared order.
     schedules: BTreeMap<Stage, Schedule>,
     /// One buffer-swap entry per registered event type. See [`EventSwap`].
@@ -98,10 +108,38 @@ impl App {
         world.insert_service(Commands::new());
         Self {
             world,
+            registry: ComponentRegistry::new(),
             schedules: BTreeMap::new(),
             event_swaps: Vec::new(),
             accumulated_nanos: 0,
         }
+    }
+
+    /// Registers a component type, so scenes can build it and the agent can see it.
+    ///
+    /// Registration is what puts a type into `amadeo describe` and lets a `.scene` file name it.
+    /// A component that is never registered still works at runtime — it just cannot be authored in
+    /// text or inspected, which is invariant I8's whole concern.
+    ///
+    /// Engine components are not registered automatically. A game names the ones it uses, including
+    /// `Transform2d` and `Parent`, so the schema describes that game rather than everything the
+    /// engine could theoretically offer.
+    ///
+    /// # Errors
+    ///
+    /// [`RegistryError`] if another type is already registered under the same canonical name. That
+    /// is a real ambiguity — a scene file naming it could mean either — so it is refused rather
+    /// than resolved arbitrarily.
+    pub fn register_component<T: Component>(&mut self) -> Result<(), RegistryError> {
+        self.registry.register::<T>()
+    }
+
+    /// The registered component types.
+    ///
+    /// This is what `describe`, `inspect`, and scene loading are all given.
+    #[must_use]
+    pub fn components(&self) -> &ComponentRegistry {
+        &self.registry
     }
 
     /// Registers a system into a stage.

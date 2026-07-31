@@ -1,0 +1,8 @@
+# Marks this directory as an Amadeo project.
+#
+# `game` names the cargo package that hosts the agent. Every command that needs to know about
+# components -- describe, query, entity, schedule, status -- launches it (ADR 0016), because a
+# game's components are Rust types compiled into that binary and the CLI has never linked them.
+#
+# Override for one command with `amadeo --package <name> ...`.
+game = "quad-demo"

@@ -8,6 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+amadeo-agent.workspace = true
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 amadeo-events.workspace = true
