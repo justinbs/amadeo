@@ -44,6 +44,8 @@ enum Command {
     Call { method: String, params: String },
     /// Canonically format scene files in place.
     Fmt { paths: Vec<PathBuf>, check: bool },
+    /// Validate scene files against the game's real component schema.
+    Check { paths: Vec<PathBuf> },
 }
 
 /// Options that apply to any command that launches the game.
@@ -73,6 +75,12 @@ fn run(command: Command, options: &Options) -> Result<()> {
     // `fmt` is the one command that needs no game, so it never pays for a build.
     if let Command::Fmt { paths, check } = command {
         return format_scenes(&paths, check);
+    }
+
+    // `check` needs the game — validating a component name means knowing which ones exist — but it
+    // reads the files here, and sends their text. See `scene.check` in the protocol.
+    if let Command::Check { paths } = command {
+        return check_scenes(&paths, options);
     }
 
     let (method, params) = match &command {
@@ -110,7 +118,7 @@ fn run(command: Command, options: &Options) -> Result<()> {
             }
             (method.as_str(), parsed)
         }
-        Command::Fmt { .. } => unreachable!("handled above"),
+        Command::Fmt { .. } | Command::Check { .. } => unreachable!("handled above"),
     };
 
     let here = std::env::current_dir().context("could not read the current directory")?;
@@ -130,6 +138,132 @@ fn run(command: Command, options: &Options) -> Result<()> {
         print!("{}", result.to_pretty());
     }
     Ok(())
+}
+
+/// Validates scene files against the game's registry, reporting every problem in one pass.
+///
+/// One launch for all the files, not one per file — a build per scene would make checking a
+/// directory unusable.
+fn check_scenes(paths: &[PathBuf], options: &Options) -> Result<()> {
+    if paths.is_empty() {
+        bail!("`amadeo check` needs at least one file. Try `amadeo check scenes/*.scene`");
+    }
+
+    let here = std::env::current_dir().context("could not read the current directory")?;
+    let project = Project::discover(&here)?;
+    let package = options.package.clone().unwrap_or(project.game);
+
+    let mut sources = Vec::with_capacity(paths.len());
+    let mut requests = Vec::with_capacity(paths.len());
+
+    for (index, path) in paths.iter().enumerate() {
+        let text = std::fs::read_to_string(path)
+            .with_context(|| format!("could not read {}", path.display()))?;
+
+        requests.push(launch::request(
+            "scene.check",
+            Json::object([("text", Json::string(&text))]),
+            index as i64 + 1,
+        ));
+        sources.push(text);
+    }
+
+    let mut session = launch::Session::start(&project.root, &package, options.ticks)?;
+    let replies = session.ask(&requests)?;
+
+    let mut bad_files = 0;
+
+    for ((path, source), reply) in paths.iter().zip(&sources).zip(replies) {
+        let result =
+            launch::unwrap_reply(reply).with_context(|| format!("checking {}", path.display()))?;
+
+        let Json::Object(members) = &result else {
+            bail!(
+                "{}: unexpected reply {}",
+                path.display(),
+                result.to_compact()
+            );
+        };
+
+        let diagnostics = match members.get("diagnostics") {
+            Some(Json::Array(items)) => items,
+            _ => bail!("{}: reply carried no diagnostics", path.display()),
+        };
+
+        if diagnostics.is_empty() {
+            println!("ok       {}", path.display());
+            continue;
+        }
+
+        bad_files += 1;
+        for diagnostic in diagnostics {
+            let Json::Object(fields) = diagnostic else {
+                continue;
+            };
+
+            let message = match fields.get("message") {
+                Some(Json::String(text)) => text.as_str(),
+                _ => "(no message)",
+            };
+            let entity = match fields.get("entity") {
+                Some(Json::String(text)) => Some(text.as_str()),
+                _ => None,
+            };
+            let component = match fields.get("component") {
+                Some(Json::String(text)) => Some(text.as_str()),
+                _ => None,
+            };
+
+            // A syntax error already carries its line. A schema error carries an entity id, and the
+            // line is recovered here because the CLI is the side that still has the file.
+            let line = match fields.get("line") {
+                Some(Json::Int(value)) => Some(*value as usize),
+                _ => entity.and_then(|id| line_of_entity(source, id)),
+            };
+
+            let where_ = match line {
+                Some(line) => format!("{}:{line}", path.display()),
+                None => path.display().to_string(),
+            };
+            // The component is deliberately not repeated here when the message already names it,
+            // which it does for every schema error. Three copies of `Transform2d` in one line is
+            // noise, and noise is what stops people reading diagnostics.
+            let names_component =
+                component.is_some_and(|name| message.contains(&format!("`{name}`")));
+            let what = match (entity, component) {
+                (Some(entity), Some(component)) if !names_component => {
+                    format!("entity `{entity}`, `{component}`: ")
+                }
+                (Some(entity), _) => format!("entity `{entity}`: "),
+                _ => String::new(),
+            };
+
+            eprintln!("{where_}: {what}{message}");
+        }
+    }
+
+    if bad_files > 0 {
+        bail!("{bad_files} of {} file(s) have problems", paths.len());
+    }
+    Ok(())
+}
+
+/// Finds the 1-based line declaring `entity <id>`, so a diagnostic can point at it.
+///
+/// Done by scanning the source rather than by the document carrying positions: a `SceneDocument` is
+/// compared for equality in the round-trip test, and hanging source positions off it would make two
+/// identical scenes from different files unequal.
+fn line_of_entity(source: &str, id: &str) -> Option<usize> {
+    source
+        .lines()
+        .position(|line| {
+            let trimmed = line.trim_start();
+            trimmed
+                .strip_prefix("entity ")
+                .and_then(|rest| rest.split_whitespace().next())
+                == Some(id)
+        })
+        .map(|index| index + 1)
 }
 
 /// Rewrites scene files in their canonical form, or checks that they already are.
@@ -294,6 +428,9 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
             paths: rest.iter().map(PathBuf::from).collect(),
             check,
         },
+        "check" => Command::Check {
+            paths: rest.iter().map(PathBuf::from).collect(),
+        },
         other => bail!("unknown command `{other}`. Run `amadeo --help` for what there is"),
     };
 
@@ -313,6 +450,7 @@ RUNS HERE (no game needed)
         --check              report unformatted files instead of fixing them
 
 RUNS IN THE GAME (launches it, asks, exits)
+    check <file>...          validate scene files against the real component schema
     describe [type]          the component schema — everything, or one type
     query <component>...     entities carrying all of the named components
     entity <index>           one entity's components
@@ -422,6 +560,34 @@ mod tests {
                 assert!(check);
             }
             other => panic!("expected fmt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_entity_id_resolves_back_to_its_line() {
+        // How a schema diagnostic, which only knows an entity id, becomes `file:line`.
+        let source = "scene demo\nversion 1\n\nentity a1 \"One\"\n  Position\n    x 1\n  entity a2 \"Two\"\n    Player\n";
+
+        assert_eq!(line_of_entity(source, "a1"), Some(4));
+        // Nested entities are indented, so the prefix check has to trim first.
+        assert_eq!(line_of_entity(source, "a2"), Some(7));
+        assert_eq!(line_of_entity(source, "nope"), None);
+    }
+
+    #[test]
+    fn an_id_that_merely_prefixes_another_does_not_match_it() {
+        // `entity a1` must not resolve to the line declaring `a10`.
+        let source = "scene demo\nversion 1\n\nentity a10 \"Ten\"\nentity a1 \"One\"\n";
+        assert_eq!(line_of_entity(source, "a1"), Some(5));
+        assert_eq!(line_of_entity(source, "a10"), Some(4));
+    }
+
+    #[test]
+    fn check_collects_paths() {
+        let (command, _) = parse_args(&["check", "a.scene", "b.scene"]).expect("parses");
+        match command {
+            Command::Check { paths } => assert_eq!(paths.len(), 2),
+            other => panic!("expected check, got {other:?}"),
         }
     }
 

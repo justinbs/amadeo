@@ -23,6 +23,13 @@ type Inserter = fn(&mut World, Entity, &Value) -> Result<(), ReflectError>;
 /// is exactly what an agent cannot do (`docs/03-ai-native-design.md` Pillar 3).
 type Reader = fn(&World, Entity) -> Option<Value>;
 
+/// Checks that a [`Value`] would build a component of one concrete type, building nothing.
+///
+/// Separate from [`Inserter`] because `amadeo check` has to answer "would this scene load?" without
+/// a world to load it into, and without the first mistake stopping the report. The constructed
+/// component is dropped immediately — the answer is the `Result`, not the value.
+type Validator = fn(&Value) -> Result<(), ReflectError>;
+
 /// The monomorphised body behind each [`Inserter`].
 ///
 /// Non-capturing, so `insert_component::<Health>` is a `fn` value that can live in a map.
@@ -39,6 +46,11 @@ fn insert_component<T: Component>(
 /// The monomorphised body behind each [`Reader`].
 fn read_component<T: Component>(world: &World, entity: Entity) -> Option<Value> {
     world.get::<T>(entity).map(Reflect::to_value)
+}
+
+/// The monomorphised body behind each [`Validator`].
+fn validate_component<T: Component>(value: &Value) -> Result<(), ReflectError> {
+    T::from_value(value).map(|_| ())
 }
 
 /// What can go wrong building a component by name.
@@ -93,6 +105,8 @@ pub struct ComponentRegistry {
     inserters: BTreeMap<String, Inserter>,
     /// Readers, keyed identically. Registered in the same call, so the two cannot disagree.
     readers: BTreeMap<String, Reader>,
+    /// Validators, keyed identically. Registered in the same call for the same reason.
+    validators: BTreeMap<String, Validator>,
 }
 
 impl ComponentRegistry {
@@ -114,6 +128,8 @@ impl ComponentRegistry {
         self.types.register::<T>()?;
         self.inserters.insert(T::type_name(), insert_component::<T>);
         self.readers.insert(T::type_name(), read_component::<T>);
+        self.validators
+            .insert(T::type_name(), validate_component::<T>);
         Ok(())
     }
 
@@ -182,6 +198,32 @@ impl ComponentRegistry {
         }
 
         inserter(world, entity, value).map_err(|source| RegistryError::BadValue {
+            name: name.to_string(),
+            source,
+        })
+    }
+
+    /// Checks that a value would build this component, without a world and without building it.
+    ///
+    /// This is what `amadeo check` runs. [`ComponentRegistry::insert`] answers the same question,
+    /// but only by doing the thing — which needs a world, mutates it, and stops at the first
+    /// mistake. Validation has to be able to report every problem in a file at once, and to do it
+    /// for a file nobody is loading.
+    ///
+    /// # Errors
+    ///
+    /// - [`RegistryError::UnknownComponent`] if the name is not registered, listing every name that
+    ///   is.
+    /// - [`RegistryError::BadValue`] if the value does not match the component's shape.
+    pub fn validate(&self, name: &str, value: &Value) -> Result<(), RegistryError> {
+        let Some(validator) = self.validators.get(name) else {
+            return Err(RegistryError::UnknownComponent {
+                name: name.to_string(),
+                known: self.names().collect::<Vec<_>>().join(", "),
+            });
+        };
+
+        validator(value).map_err(|source| RegistryError::BadValue {
             name: name.to_string(),
             source,
         })

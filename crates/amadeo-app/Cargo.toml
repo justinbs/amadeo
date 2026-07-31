@@ -13,6 +13,7 @@ amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 amadeo-events.workspace = true
 amadeo-reflect.workspace = true
+amadeo-scene.workspace = true
 thiserror.workspace = true
 
 [lints]

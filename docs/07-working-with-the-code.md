@@ -123,7 +123,13 @@ up, the way `cargo` and `git` do.
 | `amadeo entity 5` | one entity's components and values |
 | `amadeo schedule Simulation` | systems in resolved execution order |
 | `amadeo call <method> --params '{...}'` | any protocol method, so the CLI never lags the protocol |
+| `amadeo check <file>...` | validate scene files against the game's real schema |
 | `amadeo fmt <file>...` | rewrite scene files canonically; `--check` reports instead of fixing |
+
+**`fmt` and `check` are different questions.** `fmt` asks "is this file written canonically" and is
+pure syntax, so it runs in the CLI. `check` asks "would this scene load" — which means knowing that
+`Transform2d` exists and has a `position` field — so it launches the game. A file can be perfectly
+formatted and still name a component nobody registered.
 
 Everything except `fmt` compiles and launches the game, because a game's components are Rust types in
 the game binary — see the pattern write-up below and `docs/protocol/v1.md`. `--compact` prints one

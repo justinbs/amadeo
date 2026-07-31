@@ -15,7 +15,7 @@ resolving Q1. Session 5 built most of M1's foundations.
 
 **Twelve crates plus one game**, all tested: `amadeo-derive`, `amadeo-core`, `amadeo-reflect`,
 `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-input`, `amadeo-render`, `amadeo-scene`,
-`amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`. **454 tests passing**; fmt, clippy
+`amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`. **467 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Four things work end to end today:
@@ -59,10 +59,18 @@ than before M2's 3D work.
 
 Then, in order:
 
-1. **`amadeo replay` and `amadeo check`.** The two CLI commands with the most leverage left.
-   `replay` finally closes M0's carried-over **separate-process** replay gate: cross-process
-   determinism is verified by hand today (same command, two processes, byte-identical reply) but is
-   not yet a CI test, and that is the one gap in an otherwise fully-guarded invariant.
+1. **`amadeo replay`.** The CLI command with the most leverage left, and the one that finally closes
+   M0's carried-over **separate-process** replay gate. Cross-process determinism is verified by hand
+   today (same command, two processes, byte-identical reply) but is not a CI test, and that is the
+   one gap in an otherwise fully-guarded invariant.
+
+   **It needs one design decision first.** A recording carries the seed it was made with, but the
+   game builds its `App` — and therefore fixes its seed — *before* `serve_if_requested` is reached,
+   so a replay cannot simply be applied to it. Three ways out: re-seed the `SimRng` before the first
+   tick and document that world construction must not consume randomness; expose `App::seed()` and
+   refuse a mismatch; or change the handover to take a builder closure taking the seed. The first is
+   simplest and true for every game that exists; the third is the only fully general one. Settle it
+   before writing the command.
 2. **`Resource: Reflect`** — the other half of I8, deliberately deferred by ADR 0013. Needs `Rng`'s
    state exposed so `SimRng` can reflect (retiring the `Debug`-based `StableHash` flagged as
    inelegant since M0), and map support in `Reflect` for `InputState`. Also what `world.resources`
@@ -302,12 +310,19 @@ Verified on this machine (2026-07-30):
   needing the schedule or the tick count. A client never sees the seam. Spec in `docs/protocol/v1.md`.
 - ✅ **`quad-demo` hands over in one line**, sharing `build_simulation()` with the windowed path so an
   answer about the inspected world is an answer about the game that actually runs (I7).
-- ✅ **`amadeo-cli`** — `describe`, `query`, `entity`, `schedule`, `status`, `call`, and `fmt`. The
-  ADR 0016 split is visible in `--help`: `fmt` runs in the CLI and never builds anything, everything
-  else launches the game through `cargo run` so a stale binary is rebuilt rather than answering for
-  code that no longer exists.
+- ✅ **`amadeo-cli`** — `describe`, `query`, `entity`, `schedule`, `status`, `call`, `check`, and
+  `fmt`. The ADR 0016 split is visible in `--help`: `fmt` runs in the CLI and never builds anything,
+  everything else launches the game through `cargo run` so a stale binary is rebuilt rather than
+  answering for code that no longer exists.
+- ✅ **`amadeo check`** — validates scene files against the game's *real* schema, which is precisely
+  what a standalone tool cannot do. Reports **every** problem in one pass rather than the first:
+  `instantiate` stops at the first error because that is right for loading and wrong for checking, so
+  `amadeo_scene::validate` collects instead, on a new `ComponentRegistry::validate` that answers
+  "would this build?" with no `World` to build into. Diagnostics come back naming an entity id; the
+  CLI turns that into `file:line` because it is the side that still has the text. One launch covers
+  every file named, since a build per scene would make checking a directory unusable.
 
-**Verified green: 454 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+**Verified green: 467 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 Two things found by running it rather than by thinking about it:
 
@@ -466,4 +481,14 @@ Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
   linked it went and launched. Two bugs were found by running it rather than by reasoning about it: a
   UTF-8 BOM from PowerShell's own pipe producing an error that pointed at an invisible character, and
   `state_hash` needing to be a hex string because a `u64` above 2^53 does not survive JSON's `f64`
-  numbers. 454 tests, all four §4b commands green. Q3 is now the top open question.
+  numbers.
+
+  Then **`amadeo check`** on top of it — the first command that could not exist in a standalone CLI
+  at all, since validating a component name means knowing which names exist. It needed
+  `amadeo_scene::validate`, which collects *every* problem rather than stopping at the first the way
+  `instantiate` does: stopping is right for loading and wrong for checking, because an agent fixing a
+  file cannot ask a follow-up question and one error per round trip is a functional defect.
+
+  467 tests, all four §4b commands green. **Q3 is now the top open question.** `amadeo replay` is the
+  next most valuable command and needs one small decision first — a recording carries its seed, but a
+  game fixes its seed before the handover is reached.

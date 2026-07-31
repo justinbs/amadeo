@@ -55,9 +55,11 @@
 mod document;
 mod instantiate;
 mod parse;
+mod validate;
 mod write;
 
 pub use document::{SceneDocument, SceneEntity};
 pub use instantiate::{InstantiateError, Instantiated, instantiate};
 pub use parse::{INDENT, ParseError, ParseErrorKind, parse};
+pub use validate::{Diagnostic, validate};
 pub use write::to_text;

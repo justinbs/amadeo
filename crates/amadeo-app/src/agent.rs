@@ -48,7 +48,7 @@ pub const AGENT_FLAG: &str = "--amadeo-agent";
 pub const TICKS_FLAG: &str = "--ticks";
 
 /// The methods this host answers itself, on top of [`WORLD_METHODS`].
-pub const APP_METHODS: &[&str] = &["schedule.list", "sim.status"];
+pub const APP_METHODS: &[&str] = &["scene.check", "schedule.list", "sim.status"];
 
 /// Something went wrong hosting the agent.
 #[derive(Debug, thiserror::Error)]
@@ -238,6 +238,53 @@ fn dispatch(app: &mut App, request: &Request) -> Result<Json, RpcError> {
             ),
         ])),
 
+        // The *text* is sent, not a path. The game process has no business reading the client's
+        // filesystem, and a path would be resolved relative to whichever directory the game was
+        // launched in -- which is not the one the user typed the path in. The CLI reads the file;
+        // the game, which is the only process holding the registry, judges it.
+        "scene.check" => {
+            let text = request.string_param("text")?;
+
+            let document = match amadeo_scene::parse(text) {
+                Ok(document) => document,
+                Err(error) => {
+                    // A syntax error is reported the same way a schema error is, so a client has
+                    // one shape to handle rather than two. `ParseError` already carries the line.
+                    return Ok(Json::object([
+                        ("ok", Json::Bool(false)),
+                        (
+                            "diagnostics",
+                            Json::Array(vec![Json::object([
+                                ("line", Json::Int(error.line as i64)),
+                                ("message", Json::string(error.kind.to_string())),
+                            ])]),
+                        ),
+                    ]));
+                }
+            };
+
+            let found = amadeo_scene::validate(&document, app.components());
+            let diagnostics: Vec<Json> = found
+                .iter()
+                .map(|diagnostic| {
+                    let mut members = vec![
+                        ("entity", Json::string(&diagnostic.entity)),
+                        ("message", Json::string(&diagnostic.message)),
+                    ];
+                    if let Some(component) = &diagnostic.component {
+                        members.push(("component", Json::string(component)));
+                    }
+                    Json::object(members)
+                })
+                .collect();
+
+            Ok(Json::object([
+                ("ok", Json::Bool(found.is_empty())),
+                ("diagnostics", Json::Array(diagnostics)),
+                ("entities", Json::Int(count_entities(&document) as i64)),
+            ]))
+        }
+
         "schedule.list" => {
             let wanted = match request.optional_string_param("stage")? {
                 None => Stage::ALL.to_vec(),
@@ -284,6 +331,14 @@ fn dispatch(app: &mut App, request: &Request) -> Result<Json, RpcError> {
             })
         }
     }
+}
+
+/// How many entities a document declares, children included.
+fn count_entities(document: &amadeo_scene::SceneDocument) -> usize {
+    fn count(entity: &amadeo_scene::SceneEntity) -> usize {
+        1 + entity.children.iter().map(count).sum::<usize>()
+    }
+    document.entities.iter().map(count).sum()
 }
 
 #[cfg(test)]
@@ -458,6 +513,55 @@ mod tests {
         assert!(text.contains(r#""stage":"Simulation""#), "got: {text}");
         assert!(text.contains(r#""deterministic":true"#), "got: {text}");
         assert!(text.contains(r#""systems":["drift"]"#), "got: {text}");
+    }
+
+    #[test]
+    fn scene_check_passes_a_scene_the_registry_understands() {
+        let scene =
+            "scene demo\\nversion 1\\n\\nentity a1 \\\"P\\\"\\n  Position\\n    x 1\\n    y 2\\n";
+        let replies = converse(
+            &mut test_app(),
+            0,
+            &[&call("scene.check", &format!(r#"{{"text":"{scene}"}}"#))],
+        );
+        let text = replies[0].to_compact();
+
+        assert!(text.contains(r#""ok":true"#), "got: {text}");
+        assert!(text.contains(r#""diagnostics":[]"#), "got: {text}");
+        assert!(text.contains(r#""entities":1"#), "got: {text}");
+    }
+
+    #[test]
+    fn scene_check_reports_every_schema_problem_at_once() {
+        // One round trip per mistake is the thing this method exists to avoid.
+        let scene = "scene demo\\nversion 1\\n\\nentity a1 \\\"P\\\"\\n  Nope\\n    x 1\\nentity a2 \\\"Q\\\"\\n  Position\\n    z 1\\n";
+        let replies = converse(
+            &mut test_app(),
+            0,
+            &[&call("scene.check", &format!(r#"{{"text":"{scene}"}}"#))],
+        );
+        let text = replies[0].to_compact();
+
+        assert!(text.contains(r#""ok":false"#), "got: {text}");
+        assert!(text.contains(r#""entity":"a1""#), "got: {text}");
+        assert!(text.contains(r#""entity":"a2""#), "got: {text}");
+        // And the unknown-component message lists what does exist.
+        assert!(text.contains("Position, Velocity"), "got: {text}");
+    }
+
+    #[test]
+    fn scene_check_reports_a_syntax_error_with_its_line() {
+        // Same reply shape as a schema error, so a client handles one thing rather than two.
+        let scene = "scene demo\\nversion 1\\n\\nentity oops\\n";
+        let replies = converse(
+            &mut test_app(),
+            0,
+            &[&call("scene.check", &format!(r#"{{"text":"{scene}"}}"#))],
+        );
+        let text = replies[0].to_compact();
+
+        assert!(text.contains(r#""ok":false"#), "got: {text}");
+        assert!(text.contains(r#""line":4"#), "got: {text}");
     }
 
     #[test]

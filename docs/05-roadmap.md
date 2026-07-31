@@ -93,8 +93,8 @@ of a milestone.
   registers once. `quad-demo` registers its own `Velocity` and `Player` alongside `Transform2d` and
   `Quad`, which is what makes `amadeo describe Velocity` describe a *game's* type.
 - ✅ Protocol spec in `docs/protocol/v1.md`, versioned, written against the batch method set.
-- 🟡 `amadeo-cli` — **built:** `describe`, `query`, `entity`, `schedule`, `status`, `call`, `fmt`.
-  **Still to do:** `new`, `run`, `check`, `test`, `replay`. Per ADR 0016 `fmt` runs standalone;
+- 🟡 `amadeo-cli` — **built:** `describe`, `query`, `entity`, `schedule`, `status`, `call`, `check`,
+  `fmt`. **Still to do:** `new`, `run`, `test`, `replay`. Per ADR 0016 `fmt` runs standalone;
   everything else spawns the game binary via `cargo run -p <package> -- --amadeo-agent` and talks to
   it over stdio. `amadeo replay` is still what closes M0's carried-over **separate-process** replay
   check — cross-process determinism is verified by hand today, not yet in CI.
