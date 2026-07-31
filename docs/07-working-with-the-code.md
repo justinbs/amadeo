@@ -124,6 +124,7 @@ up, the way `cargo` and `git` do.
 | `amadeo schedule Simulation` | systems in resolved execution order |
 | `amadeo call <method> --params '{...}'` | any protocol method, so the CLI never lags the protocol |
 | `amadeo check <file>...` | validate scene files against the game's real schema |
+| `amadeo replay <file>` | replay a recording in a fresh process and verify its checkpoint hashes |
 | `amadeo fmt <file>...` | rewrite scene files canonically; `--check` reports instead of fixing |
 
 **`fmt` and `check` are different questions.** `fmt` asks "is this file written canonically" and is
@@ -669,7 +670,39 @@ Each of those is a deliberate decision with an ADR attached, not something to do
 
 **A useful debugging habit:** if a replay diverges, add more checkpoints. The first failing checkpoint
 brackets the tick range where behaviour changed, and from there `App::step` plus `world.iter` narrows
-it down quickly.
+it down quickly. `amadeo replay` reports *every* failing checkpoint, not just the first, which is
+usually enough to bracket it in one run.
+
+### The two halves: in-process and separate-process
+
+The `cargo test` version above proves a recording survives a **rebuild**. It cannot prove one
+survives a **fresh process**, because it never starts one — and process state (address-space layout,
+hash seeds, anything cached in a static) is precisely where the remaining nondeterminism hides.
+
+That is what `amadeo replay` is for:
+
+```bash
+amadeo replay games/quad-demo/replays/wander.replay
+```
+
+It launches the game binary, plays the recording, and checks the hashes in a process that did not
+exist a second ago. CI runs it in the determinism job. Passing both is the actual claim.
+
+**Writing a replay by hand.** The format is designed for it (`amadeo_input::Recording`). The awkward
+part is the checkpoint hashes, which you cannot know in advance — so write the file with zeros, run
+`amadeo replay`, and copy the `got` values out of the mismatch report. `wander.replay` was made
+exactly that way.
+
+**If your game needs replays, read the seed before building:**
+
+```rust
+let seed = amadeo_app::requested_seed().unwrap_or(DEFAULT_SEED);
+let mut app = App::with_seed(seed);
+```
+
+`App::with_seed` fixes the seed at construction, which happens *before* the agent handover — so it
+cannot be supplied afterwards. Skip this and a replay recorded at another seed fails with a clear
+mismatch error rather than a mysterious divergence, which is survivable but annoying.
 
 ---
 

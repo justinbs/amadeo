@@ -15,7 +15,7 @@ resolving Q1. Session 5 built most of M1's foundations.
 
 **Twelve crates plus one game**, all tested: `amadeo-derive`, `amadeo-core`, `amadeo-reflect`,
 `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-input`, `amadeo-render`, `amadeo-scene`,
-`amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`. **467 tests passing**; fmt, clippy
+`amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`. **476 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Four things work end to end today:
@@ -29,11 +29,16 @@ Four things work end to end today:
   JSON — names, types, docs, units, ranges, replication — generated from the code, so never stale.
 - **The CLI talks to a running game.** `amadeo describe Velocity` describes a type defined in
   `games/quad-demo`, answered over JSON-RPC by the game binary the CLI launched. Also `query`,
-  `entity`, `schedule`, `status`, `call`, and a standalone `fmt`. Verified: the same command in two
-  separate processes gives a byte-identical reply, state hash included.
+  `entity`, `schedule`, `status`, `call`, `check`, `replay`, and a standalone `fmt`.
+- **A replay reproduces in a fresh process.** `amadeo replay games/quad-demo/replays/wander.replay`
+  launches the game, plays a hand-written recording, and asserts four checkpoint hashes. This is the
+  stronger half of the golden-replay claim — the in-process test proves a recording survives a
+  rebuild, this proves it survives a new process — and it runs in CI.
 
-**M0 exit gate: 4 of 4.** Gate item 2 is met in the "separate build" sense; the "separate process"
-half is carried into M1 because it needs `amadeo-cli`.
+**M0 exit gate: 4 of 4, nothing carried.** Gate item 2's "separate process" half — open since M0
+because it needed `amadeo-cli` — closed in session 6: `amadeo replay` plays
+`games/quad-demo/replays/wander.replay` through the real game binary in a fresh process, four
+checkpoints asserted, and CI runs it in the determinism job.
 
 **M1 exit gate: 1 of 5, with 2 and 4 now reachable.** Gate 3 (scene round-trip byte-identical) is
 done. Gates 2 and 4 describe verifying and authoring *through* the CLI and RPC, which now exist —
@@ -59,25 +64,13 @@ than before M2's 3D work.
 
 Then, in order:
 
-1. **`amadeo replay`.** The CLI command with the most leverage left, and the one that finally closes
-   M0's carried-over **separate-process** replay gate. Cross-process determinism is verified by hand
-   today (same command, two processes, byte-identical reply) but is not a CI test, and that is the
-   one gap in an otherwise fully-guarded invariant.
-
-   **It needs one design decision first.** A recording carries the seed it was made with, but the
-   game builds its `App` — and therefore fixes its seed — *before* `serve_if_requested` is reached,
-   so a replay cannot simply be applied to it. Three ways out: re-seed the `SimRng` before the first
-   tick and document that world construction must not consume randomness; expose `App::seed()` and
-   refuse a mismatch; or change the handover to take a builder closure taking the seed. The first is
-   simplest and true for every game that exists; the third is the only fully general one. Settle it
-   before writing the command.
-2. **`Resource: Reflect`** — the other half of I8, deliberately deferred by ADR 0013. Needs `Rng`'s
+1. **`Resource: Reflect`** — the other half of I8, deliberately deferred by ADR 0013. Needs `Rng`'s
    state exposed so `SimRng` can reflect (retiring the `Debug`-based `StableHash` flagged as
    inelegant since M0), and map support in `Reflect` for `InputState`. Also what `world.resources`
    in the protocol is waiting on.
-3. **`snapshot.take` / `snapshot.restore`.** The Q1 spike found re-simulation, not compilation, is
+2. **`snapshot.take` / `snapshot.restore`.** The Q1 spike found re-simulation, not compilation, is
    what degrades the iteration loop — 382 ms to reach 5 simulated minutes, growing linearly.
-4. **2D rendering** — sprite batcher, textures, layers. Blocked on Q3, above.
+3. **2D rendering** — sprite batcher, textures, layers. Blocked on Q3, above.
 
 **Three things are undecided rather than unbuilt**, all in `docs/06-open-questions.md`:
 
@@ -311,9 +304,17 @@ Verified on this machine (2026-07-30):
 - ✅ **`quad-demo` hands over in one line**, sharing `build_simulation()` with the windowed path so an
   answer about the inspected world is an answer about the game that actually runs (I7).
 - ✅ **`amadeo-cli`** — `describe`, `query`, `entity`, `schedule`, `status`, `call`, `check`, and
-  `fmt`. The ADR 0016 split is visible in `--help`: `fmt` runs in the CLI and never builds anything,
+  `check`, `replay`, and `fmt`. The ADR 0016 split is visible in `--help`: `fmt` runs in the CLI and never builds anything,
   everything else launches the game through `cargo run` so a stale binary is rebuilt rather than
   answering for code that no longer exists.
+- ✅ **`amadeo replay`** — the separate-process half of the golden-replay mechanism, and the last
+  thing carried over from M0's exit gate. `--replay` and `--seed` are *launch* arguments rather than
+  methods, because a recording must be installed before the first tick and `App::with_seed` fixes the
+  seed at construction — before the handover is even reached. So a game reads
+  `amadeo_app::requested_seed()` before building; one that does not gets a clear seed-mismatch error
+  instead of a divergence that looks like a regression. Reports every failing checkpoint, not the
+  first. Fixture at `games/quad-demo/replays/wander.replay`, hand-written and then filled in from the
+  mismatch report — which is the intended way to author one.
 - ✅ **`amadeo check`** — validates scene files against the game's *real* schema, which is precisely
   what a standalone tool cannot do. Reports **every** problem in one pass rather than the first:
   `instantiate` stops at the first error because that is right for loading and wrong for checking, so
@@ -322,7 +323,7 @@ Verified on this machine (2026-07-30):
   CLI turns that into `file:line` because it is the side that still has the text. One launch covers
   every file named, since a build per scene would make checking a directory unusable.
 
-**Verified green: 467 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+**Verified green: 476 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 Two things found by running it rather than by thinking about it:
 
@@ -341,12 +342,12 @@ fixture happens to use only `Position { x, y }` and `Velocity { x, y }` — alph
 arrays — so its hashes are byte-identical. `Transform2d`, `Quad`, and `Camera2d` *did* change, and
 nothing asserts on them. Reasoning in ADR 0013 so nobody re-derives it from scratch.
 
-Carried into M1 rather than counted as done:
+Carried into M1 rather than counted as done — **now closed, in session 6:**
 - A **separate-process** replay check. The golden test replays in-process against a committed
-  fixture, which covers "separate build" but not "separate process". `amadeo-cli` now exists and
-  cross-process determinism has been **verified by hand** — the same `amadeo status --ticks 600` in
-  two processes returns a byte-identical reply, state hash included — but it is still not a CI test.
-  Closing it properly needs `amadeo replay`.
+  fixture, which covers "separate build" but not "separate process". `amadeo replay` closes it:
+  `games/quad-demo/replays/wander.replay` is played by the real game binary in a fresh process, with
+  four checkpoints asserted, and CI runs it in the determinism job. **M0's exit gate is now 4 of 4
+  with nothing carried.**
 
 Known gaps deliberately left for later:
 - No bundle/spawn-with-components API, so building an entity with N components costs N archetype
@@ -489,6 +490,11 @@ Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
   `instantiate` does: stopping is right for loading and wrong for checking, because an agent fixing a
   file cannot ask a follow-up question and one error per round trip is a functional defect.
 
-  467 tests, all four §4b commands green. **Q3 is now the top open question.** `amadeo replay` is the
-  next most valuable command and needs one small decision first — a recording carries its seed, but a
-  game fixes its seed before the handover is reached.
+  Finally **`amadeo replay`**, which closes the separate-process replay gate carried since M0 —
+  the last outstanding item from that milestone. The seed problem it raised turned out to have a
+  boring answer: the game asks `requested_seed()` *before* building, rather than the host re-seeding
+  afterwards, because a world whose construction consumed randomness would then differ from the one
+  recorded and the divergence would look like a real regression.
+
+  476 tests, all four §4b commands green, and CI now replays a committed recording in a fresh
+  process. **Q3 is the top open question and the thing to do next.**

@@ -87,8 +87,9 @@ crates/
                      *host* — serve_if_requested reads stdin and answers. The host lives here rather
                      than in amadeo-agent because it needs App and I6 forbids reaching down.
 — amadeo-editor      graphical editor. A CLIENT of amadeo-agent. No privileged access.
-🟡 amadeo-cli         the `amadeo` binary. Built: describe/query/entity/schedule/status/call/fmt.
-                     Pending: new/run/check/test/replay/build/export. ADR 0016: `fmt` is standalone;
+🟡 amadeo-cli         the `amadeo` binary. Built: describe/query/entity/schedule/status/call/check/
+                     replay/fmt.
+                     Pending: new/run/test/build/export. ADR 0016: `fmt` is standalone;
                      everything else spawns the game binary in agent mode and talks to it over stdio,
                      because only that process knows the game's components.
 modules/             optional, genre-flavored. Core NEVER depends on these.

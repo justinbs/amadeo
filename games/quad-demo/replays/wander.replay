@@ -1,0 +1,16 @@
+amadeo-replay 1
+tick-rate 60
+seed 0
+ticks 240
+
+0 axis move_x 1.0
+40 axis move_y 1.0
+90 axis move_x -1.0
+150 axis move_y -1.0
+200 axis move_x 0.0
+200 axis move_y 0.0
+
+checkpoint 1 9714de0f9b1f1d8c
+checkpoint 60 2f373227a92e75ae
+checkpoint 150 f6054120d33e70ea
+checkpoint 240 eb9e3068aa272132

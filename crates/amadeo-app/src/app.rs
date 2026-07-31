@@ -80,6 +80,11 @@ pub struct App {
     event_swaps: Vec<EventSwap>,
     /// Unspent real time, in nanoseconds. Outside the deterministic zone.
     accumulated_nanos: u64,
+    /// The seed this app was built with.
+    ///
+    /// Kept because a replay only reproduces against the seed that recorded it, and the agent host
+    /// has to be able to say so rather than silently replaying against the wrong one.
+    seed: u64,
 }
 
 impl Default for App {
@@ -112,7 +117,14 @@ impl App {
             schedules: BTreeMap::new(),
             event_swaps: Vec::new(),
             accumulated_nanos: 0,
+            seed,
         }
+    }
+
+    /// The seed this app was built with.
+    #[must_use]
+    pub fn seed(&self) -> u64 {
+        self.seed
     }
 
     /// Registers a component type, so scenes can build it and the agent can see it.

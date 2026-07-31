@@ -39,6 +39,19 @@ impl Session {
     ///
     /// If cargo cannot be started, or the build fails.
     pub(crate) fn start(root: &Path, package: &str, ticks: u64) -> Result<Session> {
+        Session::start_with(root, package, &["--ticks".to_string(), ticks.to_string()])
+    }
+
+    /// Launches with arbitrary extra arguments after `--amadeo-agent`.
+    ///
+    /// `amadeo replay` needs `--replay` and `--seed`, and the seed in particular has to be a
+    /// *launch* argument: the game fixes its seed when it builds its `App`, which happens before
+    /// the agent handover is reached.
+    ///
+    /// # Errors
+    ///
+    /// If cargo cannot be started, or the build fails.
+    pub(crate) fn start_with(root: &Path, package: &str, extra: &[String]) -> Result<Session> {
         let mut command = Command::new("cargo");
         command
             .current_dir(root)
@@ -49,8 +62,7 @@ impl Session {
             .arg(package)
             .arg("--")
             .arg("--amadeo-agent")
-            .arg("--ticks")
-            .arg(ticks.to_string())
+            .args(extra)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             // Inherited: build progress and panics reach the user unchanged, and never pollute the

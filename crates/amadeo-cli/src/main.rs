@@ -46,6 +46,8 @@ enum Command {
     Fmt { paths: Vec<PathBuf>, check: bool },
     /// Validate scene files against the game's real component schema.
     Check { paths: Vec<PathBuf> },
+    /// Replay a recording in a fresh process and verify its checkpoint hashes.
+    Replay { path: PathBuf },
 }
 
 /// Options that apply to any command that launches the game.
@@ -83,6 +85,10 @@ fn run(command: Command, options: &Options) -> Result<()> {
         return check_scenes(&paths, options);
     }
 
+    if let Command::Replay { path } = command {
+        return replay(&path, options);
+    }
+
     let (method, params) = match &command {
         Command::Describe { type_name } => (
             "describe",
@@ -118,7 +124,9 @@ fn run(command: Command, options: &Options) -> Result<()> {
             }
             (method.as_str(), parsed)
         }
-        Command::Fmt { .. } | Command::Check { .. } => unreachable!("handled above"),
+        Command::Fmt { .. } | Command::Check { .. } | Command::Replay { .. } => {
+            unreachable!("handled above")
+        }
     };
 
     let here = std::env::current_dir().context("could not read the current directory")?;
@@ -138,6 +146,126 @@ fn run(command: Command, options: &Options) -> Result<()> {
         print!("{}", result.to_pretty());
     }
     Ok(())
+}
+
+/// Replays a recording in a fresh process and checks every checkpoint hash.
+///
+/// This is the **separate-process** half of the golden-replay mechanism. The in-process test proves
+/// a recording survives a rebuild; this proves it survives a fresh process, which is the stronger
+/// claim and is what M0's exit gate asked for.
+///
+/// The seed goes on the command line rather than over the protocol, because the game fixes its seed
+/// when it builds its `App` — which happens before the agent handover is reached.
+fn replay(path: &PathBuf, options: &Options) -> Result<()> {
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("could not read {}", path.display()))?;
+
+    // Parsed here as well as in the game, so a malformed file costs a clear error instead of a
+    // build. The seed also has to be known before launching, which is the other reason.
+    let seed = seed_of_replay(&text).with_context(|| {
+        format!(
+            "{}: no `seed` line; is this an .replay file?",
+            path.display()
+        )
+    })?;
+
+    // Absolute, so it resolves the same whatever directory the game is launched in.
+    let absolute = std::fs::canonicalize(path)
+        .with_context(|| format!("could not resolve {}", path.display()))?;
+
+    let here = std::env::current_dir().context("could not read the current directory")?;
+    let project = Project::discover(&here)?;
+    let package = options.package.clone().unwrap_or(project.game);
+
+    let mut session = launch::Session::start_with(
+        &project.root,
+        &package,
+        &[
+            "--replay".to_string(),
+            absolute.to_string_lossy().into_owned(),
+            "--seed".to_string(),
+            seed.to_string(),
+        ],
+    )?;
+
+    let replies = session.ask(&[launch::request(
+        "replay.status",
+        Json::object([] as [(&str, Json); 0]),
+        1,
+    )])?;
+
+    let result = launch::unwrap_reply(replies.into_iter().next().context("no reply")?)?;
+    let Json::Object(status) = &result else {
+        bail!("unexpected reply: {}", result.to_compact());
+    };
+
+    let checked = match status.get("checked") {
+        Some(Json::Int(value)) => *value,
+        _ => 0,
+    };
+    let ticks = match status.get("ticks") {
+        Some(Json::Int(value)) => *value,
+        _ => 0,
+    };
+    let passed = matches!(status.get("passed"), Some(Json::Bool(true)));
+
+    if passed {
+        // A replay with no checkpoints proves nothing, and silently "passing" it is exactly the
+        // kind of green test that hides a regression for months.
+        if checked == 0 {
+            bail!(
+                "{}: replayed {ticks} ticks, but the file has no checkpoint lines, so nothing was \
+                 verified. A replay without checkpoints is not a test",
+                path.display()
+            );
+        }
+        println!(
+            "ok  {} — {ticks} ticks, {checked} checkpoint(s) matched, seed {seed}",
+            path.display()
+        );
+        return Ok(());
+    }
+
+    if let Some(Json::Array(mismatches)) = status.get("mismatches") {
+        for mismatch in mismatches {
+            let Json::Object(fields) = mismatch else {
+                continue;
+            };
+            let at = match fields.get("tick") {
+                Some(Json::Int(value)) => *value,
+                _ => 0,
+            };
+            let expected = match fields.get("expected") {
+                Some(Json::String(text)) => text.as_str(),
+                _ => "?",
+            };
+            let found = match fields.get("found") {
+                Some(Json::String(text)) => text.as_str(),
+                _ => "?",
+            };
+            eprintln!(
+                "{}: tick {at}: expected {expected}, got {found}",
+                path.display()
+            );
+        }
+    }
+
+    bail!(
+        "{}: the simulation no longer reproduces this recording.\n\
+         Find out WHY before regenerating it — this usually means behaviour changed, which \
+         invalidates every other recorded replay too.",
+        path.display()
+    )
+}
+
+/// Reads the `seed` line out of a `.replay` file.
+///
+/// Only the seed, deliberately: the CLI has no business understanding the rest of the format, and
+/// the game parses it properly. See `amadeo_input::Recording` for the real parser.
+fn seed_of_replay(text: &str) -> Option<u64> {
+    text.lines()
+        .find_map(|line| line.trim().strip_prefix("seed "))
+        .and_then(|value| value.trim().parse().ok())
 }
 
 /// Validates scene files against the game's registry, reporting every problem in one pass.
@@ -431,6 +559,12 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
         "check" => Command::Check {
             paths: rest.iter().map(PathBuf::from).collect(),
         },
+        "replay" => Command::Replay {
+            path: rest
+                .first()
+                .map(PathBuf::from)
+                .context("`amadeo replay` needs a file, as in `amadeo replay walk.replay`")?,
+        },
         other => bail!("unknown command `{other}`. Run `amadeo --help` for what there is"),
     };
 
@@ -454,6 +588,7 @@ RUNS IN THE GAME (launches it, asks, exits)
     describe [type]          the component schema — everything, or one type
     query <component>...     entities carrying all of the named components
     entity <index>           one entity's components
+    replay <file>            replay a recording and verify its checkpoint hashes
     schedule [stage]         systems in resolved execution order
     status                   tick, state hash, and what is registered
     call <method>            any protocol method
@@ -589,6 +724,25 @@ mod tests {
             Command::Check { paths } => assert_eq!(paths.len(), 2),
             other => panic!("expected check, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn the_replay_seed_is_read_before_launching() {
+        // The CLI has to know the seed up front: the game fixes it when it builds its App, which
+        // happens before the agent handover. So this is read here, not asked for over the protocol.
+        let file = "amadeo-replay 1\ntick-rate 60\nseed 1234\nticks 300\n\n0 axis move_x 1.0\n";
+        assert_eq!(seed_of_replay(file), Some(1234));
+        assert_eq!(seed_of_replay("amadeo-replay 1\nticks 10\n"), None);
+        assert_eq!(seed_of_replay("not a replay file at all"), None);
+    }
+
+    #[test]
+    fn replay_needs_a_file() {
+        let error = parse_args(&["replay"]).expect_err("needs a path");
+        assert!(
+            error.to_string().contains("amadeo replay walk.replay"),
+            "got: {error}"
+        );
     }
 
     #[test]

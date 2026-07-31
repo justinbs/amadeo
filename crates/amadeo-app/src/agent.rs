@@ -39,6 +39,7 @@
 use crate::App;
 use crate::schedule::Stage;
 use amadeo_agent::{Json, Request, RpcError, WORLD_METHODS, dispatch_world, failure, success};
+use amadeo_core::Tick;
 use std::io::{BufRead, Write};
 
 /// The flag that turns a game binary into an agent host.
@@ -47,8 +48,21 @@ pub const AGENT_FLAG: &str = "--amadeo-agent";
 /// The flag that says how far to run before answering questions.
 pub const TICKS_FLAG: &str = "--ticks";
 
+/// The flag naming a `.replay` file to play instead of running free.
+pub const REPLAY_FLAG: &str = "--replay";
+
+/// The flag carrying the seed the app should have been built with.
+///
+/// See [`requested_seed`] for why a game reads this *before* building.
+pub const SEED_FLAG: &str = "--seed";
+
 /// The methods this host answers itself, on top of [`WORLD_METHODS`].
-pub const APP_METHODS: &[&str] = &["scene.check", "schedule.list", "sim.status"];
+pub const APP_METHODS: &[&str] = &[
+    "replay.status",
+    "scene.check",
+    "schedule.list",
+    "sim.status",
+];
 
 /// Something went wrong hosting the agent.
 #[derive(Debug, thiserror::Error)]
@@ -67,13 +81,36 @@ pub enum AgentError {
         source: crate::ScheduleError,
     },
 
+    /// The replay file could not be read or parsed.
+    #[error("could not read the replay `{path}`: {message}")]
+    BadReplay {
+        /// The file that was asked for.
+        path: String,
+        /// What was wrong with it.
+        message: String,
+    },
+
+    /// The app was built with a different seed than the replay needs.
+    #[error(
+        "this replay was recorded with seed {wanted}, but the game built its world with seed \
+         {found}. A replay only reproduces against the seed it was made with.\n\
+         Fix: have the game read `amadeo_app::requested_seed()` before building its App, and pass \
+         that to `App::with_seed`"
+    )]
+    SeedMismatch {
+        /// The seed the recording needs.
+        wanted: u64,
+        /// The seed the app actually has.
+        found: u64,
+    },
+
     /// stdin or stdout failed.
     #[error("agent transport failed: {0}")]
     Transport(#[from] std::io::Error),
 }
 
 /// How the agent was asked to run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AgentOptions {
     /// How many ticks to simulate before answering anything.
     ///
@@ -81,7 +118,54 @@ pub struct AgentOptions {
     /// asked of a world that got where it is by running a fixed number of ticks from a fixed seed,
     /// so the same command twice gives the same answer twice — and a question an agent asks is a
     /// question it can put in a test.
+    ///
+    /// Ignored when [`AgentOptions::replay`] is set: a recording says how long it is.
     pub ticks: u64,
+
+    /// A `.replay` file to play instead of running free.
+    ///
+    /// A **path**, unlike `scene.check`, which takes text. The difference is not an inconsistency:
+    /// a replay has to be installed before the first tick, so it cannot arrive as a method
+    /// parameter — by the time a method could be called, the ticks have already run. The client
+    /// makes the path absolute so there is no question which directory it resolves against.
+    pub replay: Option<std::path::PathBuf>,
+
+    /// The seed the app should have been built with. See [`requested_seed`].
+    pub seed: Option<u64>,
+}
+
+/// The seed this process was asked to build its world with, if any.
+///
+/// # Why a game reads this before building its `App`
+///
+/// A recording only reproduces against the seed it was made with, and `App::with_seed` fixes the
+/// seed at construction — which happens *before* [`serve_if_requested`] is reached. So a game that
+/// wants `amadeo replay` to work against it has to ask first:
+///
+/// ```no_run
+/// const DEFAULT_SEED: u64 = 0;
+/// let seed = amadeo_app::requested_seed().unwrap_or(DEFAULT_SEED);
+/// let mut app = amadeo_app::App::with_seed(seed);
+/// ```
+///
+/// A game that skips this still works for everything else; it just gets a clear
+/// [`AgentError::SeedMismatch`] if someone replays a recording made at another seed, rather than a
+/// mysterious hash mismatch.
+///
+/// Deliberately *not* solved by having the host re-seed the app after construction: a world whose
+/// construction consumed randomness would then differ from the one that was recorded, and the
+/// resulting divergence would look like a real regression.
+#[must_use]
+pub fn requested_seed() -> Option<u64> {
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    seed_from(&arguments)
+}
+
+/// The argument-scanning half of [`requested_seed`], separated so it can be tested.
+#[must_use]
+pub fn seed_from(arguments: &[String]) -> Option<u64> {
+    let position = arguments.iter().position(|a| a == SEED_FLAG)?;
+    arguments.get(position + 1)?.parse().ok()
 }
 
 /// Reads agent options out of the process arguments.
@@ -107,28 +191,52 @@ pub fn agent_options_from(arguments: &[String]) -> Result<Option<AgentOptions>, 
         return Ok(None);
     }
 
-    let mut ticks = 0_u64;
+    let mut options = AgentOptions::default();
     let mut index = 0;
+
     while index < arguments.len() {
-        if arguments[index] == TICKS_FLAG {
-            let Some(value) = arguments.get(index + 1) else {
-                return Err(AgentError::BadArguments(format!(
-                    "{TICKS_FLAG} needs a number, as in `{TICKS_FLAG} 600`"
-                )));
-            };
-            ticks = value.parse().map_err(|_| {
-                AgentError::BadArguments(format!(
-                    "`{value}` is not a tick count; {TICKS_FLAG} takes a whole number of ticks \
-                     (60 per simulated second)"
-                ))
-            })?;
-            index += 2;
-            continue;
+        match arguments[index].as_str() {
+            TICKS_FLAG => {
+                let Some(value) = arguments.get(index + 1) else {
+                    return Err(AgentError::BadArguments(format!(
+                        "{TICKS_FLAG} needs a number, as in `{TICKS_FLAG} 600`"
+                    )));
+                };
+                options.ticks = value.parse().map_err(|_| {
+                    AgentError::BadArguments(format!(
+                        "`{value}` is not a tick count; {TICKS_FLAG} takes a whole number of ticks \
+                         (60 per simulated second)"
+                    ))
+                })?;
+                index += 2;
+            }
+            REPLAY_FLAG => {
+                let Some(value) = arguments.get(index + 1) else {
+                    return Err(AgentError::BadArguments(format!(
+                        "{REPLAY_FLAG} needs a path to a .replay file"
+                    )));
+                };
+                options.replay = Some(std::path::PathBuf::from(value));
+                index += 2;
+            }
+            SEED_FLAG => {
+                let Some(value) = arguments.get(index + 1) else {
+                    return Err(AgentError::BadArguments(format!(
+                        "{SEED_FLAG} needs a number"
+                    )));
+                };
+                options.seed = Some(value.parse().map_err(|_| {
+                    AgentError::BadArguments(format!(
+                        "`{value}` is not a seed; it is a whole number"
+                    ))
+                })?);
+                index += 2;
+            }
+            _ => index += 1,
         }
-        index += 1;
     }
 
-    Ok(Some(AgentOptions { ticks }))
+    Ok(Some(options))
 }
 
 /// Hands the app over to the agent if this process was launched to be one.
@@ -165,13 +273,19 @@ pub fn serve(
     mut output: impl Write,
 ) -> Result<(), AgentError> {
     // The whole pre-roll happens before the first reply, so every answer describes the same world.
-    if options.ticks > 0 {
-        app.run_ticks(options.ticks)
-            .map_err(|source| AgentError::Simulation {
-                ticks: options.ticks,
-                source,
-            })?;
-    }
+    let replay = match &options.replay {
+        Some(path) => Some(play_replay(app, path)?),
+        None => {
+            if options.ticks > 0 {
+                app.run_ticks(options.ticks)
+                    .map_err(|source| AgentError::Simulation {
+                        ticks: options.ticks,
+                        source,
+                    })?;
+            }
+            None
+        }
+    };
 
     for line in input.lines() {
         let line = line?;
@@ -179,7 +293,7 @@ pub fn serve(
             continue;
         }
 
-        let reply = answer(app, &line);
+        let reply = answer(app, &line, replay.as_ref());
         writeln!(output, "{}", reply.to_compact())?;
         // Flushed per reply: a client that sent one request and is waiting for one answer would
         // otherwise block on a buffer that only empties at exit.
@@ -189,25 +303,116 @@ pub fn serve(
     Ok(())
 }
 
+/// What a replay run found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplayOutcome {
+    /// The file that was played.
+    pub path: String,
+    /// The seed it was recorded at.
+    pub seed: u64,
+    /// How many ticks were run.
+    pub ticks: u64,
+    /// How many checkpoints were compared.
+    pub checked: usize,
+    /// Every checkpoint whose hash did not match: `(tick, expected, found)`.
+    pub mismatches: Vec<(u64, u64, u64)>,
+}
+
+impl ReplayOutcome {
+    /// Whether every checkpoint matched.
+    #[must_use]
+    pub fn passed(&self) -> bool {
+        self.mismatches.is_empty()
+    }
+}
+
+/// Plays a recording against the app, checking every checkpoint on the way.
+///
+/// This is the separate-process half of the golden-replay mechanism. The in-process test in
+/// `tests/golden_replay.rs` proves a recording survives a rebuild; this proves it survives a fresh
+/// process, which is the stronger claim and the one M0's exit gate actually asked for.
+///
+/// **It does not stop at the first mismatch.** Knowing that ticks 60 and 300 diverged but 180 did
+/// not is a different and much more useful fact than knowing 60 diverged.
+fn play_replay(app: &mut App, path: &std::path::Path) -> Result<ReplayOutcome, AgentError> {
+    let text = std::fs::read_to_string(path).map_err(|error| AgentError::BadReplay {
+        path: path.display().to_string(),
+        message: error.to_string(),
+    })?;
+
+    let recording =
+        amadeo_input::Recording::parse(&text).map_err(|error| AgentError::BadReplay {
+            path: path.display().to_string(),
+            message: error.to_string(),
+        })?;
+
+    if recording.seed != app.seed() {
+        return Err(AgentError::SeedMismatch {
+            wanted: recording.seed,
+            found: app.seed(),
+        });
+    }
+
+    let ticks = recording.ticks;
+    let expected: Vec<(Tick, u64)> = recording.checkpoints().collect();
+
+    // Replaces whatever input source the game installed. A replay is exactly the claim that the
+    // simulation cannot tell a recorded session from a live one.
+    amadeo_input::install(
+        &mut app.world,
+        amadeo_input::InputDriver::replaying(recording),
+    );
+
+    let mut mismatches = Vec::new();
+    let mut checked = 0;
+
+    for tick in 1..=ticks {
+        app.step().map_err(|source| AgentError::Simulation {
+            ticks: tick,
+            source,
+        })?;
+
+        if let Some((_, wanted)) = expected.iter().find(|(at, _)| at.0 == tick) {
+            checked += 1;
+            let found = app.state_hash();
+            if found != *wanted {
+                mismatches.push((tick, *wanted, found));
+            }
+        }
+    }
+
+    Ok(ReplayOutcome {
+        path: path.display().to_string(),
+        seed: app.seed(),
+        ticks,
+        checked,
+        mismatches,
+    })
+}
+
 /// Turns one line of input into one reply, never failing.
 ///
 /// Every path produces a JSON-RPC envelope. A server that dies on a bad request is a server that an
 /// agent cannot recover from without a human.
-fn answer(app: &mut App, line: &str) -> Json {
+fn answer(app: &mut App, line: &str, replay: Option<&ReplayOutcome>) -> Json {
     let request = match Request::parse(line) {
         Ok(request) => request,
         // The id is unknowable when the request did not parse, so the spec says to reply with null.
         Err(error) => return failure(&Json::Null, &error),
     };
 
-    match dispatch(app, &request) {
+    match dispatch(app, &request, replay) {
         Ok(result) => success(&request.id, result),
         Err(error) => failure(&request.id, &error),
     }
 }
 
 /// Routes a request: world methods first, then this host's own.
-fn dispatch(app: &mut App, request: &Request) -> Result<Json, RpcError> {
+fn dispatch(
+    app: &mut App,
+    request: &Request,
+    replay: Option<&ReplayOutcome>,
+) -> Result<Json, RpcError> {
     // Borrowed separately because `dispatch_world` takes both and `App` owns both.
     if let Some(result) = dispatch_world(request, &app.world, app.components())? {
         return Ok(result);
@@ -237,6 +442,39 @@ fn dispatch(app: &mut App, request: &Request) -> Result<Json, RpcError> {
                 Json::Array(app.components().names().map(Json::string).collect()),
             ),
         ])),
+
+        "replay.status" => {
+            let Some(outcome) = replay else {
+                return Err(request.bad_params(format!(
+                    "this process was not launched with a replay. \
+                     Pass `{REPLAY_FLAG} <path>` alongside `{AGENT_FLAG}`, \
+                     or use `amadeo replay <path>`"
+                )));
+            };
+
+            let mismatches: Vec<Json> = outcome
+                .mismatches
+                .iter()
+                .map(|(tick, wanted, found)| {
+                    Json::object([
+                        ("tick", Json::Int(*tick as i64)),
+                        // Hex strings for the same reason `sim.status` uses one: a u64 above 2^53
+                        // does not survive a JSON number.
+                        ("expected", Json::string(format!("{wanted:016x}"))),
+                        ("found", Json::string(format!("{found:016x}"))),
+                    ])
+                })
+                .collect();
+
+            Ok(Json::object([
+                ("passed", Json::Bool(outcome.passed())),
+                ("path", Json::string(&outcome.path)),
+                ("seed", Json::Int(outcome.seed as i64)),
+                ("ticks", Json::Int(outcome.ticks as i64)),
+                ("checked", Json::Int(outcome.checked as i64)),
+                ("mismatches", Json::Array(mismatches)),
+            ]))
+        }
 
         // The *text* is sent, not a path. The game process has no business reading the client's
         // filesystem, and a path would be resolved relative to whichever directory the game was
@@ -394,7 +632,10 @@ mod tests {
 
         serve(
             app,
-            AgentOptions { ticks },
+            AgentOptions {
+                ticks,
+                ..AgentOptions::default()
+            },
             std::io::Cursor::new(input),
             &mut output,
         )
@@ -621,6 +862,140 @@ mod tests {
         agent_options_from(&owned).expect("arguments should be valid")
     }
 
+    /// Writes a replay file into a temp directory and serves against it.
+    fn serve_replay(app: &mut App, replay_text: &str, request: &str) -> Json {
+        let directory = std::env::temp_dir().join(format!(
+            "amadeo-replay-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&directory).expect("temp dir");
+        let path = directory.join("session.replay");
+        std::fs::write(&path, replay_text).expect("write replay");
+
+        let mut output: Vec<u8> = Vec::new();
+        serve(
+            app,
+            AgentOptions {
+                replay: Some(path.clone()),
+                ..AgentOptions::default()
+            },
+            std::io::Cursor::new(request.to_string()),
+            &mut output,
+        )
+        .expect("serving should not fail");
+
+        let _ = std::fs::remove_file(&path);
+        let text = String::from_utf8(output).expect("UTF-8");
+        Json::parse(text.lines().next().expect("one reply")).expect("JSON")
+    }
+
+    /// Runs the test app for `ticks` and returns its state hash, for building a fixture.
+    ///
+    /// Installs the input driver first, because `play_replay` does and `InputState` is a
+    /// **resource** — so it is part of the state hash. An app with input installed and one without
+    /// are genuinely different worlds, and a fixture generated from the wrong one would look like a
+    /// replay failure. Found by this test failing exactly that way.
+    fn hash_after(ticks: u64) -> u64 {
+        let mut app = test_app();
+        amadeo_input::install(
+            &mut app.world,
+            amadeo_input::InputDriver::replaying(amadeo_input::Recording::new(0)),
+        );
+        app.run_ticks(ticks).expect("schedule resolves");
+        app.state_hash()
+    }
+
+    #[test]
+    fn a_replay_whose_checkpoints_match_passes() {
+        // The separate-process claim, exercised in-process here and end to end by the CLI: the same
+        // recorded run reaches the same state hashes.
+        let replay = format!(
+            "amadeo-replay 1\ntick-rate 60\nseed 0\nticks 10\n\ncheckpoint 5 {:016x}\ncheckpoint 10 {:016x}\n",
+            hash_after(5),
+            hash_after(10)
+        );
+
+        let reply = serve_replay(&mut test_app(), &replay, &call("replay.status", "{}"));
+        let text = reply.to_compact();
+
+        assert!(text.contains(r#""passed":true"#), "got: {text}");
+        assert!(text.contains(r#""checked":2"#), "got: {text}");
+        assert!(text.contains(r#""mismatches":[]"#), "got: {text}");
+    }
+
+    #[test]
+    fn a_wrong_checkpoint_is_reported_with_both_hashes() {
+        // If a corrupted replay still passed, the checkpoints would be worthless.
+        let replay = format!(
+            "amadeo-replay 1\ntick-rate 60\nseed 0\nticks 10\n\ncheckpoint 5 {:016x}\ncheckpoint 10 deadbeefdeadbeef\n",
+            hash_after(5)
+        );
+
+        let reply = serve_replay(&mut test_app(), &replay, &call("replay.status", "{}"));
+        let text = reply.to_compact();
+
+        assert!(text.contains(r#""passed":false"#), "got: {text}");
+        // Both checkpoints were still compared -- it does not stop at the first mismatch, because
+        // "60 and 300 diverged but 180 did not" is a much more useful fact than "60 diverged".
+        assert!(text.contains(r#""checked":2"#), "got: {text}");
+        assert!(
+            text.contains(r#""expected":"deadbeefdeadbeef""#),
+            "got: {text}"
+        );
+        assert!(text.contains(r#""tick":10"#), "got: {text}");
+    }
+
+    #[test]
+    fn a_seed_mismatch_says_how_to_fix_it_rather_than_diverging() {
+        // Replaying against the wrong seed would produce a hash mismatch that looks exactly like a
+        // real regression. Refusing up front is the difference between a five-minute confusion and
+        // an afternoon.
+        let replay = "amadeo-replay 1\ntick-rate 60\nseed 999\nticks 5\n";
+        let mut app = test_app();
+
+        let error = serve(
+            &mut app,
+            AgentOptions {
+                replay: Some(std::path::PathBuf::from("unused")),
+                ..AgentOptions::default()
+            },
+            std::io::Cursor::new(String::new()),
+            Vec::new(),
+        );
+        // The file does not exist, so this is the read error -- checked separately below.
+        assert!(error.is_err());
+
+        let directory = std::env::temp_dir().join("amadeo-seed-mismatch-test");
+        std::fs::create_dir_all(&directory).expect("temp dir");
+        let path = directory.join("wrong-seed.replay");
+        std::fs::write(&path, replay).expect("write");
+
+        let error = serve(
+            &mut app,
+            AgentOptions {
+                replay: Some(path),
+                ..AgentOptions::default()
+            },
+            std::io::Cursor::new(String::new()),
+            Vec::new(),
+        )
+        .expect_err("seeds differ");
+
+        let message = error.to_string();
+        assert!(message.contains("seed 999"), "got: {message}");
+        assert!(message.contains("requested_seed"), "got: {message}");
+    }
+
+    #[test]
+    fn replay_status_without_a_replay_says_how_to_ask_for_one() {
+        let replies = converse(&mut test_app(), 0, &[&call("replay.status", "{}")]);
+        let text = replies[0].to_compact();
+
+        assert!(text.contains("not launched with a replay"), "got: {text}");
+        assert!(text.contains("amadeo replay"), "got: {text}");
+    }
+
     #[test]
     fn the_agent_flag_is_off_unless_asked_for() {
         // A game launched to be played must not start reading stdin as a protocol.
@@ -630,16 +1005,34 @@ mod tests {
 
     #[test]
     fn tick_counts_parse_and_default_to_zero() {
-        assert_eq!(options_of(&[AGENT_FLAG]), Some(AgentOptions { ticks: 0 }));
+        assert_eq!(options_of(&[AGENT_FLAG]), Some(AgentOptions::default()));
         assert_eq!(
-            options_of(&[AGENT_FLAG, TICKS_FLAG, "600"]),
-            Some(AgentOptions { ticks: 600 })
+            options_of(&[AGENT_FLAG, TICKS_FLAG, "600"]).map(|o| o.ticks),
+            Some(600)
         );
         // Order does not matter, and unrelated arguments are ignored.
         assert_eq!(
-            options_of(&["--windowed", TICKS_FLAG, "42", AGENT_FLAG]),
-            Some(AgentOptions { ticks: 42 })
+            options_of(&["--windowed", TICKS_FLAG, "42", AGENT_FLAG]).map(|o| o.ticks),
+            Some(42)
         );
+    }
+
+    #[test]
+    fn replay_and_seed_flags_parse() {
+        let options = options_of(&[AGENT_FLAG, REPLAY_FLAG, "a.replay", SEED_FLAG, "1234"])
+            .expect("agent mode");
+
+        assert_eq!(options.replay, Some(std::path::PathBuf::from("a.replay")));
+        assert_eq!(options.seed, Some(1234));
+    }
+
+    #[test]
+    fn a_game_can_read_the_seed_before_it_builds() {
+        // The whole point of `requested_seed`: App::with_seed happens before the handover, so the
+        // seed has to be readable from argv rather than handed over afterwards.
+        let arguments: Vec<String> = [SEED_FLAG, "77"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(seed_from(&arguments), Some(77));
+        assert_eq!(seed_from(&[]), None);
     }
 
     #[test]

@@ -70,6 +70,22 @@ jobs:
       - name: Release build must agree with debug
         run: cargo test --workspace --release
 
+      # The SEPARATE-PROCESS half of the golden-replay mechanism, and the last item carried over
+      # from M0's exit gate. The in-process test in amadeo-app proves a recording survives a
+      # rebuild; this proves it survives a fresh process, which is the stronger claim -- it is the
+      # one that catches nondeterminism coming from process state rather than from code.
+      #
+      # It also exercises the whole ADR 0016 path end to end: the CLI launches the game binary,
+      # speaks JSON-RPC to it over stdio, and reports what it hears back.
+      - name: Replay a recording in a separate process
+        shell: bash
+        run: |
+          # Built and then invoked by path rather than `cargo run`, so the CLI's own
+          # `cargo run -p quad-demo` is not nested inside a cargo invocation holding the build lock.
+          # `.exe` is explicit because this job is windows-only.
+          cargo build --package amadeo-cli
+          ./target/debug/amadeo.exe replay games/quad-demo/replays/wander.replay
+
   docs:
     name: docs build without warnings
     runs-on: windows-latest

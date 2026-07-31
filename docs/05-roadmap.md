@@ -40,10 +40,10 @@ teaches things the planning phase cannot.
 
 1. ✅ **A coloured quad moves under keyboard input in a real window.** `cargo run -p quad-demo`.
    Visually confirmed by Justin.
-2. 🟡 **Record input, replay it, assert identical state hashes at checkpoints.** Done and in CI via
-   `crates/amadeo-app/tests/golden_replay.rs` against a committed fixture — which covers *separate
-   build*. **Not** covered: *separate process*, which needs `amadeo-cli`. Deferred to M1 and recorded
-   in `STATUS.md` rather than counted as done.
+2. ✅ **Record input, replay it, assert identical state hashes at checkpoints.** Two halves, both now
+   in CI. *Separate build:* `crates/amadeo-app/tests/golden_replay.rs` against a committed fixture.
+   *Separate process:* `amadeo replay games/quad-demo/replays/wander.replay`, which launches the real
+   game binary and asserts four checkpoints — closed in session 6, once `amadeo-cli` existed.
 3. ✅ **`cargo test` passes in CI, including the golden replay.** 228 tests; fmt, clippy `-D warnings`,
    and rustdoc clean; a dedicated determinism job runs the suite three times in separate processes
    plus once in release.
@@ -94,10 +94,10 @@ of a milestone.
   `Quad`, which is what makes `amadeo describe Velocity` describe a *game's* type.
 - ✅ Protocol spec in `docs/protocol/v1.md`, versioned, written against the batch method set.
 - 🟡 `amadeo-cli` — **built:** `describe`, `query`, `entity`, `schedule`, `status`, `call`, `check`,
-  `fmt`. **Still to do:** `new`, `run`, `test`, `replay`. Per ADR 0016 `fmt` runs standalone;
+  `replay`, `fmt`. **Still to do:** `new`, `run`, `test`. Per ADR 0016 `fmt` runs standalone;
   everything else spawns the game binary via `cargo run -p <package> -- --amadeo-agent` and talks to
-  it over stdio. `amadeo replay` is still what closes M0's carried-over **separate-process** replay
-  check — cross-process determinism is verified by hand today, not yet in CI.
+  it over stdio. **`amadeo replay` closed M0's carried-over separate-process replay check**, which CI
+  now runs in the determinism job against `games/quad-demo/replays/wander.replay`.
 - `amadeo-assets` — virtual FS, handles, async load with load-order isolation, hot reload, import
   pipeline, text sidecar metadata, placeholder assets on failure.
 - 2D rendering — sprite batcher, textures, cameras, layers/sorting, transform hierarchy.

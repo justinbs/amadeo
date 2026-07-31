@@ -107,8 +107,13 @@ fn clamp_to_view(world: &mut World) {
 /// The palette is deliberate rather than default — a cool near-black ground, muted slate markers, and
 /// a single warm amber for the thing you control, so the player reads instantly against everything
 /// else.
+/// The seed this game runs at unless told otherwise.
+const DEFAULT_SEED: u64 = 0;
+
 fn build_simulation() -> Result<App, RegistryError> {
-    let mut app = App::new();
+    // Asked for *before* the app exists, because `with_seed` fixes the seed at construction and a
+    // replay only reproduces against the seed that recorded it. `amadeo replay` passes it.
+    let mut app = App::with_seed(amadeo_app::requested_seed().unwrap_or(DEFAULT_SEED));
 
     // Registration is what puts a type into `amadeo describe` and lets a scene file name it
     // (ADR 0016, invariant I8). Game components and engine components alike: the schema describes

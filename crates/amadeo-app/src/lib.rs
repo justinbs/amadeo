@@ -56,8 +56,9 @@ mod app;
 mod schedule;
 
 pub use agent::{
-    AGENT_FLAG, APP_METHODS, AgentError, AgentOptions, TICKS_FLAG, agent_options,
-    agent_options_from, serve, serve_if_requested,
+    AGENT_FLAG, APP_METHODS, AgentError, AgentOptions, REPLAY_FLAG, ReplayOutcome, SEED_FLAG,
+    TICKS_FLAG, agent_options, agent_options_from, requested_seed, seed_from, serve,
+    serve_if_requested,
 };
 pub use app::{App, SimRng};
 pub use schedule::{Schedule, ScheduleError, Stage, SystemConfig, system};
