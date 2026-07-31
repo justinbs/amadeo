@@ -3,7 +3,9 @@
 A general-purpose, genre-agnostic game engine designed to be driven equally well by a human in a
 graphical editor and by an AI agent through text and RPC.
 
-**Status: planning.** No engine code yet. See [STATUS.md](STATUS.md).
+**Status: M0 complete, M1 under way.** Eleven crates, 393 tests. `cargo run -p quad-demo` opens a
+window with a quad you can steer; a `.scene` text file loads into a live world; and the engine can
+describe its own schema as JSON. See [STATUS.md](STATUS.md) for where things actually stand.
 
 ---
 
@@ -53,8 +55,17 @@ Native desktop first, Windows primary. Unified 2D and 3D. Web export planned for
 
 ## Getting started
 
-Nothing to build yet. Setup instructions and the current blocker are in
-[docs/07-working-with-the-code.md](docs/07-working-with-the-code.md); live project state is in
-[STATUS.md](STATUS.md).
+```bash
+cargo run -p quad-demo
+```
 
-Then read [docs/05-roadmap.md](docs/05-roadmap.md) § M0.
+WASD or the arrow keys to move, Escape to quit. Everything must be green before a commit:
+
+```bash
+cargo fmt --all --check && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo test --workspace
+```
+
+Setup, everyday commands, and the Rust patterns this engine uses are in
+[docs/07-working-with-the-code.md](docs/07-working-with-the-code.md). Live project state — including
+what to do next — is in [STATUS.md](STATUS.md), and the current milestone is
+[docs/05-roadmap.md](docs/05-roadmap.md) § M1.

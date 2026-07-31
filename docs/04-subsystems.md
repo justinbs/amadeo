@@ -63,8 +63,9 @@ ordering bugs.
 ✅ Archetype-based storage, structure-of-arrays. Chosen for cache behavior *and* for uniformity —
 uniform layout with known schemas is what makes automated reasoning about state possible.
 ✅ Components are plain data. No side-effecting methods, no `Rc`/`RefCell`.
-✅ Hierarchy is data: `Parent`/`Children` + `LocalTransform` → `GlobalTransform` via a propagation
-system.
+✅ Hierarchy is data — but it lives in **`amadeo-transform`**, not here (ADR 0015). `amadeo-ecs`
+defines what a component *is*; it does not own concrete components. Only `Parent` exists so far;
+`GlobalTransform` and the propagation system wait on Q3, alongside the 2D renderer.
 ✅ Structural changes go through deferred command buffers, merged in deterministic order.
 
 ⚠️ **Entity ID scheme.** Generational indices are the obvious choice. But the scene format needs
@@ -75,11 +76,13 @@ space, shared across processes. Nearly free while designing the other two, invas
 ⚠️ **Authority.** An explicit notion of who owns an entity, per ADR 0006, even though it is always
 `Local` until M6. Systems written against it from the start stay correct; systems that assume universal
 write access all need revisiting.
-⚠️ **Query API ergonomics.** This is the single most-used API in the engine, by both authors. Worth
-prototyping two or three shapes and judging which reads best, rather than copying one from another
-engine reflexively.
-⚠️ **Change detection.** Per-component tick stamps enable "only run when changed" and make the
-agent's `snapshot.diff` cheap. Costs memory and bookkeeping. Probably worth it — decide in M0.
+✅ **Query API ergonomics.** Settled by use rather than by prototyping: reads return iterators
+(`iter`, `iter_pair`, `iter_triple`), writes take closures (`for_each_mut`, `for_each_pair_mut`,
+`for_each_triple_mut`). Shapes are added when a real system needs one — the three-component version
+exists because the Q1 benchmark needed it. Four or more still needs collect-and-write-back.
+✅ **Change detection.** Per-component tick stamps, marked on *mutable access* rather than on actual
+modification — there is no way to tell whether a caller holding `&mut T` really wrote. Conservative
+in the safe direction, which is why read-only query shapes exist alongside the mutable ones.
 ⚠️ **Relations beyond parent/child.** Godot has one tree; real games want many relationships
 (equipped-by, targeting, owned-by). Decide whether to support general entity relations now or model
 them as plain components. Leaning: plain components first, revisit if it hurts.
@@ -186,22 +189,33 @@ delta snapshots are cheap but complex. Start full, measure, optimize if needed.
 ⚠️ **Fixed dt value.** 60Hz is conventional. 120Hz gives better physics fidelity at 2x cost. Pick and
 document; changing it later invalidates every recorded replay.
 
-## 8. Reflection & Schema — `amadeo-reflect` · M0/M1 · **build this second**
+## 8. Reflection & Schema — `amadeo-reflect` · **built** (M1)
 
 **Job:** the single registry that powers serialization, the editor inspector, and agent introspection.
 
 Everything above depends on it, which is why it's early. See `03-ai-native-design.md` Pillar 2.
 
-⚠️ **Derive macro vs manual registration.** A `#[derive(Component, Reflect)]` macro is the ergonomic
-answer and adds proc-macro compile cost. Almost certainly worth it.
-⚠️ **How rich is the metadata?** Field names and types are the minimum. Ranges, units, tooltips, and
-enum variants are what make generated inspectors and agent guidance genuinely good. Decide the
-attribute vocabulary early — adding it later means touching every component.
-⚠️ **Replication annotations** (ADR 0006). Sync policy, interpolation hint, and authority belong in this
-same vocabulary. Add them in M1 while components are being authored and their semantics are freshest —
-not in a later sweep across the entire engine. Unused until M6, and that is fine.
-⚠️ **Versioning and migration.** When a component gains or renames a field, old scene files must still
-load. Needs a version tag and migration hooks, or every format change breaks every saved project.
+✅ **A value tree, not dynamic field access** (ADR 0012). `Reflect` converts to and from a `Value`;
+there is no cursor into a live value. All three consumers want a whole tree at once, and the
+`dyn Reflect` alternative costs object-safe accessors and a downcast per level for a capability
+nothing here needs.
+✅ **Derive macros**, in `amadeo-derive`: `#[derive(Reflect)]` and `#[derive(StableHash)]`. The second
+matters more than it looks — a hand-written `stable_hash` that forgets a field still compiles and
+still produces a plausible number, while silently excluding part of the simulation from every replay
+assertion.
+✅ **The metadata vocabulary is fixed:** `name`, `version`, `min`/`max`, `unit`, `sync`,
+`interpolate`, `skip`. Ranges are advisory and deliberately not enforced on load.
+✅ **Replication annotations** (ADR 0006) are in that vocabulary and carried through to
+`amadeo describe`. Authority is *not* a field annotation — it belongs to an entity and already exists
+as `amadeo_core::Authority`.
+✅ **Reflection is not optional** (ADR 0013): `Component: Reflect`, so I8 is a compiler-enforced bound
+rather than a convention. `Resource: Reflect` is the outstanding half.
+✅ **A version tag per type**, ready for migration.
+
+⚠️ **Migration itself is not built.** The version number is recorded; nothing yet reads an old scene
+and upgrades it. Needed before any project has saved data worth keeping.
+⚠️ **`Resource: Reflect`** — deferred by ADR 0013. Needs `Rng`'s state exposed so `SimRng` can
+reflect, and map support in `Reflect` for `InputState`.
 
 ## 9. Scene & Prefab Format — `amadeo-scene` · M1 · **build this third**
 
@@ -373,17 +387,44 @@ hardest thing in this project to debug without good introspection.
 
 ---
 
+## 21. Agent Interface Layer — `amadeo-agent`, `amadeo-cli` · M1
+
+**Job:** the engine's only control surface, and the thing invariant I5 makes the editor a client of.
+Full design in `03-ai-native-design.md` Pillar 3.
+
+✅ **The read half exists.** `describe` renders the component registry as JSON — names, types, docs,
+units, ranges, replication — and `entity`/`query` render a live world. Read-only, so inspecting
+cannot perturb what it measures.
+✅ **A deterministic JSON writer**, hand-written: sorted object keys so a dump is diffable, and
+numbers that stay visibly typed so a float field is not mistaken for an integer one.
+
+🔬 **Q14 — where does `describe` actually run?** **P0, and it blocks the shape of `amadeo-cli`.**
+ADR 0011 compiles game logic into the game binary, so a standalone CLI cannot know a game's
+components. `fmt` and `new` work standalone; `check`, `describe`, `inspect`, `run`, and `replay` all
+need the game's registry. Options and a prior are in `06-open-questions.md`. **Decide before writing
+the CLI, not during.**
+
+⚠️ **The mutating calls** — `world.spawn`, `world.set_component`, `sim.step`, `sim.pause` — and
+`events.since`, `scene.load`/`save`, `replay.*`, `snapshot.*`. Keeping the read side independent has
+been worth it so far; that separation is worth preserving.
+⚠️ **JSON parsing.** The writer exists; nothing reads JSON. The RPC server needs a parser, and it is
+a larger piece than the writer was.
+⚠️ **`render.capture` / `render.describe`** — the agent's eyes. Need the 2D renderer, so they need Q3.
+⚠️ **The protocol spec** in `docs/protocol/`, versioned. Not written; the editor, the CLI, and the
+agent all depend on its stability, so it should exist before the second client does.
+
 ## Recommended build order
 
 The order matters more than the list. Dependencies run downward:
 
 ```
-1. math, core, ECS, determinism & time     ← the spine, M0. Nothing works without it.
-2. reflection & schema                     ← unlocks serialization, editor, and agent at once
-3. events, input, app loop                 ← M0
-4. Q1 spike: game logic & hot reload       ← M0. ✅ Resolved by measurement (ADR 0011): no crate.
-5. scene format + agent interface layer    ← M1. The collaboration surface goes live here.
-6. assets, 2D rendering                    ← M1
+1. math, core, ECS, determinism & time     ← ✅ the spine, M0. Nothing works without it.
+2. reflection & schema                     ← ✅ ADR 0012/0013. Unlocked serialization and the agent.
+3. events, input, app loop                 ← ✅ M0
+4. Q1 spike: game logic & hot reload       ← ✅ M0. Resolved by measurement (ADR 0011): no crate.
+5. scene format + agent interface layer    ← 🟡 M1. Format done (ADR 0014); agent read half done;
+                                              CLI/RPC blocked on Q14. The collaboration surface.
+6. assets, 2D rendering                    ← M1. 2D wants Q3 settled first.
 7. 3D rendering, physics                   ← M2
 8. audio, animation, UI, save/load         ← M3
 9. editor                                  ← M4

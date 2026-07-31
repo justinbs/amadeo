@@ -1,29 +1,40 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-07-31 (session 5, in progress)
-**Current phase:** **M0 complete. M1 under way** — reflection landed, the collaboration surface next.
-**Remote:** `origin → https://github.com/justinbs/amadeo.git` (private)
+**Last updated:** 2026-07-31 (end of session 5)
+**Current phase:** **M0 complete. M1 well under way** — reflection, the scene format, and the agent's
+read layer all landed. What remains is mostly the CLI/RPC surface, and that is blocked on **Q14**.
+**Remote:** `origin → https://github.com/justinbs/amadeo.git` (private) — **nothing pushed yet**
 
 ---
 
 ## Where we are
 
 Sessions 1–2 established scope, stack, and architecture. Session 3 built M0. Session 4 closed it by
-resolving Q1.
+resolving Q1. Session 5 built most of M1's foundations.
 
-Six engine crates plus one game exist and are tested: `amadeo-core`, `amadeo-ecs`, `amadeo-events`,
-`amadeo-input`, `amadeo-render`, `amadeo-app`, and `games/quad-demo`. **228 tests passing**; fmt,
-clippy `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated
-determinism job.
+**Eleven crates plus one game**, all tested: `amadeo-derive`, `amadeo-core`, `amadeo-reflect`,
+`amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-input`, `amadeo-render`, `amadeo-scene`,
+`amadeo-agent`, `amadeo-app`, and `games/quad-demo`. **393 tests passing**; fmt, clippy `-D warnings`,
+and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
-**The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD —
-confirmed working. It simulates deterministically at a fixed 60 Hz, records a session to a
-hand-editable text replay file, and replays it against checkpoint state hashes in CI.
+Three things work end to end today:
 
-**M0 exit gate: 4 of 4.** See `docs/05-roadmap.md` § M0. Gate item 2 is met in the "separate build"
-sense; the "separate process" half is carried into M1 because it needs `amadeo-cli`.
+- **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
+  Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
+  checkpoint state hashes in CI.
+- **A text file builds a world.** A `.scene` file (ADR 0014) parses, formats byte-stably, and
+  instantiates into a `World` using the engine's real components, hierarchy included.
+- **The engine describes itself.** `amadeo_agent::describe` emits the full component schema as
+  JSON — names, types, docs, units, ranges, replication — generated from the code, so never stale.
 
-**No blockers.** Toolchain verified end to end.
+**M0 exit gate: 4 of 4.** Gate item 2 is met in the "separate build" sense; the "separate process"
+half is carried into M1 because it needs `amadeo-cli`.
+
+**M1 exit gate: 1 of 5.** Gate 3 (scene round-trip byte-identical) is done. Gates 1, 2, and 4 all
+describe working *through* the CLI and RPC, which is exactly what Q14 blocks. Gate 5 (golden replays
+still pass) holds.
+
+**No toolchain blockers.** One design blocker: **Q14**, below.
 
 ## The single most important thing to do next
 
