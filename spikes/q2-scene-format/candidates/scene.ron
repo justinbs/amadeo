@@ -1,0 +1,84 @@
+// Amadeo scene format candidate: RON (Rusty Object Notation)
+//
+// Written the way someone fluent in RON would write it. Component values are an untyped map rather
+// than a tagged enum, because a closed `enum Component { Transform2d(..), PointLight(..) }` would
+// have to name every component in the engine — and modules add components (invariant I4), so that
+// enum could never be complete.
+//
+// That choice costs RON its single best feature. Its enum support is the reason to pick it, and a
+// dynamically extensible component set cannot use it.
+
+Scene(
+    name: "corridor_a",
+    version: 1,
+    entities: [
+        Entity(
+            id: "a1",
+            name: "Corridor",
+            components: {
+                "Transform2d": {
+                    "position": [0.0, 0.0],
+                    "rotation": 0.0,
+                    "scale": [1.0, 1.0],
+                },
+            },
+            children: [
+                Entity(
+                    id: "a2",
+                    name: "CeilingLight",
+                    components: {
+                        "PointLight": {
+                            "color": [1.0, 0.85, 0.6],
+                            "intensity": 3.2,
+                            "range": 8.0,
+                        },
+                        "Flicker": {
+                            "pattern": "Irregular",
+                            "speed": 12.5,
+                        },
+                        "Transform2d": {
+                            "position": [0.0, 2.5],
+                            "rotation": 0.0,
+                            "scale": [1.0, 1.0],
+                        },
+                    },
+                    children: [],
+                ),
+                Entity(
+                    id: "a3",
+                    name: "Door",
+                    prefab: Some("prefabs/door_metal"),
+                    // Overrides are explicit and visible in the text, per the requirement in
+                    // docs/04-subsystems.md section 9. Anything not listed follows the prefab.
+                    overrides: {
+                        "Door": {
+                            "key_id": "rusted_key",
+                            "locked": true,
+                        },
+                        "Transform2d": {
+                            "position": [4.0, 0.0],
+                        },
+                    },
+                    children: [],
+                ),
+                Entity(
+                    id: "a4",
+                    name: "Wanderer",
+                    components: {
+                        "Enemy": {
+                            "sight_range": 3.5,
+                            "state": "Patrol",
+                            "waypoints": [[0.0, 0.0], [4.0, 0.0], [4.0, 3.0]],
+                        },
+                        "Transform2d": {
+                            "position": [1.0, 0.0],
+                            "rotation": 0.0,
+                            "scale": [1.0, 1.0],
+                        },
+                    },
+                    children: [],
+                ),
+            ],
+        ),
+    ],
+)

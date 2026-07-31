@@ -1,0 +1,71 @@
+# Amadeo scene format candidate: TOML
+#
+# Written the way someone fluent in TOML would write it — which means NOT nesting.
+#
+# TOML's array-of-tables syntax makes true nesting miserable: a grandchild needs
+# [[entity.children.children]] and every level repeats the whole path. So the honest TOML design is
+# flat, with an explicit `parent` reference. That is a real design, not a workaround: Unity's YAML
+# and Godot's .tscn both do essentially this.
+#
+# The trade is that the tree stops being visible. You reconstruct the hierarchy by following ids,
+# which a machine does effortlessly and a human does not.
+
+name = "corridor_a"
+version = 1
+
+[[entity]]
+id = "a1"
+name = "Corridor"
+
+[entity.components.Transform2d]
+position = [0.0, 0.0]
+rotation = 0.0
+scale = [1.0, 1.0]
+
+[[entity]]
+id = "a2"
+name = "CeilingLight"
+parent = "a1"
+
+[entity.components.Transform2d]
+position = [0.0, 2.5]
+rotation = 0.0
+scale = [1.0, 1.0]
+
+[entity.components.PointLight]
+color = [1.0, 0.85, 0.6]
+intensity = 3.2
+range = 8.0
+
+[entity.components.Flicker]
+pattern = "Irregular"
+speed = 12.5
+
+[[entity]]
+id = "a3"
+name = "Door"
+parent = "a1"
+prefab = "prefabs/door_metal"
+
+# Overrides are explicit and visible. Anything not listed follows the prefab.
+[entity.overrides.Transform2d]
+position = [4.0, 0.0]
+
+[entity.overrides.Door]
+key_id = "rusted_key"
+locked = true
+
+[[entity]]
+id = "a4"
+name = "Wanderer"
+parent = "a1"
+
+[entity.components.Transform2d]
+position = [1.0, 0.0]
+rotation = 0.0
+scale = [1.0, 1.0]
+
+[entity.components.Enemy]
+sight_range = 3.5
+state = "Patrol"
+waypoints = [[0.0, 0.0], [4.0, 0.0], [4.0, 3.0]]

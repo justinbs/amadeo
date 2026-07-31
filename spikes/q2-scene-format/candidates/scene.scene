@@ -1,0 +1,61 @@
+# Amadeo scene format candidate: a custom, purpose-built syntax.
+#
+# Designed against the constraints rather than adapted to them:
+#
+#   indentation for nesting     - the tree is visible, and a deep child costs one indent, not a
+#                                 repeated path
+#   one property per line       - every edit is a one-line diff, which is what makes git merges
+#                                 tractable when two people edit one scene
+#   no closing punctuation      - nothing to mismatch, and no trailing-comma churn on the line
+#                                 above when you append an item
+#   values are bare             - `position 0.0 0.0`, not `position: [0.0, 0.0],`
+#
+# A line's first word says what it is: `entity` starts a child entity, `override` starts a prefab
+# override block, `-` is a list element, and anything else is a component or a field name. The schema
+# (amadeo-reflect) already knows which, so the file does not have to repeat type information.
+#
+# The cost is real and is the whole argument against this option: we own the parser, the formatter,
+# the error messages, and any editor support that ever exists.
+
+scene corridor_a
+version 1
+
+entity a1 "Corridor"
+  Transform2d
+    position 0.0 0.0
+    rotation 0.0
+    scale 1.0 1.0
+
+  entity a2 "CeilingLight"
+    Transform2d
+      position 0.0 2.5
+      rotation 0.0
+      scale 1.0 1.0
+    PointLight
+      color 1.0 0.85 0.6
+      intensity 3.2
+      range 8.0
+    Flicker
+      pattern Irregular
+      speed 12.5
+
+  entity a3 "Door" from prefabs/door_metal
+    # Overrides are explicit and visible. Anything not listed follows the prefab.
+    override Transform2d
+      position 4.0 0.0
+    override Door
+      key_id "rusted_key"
+      locked true
+
+  entity a4 "Wanderer"
+    Transform2d
+      position 1.0 0.0
+      rotation 0.0
+      scale 1.0 1.0
+    Enemy
+      sight_range 3.5
+      state Patrol
+      waypoints
+        - 0.0 0.0
+        - 4.0 0.0
+        - 4.0 3.0

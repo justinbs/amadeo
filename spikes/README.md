@@ -24,3 +24,16 @@ A spike is not engine code. It is evidence.
 | Spike | Question | ADR | Status |
 |---|---|---|---|
 | `q1-game-logic` | How is game logic authored and hot-reloaded? | `docs/adr/0011` | ✅ resolved, frozen |
+| `q2-scene-format` | Which concrete syntax for scene files? | pending | 🟡 evidence gathered, awaiting Justin's call |
+
+## Not every spike is code
+
+`q2-scene-format` is four hand-written files and a comparison script — no cargo workspace. A spike is
+**evidence for a decision**; usually that means a prototype, sometimes it means artefacts and a
+measurement harness. The rules above still apply: committed, reproducible, and frozen once its ADR
+is written.
+
+Note also that a spike can end *without* settling its question. Q1's numbers were decisive. Q2's
+were not — they ruled out two candidates and showed that the criterion everyone expected to be the
+discriminator (diff quality) does not discriminate at all. That is a real result, and it hands the
+remaining judgement to a human rather than pretending the measurement made it.

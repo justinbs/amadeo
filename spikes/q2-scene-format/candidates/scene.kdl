@@ -1,0 +1,64 @@
+// Amadeo scene format candidate: KDL (KDL Document Language)
+//
+// KDL's data model is "a node with arguments, properties, and children", which is exactly the shape
+// of a scene tree. Nesting costs one level of indentation and nothing else — no repeated paths, no
+// closing punctuation to match.
+//
+// Arrays are expressed as a node's positional arguments (`position 0.0 0.0`), which reads well for
+// vectors and less well for a list of vectors — see `waypoints` below, where each element needs its
+// own child node.
+
+scene name="corridor_a" version=1 {
+    entity id="a1" name="Corridor" {
+        Transform2d {
+            position 0.0 0.0
+            rotation 0.0
+            scale 1.0 1.0
+        }
+
+        entity id="a2" name="CeilingLight" {
+            Transform2d {
+                position 0.0 2.5
+                rotation 0.0
+                scale 1.0 1.0
+            }
+            PointLight {
+                color 1.0 0.85 0.6
+                intensity 3.2
+                range 8.0
+            }
+            Flicker {
+                pattern "Irregular"
+                speed 12.5
+            }
+        }
+
+        entity id="a3" name="Door" prefab="prefabs/door_metal" {
+            // Overrides are explicit and visible. Anything not listed follows the prefab.
+            override "Transform2d" {
+                position 4.0 0.0
+            }
+            override "Door" {
+                key_id "rusted_key"
+                locked #true
+            }
+        }
+
+        entity id="a4" name="Wanderer" {
+            Transform2d {
+                position 1.0 0.0
+                rotation 0.0
+                scale 1.0 1.0
+            }
+            Enemy {
+                sight_range 3.5
+                state "Patrol"
+                waypoints {
+                    - 0.0 0.0
+                    - 4.0 0.0
+                    - 4.0 3.0
+                }
+            }
+        }
+    }
+}
