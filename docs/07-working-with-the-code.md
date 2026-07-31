@@ -416,7 +416,49 @@ for (entity, mut enemy, position) in enemies {
 It costs an allocation and a location lookup per write. Prefer a real query; extend the query API when
 a real system needs a shape it does not have, rather than speculatively.
 
-*(More entries land as the engine takes shape: the reflection derive macro and asset handles.)*
+### Defining a component: two derives, and why both
+
+```rust
+use amadeo_core::StableHash;
+use amadeo_reflect::Reflect;
+
+/// How much damage something can take.
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+struct Health {
+    /// Current hit points.
+    #[reflect(min = 0.0, max = 100.0, unit = "hp", sync = "on_change")]
+    current: f32,
+    /// Recomputed every tick, never saved.
+    #[reflect(skip)]
+    cached_ratio: f32,
+}
+```
+
+**`StableHash` makes it participate in golden replays.** Write this by hand and forget a field and
+the code still compiles, still runs, and still produces a plausible number — while quietly excluding
+part of the simulation from every replay assertion. The tests keep passing and stop testing. That is
+why it is derived.
+
+**`Reflect` makes it visible to the editor and the agent** (invariant I8). Without it, the type
+exists at runtime and nowhere else: it cannot be saved, inspected, or edited.
+
+**The `#[reflect(...)]` vocabulary**, all optional:
+
+| | |
+|---|---|
+| `min` / `max` | advisory bounds — editor sliders, and a hint about what a sane value is. Not enforced on load. |
+| `unit = "m/s"` | stops a whole class of "plausible but wrong", like passing degrees to a radians field |
+| `sync` / `interpolate` | multiplayer annotations reserved by ADR 0006. Do nothing until M6. |
+| `skip` | not authoritative state. Excluded from the schema, the saved value, **and** the hash. |
+
+Doc comments are not decoration here — they are what an agent reads to understand a field without
+the source. Full reasoning in ADR 0012.
+
+**A gotcha worth knowing:** the trait and its derive share a name, so `use amadeo_core::StableHash;`
+imports both. That looks like it should be a conflict and is not — Rust keeps macros and types in
+separate namespaces, and `Debug` works the same way.
+
+*(More entries land as the engine takes shape: asset handles and the scene format.)*
 
 ---
 

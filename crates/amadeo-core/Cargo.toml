@@ -8,6 +8,10 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# A proc-macro crate, so this is a compile-time tool rather than a runtime dependency. It depends on
+# no engine crate, which is what lets the bottom of the graph re-export `#[derive(StableHash)]`
+# without creating a cycle (invariant I6).
+amadeo-derive.workspace = true
 thiserror.workspace = true
 
 [lints]

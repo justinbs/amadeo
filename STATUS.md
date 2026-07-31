@@ -1,7 +1,7 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-07-31 (end of session 4)
-**Current phase:** **M0 COMPLETE.** All four exit-gate items met. M1 is unblocked and not started.
+**Last updated:** 2026-07-31 (session 5, in progress)
+**Current phase:** **M0 complete. M1 under way** — reflection landed, the collaboration surface next.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private)
 
 ---
@@ -27,16 +27,29 @@ sense; the "separate process" half is carried into M1 because it needs `amadeo-c
 
 ## The single most important thing to do next
 
-**Start M1.** Q1 is closed, so nothing is gated any more. `docs/05-roadmap.md` § M1 has the list; the
-exit gate is a complete small 2D game built by Claude with zero editor use.
+**Make `Component: Reflect`, then convert the existing components to the two derives.**
 
-Two items in M1 were reprioritised by what the Q1 spike measured, and are worth doing early:
+Invariant I8 says an unreflected type does not exist as far as the editor and the agent are
+concerned — but today that is a convention, and trap 5 in `CLAUDE.md` §7 ("skipping reflection
+registration") is still available to anyone in a hurry. A trait bound closes it permanently, exactly
+as ADR 0009 used `Resource: StableHash` to turn a discipline problem into a type error.
 
-1. **`snapshot.take` / `snapshot.restore`.** The spike found that re-simulation, not compilation, is
-   what actually degrades the iteration loop — 47 ms to reach 30 s of simulated time, 382 ms to reach
+**Do it now, because it only gets more expensive.** There are eight components in the engine and one
+committed golden replay. Converting components to `#[derive(StableHash)]` changes their fingerprints
+(the derive sorts fields by name; the hand-written impls use declaration order), so it regenerates
+that replay. One replay today; many later.
+
+After that, in roadmap order:
+
+1. **`snapshot.take` / `snapshot.restore`.** The Q1 spike found that re-simulation, not compilation,
+   is what degrades the iteration loop — 47 ms to reach 30 s of simulated time, 382 ms to reach
    5 minutes, growing linearly forever. Snapshots fix that; nothing else does.
-2. **Widen ECS queries past two components.** The benchmark needed three at once and could not say
-   so, forcing a collect-and-write-back workaround that is now on shipping code's critical path.
+2. **Q2 — the scene file syntax.** Needs resolving before `amadeo-scene`, and
+   `docs/06-open-questions.md` prescribes the method: write the same nested scene by hand in RON,
+   TOML, KDL, and a custom format, then judge readability and diff behaviour. **This is the most
+   user-visible decision in the project and Justin is one of the two authors who will type into it —
+   worth his eyes on the candidates rather than a unilateral call.**
+3. `amadeo-agent` v1 and `amadeo-cli`, which together turn reflection into `amadeo describe`.
 
 ## Q1 is resolved — ADR 0011
 
@@ -185,9 +198,24 @@ Verified on this machine (2026-07-30):
   Prototypes and numbers in `spikes/q1-game-logic/`; re-run with `measure.ps1`. Established the
   `spikes/` convention (separate workspaces, frozen after their ADR).
 
-**Verified green: 228 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
-
 **M0 is complete.** Nothing remains.
+
+### M1 so far (session 5)
+
+- ✅ **Three-component ECS queries** — `iter_triple` and `for_each_triple_mut` (writes two, reads
+  one). Added because the Q1 benchmark needed exactly that shape and had to work around it.
+- ✅ **`amadeo-reflect`** — the `Value` tree (struct fields sorted by construction, so I2 does not
+  depend on anyone remembering), `TypeInfo` schema, `TypeRegistry` (BTreeMap, so anything generated
+  from it is diffable), and the metadata vocabulary including ADR 0006's replication annotations.
+  ADR 0012.
+- ✅ **`amadeo-derive`** — `#[derive(Reflect)]` and `#[derive(StableHash)]`. The second matters more
+  than it looks: a hand-written `stable_hash` that forgets a field still compiles and still produces
+  a plausible number, while silently excluding part of the simulation from every replay assertion.
+- ✅ Two gaps closed in `amadeo-core` found while building the above: `stable_hash_of` was `pub` but
+  never re-exported, and `[T; N]` had no `StableHash` impl (which is why `Transform2d` hand-rolls its
+  array hashing — that goes away when components are converted).
+
+**Verified green: 293 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 Carried into M1 rather than counted as done:
 - A **separate-process** replay check. The golden test replays in-process against a committed
@@ -273,3 +301,11 @@ Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
   runtime (filed as Q12), and the two-component query limit is now confirmed as a real constraint
   rather than a speculative one. Established the `spikes/` convention. No engine code changed;
   still 228 tests.
+- **S5 (2026-07-31):** **M1 begins.** Three-component ECS queries first, closing the gap the Q1 spike
+  had exposed. Then the M1 keystone: `amadeo-reflect` and `amadeo-derive`, settling the four
+  decisions `docs/04-subsystems.md` §8 flagged as needing to be made before writing any of it — a
+  value tree rather than dynamic field access, struct fields sorted by construction so I2 is
+  structural rather than remembered, the metadata vocabulary (including ADR 0006's replication
+  annotations), and a derived `StableHash` so a forgotten field cannot silently drop simulation state
+  out of every replay assertion. ADR 0012. Two latent `amadeo-core` gaps closed on the way.
+  293 tests.

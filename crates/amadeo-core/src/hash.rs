@@ -142,8 +142,28 @@ impl StableHasher {
 /// Types that can contribute to a stable state fingerprint.
 ///
 /// Implement this for any component whose value should participate in golden replay assertions.
-/// Deriving it automatically arrives with the reflection registry in M1; until then it is written
-/// by hand, which is a small cost while the number of components is small.
+///
+/// # Derive it
+///
+/// ```
+/// use amadeo_core::StableHash;
+///
+/// #[derive(StableHash)]
+/// struct Velocity {
+///     x: f32,
+///     y: f32,
+/// }
+/// ```
+///
+/// **Prefer the derive over writing it by hand.** A hand-written impl that forgets a field still
+/// compiles, still runs, and still produces a plausible number — while silently excluding part of
+/// the simulation from every golden replay assertion. That is the worst failure shape available
+/// under invariant I3: the tests keep passing and quietly stop testing.
+///
+/// The derive hashes fields **sorted by name**, so reordering fields does not change the
+/// fingerprint. Converting an existing hand-written impl whose fields were not already in
+/// alphabetical order will change that type's hash — a deliberate golden-replay regeneration, not a
+/// bug. See `docs/07-working-with-the-code.md` on golden replays.
 pub trait StableHash {
     /// Feeds this value into the hasher.
     fn stable_hash(&self, hasher: &mut StableHasher);
@@ -233,6 +253,15 @@ impl<T: StableHash> StableHash for [T] {
 
 impl<T: StableHash> StableHash for Vec<T> {
     fn stable_hash(&self, hasher: &mut StableHasher) {
+        self.as_slice().stable_hash(hasher);
+    }
+}
+
+impl<T: StableHash, const N: usize> StableHash for [T; N] {
+    fn stable_hash(&self, hasher: &mut StableHasher) {
+        // Delegates to the slice impl, so `[f32; 2]` and `&[f32]` holding the same values agree.
+        // The length it writes is redundant for a fixed-size array, and worth the redundancy to
+        // keep those two from disagreeing.
         self.as_slice().stable_hash(hasher);
     }
 }

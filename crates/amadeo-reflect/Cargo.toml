@@ -1,0 +1,16 @@
+[package]
+name = "amadeo-reflect"
+description = "Type registry, schema, and canonical value model. The single source the serializer, the editor, and the agent all read."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+amadeo-core.workspace = true
+amadeo-derive.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

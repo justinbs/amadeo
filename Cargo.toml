@@ -12,7 +12,11 @@ rust-version = "1.97"
 [workspace.dependencies]
 # Internal crates, in dependency order (see CLAUDE.md section 4). Entries are added here as each
 # crate is created, so this list doubles as a record of what exists.
+# Proc-macro crate. Depends on no engine crate, so it sits below even amadeo-core and cannot
+# create a cycle (invariant I6) despite amadeo-core re-exporting one of its macros.
+amadeo-derive = { path = "crates/amadeo-derive", version = "0.1.0" }
 amadeo-core = { path = "crates/amadeo-core", version = "0.1.0" }
+amadeo-reflect = { path = "crates/amadeo-reflect", version = "0.1.0" }
 amadeo-ecs = { path = "crates/amadeo-ecs", version = "0.1.0" }
 amadeo-events = { path = "crates/amadeo-events", version = "0.1.0" }
 amadeo-input = { path = "crates/amadeo-input", version = "0.1.0" }

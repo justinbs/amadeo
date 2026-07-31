@@ -60,9 +60,11 @@ Crates are listed in dependency order. **A crate may only depend on crates above
 
 ```
 crates/
+✅ amadeo-derive      proc macros: #[derive(Reflect)], #[derive(StableHash)]. No engine deps, so it
+                     sits below even amadeo-core. Re-exported next to each trait; never used directly.
 — amadeo-math        vectors, matrices, quaternions, rects, curves. No engine deps.
 ✅ amadeo-core        Tick, FIXED_DT, Rng (PCG32), StableHasher (FNV-1a), StableId/NetId/Authority
-— amadeo-reflect     type registry, schema emission, canonical (de)serialization
+✅ amadeo-reflect     Value tree, TypeInfo schema, TypeRegistry. ADR 0012.
 ✅ amadeo-ecs         archetype SoA storage, queries, resources, services, deferred commands
 ✅ amadeo-events      typed double-buffered queues, EventClock total ordering
 — amadeo-assets      virtual FS, async load, import pipeline, cache, hot-reload watch

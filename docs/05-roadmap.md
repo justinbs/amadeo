@@ -63,8 +63,12 @@ of a milestone.
 *Goal: the collaboration surface goes live. From here on, I can work largely unattended.*
 
 **Build**
-- `amadeo-reflect` — derive macro, type registry, metadata vocabulary (ranges, units, docs),
-  versioning + migration hooks.
+- ✅ `amadeo-reflect` — `Value` tree, `TypeInfo` schema, `TypeRegistry`, `#[derive(Reflect)]` and
+  `#[derive(StableHash)]`, the metadata vocabulary (ranges, units, docs, ADR 0006 replication), and
+  a per-type version number for later migration. ADR 0012.
+- **Make `Component: Reflect`.** I8 is a convention today; a trait bound makes it structural, the way
+  ADR 0009 did for `Resource: StableHash`. Cheapest while only eight components exist.
+- **Convert existing components to both derives**, regenerating the golden replay once, deliberately.
 - Canonical serialization: sorted keys, stable IDs, fixed number formatting.
 - `amadeo-scene` — the scene/prefab text format (ADR first, with worked examples), parse →
   instantiate → reconstruct → canonical write. Prefab overrides.

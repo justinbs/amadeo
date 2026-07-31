@@ -1,0 +1,21 @@
+[package]
+name = "amadeo-derive"
+description = "Derive macros for the engine. Not used directly - amadeo-core and amadeo-reflect re-export them."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+# syn 2 rather than 3: both are already in the workspace lock file via other dependencies, so this
+# adds no compile time either way, and 2.x is the API this macro is written against.
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+
+[lints]
+workspace = true
