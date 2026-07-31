@@ -460,7 +460,56 @@ the source. Full reasoning in ADR 0012.
 imports both. That looks like it should be a conflict and is not — Rust keeps macros and types in
 separate namespaces, and `Debug` works the same way.
 
-*(More entries land as the engine takes shape: asset handles and the scene format.)*
+### The scene format, in one screen
+
+Decided in ADR 0014 after hand-writing the same scene in four syntaxes (`spikes/q2-scene-format/`).
+Indentation is **two spaces per level**, and a line's first word says what it is:
+
+```text
+scene corridor_a
+version 1
+
+entity a1 "Corridor"           # entity <id> "<name>"
+  Transform2d                  # a component
+    position 0.0 0.0           # a field; several values on a line is a list
+    rotation 0.0
+
+  entity a2 "CeilingLight"     # indented under a1, so it is a1's child
+    PointLight
+      color 1.0 0.85 0.6
+
+  entity a3 "Door" from prefabs/door_metal
+    override Door              # only valid on an entity with `from`
+      locked true
+
+  entity a4 "Wanderer"
+    Enemy
+      state Patrol             # a bare word is an identifier / enum variant
+      label "Patrol"           # a quoted word is a string. Different things.
+      waypoints
+        - 0.0 0.0              # a list whose elements are themselves lists
+        - 4.0 0.0
+```
+
+**Two rules worth internalising:**
+
+- **Bare words are identifiers, quoted words are strings.** `state Patrol` sets an enum variant;
+  `label "Patrol"` sets text. The file says which, so no schema is needed to tell them apart.
+- **`1` is an integer, `1.0` is a float.** The decimal point is what carries the type.
+
+**Canonical form** (`amadeo fmt`): fields sorted by name, components sorted by name, **children in
+declaration order** — siblings are a sequence and their order is meaningful, so sorting them would
+destroy information.
+
+**Indentation is structure, so `amadeo fmt` cannot repair it.** A mis-indented line is ambiguous
+rather than untidy, and you get a line-numbered error instead of a guess. Tabs are rejected outright.
+
+**Two layers.** `amadeo-scene` today is layer 1 — syntax only, no schema. It will happily parse a
+scene naming a component that does not exist, which is what lets `amadeo fmt` work on a file whose
+module is not loaded. Checking that `Transform2d` exists and has a `position` field is layer 2,
+against the reflection registry, and is not built yet.
+
+*(More entries land as the engine takes shape: asset handles and the agent protocol.)*
 
 ---
 

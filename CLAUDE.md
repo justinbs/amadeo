@@ -74,7 +74,7 @@ crates/
 — amadeo-physics     rapier integration behind engine traits
 — amadeo-anim        sprite anim, skeletal, state machines, tweens
 — amadeo-ui          retained-mode game UI: layout, theming, focus navigation
-— amadeo-scene       scene-tree authoring model, prefabs, instancing, text format
+🟡 amadeo-scene       the .scene text format (ADR 0014): parser, canonical writer. Instancing pending.
 ✖ amadeo-script      NOT BUILT. ADR 0011: game logic is plain Rust in the game crate.
 — amadeo-agent       Agent Interface Layer: RPC, introspection, snapshots, replay, capture
 ✅ amadeo-app         Stage/Schedule, fixed-timestep loop, SimRng

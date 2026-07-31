@@ -1,0 +1,15 @@
+[package]
+name = "amadeo-scene"
+description = "The scene file format: the shared authoring surface Justin and Claude both write to."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+amadeo-reflect.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

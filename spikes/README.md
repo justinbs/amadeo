@@ -24,7 +24,7 @@ A spike is not engine code. It is evidence.
 | Spike | Question | ADR | Status |
 |---|---|---|---|
 | `q1-game-logic` | How is game logic authored and hot-reloaded? | `docs/adr/0011` | ✅ resolved, frozen |
-| `q2-scene-format` | Which concrete syntax for scene files? | pending | 🟡 evidence gathered, awaiting Justin's call |
+| `q2-scene-format` | Which concrete syntax for scene files? | `docs/adr/0014` | ✅ resolved, frozen |
 
 ## Not every spike is code
 

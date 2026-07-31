@@ -71,8 +71,11 @@ of a milestone.
 - **`Resource: Reflect`** — the other half of I8. Needs `Rng`'s state exposed so `SimRng` can reflect
   (which also retires its `Debug`-based `StableHash`), and map support in `Reflect` for `InputState`.
 - Canonical serialization: sorted keys, stable IDs, fixed number formatting.
-- `amadeo-scene` — the scene/prefab text format (ADR first, with worked examples), parse →
-  instantiate → reconstruct → canonical write. Prefab overrides.
+- 🟡 `amadeo-scene` — the text format is decided and built (ADR 0014, chosen from the four
+  hand-written candidates in `spikes/q2-scene-format/`): parser with line-numbered errors, canonical
+  byte-stable writer, and the round-trip test that satisfies exit gate 3. **Still to do:** binding
+  parsed values to real components via the registry (layer 2), instantiating a document into a
+  `World`, and prefab override *semantics* (Q7).
 - `amadeo-agent` v1 — JSON-RPC server: `world.query`, `world.entity`, `world.spawn`,
   `world.set_component`, `sim.step`, `sim.pause`, `events.since`, `scene.load`/`save`,
   `render.capture`, `render.describe`, `replay.*`, `snapshot.*`.
@@ -97,7 +100,9 @@ of a milestone.
    win state. Authored via text files and RPC only.
 2. Verification of that game done purely through `inspect`, headless runs, and `render.describe` —
    with screenshots used only for final confirmation.
-3. Scene round-trip test in CI: parse → serialize → byte-identical.
+3. ✅ Scene round-trip test in CI: parse → serialize → byte-identical.
+   `crates/amadeo-scene/tests/round_trip.rs`, which also asserts ADR 0014's worked example is
+   byte-identical to the formatter's output — so the spec cannot drift from the implementation.
 4. `amadeo describe` output is sufficient to write a new component and system without reading engine
    source. Tested by actually doing it.
 5. Golden replays from M0 still pass.

@@ -7,26 +7,6 @@ Priority: **P0** blocks work now · **P1** needed for the current milestone · *
 
 ---
 
-## Q2 · P1 · Which concrete syntax for scene files?
-
-Arguably the most user-visible decision in the project — it's the file both authors literally type
-into.
-
-- **RON** — Rust-native, expressive, handles enums well. Less familiar generally, and can get noisy.
-- **TOML** — very familiar, excellent diffs, but nests poorly, and scenes are deeply nested.
-- **KDL** — designed for exactly this shape (nodes with properties and children). Less tooling.
-- **Custom** — perfect fit, full control over canonical formatting and error messages; costs us the
-  parser, formatter, and editor support.
-
-Constraints from I1/I2: hand-writable, deeply nestable, line-oriented enough for clean git merges,
-stable ordering, canonical formatting.
-
-**Resolve by:** writing the *same* moderately complex nested scene in all four, by hand, and judging
-readability and diff behavior. Cheap experiment, high-value answer. Do this at the start of M1.
-My prior: KDL or custom.
-
----
-
 ## Q3 · P1 · How do 2D and 3D coexist in the renderer?
 
 Detailed in `04-subsystems.md` §4. Unified orthographic pipeline with a specialized sprite batcher,
@@ -166,3 +146,6 @@ be less coupled than they look. Decide in M2.
 | System ordering tie-break | Alphabetical by label, never registration order | `amadeo-app` schedule docs |
 | Spawning from a command buffer | `spawn_with(closure)` rather than a reserved-id handle; new entity not referenceable by other commands in the same batch | `amadeo-ecs` commands docs |
 | **Q1** — game logic authoring and hot reload | **Rust, compiled in. No scripting layer.** WASM reserved as the escape hatch behind a measured threshold; snapshots promoted as the real iteration-loop fix | `adr/0011` |
+| Reflection shape | Value tree plus two derives, not dynamic field access; metadata vocabulary fixed | `adr/0012` |
+| Is reflection optional? | No — `Component: Reflect` makes I8 a compiler-enforced bound | `adr/0013` |
+| **Q2** — scene file syntax | **A custom, indentation-based, line-oriented format.** Chosen by Justin from four hand-written candidates; TOML is the fallback, *not* KDL | `adr/0014` |

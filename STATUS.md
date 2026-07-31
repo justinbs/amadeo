@@ -27,25 +27,30 @@ sense; the "separate process" half is carried into M1 because it needs `amadeo-c
 
 ## The single most important thing to do next
 
-**Q2 — the scene file syntax.** It blocks `amadeo-scene`, which is the next real subsystem, and
-`docs/06-open-questions.md` prescribes the method: write the same moderately complex nested scene by
-hand in RON, TOML, KDL, and a custom format, then judge readability and diff behaviour.
+**Scene layer 2 — bind parsed values to real components.** The `.scene` format parses and formats
+(ADR 0014), but a `SceneDocument` is still just syntax: it holds `Value` trees that nothing has
+checked against the reflection registry. Layer 2 closes that, and it is what turns two finished
+subsystems into one working one.
 
-**This one wants Justin's eyes.** It is described in the docs as "arguably the most user-visible
-decision in the project — it's the file both authors literally type into", and he is one of those two
-authors. The right shape is to produce the four hand-written candidates and have him pick, rather
-than deciding unilaterally and presenting it as settled.
+Three pieces, in order:
 
-Then, in roadmap order:
+1. **Schema binding.** Look each component name up in the `TypeRegistry`, check its fields, and
+   narrow numbers to their declared widths — the parser produces `I64`/`F64` because it has no
+   schema, and `Transform2d.position` wants `f32`. This is `amadeo check`'s engine.
+2. **Instantiate into a `World`.** Needs a type-erased "insert the component named `Health` onto this
+   entity" built from monomorphised function pointers, which ADR 0012 says belongs in `amadeo-ecs`.
+3. **`Resource: Reflect`** — the other half of I8, deliberately deferred by ADR 0013. Needs `Rng`'s
+   state exposed so `SimRng` can reflect (retiring the `Debug`-based `StableHash` flagged as
+   inelegant since M0), and map support in `Reflect` for `InputState`.
 
-1. **`Resource: Reflect`** — the other half of I8, deliberately deferred by ADR 0013. Needs `Rng`'s
-   state exposed so `SimRng` can reflect (which also retires the `Debug`-based `StableHash` that
-   `STATUS` has flagged as inelegant since M0), and map support in `Reflect` for `InputState`.
-2. **`snapshot.take` / `snapshot.restore`.** The Q1 spike found that re-simulation, not compilation,
-   is what degrades the iteration loop — 47 ms to reach 30 s of simulated time, 382 ms to reach
-   5 minutes, growing linearly forever. Snapshots fix that; nothing else does.
-3. `amadeo-agent` v1 and `amadeo-cli`, which together turn the reflection registry into
-   `amadeo describe` — the moment Pillar 2 becomes real rather than latent.
+After that: **`snapshot.take` / `snapshot.restore`** (the Q1 spike found re-simulation, not
+compilation, is what degrades the iteration loop — 382 ms to reach 5 simulated minutes, growing
+linearly), then `amadeo-agent` v1 and `amadeo-cli`, which together turn the reflection registry into
+`amadeo describe` and make Pillar 2 real rather than latent.
+
+**Q7 — prefab override semantics — is now the nearest undecided thing.** The format records overrides
+visibly, which is the I1 requirement, but what they *mean* when a prefab changes under an instance is
+undesigned. Worth studying Unity's and Godot's failure modes first, as `docs/06` suggests.
 
 ## Q1 is resolved — ADR 0011
 
@@ -213,8 +218,13 @@ Verified on this machine (2026-07-30):
   remembering. An unreflectable type cannot be a component. Every existing component converted to
   `#[derive(StableHash, Reflect)]`, hand-written hash impls deleted, and `Transform2d`/`Quad`/
   `Camera2d` annotated with units, ranges, and ADR 0006 replication policies.
+- ✅ **Q2 resolved and `amadeo-scene` layer 1 built** (ADR 0014). Justin chose a custom,
+  indentation-based format from four hand-written candidates in `spikes/q2-scene-format/`. Parser
+  with line-numbered actionable errors, canonical byte-stable writer, and the round-trip test that
+  satisfies **M1 exit gate 3**. The ADR's worked example is asserted byte-identical to the
+  formatter's output, so the spec cannot drift from the implementation.
 
-**Verified green: 299 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+**Verified green: 328 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 **The golden replay did not need regenerating**, which was not guaranteed. The derive sorts fields by
 name, so any component whose fields were not already alphabetical changes fingerprint. The committed
@@ -316,4 +326,7 @@ Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
   **ADR 0013: `Component: Reflect`**, turning invariant I8 from a convention into a compiler-enforced
   bound and converting every existing component — the same move ADR 0009 made for
   `Resource: StableHash`, and cheapest at eight components. The golden replay survived, for a reason
-  worth reading in ADR 0013 rather than assuming. 299 tests.
+  worth reading in ADR 0013 rather than assuming. Finally **Q2**: four scene syntaxes hand-written
+  and diffed (`spikes/q2-scene-format/`), where the prescribed criterion turned out not to
+  discriminate — diffs are identical in all four — so the spike narrowed it to two and Justin chose
+  the custom format. `amadeo-scene` layer 1 built to it: **ADR 0014**. 328 tests.

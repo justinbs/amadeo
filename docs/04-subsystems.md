@@ -209,11 +209,16 @@ load. Needs a version tag and migration hooks, or every format change breaks eve
 
 ✅ Text, hand-writable, canonical, byte-stable, stable IDs. `adr/0003`, `adr/0004`.
 
-⚠️ **Which concrete syntax.** RON is Rust-native and expressive. TOML is familiar and diff-friendly
-but nests poorly (and scenes are deeply nested). KDL is designed for exactly this shape of data.
-A custom format costs tooling but fits perfectly. **Needs an ADR with real examples of a nested scene
-written in each** before committing — this file format is arguably the most user-visible decision in
-the project.
+✅ **The concrete syntax is decided: a custom, indentation-based, line-oriented format** (ADR 0014),
+chosen by Justin from four hand-written candidates in `spikes/q2-scene-format/`. The spike's main
+empirical finding was a negative one — diff behaviour, the criterion everyone expected to decide it,
+is identical across all four. What decided it was compactness (roughly half of RON), keeping the tree
+visible in the file (which ruled TOML out), and owning the error messages, which Pillar 5 makes a
+functional requirement. **If ever revisited, the fallback is TOML, not KDL.**
+
+✅ **Parser and canonical writer exist** with line-numbered errors and a byte-stable round-trip test.
+⚠️ **Layer 2 is not built:** binding parsed values to real component types via the reflection
+registry, narrowing numbers to declared widths, and instantiating a document into a `World`.
 ⚠️ **Prefab override semantics.** The hardest problem in this subsystem, and where Unity is genuinely
 bad. An instance overriding some fields of a prefab, prefabs nesting inside prefabs, changes to a
 prefab propagating to instances that haven't overridden that field. Design carefully; leaning toward
