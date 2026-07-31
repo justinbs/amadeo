@@ -6,12 +6,15 @@
 
 use crate::type_hash::hash_type_name;
 use amadeo_core::{StableHash, StableHasher, Tick};
+use amadeo_reflect::Reflect;
 use std::any::Any;
 use std::fmt;
 
 /// Plain data attached to an entity.
 ///
 /// # Why the supertraits
+///
+/// Each one closes a hole that would otherwise open silently, months later:
 ///
 /// - `'static` — required to store the type behind `dyn Any`, which is how type-erased columns work.
 /// - `Send + Sync` — not needed while simulation is single-threaded, but required the moment the
@@ -21,32 +24,37 @@ use std::fmt;
 ///   less useful.
 /// - [`StableHash`] — a component that cannot be fingerprinted cannot participate in golden replay
 ///   assertions, which would create a silent hole in the project's only behavioural regression test
-///   (invariant I3). Requiring it means that hole cannot open by accident.
+///   (invariant I3).
+/// - [`Reflect`] — **invariant I8**. An unreflected component cannot be serialised, inspected, or
+///   edited, so it exists at runtime and nowhere else. Trap 5 in `CLAUDE.md` section 7 is exactly
+///   this: registration gets skipped, everything works, and three milestones later the editor and
+///   the agent cannot see the type. A supertrait makes that impossible rather than discouraged —
+///   the same move ADR 0009 made with `Resource: StableHash`.
 ///
 /// Components hold **data only**. No methods with side effects, no `Rc`/`RefCell`, no interior
 /// mutability. Behaviour lives in systems that query components (ADR 0004).
 ///
 /// # Example
 ///
+/// Both traits are derived. Writing either by hand is possible and almost never right — see
+/// `StableHash`'s own docs for why a hand-written fingerprint is a hazard.
+///
 /// ```
-/// use amadeo_core::{StableHash, StableHasher};
+/// use amadeo_core::StableHash;
 /// use amadeo_ecs::Component;
+/// use amadeo_reflect::Reflect;
 ///
-/// #[derive(Debug, Clone, Copy, PartialEq)]
+/// /// How much damage something can take.
+/// #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 /// struct Health {
+///     /// Current hit points.
+///     #[reflect(min = 0.0, max = 100.0, unit = "hp")]
 ///     current: f32,
-/// }
-///
-/// // Hand-written for now. A derive macro arrives with the reflection registry in M1.
-/// impl StableHash for Health {
-///     fn stable_hash(&self, hasher: &mut StableHasher) {
-///         self.current.stable_hash(hasher);
-///     }
 /// }
 ///
 /// impl Component for Health {}
 /// ```
-pub trait Component: 'static + Send + Sync + fmt::Debug + StableHash {}
+pub trait Component: 'static + Send + Sync + fmt::Debug + StableHash + Reflect {}
 
 /// Identifies a component type.
 ///
@@ -240,28 +248,14 @@ impl<T: Component> Column for TypedColumn<T> {
 mod tests {
     use super::*;
 
-    #[derive(Debug, Clone, Copy, PartialEq)]
+    #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
     struct Position {
         x: f32,
     }
-
-    impl StableHash for Position {
-        fn stable_hash(&self, hasher: &mut StableHasher) {
-            self.x.stable_hash(hasher);
-        }
-    }
-
     impl Component for Position {}
 
-    #[derive(Debug, Clone, Copy, PartialEq)]
+    #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
     struct Label(u32);
-
-    impl StableHash for Label {
-        fn stable_hash(&self, hasher: &mut StableHasher) {
-            self.0.stable_hash(hasher);
-        }
-    }
-
     impl Component for Label {}
 
     #[test]

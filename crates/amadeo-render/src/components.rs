@@ -1,7 +1,8 @@
 //! What the renderer reads off entities.
 
-use amadeo_core::{StableHash, StableHasher};
+use amadeo_core::StableHash;
 use amadeo_ecs::{Component, Resource};
+use amadeo_reflect::Reflect;
 
 /// Where an entity is in 2D space.
 ///
@@ -12,13 +13,16 @@ use amadeo_ecs::{Component, Resource};
 /// only consumer, and inventing a crate to hold one struct would be premature. It moves to
 /// `amadeo-scene` when the scene tree lands in M1, along with the `Parent`/`Children` hierarchy and
 /// the `GlobalTransform` propagation described in ADR 0004.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct Transform2d {
     /// Position in world units.
+    #[reflect(unit = "world units", sync = "on_change", interpolate = "linear")]
     pub position: [f32; 2],
     /// Rotation in radians, counter-clockwise.
+    #[reflect(unit = "rad", sync = "on_change", interpolate = "angular")]
     pub rotation: f32,
     /// Scale multiplier on each axis.
+    #[reflect(sync = "on_change", interpolate = "linear")]
     pub scale: [f32; 2],
 }
 
@@ -43,27 +47,19 @@ impl Transform2d {
     }
 }
 
-impl StableHash for Transform2d {
-    fn stable_hash(&self, hasher: &mut StableHasher) {
-        hasher.write_f32(self.position[0]);
-        hasher.write_f32(self.position[1]);
-        hasher.write_f32(self.rotation);
-        hasher.write_f32(self.scale[0]);
-        hasher.write_f32(self.scale[1]);
-    }
-}
-
 impl Component for Transform2d {}
 
 /// A flat coloured rectangle.
 ///
 /// The simplest thing that can be drawn, and enough to prove the whole pipeline: simulation to
 /// screen. Textured sprites, materials, and meshes arrive in M1 and M2 respectively.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct Quad {
     /// Full width and height in world units, before the transform's scale is applied.
+    #[reflect(unit = "world units")]
     pub size: [f32; 2],
     /// Linear RGBA, each channel in `0.0..=1.0`.
+    #[reflect(min = 0.0, max = 1.0)]
     pub color: [f32; 4],
     /// Draw order. Higher values draw on top of lower ones.
     ///
@@ -102,17 +98,6 @@ impl Quad {
     }
 }
 
-impl StableHash for Quad {
-    fn stable_hash(&self, hasher: &mut StableHasher) {
-        hasher.write_f32(self.size[0]);
-        hasher.write_f32(self.size[1]);
-        for channel in self.color {
-            hasher.write_f32(channel);
-        }
-        hasher.write_i32(self.layer);
-    }
-}
-
 impl Component for Quad {}
 
 /// An orthographic 2D camera.
@@ -120,12 +105,14 @@ impl Component for Quad {}
 /// A [`Resource`] rather than a component for M0: one camera, and it is simulation state because
 /// gameplay moves it. Multiple cameras and render targets become components in M2, when the render
 /// graph can express more than one pass.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct Camera2d {
     /// World-space point at the centre of the view.
+    #[reflect(unit = "world units")]
     pub center: [f32; 2],
     /// How many world units tall the view is. Width follows from the viewport's aspect ratio, so
     /// resizing the window widens the view rather than stretching it.
+    #[reflect(min = 0.1, max = 1000.0, unit = "world units")]
     pub height: f32,
 }
 
@@ -135,14 +122,6 @@ impl Default for Camera2d {
             center: [0.0, 0.0],
             height: 10.0,
         }
-    }
-}
-
-impl StableHash for Camera2d {
-    fn stable_hash(&self, hasher: &mut StableHasher) {
-        hasher.write_f32(self.center[0]);
-        hasher.write_f32(self.center[1]);
-        hasher.write_f32(self.height);
     }
 }
 

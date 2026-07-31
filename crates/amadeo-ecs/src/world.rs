@@ -542,14 +542,12 @@ impl World {
     /// per entity.
     ///
     /// ```
-    /// # use amadeo_core::{StableHash, StableHasher};
+    /// # use amadeo_core::StableHash;
     /// # use amadeo_ecs::{Component, World};
-    /// # #[derive(Debug, Clone, Copy, PartialEq)] struct Health(f32);
-    /// # #[derive(Debug, Clone, Copy, PartialEq)] struct Shield(f32);
-    /// # #[derive(Debug, Clone, Copy, PartialEq)] struct Incoming(f32);
-    /// # impl StableHash for Health { fn stable_hash(&self, h: &mut StableHasher) { self.0.stable_hash(h); } }
-    /// # impl StableHash for Shield { fn stable_hash(&self, h: &mut StableHasher) { self.0.stable_hash(h); } }
-    /// # impl StableHash for Incoming { fn stable_hash(&self, h: &mut StableHasher) { self.0.stable_hash(h); } }
+    /// # use amadeo_reflect::Reflect;
+    /// # #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)] struct Health(f32);
+    /// # #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)] struct Shield(f32);
+    /// # #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)] struct Incoming(f32);
     /// # impl Component for Health {}
     /// # impl Component for Shield {}
     /// # impl Component for Incoming {}
@@ -646,43 +644,24 @@ impl World {
 mod tests {
     use super::*;
     use amadeo_core::StableHash;
+    use amadeo_reflect::Reflect;
 
-    #[derive(Debug, Clone, Copy, PartialEq)]
+    #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
     struct Position {
         x: f32,
         y: f32,
     }
-
-    impl StableHash for Position {
-        fn stable_hash(&self, hasher: &mut StableHasher) {
-            self.x.stable_hash(hasher);
-            self.y.stable_hash(hasher);
-        }
-    }
     impl Component for Position {}
 
-    #[derive(Debug, Clone, Copy, PartialEq)]
+    #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
     struct Velocity {
         x: f32,
         y: f32,
     }
-
-    impl StableHash for Velocity {
-        fn stable_hash(&self, hasher: &mut StableHasher) {
-            self.x.stable_hash(hasher);
-            self.y.stable_hash(hasher);
-        }
-    }
     impl Component for Velocity {}
 
-    #[derive(Debug, Clone, Copy, PartialEq)]
+    #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
     struct Tag(u32);
-
-    impl StableHash for Tag {
-        fn stable_hash(&self, hasher: &mut StableHasher) {
-            self.0.stable_hash(hasher);
-        }
-    }
     impl Component for Tag {}
 
     #[test]

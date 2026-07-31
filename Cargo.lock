@@ -45,6 +45,7 @@ dependencies = [
  "amadeo-ecs",
  "amadeo-events",
  "amadeo-input",
+ "amadeo-reflect",
  "thiserror 2.0.19",
 ]
 
@@ -70,6 +71,7 @@ name = "amadeo-ecs"
 version = "0.1.0"
 dependencies = [
  "amadeo-core",
+ "amadeo-reflect",
 ]
 
 [[package]]
@@ -104,6 +106,7 @@ version = "0.1.0"
 dependencies = [
  "amadeo-core",
  "amadeo-ecs",
+ "amadeo-reflect",
  "bytemuck",
  "pollster",
  "thiserror 2.0.19",
@@ -1391,6 +1394,7 @@ dependencies = [
  "amadeo-core",
  "amadeo-ecs",
  "amadeo-input",
+ "amadeo-reflect",
  "amadeo-render",
  "anyhow",
  "winit",

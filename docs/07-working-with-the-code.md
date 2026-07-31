@@ -440,7 +440,9 @@ part of the simulation from every replay assertion. The tests keep passing and s
 why it is derived.
 
 **`Reflect` makes it visible to the editor and the agent** (invariant I8). Without it, the type
-exists at runtime and nowhere else: it cannot be saved, inspected, or edited.
+exists at runtime and nowhere else: it cannot be saved, inspected, or edited. Both are **required**
+by the `Component` trait, so forgetting one is a compile error rather than a hole you find in M4
+(ADR 0013).
 
 **The `#[reflect(...)]` vocabulary**, all optional:
 

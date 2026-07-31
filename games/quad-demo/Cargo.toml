@@ -13,6 +13,7 @@ amadeo-app.workspace = true
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 amadeo-input.workspace = true
+amadeo-reflect.workspace = true
 amadeo-render = { workspace = true, features = ["gpu"] }
 
 anyhow = "1"

@@ -12,34 +12,21 @@ use amadeo_app::{App, SimRng, Stage, system};
 use amadeo_core::{FIXED_DT, FIXED_DT_NANOS, StableHash, StableHasher};
 use amadeo_ecs::{Commands, Component, Service, World};
 use amadeo_events::{Event, WorldEvents};
+use amadeo_reflect::Reflect;
 
 // --- Test world definitions ---
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 struct Position {
     x: f32,
     y: f32,
 }
-
-impl StableHash for Position {
-    fn stable_hash(&self, hasher: &mut StableHasher) {
-        self.x.stable_hash(hasher);
-        self.y.stable_hash(hasher);
-    }
-}
 impl Component for Position {}
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 struct Velocity {
     x: f32,
     y: f32,
-}
-
-impl StableHash for Velocity {
-    fn stable_hash(&self, hasher: &mut StableHasher) {
-        self.x.stable_hash(hasher);
-        self.y.stable_hash(hasher);
-    }
 }
 impl Component for Velocity {}
 
@@ -410,14 +397,8 @@ fn tick_count_advances_exactly_once_per_step() {
 // once per stage, and a per-stage flush is exactly where an ordering mistake would hide.
 
 /// Counts down, and despawns itself at zero.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 struct Lifetime(i32);
-
-impl StableHash for Lifetime {
-    fn stable_hash(&self, hasher: &mut StableHasher) {
-        hasher.write_i32(self.0);
-    }
-}
 impl Component for Lifetime {}
 
 /// Ages every entity and queues a despawn for the expired ones.

@@ -24,14 +24,12 @@
 //! Queue the change, apply it at a defined point:
 //!
 //! ```
-//! use amadeo_core::{StableHash, StableHasher};
+//! use amadeo_core::StableHash;
 //! use amadeo_ecs::{Command, Commands, Component, World};
+//! use amadeo_reflect::Reflect;
 //!
-//! #[derive(Debug)]
+//! #[derive(Debug, StableHash, Reflect)]
 //! struct Health(f32);
-//! impl StableHash for Health {
-//!     fn stable_hash(&self, h: &mut StableHasher) { self.0.stable_hash(h); }
-//! }
 //! impl Component for Health {}
 //!
 //! let mut world = World::new();
@@ -199,12 +197,10 @@ impl Commands {
     /// is straightforward. Revisit if it stops being rare.
     ///
     /// ```
-    /// # use amadeo_core::{StableHash, StableHasher};
+    /// # use amadeo_core::StableHash;
     /// # use amadeo_ecs::{Commands, Component, World};
-    /// # #[derive(Debug, PartialEq)] struct Marker(u32);
-    /// # impl StableHash for Marker {
-    /// #     fn stable_hash(&self, h: &mut StableHasher) { self.0.stable_hash(h); }
-    /// # }
+    /// # use amadeo_reflect::Reflect;
+    /// # #[derive(Debug, PartialEq, StableHash, Reflect)] struct Marker(u32);
     /// # impl Component for Marker {}
     /// let mut world = World::new();
     /// world.insert_service(Commands::new());
@@ -282,26 +278,15 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use amadeo_core::{StableHash, StableHasher};
+    use amadeo_core::StableHash;
+    use amadeo_reflect::Reflect;
 
-    #[derive(Debug, Clone, Copy, PartialEq)]
+    #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
     struct Health(f32);
-
-    impl StableHash for Health {
-        fn stable_hash(&self, hasher: &mut StableHasher) {
-            self.0.stable_hash(hasher);
-        }
-    }
     impl Component for Health {}
 
-    #[derive(Debug, Clone, Copy, PartialEq)]
+    #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
     struct Shield(u32);
-
-    impl StableHash for Shield {
-        fn stable_hash(&self, hasher: &mut StableHasher) {
-            self.0.stable_hash(hasher);
-        }
-    }
     impl Component for Shield {}
 
     fn world_with_commands() -> World {

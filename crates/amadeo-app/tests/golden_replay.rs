@@ -20,41 +20,28 @@
 //! time.
 
 use amadeo_app::{App, Stage, system};
-use amadeo_core::{FIXED_DT, StableHash, StableHasher, Tick};
+use amadeo_core::{FIXED_DT, StableHash, Tick};
 use amadeo_ecs::{Component, World};
 use amadeo_input::{
     ActionId, InputDriver, InputState, Recorder, Recording, SAMPLE_INPUT, ScriptedSource,
     sample_input,
 };
+use amadeo_reflect::Reflect;
 use std::path::PathBuf;
 
 // --- A tiny platformer, enough to exercise input -> state ---
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 struct Position {
     x: f32,
     y: f32,
 }
-
-impl StableHash for Position {
-    fn stable_hash(&self, hasher: &mut StableHasher) {
-        self.x.stable_hash(hasher);
-        self.y.stable_hash(hasher);
-    }
-}
 impl Component for Position {}
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 struct Velocity {
     x: f32,
     y: f32,
-}
-
-impl StableHash for Velocity {
-    fn stable_hash(&self, hasher: &mut StableHasher) {
-        self.x.stable_hash(hasher);
-        self.y.stable_hash(hasher);
-    }
 }
 impl Component for Velocity {}
 

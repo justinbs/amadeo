@@ -27,29 +27,25 @@ sense; the "separate process" half is carried into M1 because it needs `amadeo-c
 
 ## The single most important thing to do next
 
-**Make `Component: Reflect`, then convert the existing components to the two derives.**
+**Q2 — the scene file syntax.** It blocks `amadeo-scene`, which is the next real subsystem, and
+`docs/06-open-questions.md` prescribes the method: write the same moderately complex nested scene by
+hand in RON, TOML, KDL, and a custom format, then judge readability and diff behaviour.
 
-Invariant I8 says an unreflected type does not exist as far as the editor and the agent are
-concerned — but today that is a convention, and trap 5 in `CLAUDE.md` §7 ("skipping reflection
-registration") is still available to anyone in a hurry. A trait bound closes it permanently, exactly
-as ADR 0009 used `Resource: StableHash` to turn a discipline problem into a type error.
+**This one wants Justin's eyes.** It is described in the docs as "arguably the most user-visible
+decision in the project — it's the file both authors literally type into", and he is one of those two
+authors. The right shape is to produce the four hand-written candidates and have him pick, rather
+than deciding unilaterally and presenting it as settled.
 
-**Do it now, because it only gets more expensive.** There are eight components in the engine and one
-committed golden replay. Converting components to `#[derive(StableHash)]` changes their fingerprints
-(the derive sorts fields by name; the hand-written impls use declaration order), so it regenerates
-that replay. One replay today; many later.
+Then, in roadmap order:
 
-After that, in roadmap order:
-
-1. **`snapshot.take` / `snapshot.restore`.** The Q1 spike found that re-simulation, not compilation,
+1. **`Resource: Reflect`** — the other half of I8, deliberately deferred by ADR 0013. Needs `Rng`'s
+   state exposed so `SimRng` can reflect (which also retires the `Debug`-based `StableHash` that
+   `STATUS` has flagged as inelegant since M0), and map support in `Reflect` for `InputState`.
+2. **`snapshot.take` / `snapshot.restore`.** The Q1 spike found that re-simulation, not compilation,
    is what degrades the iteration loop — 47 ms to reach 30 s of simulated time, 382 ms to reach
    5 minutes, growing linearly forever. Snapshots fix that; nothing else does.
-2. **Q2 — the scene file syntax.** Needs resolving before `amadeo-scene`, and
-   `docs/06-open-questions.md` prescribes the method: write the same nested scene by hand in RON,
-   TOML, KDL, and a custom format, then judge readability and diff behaviour. **This is the most
-   user-visible decision in the project and Justin is one of the two authors who will type into it —
-   worth his eyes on the candidates rather than a unilateral call.**
-3. `amadeo-agent` v1 and `amadeo-cli`, which together turn reflection into `amadeo describe`.
+3. `amadeo-agent` v1 and `amadeo-cli`, which together turn the reflection registry into
+   `amadeo describe` — the moment Pillar 2 becomes real rather than latent.
 
 ## Q1 is resolved — ADR 0011
 
@@ -212,10 +208,19 @@ Verified on this machine (2026-07-30):
   than it looks: a hand-written `stable_hash` that forgets a field still compiles and still produces
   a plausible number, while silently excluding part of the simulation from every replay assertion.
 - ✅ Two gaps closed in `amadeo-core` found while building the above: `stable_hash_of` was `pub` but
-  never re-exported, and `[T; N]` had no `StableHash` impl (which is why `Transform2d` hand-rolls its
-  array hashing — that goes away when components are converted).
+  never re-exported, and `[T; N]` had no `StableHash` impl.
+- ✅ **`Component: Reflect`** (ADR 0013) — invariant I8 is now enforced by the compiler rather than by
+  remembering. An unreflectable type cannot be a component. Every existing component converted to
+  `#[derive(StableHash, Reflect)]`, hand-written hash impls deleted, and `Transform2d`/`Quad`/
+  `Camera2d` annotated with units, ranges, and ADR 0006 replication policies.
 
-**Verified green: 293 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+**Verified green: 299 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+
+**The golden replay did not need regenerating**, which was not guaranteed. The derive sorts fields by
+name, so any component whose fields were not already alphabetical changes fingerprint. The committed
+fixture happens to use only `Position { x, y }` and `Velocity { x, y }` — alphabetical, scalar, no
+arrays — so its hashes are byte-identical. `Transform2d`, `Quad`, and `Camera2d` *did* change, and
+nothing asserts on them. Reasoning in ADR 0013 so nobody re-derives it from scratch.
 
 Carried into M1 rather than counted as done:
 - A **separate-process** replay check. The golden test replays in-process against a committed
@@ -307,5 +312,8 @@ Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
   value tree rather than dynamic field access, struct fields sorted by construction so I2 is
   structural rather than remembered, the metadata vocabulary (including ADR 0006's replication
   annotations), and a derived `StableHash` so a forgotten field cannot silently drop simulation state
-  out of every replay assertion. ADR 0012. Two latent `amadeo-core` gaps closed on the way.
-  293 tests.
+  out of every replay assertion. ADR 0012. Two latent `amadeo-core` gaps closed on the way. Then
+  **ADR 0013: `Component: Reflect`**, turning invariant I8 from a convention into a compiler-enforced
+  bound and converting every existing component — the same move ADR 0009 made for
+  `Resource: StableHash`, and cheapest at eight components. The golden replay survived, for a reason
+  worth reading in ADR 0013 rather than assuming. 299 tests.

@@ -8,20 +8,15 @@
 //! arriving from Unity or Godot.
 //!
 //! ```
-//! use amadeo_core::{StableHash, StableHasher};
+//! use amadeo_core::StableHash;
 //! use amadeo_ecs::{Component, World};
+//! use amadeo_reflect::Reflect;
 //!
-//! #[derive(Debug, Clone, Copy, PartialEq)]
+//! #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 //! struct Position { x: f32 }
-//! #[derive(Debug, Clone, Copy, PartialEq)]
+//! #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 //! struct Velocity { x: f32 }
 //!
-//! impl StableHash for Position {
-//!     fn stable_hash(&self, h: &mut StableHasher) { self.x.stable_hash(h); }
-//! }
-//! impl StableHash for Velocity {
-//!     fn stable_hash(&self, h: &mut StableHasher) { self.x.stable_hash(h); }
-//! }
 //! impl Component for Position {}
 //! impl Component for Velocity {}
 //!

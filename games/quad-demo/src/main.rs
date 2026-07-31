@@ -21,9 +21,10 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use amadeo_app::{App, Stage, system};
-use amadeo_core::{FIXED_DT, StableHash, StableHasher};
+use amadeo_core::{FIXED_DT, StableHash};
 use amadeo_ecs::{Component, World};
 use amadeo_input::{ActionId, InputDriver, InputState, LiveSource, SAMPLE_INPUT, sample_input};
+use amadeo_reflect::Reflect;
 use amadeo_render::{
     Camera2d, Quad, RENDER_QUADS, Renderer, Transform2d, WgpuBackend, render_quads,
 };
@@ -39,28 +40,21 @@ use winit::window::{Window, WindowId};
 // invariant I4 keeps that kind of knowledge out of the core.
 
 /// How fast something is moving, in world units per second.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 struct Velocity {
+    /// Horizontal component.
+    #[reflect(unit = "world units/s", sync = "on_change", interpolate = "linear")]
     x: f32,
+    /// Vertical component.
+    #[reflect(unit = "world units/s", sync = "on_change", interpolate = "linear")]
     y: f32,
-}
-
-impl StableHash for Velocity {
-    fn stable_hash(&self, hasher: &mut StableHasher) {
-        self.x.stable_hash(hasher);
-        self.y.stable_hash(hasher);
-    }
 }
 
 impl Component for Velocity {}
 
 /// Marks the entity the player controls.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 struct Player;
-
-impl StableHash for Player {
-    fn stable_hash(&self, _hasher: &mut StableHasher) {}
-}
 
 impl Component for Player {}
 

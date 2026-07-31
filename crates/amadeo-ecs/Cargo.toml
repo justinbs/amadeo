@@ -9,6 +9,7 @@ rust-version.workspace = true
 
 [dependencies]
 amadeo-core.workspace = true
+amadeo-reflect.workspace = true
 
 [lints]
 workspace = true

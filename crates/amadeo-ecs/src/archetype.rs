@@ -341,25 +341,14 @@ impl Archetype {
 mod tests {
     use super::*;
     use amadeo_core::StableHash;
+    use amadeo_reflect::Reflect;
 
-    #[derive(Debug, Clone, Copy, PartialEq)]
+    #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
     struct Position(f32);
-
-    impl StableHash for Position {
-        fn stable_hash(&self, hasher: &mut StableHasher) {
-            self.0.stable_hash(hasher);
-        }
-    }
     impl Component for Position {}
 
-    #[derive(Debug, Clone, Copy, PartialEq)]
+    #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
     struct Speed(f32);
-
-    impl StableHash for Speed {
-        fn stable_hash(&self, hasher: &mut StableHasher) {
-            self.0.stable_hash(hasher);
-        }
-    }
     impl Component for Speed {}
 
     /// Builds an archetype holding Position and Speed, with ids sorted as the invariant requires.
@@ -430,13 +419,8 @@ mod tests {
 
     #[test]
     fn triple_access_writes_two_columns_and_reads_a_third() {
-        #[derive(Debug, Clone, Copy, PartialEq)]
+        #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
         struct Mass(f32);
-        impl StableHash for Mass {
-            fn stable_hash(&self, hasher: &mut StableHasher) {
-                self.0.stable_hash(hasher);
-            }
-        }
         impl Component for Mass {}
 
         let mut pairs: Vec<(ComponentId, Box<dyn Column>)> = vec![
@@ -490,11 +474,8 @@ mod tests {
 
     #[test]
     fn pair_access_refuses_a_missing_column() {
-        #[derive(Debug)]
+        #[derive(Debug, StableHash, Reflect)]
         struct Absent;
-        impl StableHash for Absent {
-            fn stable_hash(&self, _hasher: &mut StableHasher) {}
-        }
         impl Component for Absent {}
 
         let mut archetype = position_and_speed();
