@@ -8,8 +8,16 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
 amadeo-reflect.workspace = true
 thiserror.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# Only for tests: loading a scene built from the engine's real components proves rather more than
+# loading one built from test doubles. `amadeo-render` sits below `amadeo-scene` in the crate order,
+# so this respects invariant I6.
+amadeo-render.workspace = true

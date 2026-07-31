@@ -27,30 +27,35 @@ sense; the "separate process" half is carried into M1 because it needs `amadeo-c
 
 ## The single most important thing to do next
 
-**Scene layer 2 — bind parsed values to real components.** The `.scene` format parses and formats
-(ADR 0014), but a `SceneDocument` is still just syntax: it holds `Value` trees that nothing has
-checked against the reflection registry. Layer 2 closes that, and it is what turns two finished
-subsystems into one working one.
+**Decide where the hierarchy components live — it is a blocker, and it is a genuine contradiction
+between two docs rather than an oversight.**
 
-Three pieces, in order:
+`CLAUDE.md` §4 says `Parent`/`Children` move to `amadeo-scene` alongside `Transform2d` in M1.
+`docs/04-subsystems.md` §3 lists hierarchy under `amadeo-ecs`. **Those cannot both be right**:
+`amadeo-render` sits *below* `amadeo-scene` in the crate order, so M2's transform propagation could
+never reach a `Parent` that lived up in `amadeo-scene`.
 
-1. **Schema binding.** Look each component name up in the `TypeRegistry`, check its fields, and
-   narrow numbers to their declared widths — the parser produces `I64`/`F64` because it has no
-   schema, and `Transform2d.position` wants `f32`. This is `amadeo check`'s engine.
-2. **Instantiate into a `World`.** Needs a type-erased "insert the component named `Health` onto this
-   entity" built from monomorphised function pointers, which ADR 0012 says belongs in `amadeo-ecs`.
-3. **`Resource: Reflect`** — the other half of I8, deliberately deferred by ADR 0013. Needs `Rng`'s
+It blocks real work now. `instantiate` creates a scene's entities but **records** the parent
+relationships rather than materialising them, because there is no component to put them in. A scene
+that loses its hierarchy on load is not finished. Needs an ADR, and it probably wants `Transform2d`
+moved in the same change.
+
+Then, in order:
+
+1. **`Resource: Reflect`** — the other half of I8, deliberately deferred by ADR 0013. Needs `Rng`'s
    state exposed so `SimRng` can reflect (retiring the `Debug`-based `StableHash` flagged as
    inelegant since M0), and map support in `Reflect` for `InputState`.
+2. **`snapshot.take` / `snapshot.restore`.** The Q1 spike found re-simulation, not compilation, is
+   what degrades the iteration loop — 382 ms to reach 5 simulated minutes, growing linearly.
+3. **`amadeo-agent` v1 and `amadeo-cli`**, which together turn the reflection registry into
+   `amadeo describe` and make Pillar 2 real rather than latent. `amadeo-cli` also closes M0's
+   carried-over separate-process replay check.
 
-After that: **`snapshot.take` / `snapshot.restore`** (the Q1 spike found re-simulation, not
-compilation, is what degrades the iteration loop — 382 ms to reach 5 simulated minutes, growing
-linearly), then `amadeo-agent` v1 and `amadeo-cli`, which together turn the reflection registry into
-`amadeo describe` and make Pillar 2 real rather than latent.
-
-**Q7 — prefab override semantics — is now the nearest undecided thing.** The format records overrides
-visibly, which is the I1 requirement, but what they *mean* when a prefab changes under an instance is
-undesigned. Worth studying Unity's and Godot's failure modes first, as `docs/06` suggests.
+**Two things are undecided rather than unbuilt.** Q7 — prefab override *semantics* — is the nearest:
+the format records overrides visibly (the I1 requirement) but what they mean when a prefab changes
+under an instance is undesigned; `docs/06` suggests studying Unity's and Godot's failure modes first.
+And prefab *instancing* needs `amadeo-assets` to resolve a path at all, which is why `instantiate`
+currently refuses a `from` line with an error that says exactly that.
 
 ## Q1 is resolved — ADR 0011
 
@@ -224,7 +229,17 @@ Verified on this machine (2026-07-30):
   satisfies **M1 exit gate 3**. The ADR's worked example is asserted byte-identical to the
   formatter's output, so the spec cannot drift from the implementation.
 
-**Verified green: 328 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+- ✅ **Scene layer 2** — `ComponentRegistry` in `amadeo-ecs` builds a component from a *name* and a
+  `Value`, using monomorphised function pointers rather than a trait object (ADR 0012 chose a
+  non-object-safe `Reflect` deliberately, and this is the way back). It owns the `TypeRegistry`, so
+  one `register::<T>()` call satisfies I8 with no way to register the constructor and forget the
+  schema. Then `amadeo_scene::instantiate` turns a document into entities **atomically** — any
+  failure despawns everything it created, because a half-loaded scene looks like it worked.
+- ✅ Numeric leniency in `Reflect`: a scene's `intensity 3` arrives as an integer because the parser
+  has no schema, and must still fill an `f32` field. Floats accept any numeric value; integers stay
+  strict, since an out-of-range integer is a mistake rather than an approximation.
+
+**Verified green: 355 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 **The golden replay did not need regenerating**, which was not guaranteed. The derive sorts fields by
 name, so any component whose fields were not already alphabetical changes fingerprint. The committed
@@ -329,4 +344,7 @@ Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
   worth reading in ADR 0013 rather than assuming. Finally **Q2**: four scene syntaxes hand-written
   and diffed (`spikes/q2-scene-format/`), where the prescribed criterion turned out not to
   discriminate — diffs are identical in all four — so the spike narrowed it to two and Justin chose
-  the custom format. `amadeo-scene` layer 1 built to it: **ADR 0014**. 328 tests.
+  the custom format. `amadeo-scene` built to it (**ADR 0014**) — parser, canonical writer, and then
+  layer 2: `ComponentRegistry` and `instantiate`, so a scene file now loads into a `World` using the
+  engine's real components. Surfaced a blocker: the two docs disagree about where `Parent` lives.
+  355 tests.

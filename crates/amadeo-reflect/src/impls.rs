@@ -50,17 +50,25 @@ macro_rules! reflect_scalar {
 }
 
 reflect_scalar!(bool, "bool", ScalarKind::Bool, Bool);
-reflect_scalar!(f32, "f32", ScalarKind::Float32, F32);
-reflect_scalar!(f64, "f64", ScalarKind::Float64, F64);
 reflect_scalar!(String, "string", ScalarKind::String, String);
 
-/// Implements [`Reflect`] for an integer narrower than the `Value` variant that carries it.
+/// Implements [`Reflect`] for a float, accepting any numeric value.
 ///
-/// Widening on the way out is lossless; narrowing on the way back can overflow, so it is checked and
-/// reported rather than truncated. A silently truncated integer is precisely the kind of failure
-/// that shows up three subsystems away from its cause.
-macro_rules! reflect_integer {
-    ($type:ty, $name:literal, $scalar:expr, $variant:ident, $wide:ty) => {
+/// # Why floats are lenient about which numeric variant they arrive in
+///
+/// A [`Value`] does not always come from `to_value`. It also comes from a scene file, and the parser
+/// there has no schema — it decides `1` is an integer and `1.0` is a float purely from how they were
+/// written (ADR 0014). So a designer typing `intensity 3` for an `f32` field produces
+/// [`Value::I64`], and typing `0.85` produces [`Value::F64`] whatever width the component wants.
+///
+/// Rejecting those would be pedantry with no upside: the number is unambiguous, and the schema — not
+/// the punctuation — says what width it should end up as. So a float accepts any numeric variant.
+///
+/// **Precision is not checked**, deliberately. Narrowing `0.1_f64` to `f32` loses bits, and that is
+/// exactly what someone writing `0.1` into an `f32` field is asking for. Integers are different: an
+/// out-of-range integer is a mistake rather than an approximation, and stays an error.
+macro_rules! reflect_float {
+    ($type:ty, $name:literal, $scalar:expr, $variant:ident) => {
         impl Reflect for $type {
             fn type_name() -> String {
                 $name.to_string()
@@ -76,35 +84,81 @@ macro_rules! reflect_integer {
             }
 
             fn to_value(&self) -> Value {
-                Value::$variant(<$wide>::from(*self))
+                Value::$variant(*self)
             }
 
             fn from_value(value: &Value) -> Result<Self, ReflectError> {
                 match value {
-                    Value::$variant(inner) => {
-                        <$type>::try_from(*inner).map_err(|_| ReflectError::OutOfRange {
-                            type_name: $name.to_string(),
-                            value: inner.to_string(),
-                            target: stringify!($type).to_string(),
-                        })
-                    }
-                    other => Err(ReflectError::mismatch($name, $name, other)),
+                    Value::F32(inner) => Ok(*inner as $type),
+                    Value::F64(inner) => Ok(*inner as $type),
+                    Value::I64(inner) => Ok(*inner as $type),
+                    Value::U64(inner) => Ok(*inner as $type),
+                    other => Err(ReflectError::mismatch($name, "a number", other)),
                 }
             }
         }
     };
 }
 
-reflect_integer!(i8, "i8", ScalarKind::SignedInt, I64, i64);
-reflect_integer!(i16, "i16", ScalarKind::SignedInt, I64, i64);
-reflect_integer!(i32, "i32", ScalarKind::SignedInt, I64, i64);
-reflect_integer!(u8, "u8", ScalarKind::UnsignedInt, U64, u64);
-reflect_integer!(u16, "u16", ScalarKind::UnsignedInt, U64, u64);
-reflect_integer!(u32, "u32", ScalarKind::UnsignedInt, U64, u64);
+reflect_float!(f32, "f32", ScalarKind::Float32, F32);
+reflect_float!(f64, "f64", ScalarKind::Float64, F64);
 
-// The widest two need no conversion, so they use the plain scalar form.
-reflect_scalar!(i64, "i64", ScalarKind::SignedInt, I64);
-reflect_scalar!(u64, "u64", ScalarKind::UnsignedInt, U64);
+/// Implements [`Reflect`] for an integer.
+///
+/// Accepts either integer variant — a scene file's `-1` parses as [`Value::I64`] and `3` may parse
+/// as either, and which one it happened to be says nothing about what the field wants. Both are
+/// routed through `i128`, which is the only type that holds all of `i64` and all of `u64`, and then
+/// narrowed with a **checked** conversion.
+///
+/// Unlike floats, an out-of-range integer is an error rather than an approximation. Silently
+/// truncating one is the kind of failure that surfaces three subsystems from its cause.
+///
+/// Floats are **not** accepted: `2.7` into a `u32` field has no defensible answer — round, truncate,
+/// or refuse — so it refuses and says so.
+macro_rules! reflect_integer {
+    ($type:ty, $name:literal, $scalar:expr, $variant:ident) => {
+        impl Reflect for $type {
+            fn type_name() -> String {
+                $name.to_string()
+            }
+
+            fn type_info() -> TypeInfo {
+                TypeInfo {
+                    name: $name.to_string(),
+                    docs: String::new(),
+                    version: 1,
+                    kind: TypeKind::Scalar($scalar),
+                }
+            }
+
+            fn to_value(&self) -> Value {
+                Value::$variant(<_>::from(*self))
+            }
+
+            fn from_value(value: &Value) -> Result<Self, ReflectError> {
+                let wide: i128 = match value {
+                    Value::I64(inner) => i128::from(*inner),
+                    Value::U64(inner) => i128::from(*inner),
+                    other => return Err(ReflectError::mismatch($name, "a whole number", other)),
+                };
+                <$type>::try_from(wide).map_err(|_| ReflectError::OutOfRange {
+                    type_name: $name.to_string(),
+                    value: wide.to_string(),
+                    target: stringify!($type).to_string(),
+                })
+            }
+        }
+    };
+}
+
+reflect_integer!(i8, "i8", ScalarKind::SignedInt, I64);
+reflect_integer!(i16, "i16", ScalarKind::SignedInt, I64);
+reflect_integer!(i32, "i32", ScalarKind::SignedInt, I64);
+reflect_integer!(i64, "i64", ScalarKind::SignedInt, I64);
+reflect_integer!(u8, "u8", ScalarKind::UnsignedInt, U64);
+reflect_integer!(u16, "u16", ScalarKind::UnsignedInt, U64);
+reflect_integer!(u32, "u32", ScalarKind::UnsignedInt, U64);
+reflect_integer!(u64, "u64", ScalarKind::UnsignedInt, U64);
 
 impl<T: Reflect> Reflect for Vec<T> {
     fn type_name() -> String {
@@ -272,7 +326,49 @@ mod tests {
     #[test]
     fn a_wrong_shape_says_what_it_found() {
         let error = f32::from_value(&Value::String("nope".into())).expect_err("wrong shape");
-        assert_eq!(error.to_string(), "f32: expected f32, found string");
+        // "a number" rather than "f32": any numeric variant would have been accepted, so naming the
+        // exact one would describe the implementation rather than the requirement.
+        assert_eq!(error.to_string(), "f32: expected a number, found string");
+    }
+
+    #[test]
+    fn a_float_accepts_any_numeric_variant() {
+        // A scene file's parser has no schema, so `intensity 3` arrives as an integer and `0.85`
+        // arrives as an f64 whatever width the field wants. Refusing those would be pedantry.
+        assert_eq!(f32::from_value(&Value::I64(3)).expect("integer"), 3.0);
+        assert_eq!(f32::from_value(&Value::U64(3)).expect("unsigned"), 3.0);
+        assert_eq!(f32::from_value(&Value::F64(0.5)).expect("f64"), 0.5);
+        assert_eq!(f64::from_value(&Value::F32(0.5)).expect("f32"), 0.5);
+    }
+
+    #[test]
+    fn narrowing_a_float_loses_precision_on_purpose() {
+        // 0.1 is not representable in either width, and someone writing `0.1` into an f32 field is
+        // asking for the nearest f32. Refusing would be useless; rounding silently is correct.
+        let narrowed = f32::from_value(&Value::F64(0.1)).expect("narrows");
+        assert_eq!(narrowed, 0.1f32);
+        assert_ne!(f64::from(narrowed), 0.1f64, "precision really was lost");
+    }
+
+    #[test]
+    fn an_integer_field_refuses_a_float() {
+        // Unlike narrowing a float, `2.7` into a u32 has no defensible answer -- round, truncate, or
+        // refuse -- so it refuses rather than picking one silently.
+        let error = u32::from_value(&Value::F64(2.7)).expect_err("2.7 is not a whole number");
+        assert_eq!(
+            error.to_string(),
+            "u32: expected a whole number, found 64-bit float"
+        );
+    }
+
+    #[test]
+    fn an_integer_accepts_either_integer_variant_within_range() {
+        assert_eq!(i32::from_value(&Value::U64(7)).expect("unsigned"), 7);
+        assert_eq!(u32::from_value(&Value::I64(7)).expect("signed"), 7);
+        // ...but a negative value still cannot become unsigned.
+        assert!(u32::from_value(&Value::I64(-1)).is_err());
+        // ...and u64::MAX still does not fit in an i64 field.
+        assert!(i64::from_value(&Value::U64(u64::MAX)).is_err());
     }
 
     #[test]
@@ -289,7 +385,10 @@ mod tests {
     fn a_bad_element_inside_a_list_is_reported() {
         let mixed = Value::List(vec![Value::U64(1), Value::String("two".into())]);
         let error = Vec::<u32>::from_value(&mixed).expect_err("element two is a string");
-        assert_eq!(error.to_string(), "u32: expected u32, found string");
+        assert_eq!(
+            error.to_string(),
+            "u32: expected a whole number, found string"
+        );
     }
 
     #[test]

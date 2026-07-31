@@ -73,9 +73,15 @@ of a milestone.
 - Canonical serialization: sorted keys, stable IDs, fixed number formatting.
 - 🟡 `amadeo-scene` — the text format is decided and built (ADR 0014, chosen from the four
   hand-written candidates in `spikes/q2-scene-format/`): parser with line-numbered errors, canonical
-  byte-stable writer, and the round-trip test that satisfies exit gate 3. **Still to do:** binding
-  parsed values to real components via the registry (layer 2), instantiating a document into a
-  `World`, and prefab override *semantics* (Q7).
+  byte-stable writer, and the round-trip test that satisfies exit gate 3. Layer 2 lands too —
+  `ComponentRegistry` in `amadeo-ecs` builds components by name, and `instantiate` turns a document
+  into entities atomically. **Still to do:** materialising hierarchy as components (blocked on where
+  `Parent` lives — see below), prefab instancing (needs `amadeo-assets`), and prefab override
+  *semantics* (Q7).
+- **Decide where the hierarchy components live.** `CLAUDE.md` §4 says `Parent`/`Children` move to
+  `amadeo-scene` with `Transform2d`; `docs/04-subsystems.md` §3 lists them under `amadeo-ecs`. Those
+  cannot both hold — `amadeo-render` sits *below* `amadeo-scene`, so M2's transform propagation could
+  not reach a `Parent` up there. Needs an ADR before scenes can load their own hierarchy.
 - `amadeo-agent` v1 — JSON-RPC server: `world.query`, `world.entity`, `world.spawn`,
   `world.set_component`, `sim.step`, `sim.pause`, `events.since`, `scene.load`/`save`,
   `render.capture`, `render.describe`, `replay.*`, `snapshot.*`.

@@ -53,9 +53,11 @@
 //! which is type-erased work that belongs above `amadeo-ecs`, not here.
 
 mod document;
+mod instantiate;
 mod parse;
 mod write;
 
 pub use document::{SceneDocument, SceneEntity};
+pub use instantiate::{InstantiateError, Instantiated, instantiate};
 pub use parse::{INDENT, ParseError, ParseErrorKind, parse};
 pub use write::to_text;

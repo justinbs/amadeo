@@ -72,6 +72,7 @@ version = "0.1.0"
 dependencies = [
  "amadeo-core",
  "amadeo-reflect",
+ "thiserror 2.0.19",
 ]
 
 [[package]]
@@ -117,7 +118,10 @@ dependencies = [
 name = "amadeo-scene"
 version = "0.1.0"
 dependencies = [
+ "amadeo-core",
+ "amadeo-ecs",
  "amadeo-reflect",
+ "amadeo-render",
  "thiserror 2.0.19",
 ]
 

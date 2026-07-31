@@ -350,7 +350,7 @@ fn a_bad_field_type_inside_a_struct_is_reported() {
         ("invulnerable", Value::Bool(false)),
     ]);
     let error = Health::from_value(&wrong).expect_err("current is not a string");
-    assert_eq!(error.to_string(), "f32: expected f32, found string");
+    assert_eq!(error.to_string(), "f32: expected a number, found string");
 }
 
 // --- The registry, driven by derived types ---
