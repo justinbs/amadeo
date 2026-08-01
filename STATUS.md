@@ -5,7 +5,8 @@
 layer, **and the agent protocol plus a working `amadeo` CLI** have all landed. What remains in M1 is
 the 2D renderer, assets, snapshots, and the small game that closes the exit gate. Q3 and Q13 both
 closed too, so nothing is blocked.
-**Remote:** `origin → https://github.com/justinbs/amadeo.git` (private) — **nothing pushed yet**
+**Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). **Pushed as of session 6**,
+which means CI has started running for the first time — see "CI" below.
 
 ---
 

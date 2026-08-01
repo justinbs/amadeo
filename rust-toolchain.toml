@@ -3,6 +3,14 @@
 # (invariant I3, ADR 0005). A silent compiler upgrade changing float codegen
 # would look like a behavioural regression.
 [toolchain]
-channel = "stable"
+# An exact version, not "stable". `channel = "stable"` floats: it resolves to whatever stable
+# happens to be on the day, on the machine, which is the opposite of what the comment above
+# promises. A compiler upgrade arriving silently between two runs is exactly the scenario that
+# would change float codegen and read as a behavioural regression.
+#
+# Bump this deliberately, and re-run the golden replays when you do.
+channel = "1.97.1"
 components = ["rustfmt", "clippy"]
-targets = ["x86_64-pc-windows-msvc"]
+# No `targets` list. It used to name x86_64-pc-windows-msvc, which is the host target on Windows
+# (so redundant) and a cross-compilation target on the Linux CI job (so a pointless download).
+# rustup installs the host target on its own.

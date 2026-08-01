@@ -8,8 +8,16 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  # Warnings are failures. Determinism guards are worth nothing if they can be ignored.
-  RUSTFLAGS: -D warnings
+  # Deliberately NOT `RUSTFLAGS: -D warnings`, which is where this used to be.
+  #
+  # RUSTFLAGS applies to **every crate compiled, dependencies included**. So a warning introduced by
+  # a new compiler in wgpu, winit, or anything else fails this project's CI for something nobody
+  # here can fix, and the failure looks like our bug. It also silently invalidates the build cache
+  # whenever it changes.
+  #
+  # Our own code is still warnings-as-errors: the `check` job passes `-D warnings` to clippy over
+  # `--all-targets --all-features`, and every crate opts into the workspace lint table
+  # (`[lints] workspace = true`). Nothing is lost except failures we cannot act on.
 
 jobs:
   check:
@@ -57,6 +65,10 @@ jobs:
       # Deliberately NOT --all-features: this job is about simulation determinism, which the GPU
       # backend cannot affect (it is a Service and excluded from the state hash, ADR 0009). Building
       # wgpu three times over would multiply this job's runtime for no additional coverage.
+      #
+      # Note the replay step at the end of this job *does* build wgpu once, because it launches
+      # quad-demo and quad-demo links the GPU backend. So this job is not wgpu-free overall — the
+      # saving is that the three test runs and the release run do not each rebuild it.
       - name: Run the suite three times in separate processes
         shell: bash
         run: |
