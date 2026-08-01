@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-07-31 (session 6)
+**Last updated:** 2026-08-01 (end of session 6)
 **Current phase:** **M0 complete. M1 well under way** — reflection, the scene format, the agent's read
 layer, **and the agent protocol plus a working `amadeo` CLI** have all landed. What remains in M1 is
 the 2D renderer, assets, snapshots, and the small game that closes the exit gate. Q3, Q13 and Q4 all
@@ -13,11 +13,14 @@ which means CI has started running for the first time — see "CI" below.
 ## Where we are
 
 Sessions 1–2 established scope, stack, and architecture. Session 3 built M0. Session 4 closed it by
-resolving Q1. Session 5 built most of M1's foundations.
+resolving Q1. Session 5 built most of M1's foundations. **Session 6 was the largest so far**: it
+resolved six open questions (Q14, Q13, two thirds of Q3, Q4, plus ADRs 0019 and 0021), built the
+whole agent transport and CLI, and found the CI line-endings bug. ADRs 0016–0021.
 
-**Twelve crates plus one game**, all tested: `amadeo-derive`, `amadeo-core`, `amadeo-reflect`,
-`amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-input`, `amadeo-render`, `amadeo-scene`,
-`amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`. **501 tests passing**; fmt, clippy
+**Thirteen crates plus one game**, all tested: `amadeo-derive`, `amadeo-core`, `amadeo-reflect`,
+`amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`, `amadeo-render`,
+`amadeo-scene`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`.
+**519 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Four things work end to end today:
@@ -53,23 +56,31 @@ of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**Build `amadeo-assets`** to ADR 0020. It is the last thing gating two others: sprite **textures**
-(so the 2D renderer can draw something other than a coloured rectangle) and **prefab instancing**
-(`instantiate` still refuses a `from` line, saying exactly why).
+**Finish `amadeo-assets`.** The naming half is built (sidecars, catalogue, duplicate detection); the
+loading half is not, and there are **no open decisions left in it** — ADR 0020 settled identity and
+ADR 0021 settled how loading avoids breaking I3. This is implementation.
 
-Q4 is settled: an asset is named by a declared `id` in its sidecar, defaulting to the filename stem
-on import so it reads like a path but survives a move. Two things ADR 0020 asks for that are easy to
-skip and shouldn't be:
+In order, and none of it needs a decision from Justin:
 
-- **`assets.list` before the id becomes the reference syntax.** Otherwise the first agent to author a
-  scene has to guess an id, which is the plausible-but-wrong failure Pillar 2 exists to kill.
-- **Duplicate ids refused at scan time, naming both files** — the same treatment `ComponentRegistry`
-  gives duplicate component names.
+1. **A directory scan** producing a catalogue. Sorted walk into a `BTreeMap` (I3), one sidecar per
+   asset, duplicate ids refused naming both files. `Sidecar::default_id_for` and `asset_path_for`
+   already exist for it.
+2. **Generate a missing sidecar on import**, with `id` defaulting to the filename stem. This is what
+   makes ADR 0020 ergonomic rather than bureaucratic — without it every asset needs hand-authoring
+   before it can be referenced.
+3. **`assets.list` in the protocol and `amadeo assets` in the CLI.** ADR 0020 asks for this
+   **before** ids become the reference syntax, or the first agent to author a scene has to guess —
+   the plausible-but-wrong failure Pillar 2 exists to kill. Do not skip it.
+4. **Loading**, to ADR 0021's rule: gameplay holds an id and never observes asset state. Plus the
+   barrier — a scene declares what it needs, no tick runs until it is resident.
+5. **`amadeo check` verifies asset ids too**, using `AssetCatalogue::similar_to` for "did you mean".
 
-Then the sprite batcher, which is where **Q3's remaining third** (pipeline shape) gets decided —
+Then the **sprite batcher**, which is where **Q3's remaining third** (pipeline shape) gets decided —
 against a real throughput number (`docs/04-subsystems.md` §4 suggests 20k sprites at 60 fps) rather
 than argued beforehand. `Transform`, `SortOrder`, and `GlobalTransform` are all settled and the
 renderer already reads the composed transform, so nothing else is in the way.
+
+That order is deliberate: textures are what the 2D renderer is missing, and textures need loading.
 
 Then, in order:
 
@@ -167,6 +178,23 @@ optimisation levels) at 1.24× runtime cost, and it is the same artefact M5's we
   The pipeline shape is deliberately still open. ADR 0018.
 - **Q14 resolved — the game binary hosts the agent; the CLI launches it.** One-shot JSON-RPC over
   stdio, hand-written parser, `App` owns the `ComponentRegistry`. See `docs/adr/0016`.
+
+### How Justin wants to work — stated in session 6, and load-bearing
+
+These are not preferences to weigh; they are instructions. Full versions in `CLAUDE.md` §5 and §6.
+
+- **Research before asking, not instead of asking.** He has no game-engine-development background
+  and says he tends to take whichever option is recommended. So a menu of options I have not
+  researched is not sharing a decision — it looks like collaboration and is not. When the codebase
+  alone cannot settle a trade-off, go read how real engines solve it. He explicitly endorsed the
+  time. ADR 0021 is the worked example: the research changed the answer.
+- **Pros *and* cons for every option**, including the recommended one.
+- **Plain language**, with the vocabulary defined at the point it affects a choice he has to make.
+- **Prefer the more complete option over the faster one.** His words: he would rather have a
+  complete engine than one that accumulates problems, and does not mind more steps or more time.
+  Do not quietly narrow scope to save effort — that is not the trade he is asking for.
+- **No `Co-Authored-By: Claude` trailer on commits.** Personal project; he knows. End the message at
+  the last line of the body.
 
 ### Not yet decided (blocking)
 
@@ -338,10 +366,10 @@ hashes) passed.
   needing the schedule or the tick count. A client never sees the seam. Spec in `docs/protocol/v1.md`.
 - ✅ **`quad-demo` hands over in one line**, sharing `build_simulation()` with the windowed path so an
   answer about the inspected world is an answer about the game that actually runs (I7).
-- ✅ **`amadeo-cli`** — `describe`, `query`, `entity`, `schedule`, `status`, `call`, `check`, and
-  `check`, `replay`, and `fmt`. The ADR 0016 split is visible in `--help`: `fmt` runs in the CLI and never builds anything,
-  everything else launches the game through `cargo run` so a stale binary is rebuilt rather than
-  answering for code that no longer exists.
+- ✅ **`amadeo-cli`** — `describe`, `query`, `entity`, `schedule`, `status`, `call`, `check`,
+  `replay`, and `fmt`. The ADR 0016 split is visible in `--help`: `fmt` runs in the CLI and never
+  builds anything; everything else launches the game through `cargo run`, so a stale binary is
+  rebuilt rather than answering for code that no longer exists.
 - ✅ **`amadeo replay`** — the separate-process half of the golden-replay mechanism, and the last
   thing carried over from M0's exit gate. `--replay` and `--seed` are *launch* arguments rather than
   methods, because a recording must be installed before the first tick and `App::with_seed` fixes the
@@ -364,20 +392,6 @@ hashes) passed.
   Also a scalar `Mat4` in `amadeo-transform` rather than creating `amadeo-math` or taking glam:
   propagation needs compose-and-multiply and nothing else, and designing a maths surface backwards
   from its first caller is how a wrong abstraction gets locked in.
-- ✅ **`GlobalTransform` and `propagate_transforms`** (ADR 0019) — waiting since ADR 0015, unblocked
-  by ADR 0018 settling what a transform is. Walks up the parent chain per entity rather than keeping
-  a depth-sorted work list, because that list is a cache with an invalidation story and hierarchies
-  are shallow. A `Parent` cycle falls back to the local transform rather than hanging.
-
-  **`GlobalTransform` is `DERIVED`, so it is excluded from the state hash** — Justin decided this
-  directly, and it is the reason matrix arithmetic cannot move a replay. Proven rather than asserted:
-  `quad-demo` now carries a `GlobalTransform` on every entity and **both replay fixtures are
-  byte-unchanged**. Two tests guard each other — one that propagation does not move the hash, one
-  that a real change still does — so neither can pass because hashing quietly broke.
-
-  Also a scalar `Mat4` in `amadeo-transform` rather than creating `amadeo-math` or taking glam:
-  propagation needs compose-and-multiply and nothing else, and designing a maths surface backwards
-  from its first caller is how a wrong abstraction gets locked in.
 - ✅ **`amadeo check`** — validates scene files against the game's *real* schema, which is precisely
   what a standalone tool cannot do. Reports **every** problem in one pass rather than the first:
   `instantiate` stops at the first error because that is right for loading and wrong for checking, so
@@ -385,8 +399,39 @@ hashes) passed.
   "would this build?" with no `World` to build into. Diagnostics come back naming an entity id; the
   CLI turns that into `file:line` because it is the side that still has the text. One launch covers
   every file named, since a build per scene would make checking a directory unusable.
+- ✅ **Q13 resolved — ADR 0017.** `ComponentId` now hashes a component's canonical name rather than
+  its Rust path, so moving a type between crates stopped being a silent replay-invalidating change.
+  Cost: two components sharing a canonical name now collide. The registry already refuses that;
+  `World::insert` gained a **debug-build guard** for anything unregistered.
+- ✅ **Q3 resolved, two thirds — ADR 0018.** One 3D `Transform` (2D is its degenerate case,
+  `Transform2d` retired), rotation as **Euler degrees** so it stays hand-writable, and `SortOrder`
+  replacing `Quad::layer`. The pipeline shape is deliberately still open and dropped to P2.
+- ✅ **`GlobalTransform` and `propagate_transforms`** (ADR 0019) — waiting since ADR 0015, unblocked
+  by ADR 0018 settling what a transform is. Walks up the parent chain per entity rather than keeping
+  a depth-sorted work list, because that list is a cache with an invalidation story and hierarchies
+  are shallow. A `Parent` cycle falls back to the local transform rather than hanging.
 
-**Verified green: 501 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+  **`GlobalTransform` is `DERIVED`, so it is excluded from the state hash** — Justin decided this
+  directly, and it is the reason matrix arithmetic cannot move a replay. Proven rather than asserted:
+  `quad-demo` carries a `GlobalTransform` on every entity and **both replay fixtures are
+  byte-unchanged**. Two tests guard each other — one that propagation does not move the hash, one
+  that a real change still does — so neither can pass because hashing quietly broke.
+
+  Also a scalar `Mat4` in `amadeo-transform` rather than creating `amadeo-math` or taking glam:
+  propagation needs compose-and-multiply and nothing else, and designing a maths surface backwards
+  from its first caller is how a wrong abstraction gets locked in.
+- ✅ **The renderer reads `GlobalTransform`**, so hierarchy reaches the screen. Scale and rotation
+  come back out of the **composed matrix**, not the local transform — a matrix's columns are its
+  scaled axes, so a column's length is that axis's total scale and its angle the total rotation.
+  Without that a parent's turn would move a child but not rotate it.
+- ✅ **`.gitattributes`** — the fix for the CI failure, see the CI section above.
+- ✅ **Q4 resolved — ADR 0020**, and **ADR 0021** on top of it. Asset identity is a declared `id` in
+  a sidecar; the simulation never observes asset *state*.
+- 🟡 **`amadeo-assets`, first slice** — the `.ama-meta` sidecar format and the `AssetCatalogue`
+  mapping id to file, with duplicate ids refused naming both files. Loading, handles, the import
+  pipeline and hot-reload are still to come, to ADR 0021's rule.
+
+**Verified green: 519 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 Two things found by running it rather than by thinking about it:
 
@@ -443,18 +488,34 @@ Known gaps deliberately left for later:
 
 If you are starting cold, this is the shortest path to being useful:
 
-1. `CLAUDE.md` — invariants (§2), what exists (§4), how to verify (§4b), traps (§7).
-2. This file's **Decided** and **Next actions** sections.
-3. `docs/07-working-with-the-code.md` — the Rust patterns this engine uses and why. Skip if you
-   already know the codebase.
-4. `docs/adr/` — read 0005 (determinism), 0008 (ECS storage), 0009 (resource vs service) before
-   touching `amadeo-ecs`. Read 0003 and 0004 before touching anything about scenes or the editor.
-   Read **0011** before proposing a scripting language or a hot-reload mechanism — it was decided by
-   measurement, and reopening it needs numbers. Read **0016** plus `docs/protocol/v1.md` before
-   touching the CLI, the agent, or anything about process boundaries.
-5. `docs/06-open-questions.md` — before assuming anything undecided.
+1. `CLAUDE.md` — invariants (§2), what exists (§4), how to verify (§4b), **how to put a choice to
+   Justin (§5)**, and the traps (§7).
+2. This file: **How Justin wants to work**, **The single most important thing to do next**, and
+   **CI**. Those three are the whole handoff; everything else here is background.
+3. `docs/07-working-with-the-code.md` — the Rust patterns this engine uses and why, the everyday
+   `amadeo` commands, and the golden-replay mechanism. Skip if you already know the codebase.
+4. `docs/adr/` — 21 of them now, so read by need rather than in order:
+   - **0005** (determinism), **0008** (ECS storage), **0009** (resource vs service) and **0019**
+     (derived components) before touching `amadeo-ecs` or anything that reaches `state_hash`.
+   - **0003** and **0004** before touching scenes or the editor; **0014** for the scene format.
+   - **0011** before proposing a scripting language or hot reload — decided by *measurement*, so
+     reopening it needs numbers, not arguments.
+   - **0016** plus `docs/protocol/v1.md` before touching the CLI, the agent, or process boundaries.
+   - **0017** before moving or renaming a component (moving is free now; renaming is not).
+   - **0018** before touching transforms or draw order; **0020** and **0021** before assets.
+5. `docs/06-open-questions.md` — before assuming anything undecided. Eight remain, none blocking.
 
-Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
+Then `git log --oneline -25`. Commit messages explain *why*, deliberately, and session 6's are long
+on purpose — several record a diagnosis that took a while to reach.
+
+**Two things that will bite a cold session specifically:**
+
+- **`cargo` is not on PATH for tool invocations.** Prefix with
+  `$env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"`.
+- **Windows PowerShell 5.1 reads UTF-8 as ANSI and writes back a BOM.** If you script a file edit,
+  use .NET APIs with `UTF8Encoding($false)`, or every em-dash in the repo is silently corrupted.
+  Console *display* of em-dashes as mojibake is harmless; a `git diff --stat` showing the whole file
+  changed is not.
 
 ## Session log
 
@@ -573,5 +634,33 @@ Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
   Euler degrees so it stays hand-writable, and `SortOrder` replacing `Quad::layer`. The pipeline
   choice is deliberately deferred to when the sprite batcher exists and can be measured.
 
-  480 tests, all four §4b commands green, CI replaying a committed recording in a fresh process.
-  **`GlobalTransform` propagation is next** — waiting since ADR 0015, and now unblocked.
+  Then **`GlobalTransform` and `propagate_transforms`** (ADR 0019), waiting since ADR 0015. Justin
+  decided directly that a derived component stays **out of the state hash**, which needed a mechanism
+  the ECS did not have: `Component::DERIVED`, carried through the type erasure by `Column`, honoured
+  by `state_hash`. Named `DERIVED` rather than `HASHED` on purpose — the first states what must be
+  *true* so the rule follows from the name, the second describes what it does and invites anyone
+  wanting a quieter diff to reach for it. Proven, not asserted: `quad-demo` now carries a
+  `GlobalTransform` on every entity and both replay fixtures are byte-unchanged.
+
+  **Then CI, which had been red since the first push and was not what it looked like.** The failing
+  assertion had *identical checkpoint hashes on both sides* and differed only in `\n` versus `\r\n`.
+  `core.autocrlf` is true by default on GitHub's Windows runners; with no `.gitattributes` it
+  rewrote every committed LF on checkout. This machine has it set to `false` locally, which is why
+  it reproduced nowhere here across seven different reproductions of CI's exact commands. Fixed with
+  `.gitattributes`, verified by two fresh clones under `autocrlf=true` (17 CR bytes before, 0
+  after). Worth recording that the toolchain-pin commit immediately before it was a real fix for a
+  real defect — `channel = "stable"` was not pinning anything despite its comment promising exactly
+  the reproducibility I3 needs — but it was **not** this bug, and I presented it with more adjacency
+  to the failure than it earned.
+
+  Finally **Q4 (ADR 0020)** and **ADR 0021**, plus the first slice of `amadeo-assets`. Q4 asked what
+  names an asset; the answer follows Q13 one layer up — a path is a *location*, so identity is a
+  declared `id` in a sidecar, defaulting to the filename stem so it reads like a path but survives a
+  move. ADR 0021 then settled how loading avoids breaking I3, and this one was **researched rather
+  than reasoned about** (Justin's standing instruction): the industry pattern is a loading barrier,
+  but Bevy chooses it for user experience and tolerates mid-game loads, so adopting it for
+  determinism would give the right shape for the wrong reason and would not hold the first time
+  someone streams a chunk. The invariant is stronger: gameplay holds an id and never observes asset
+  *state*, so there is nothing to branch on.
+
+  519 tests, all five CI jobs green, seventeen commits.
