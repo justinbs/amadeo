@@ -194,6 +194,18 @@ fn recording_matches_the_committed_golden_file() {
         )
     });
 
+    // Line endings first, because the message for a real mismatch actively misleads about this one.
+    // A file checked out with `core.autocrlf=true` differs from the recording in every line and in
+    // nothing else -- same inputs, same checkpoints, same hashes -- and being told that simulation
+    // behaviour changed sends you looking in entirely the wrong place. It did exactly that once.
+    assert!(
+        !expected.contains('\r'),
+        "\nThe committed golden replay has CRLF line endings, but the format specifies LF.\n\
+         The simulation is fine -- the hashes are not even being compared yet.\n\
+         Git rewrote the file on checkout, which `.gitattributes` exists to prevent.\n\
+         Check that `.gitattributes` is present and that `core.autocrlf` is not overriding it.\n"
+    );
+
     // Compare text, not just hashes: a diff of the file shows exactly which input or which
     // checkpoint moved, which a single mismatched integer would not.
     assert_eq!(

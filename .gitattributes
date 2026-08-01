@@ -1,0 +1,33 @@
+# Line endings are part of this project's file formats, not a platform preference.
+#
+# Invariant I2 says serialization is canonical and byte-stable: saving an unchanged file produces a
+# byte-identical file. The `.replay` and `.scene` formats both specify LF endings, and golden replay
+# fixtures are compared **byte for byte** against freshly generated text.
+#
+# Git's `core.autocrlf` defaults to true on Windows, and GitHub's windows-latest runners ship with
+# it on. That rewrites LF to CRLF on checkout, so a committed fixture arrives on disk with different
+# bytes than were committed — and the golden replay test fails with a message about simulation
+# behaviour changing, which is the one thing that had not happened. That is exactly the failure this
+# file exists to prevent, and it cost a CI-red afternoon to find.
+#
+# `eol=lf` makes the working tree match the repository on every platform. Do not remove it.
+
+# Everything text-like is LF in the working tree, everywhere. `text=auto` still lets git detect and
+# leave binary files alone.
+* text=auto eol=lf
+
+# The formats this project defines, named explicitly so the intent survives an edit to the line
+# above. These are hand-authored and hand-diffed; CRLF in them is corruption, not a variant.
+*.replay text eol=lf
+*.scene  text eol=lf
+*.toml   text eol=lf
+*.rs     text eol=lf
+*.md     text eol=lf
+*.wgsl   text eol=lf
+*.yml    text eol=lf
+
+# Binary, so git never inspects or translates them.
+*.png binary
+*.jpg binary
+*.wav binary
+*.ogg binary
