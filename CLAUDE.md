@@ -71,7 +71,8 @@ crates/
                      propagate_transforms, and a scalar Mat4. GlobalTransform is computed, never
                      authored, and DERIVED so it stays out of the state hash (ADR 0019).
 ✅ amadeo-events      typed double-buffered queues, EventClock total ordering
-— amadeo-assets      virtual FS, async load, import pipeline, cache, hot-reload watch
+🟡 amadeo-assets      AssetCatalogue (declared id -> file, ADR 0020) and the .ama-meta sidecar
+                     format. Loading, handles, import pipeline and hot-reload still to come.
 ✅ amadeo-input       action mapping, InputState, recording/replay, the .replay text format
 ✅ amadeo-render      RenderBackend trait, NullBackend, Quad/SortOrder/Camera2d. wgpu behind `gpu`.
 — amadeo-audio       mixer, buses, spatialization (null backend required)

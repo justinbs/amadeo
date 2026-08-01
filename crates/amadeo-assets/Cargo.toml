@@ -1,0 +1,15 @@
+[package]
+name = "amadeo-assets"
+description = "Asset identity, sidecar metadata, and the catalogue that maps a declared id to a file."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+amadeo-ecs.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

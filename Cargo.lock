@@ -63,6 +63,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "amadeo-assets"
+version = "0.1.0"
+dependencies = [
+ "amadeo-ecs",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "amadeo-cli"
 version = "0.1.0"
 dependencies = [
