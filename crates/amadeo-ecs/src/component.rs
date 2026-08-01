@@ -4,7 +4,7 @@
 //! safe trait object, downcast once per archetype per query rather than once per entity. That keeps
 //! structure-of-arrays cache behaviour in the inner loop with no `unsafe` anywhere.
 
-use crate::type_hash::hash_type_name;
+use crate::type_hash::hash_name;
 use amadeo_core::{StableHash, StableHasher, Tick};
 use amadeo_reflect::Reflect;
 use std::any::Any;
@@ -65,8 +65,24 @@ pub trait Component: 'static + Send + Sync + fmt::Debug + StableHash + Reflect {
 /// disagree with the same logic compiled by another — which is precisely the failure invariant I3
 /// exists to prevent.
 ///
-/// So a `ComponentId` is the FNV-1a hash of the type's name instead. That is stable across builds,
-/// traceable back to a readable name for diagnostics, and ordered consistently in a `BTreeMap`.
+/// # Why the canonical name and not the Rust path
+///
+/// ADR 0017. A `ComponentId` is the FNV-1a hash of [`Reflect::type_name`] — the same string a
+/// `.scene` file writes and `amadeo describe` prints — **not** `std::any::type_name`, which is the
+/// fully-qualified path.
+///
+/// Using the path coupled a component's identity to where its code lived: moving
+/// `amadeo_render::components::Transform2d` to `amadeo_transform::Transform2d` silently changed its
+/// id and would have invalidated every state hash containing it. A pure refactor is not supposed to
+/// be a replay-invalidating change, and nothing warned you.
+///
+/// With the canonical name, the ECS's identity and the file's identity are literally the same
+/// string, and `#[reflect(name = "...")]` lets the Rust type be renamed without changing identity.
+///
+/// **The cost:** two components with the same canonical name now collide.
+/// [`crate::ComponentRegistry::register`] rejects that with a clear message, which covers every
+/// component that satisfies I8. For anything unregistered, [`crate::World`] carries a debug-build
+/// guard — see `World::insert`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ComponentId(u64);
 
@@ -74,7 +90,16 @@ impl ComponentId {
     /// The id for component type `T`.
     #[must_use]
     pub fn of<T: Component>() -> Self {
-        ComponentId(hash_type_name::<T>())
+        ComponentId::of_name(&T::type_name())
+    }
+
+    /// The id for a component named at runtime.
+    ///
+    /// The counterpart to [`ComponentId::of`] for callers that have a name and no type — the scene
+    /// loader and the agent layer both do. That these agree is the point of ADR 0017.
+    #[must_use]
+    pub fn of_name(name: &str) -> Self {
+        ComponentId(hash_name(name))
     }
 
     /// The raw hash value, for diagnostics and serialisation.
@@ -269,11 +294,39 @@ mod tests {
     }
 
     #[test]
-    fn component_id_derives_from_type_name() {
-        // Pinned so an accidental switch to TypeId (which is not stable across builds) is caught.
+    fn component_id_derives_from_the_canonical_name() {
+        // Pinned so an accidental switch to TypeId (not stable across builds) or back to the Rust
+        // path (ADR 0017) is caught here rather than by a mysteriously failing replay.
         assert_eq!(
             ComponentId::of::<Position>().raw(),
-            hash_type_name::<Position>()
+            hash_name(&Position::type_name())
+        );
+    }
+
+    #[test]
+    fn a_name_and_a_type_agree_on_the_id() {
+        // The whole point of ADR 0017: the id the ECS uses and the name a scene file writes are the
+        // same string. A scene loader holding only a name gets the same id as a caller holding the
+        // type.
+        assert_eq!(
+            ComponentId::of::<Position>(),
+            ComponentId::of_name(&Position::type_name())
+        );
+        assert_eq!(
+            ComponentId::of::<Position>(),
+            ComponentId::of_name("Position")
+        );
+    }
+
+    #[test]
+    fn the_id_does_not_depend_on_where_the_type_lives() {
+        // The bug ADR 0017 fixes. `type_name::<T>()` is the fully-qualified path, so it changes when
+        // a type moves between crates or modules; the canonical name does not. If these were equal,
+        // the id would still be path-derived.
+        assert_ne!(
+            ComponentId::of::<Position>().raw(),
+            crate::type_hash::hash_type_name::<Position>(),
+            "the path and the canonical name should differ, or this test proves nothing"
         );
     }
 

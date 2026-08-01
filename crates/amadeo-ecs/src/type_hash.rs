@@ -15,8 +15,17 @@ use amadeo_core::StableHasher;
 /// A type's fully-qualified name is stable across builds, and has the additional benefit of being
 /// traceable back to something a human can read when diagnosing a collision.
 pub(crate) fn hash_type_name<T: 'static>() -> u64 {
+    hash_name(std::any::type_name::<T>())
+}
+
+/// Hashes an already-chosen name into a stable 64-bit id.
+///
+/// Used for [`crate::ComponentId`], which hashes a component's **canonical** name (ADR 0017) rather
+/// than its Rust path, so that moving a type between crates does not change its identity. See that
+/// ADR for why components differ from resources and services here.
+pub(crate) fn hash_name(name: &str) -> u64 {
     let mut hasher = StableHasher::new();
-    hasher.write_str(std::any::type_name::<T>());
+    hasher.write_str(name);
     hasher.finish()
 }
 

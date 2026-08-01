@@ -52,6 +52,12 @@ pub struct World {
     services: BTreeMap<ServiceId, Box<dyn ServiceSlot>>,
     /// The current simulation tick. Advanced by the app loop, never by gameplay code.
     tick: Tick,
+    /// Which canonical name first claimed each [`ComponentId`], for the ADR 0017 collision guard.
+    ///
+    /// Only populated in debug builds — see [`World::guard_against_name_collision`]. It is a
+    /// diagnostic, not simulation state, so it is excluded from [`World::state_hash`].
+    #[cfg(debug_assertions)]
+    component_names: BTreeMap<ComponentId, String>,
 }
 
 impl Default for World {
@@ -77,8 +83,41 @@ impl World {
             resources: BTreeMap::new(),
             services: BTreeMap::new(),
             tick: Tick::ZERO,
+            #[cfg(debug_assertions)]
+            component_names: BTreeMap::new(),
         }
     }
+
+    /// Catches two components sharing a canonical name, in debug builds.
+    ///
+    /// The cost ADR 0017 accepted. Hashing the canonical name rather than the Rust path means two
+    /// types called `Health` in different modules now produce the same [`ComponentId`], and would
+    /// quietly share an archetype column — which is memory corruption's well-behaved cousin: reads
+    /// return the wrong type's bytes reinterpreted, or the downcast fails and the value vanishes.
+    ///
+    /// [`crate::ComponentRegistry::register`] already refuses a duplicate name, and invariant I8
+    /// says every component is registered. This guard covers the gap: a component used without ever
+    /// being registered. Debug-only because it costs a map lookup and a string compare per insert of
+    /// a new type, and because CI runs the whole suite in debug *and* release.
+    #[cfg(debug_assertions)]
+    fn guard_against_name_collision<T: Component>(&mut self, id: ComponentId) {
+        let name = T::type_name();
+        match self.component_names.get(&id) {
+            Some(existing) => debug_assert_eq!(
+                existing, &name,
+                "two components share the canonical name hash: `{existing}` and `{name}` both map \
+                 to {id}. Canonical names must be unique (ADR 0017) -- rename one, or give it an \
+                 explicit #[reflect(name = \"...\")]"
+            ),
+            None => {
+                self.component_names.insert(id, name);
+            }
+        }
+    }
+
+    /// No-op in release builds. See the debug version for what it does and why.
+    #[cfg(not(debug_assertions))]
+    fn guard_against_name_collision<T: Component>(&mut self, _id: ComponentId) {}
 
     /// Stores an engine service, returning the previous value if one was present.
     ///
@@ -331,6 +370,7 @@ impl World {
         };
         let tick = self.tick;
         let id = ComponentId::of::<T>();
+        self.guard_against_name_collision::<T>(id);
 
         // Already present: overwrite without changing archetype.
         if self.archetypes[location.archetype].has(id) {
