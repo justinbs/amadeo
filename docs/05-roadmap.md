@@ -99,7 +99,10 @@ of a milestone.
   it over stdio. **`amadeo replay` closed M0's carried-over separate-process replay check**, which CI
   now runs in the determinism job against `games/quad-demo/replays/wander.replay`.
 - `amadeo-assets` — virtual FS, handles, async load with load-order isolation, hot reload, import
-  pipeline, text sidecar metadata, placeholder assets on failure.
+  pipeline, text sidecar metadata, placeholder assets on failure. **Q4 is settled (ADR 0020):** an
+  asset is named by a declared `id` in its sidecar, defaulting to the filename stem on import, so
+  moving a file breaks nothing. `assets.list` must exist before the id becomes the reference syntax,
+  or the first agent to author a scene has to guess.
 - ✅ **Transform hierarchy** — `GlobalTransform` plus `propagate_transforms`, excluded from the state
   hash because it is derived (ADR 0019). Still to do in this line: sprite batcher, textures, cameras.
 - Game logic layer, per the Q1 decision: **nothing to build.** ADR 0011 settled this as "Rust systems

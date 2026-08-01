@@ -26,18 +26,6 @@ sprites at 60 fps). A spike of three prototypes would measure less than the real
 
 ---
 
-## Q4 · P1 · Asset identity: stable paths or GUIDs?
-
-Paths are readable and diff-friendly (serves I1) but break on move/rename. GUIDs survive moves but are
-opaque and are precisely what makes Unity's scene files unreadable to humans and agents alike.
-
-Prior: **stable paths as primary identity, plus a rename-tracking tool** (`amadeo mv` that fixes
-references). Prioritizes legibility, and the refactoring pain is tooling-solvable.
-
-Needs an ADR in M1.
-
----
-
 ## Q12 · P1 · `Service: Send + Sync` excludes every non-`Sync` runtime
 
 Found by the Q1 spike (ADR 0011), which could not put a script VM in the world.
@@ -158,6 +146,7 @@ be less coupled than they look. Decide in M2.
 | Reflection shape | Value tree plus two derives, not dynamic field access; metadata vocabulary fixed | `adr/0012` |
 | Is reflection optional? | No — `Component: Reflect` makes I8 a compiler-enforced bound | `adr/0013` |
 | **Q13** — `ComponentId` derivation | **The canonical name** (`Reflect::type_name`), not the Rust path. Moving a component between crates is free; renaming one is a deliberate, visible change | `adr/0017` |
+| **Q4** — asset identity | **A declared `id` in the asset's sidecar**, not its path and not a GUID. Defaults to the filename stem on import, so it reads like a path but survives a move. Duplicate ids refused at scan time, naming both files | `adr/0020` |
 | **Q3** (two thirds) — transform and sort order | **One 3D `Transform`**, 2D is its degenerate case; rotation is Euler degrees so it stays hand-writable. **`SortOrder`** replaces `Quad::layer` and dominates depth. Pipeline shape still open | `adr/0018` |
 | **Q2** — scene file syntax | **A custom, indentation-based, line-oriented format.** Chosen by Justin from four hand-written candidates; TOML is the fallback, *not* KDL | `adr/0014` |
 | Where hierarchy components live | `amadeo-transform`, below `amadeo-scene` — render, physics, and anim all need transforms | `adr/0015` |

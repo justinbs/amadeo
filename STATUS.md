@@ -3,7 +3,7 @@
 **Last updated:** 2026-07-31 (session 6)
 **Current phase:** **M0 complete. M1 well under way** — reflection, the scene format, the agent's read
 layer, **and the agent protocol plus a working `amadeo` CLI** have all landed. What remains in M1 is
-the 2D renderer, assets, snapshots, and the small game that closes the exit gate. Q3 and Q13 both
+the 2D renderer, assets, snapshots, and the small game that closes the exit gate. Q3, Q13 and Q4 all
 closed too, so nothing is blocked.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). **Pushed as of session 6**,
 which means CI has started running for the first time — see "CI" below.
@@ -48,20 +48,28 @@ gate 4 in particular ("`describe` output is sufficient to write a new component 
 engine source") is testable today by actually doing it. Gate 1 (a complete small 2D game) still needs
 the sprite renderer, which ADR 0018 has now unblocked. Gate 5 (golden replays still pass) holds.
 
-**No blockers of any kind.** Q14, Q13, and two thirds of Q3 all closed in session 6, each built the
-same session it was decided.
+**No blockers of any kind.** Q14, Q13, Q4, and two thirds of Q3 all closed in session 6 — every one
+of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**Build the 2D renderer** — sprite batcher, textures, and the pipeline decision that Q3 deliberately
-left open. Everything it needs is now settled: `Transform`, `SortOrder`, and `GlobalTransform` all
-exist, and `RenderBackend` means the pipeline shape is chosen *inside* the batcher against a real
-throughput number (`docs/04-subsystems.md` §4 suggests 20k sprites at 60 fps) rather than argued
-about beforehand.
+**Build `amadeo-assets`** to ADR 0020. It is the last thing gating two others: sprite **textures**
+(so the 2D renderer can draw something other than a coloured rectangle) and **prefab instancing**
+(`instantiate` still refuses a `from` line, saying exactly why).
 
-The renderer currently reads `Transform` directly and ignores hierarchy. Switching it to
-`GlobalTransform` is a small change and the point of having built propagation — worth doing as part
-of the batcher work rather than as a separate pass.
+Q4 is settled: an asset is named by a declared `id` in its sidecar, defaulting to the filename stem
+on import so it reads like a path but survives a move. Two things ADR 0020 asks for that are easy to
+skip and shouldn't be:
+
+- **`assets.list` before the id becomes the reference syntax.** Otherwise the first agent to author a
+  scene has to guess an id, which is the plausible-but-wrong failure Pillar 2 exists to kill.
+- **Duplicate ids refused at scan time, naming both files** — the same treatment `ComponentRegistry`
+  gives duplicate component names.
+
+Then the sprite batcher, which is where **Q3's remaining third** (pipeline shape) gets decided —
+against a real throughput number (`docs/04-subsystems.md` §4 suggests 20k sprites at 60 fps) rather
+than argued beforehand. `Transform`, `SortOrder`, and `GlobalTransform` are all settled and the
+renderer already reads the composed transform, so nothing else is in the way.
 
 Then, in order:
 
@@ -71,7 +79,8 @@ Then, in order:
    in the protocol is waiting on.
 2. **`snapshot.take` / `snapshot.restore`.** The Q1 spike found re-simulation, not compilation, is
    what degrades the iteration loop — 382 ms to reach 5 simulated minutes, growing linearly.
-3. **`amadeo-assets`** — needed by prefab instancing, and blocked on Q4 (paths vs GUIDs).
+3. **Q7 — prefab override semantics**, which `amadeo-assets` makes reachable and which is the
+   hardest design problem left in the scene subsystem.
 
 **Three things are undecided rather than unbuilt**, all in `docs/06-open-questions.md`:
 
@@ -81,11 +90,11 @@ Then, in order:
 - **Q7 — prefab override semantics.** The format records overrides visibly (the I1 requirement), but
   what they *mean* when a prefab changes under an instance is undesigned. Study Unity's and Godot's
   failure modes first.
-- **Q4 — asset identity: stable paths or GUIDs.** Needs an ADR in M1; blocks `amadeo-assets`, which
-  blocks prefab instancing.
+- **Q12 — `Service: Send + Sync`.** Not moot: a `kira` audio manager, an asset loader holding a file
+  watcher, and a `wgpu` surface all hit it in M3. Decide when the first real offender lands.
 
-Prefab *instancing* is unbuilt rather than undecided — it needs `amadeo-assets` to resolve a path at
-all, which is why `instantiate` refuses a `from` line with an error saying exactly that.
+Prefab *instancing* is unbuilt rather than undecided — it needs `amadeo-assets` to resolve
+an id, which is why `instantiate` refuses a `from` line with an error saying exactly that.
 
 ## Q1 is resolved — ADR 0011
 
@@ -149,6 +158,8 @@ optimisation levels) at 1.24× runtime cost, and it is the same artefact M5's we
 - **`spikes/` exists** for prototypes that answer a question with a measurement. Separate cargo
   workspaces, frozen once their ADR is written. See `spikes/README.md`.
 
+- **Q4 resolved — an asset is named by a declared `id` in its sidecar**, not its path and not a GUID.
+  Defaults to the filename stem on import, so it reads like a path and survives a move. ADR 0020.
 - **Q13 resolved — `ComponentId` is the hash of a component's canonical name**, not its Rust path.
   Moving a component between crates is free; renaming one is a deliberate, visible change. ADR 0017.
 - **Q3 resolved, two thirds of it — one 3D `Transform`, and an explicit `SortOrder`.** 2D is the
