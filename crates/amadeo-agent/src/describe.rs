@@ -2,7 +2,7 @@
 //!
 //! Pillar 2 of `docs/03-ai-native-design.md`. This is what `amadeo describe` prints, and the point
 //! of it is that the answer is **generated from the code**: never a stale doc, never a guess. If the
-//! schema says `Transform2d` has no `rotation_degrees` field, that is known before the code is
+//! schema says `Transform` has no `rotation_degrees` field, that is known before the code is
 //! written rather than after a confusing debug session.
 
 use crate::json::Json;
@@ -19,7 +19,7 @@ pub const DESCRIBE_FORMAT_VERSION: u32 = 1;
 ///
 /// ```text
 /// {
-///   "components": { "Transform2d": { ... } },
+///   "components": { "Transform": { ... } },
 ///   "format_version": 1
 /// }
 /// ```

@@ -9,11 +9,11 @@
 use amadeo_agent::{describe, entity, query, value_to_json};
 use amadeo_ecs::{ComponentRegistry, World};
 use amadeo_reflect::Value;
-use amadeo_transform::{Parent, Transform2d};
+use amadeo_transform::{Parent, Transform};
 
 fn registry() -> ComponentRegistry {
     let mut registry = ComponentRegistry::new();
-    registry.register::<Transform2d>().expect("registers");
+    registry.register::<Transform>().expect("registers");
     registry.register::<Parent>().expect("registers");
     registry
 }
@@ -25,21 +25,21 @@ fn describe_carries_everything_needed_to_use_a_component_unseen() {
     let schema = describe(&registry()).to_pretty();
 
     // The name you write in a scene file.
-    assert!(schema.contains(r#""Transform2d""#), "{schema}");
+    assert!(schema.contains(r#""Transform""#), "{schema}");
     // What the type is for, in the author's own words.
     assert!(
-        schema.contains("Where an entity is in 2D space."),
+        schema.contains("Where an entity is, how it is turned, and how big it is."),
         "{schema}"
     );
     // The exact field names -- the thing guessing gets wrong.
     assert!(schema.contains(r#""name": "rotation""#), "{schema}");
     // The field's type, so a list is not mistaken for a scalar.
-    assert!(schema.contains(r#""type": "array<f32, 2>""#), "{schema}");
-    // The unit, which is what stops degrees being passed to a radians field.
-    assert!(schema.contains(r#""unit": "rad""#), "{schema}");
+    assert!(schema.contains(r#""type": "array<f32, 3>""#), "{schema}");
+    // The unit, which is what stops radians being passed to a degrees field.
+    assert!(schema.contains(r#""unit": "deg""#), "{schema}");
     // And the doc comment, which is the only explanation an agent gets.
     assert!(
-        schema.contains("Rotation in radians, counter-clockwise."),
+        schema.contains("Rotation in degrees, applied Z then X then Y."),
         "{schema}"
     );
 }
@@ -56,7 +56,7 @@ fn describe_is_byte_stable_across_runs() {
     // ...including when the registry was built in a different order.
     let mut reversed = ComponentRegistry::new();
     reversed.register::<Parent>().expect("registers");
-    reversed.register::<Transform2d>().expect("registers");
+    reversed.register::<Transform>().expect("registers");
     assert_eq!(
         describe(&registry()).to_pretty(),
         describe(&reversed).to_pretty()
@@ -105,7 +105,7 @@ fn absent_metadata_is_omitted_rather_than_emitted_as_null() {
 fn replication_is_reported_only_where_it_says_something() {
     let schema = describe(&registry()).to_pretty();
 
-    // Transform2d's fields all replicate, so the annotation is there...
+    // Transform's fields all replicate, so the annotation is there...
     assert!(schema.contains(r#""sync": "on_change""#), "{schema}");
     assert!(schema.contains(r#""interpolate": "angular""#), "{schema}");
 
@@ -128,18 +128,18 @@ fn an_entity_reports_its_components_without_anyone_knowing_the_types() {
     let mut world = World::new();
 
     let room = world.spawn();
-    world.insert(room, Transform2d::at(0.0, 0.0));
+    world.insert(room, Transform::at(0.0, 0.0));
     let lamp = world.spawn();
-    world.insert(lamp, Transform2d::at(1.0, 2.5));
+    world.insert(lamp, Transform::at(1.0, 2.5));
     world.insert(lamp, Parent(room));
 
     let dump = entity(&world, &registry, lamp).to_pretty();
 
-    assert!(dump.contains(r#""Transform2d""#), "{dump}");
+    assert!(dump.contains(r#""Transform""#), "{dump}");
     assert!(dump.contains(r#""Parent""#), "{dump}");
     // Values come through, with floats still looking like floats.
     assert!(dump.contains("2.5"), "{dump}");
-    assert!(dump.contains(r#""rotation": 0.0"#), "{dump}");
+    assert!(dump.contains(r#""rotation": ["#), "{dump}");
 }
 
 #[test]
@@ -161,18 +161,18 @@ fn a_query_narrows_to_entities_having_every_named_component() {
     let mut world = World::new();
 
     let root = world.spawn();
-    world.insert(root, Transform2d::at(0.0, 0.0));
+    world.insert(root, Transform::at(0.0, 0.0));
 
     let child = world.spawn();
-    world.insert(child, Transform2d::at(1.0, 0.0));
+    world.insert(child, Transform::at(1.0, 0.0));
     world.insert(child, Parent(root));
 
     // Everything with a transform.
-    let all = query(&world, &registry, &["Transform2d"]).to_compact();
+    let all = query(&world, &registry, &["Transform"]).to_compact();
     assert!(all.starts_with(r#"{"count":2,"#), "{all}");
 
     // Only the ones that are children.
-    let children = query(&world, &registry, &["Transform2d", "Parent"]).to_compact();
+    let children = query(&world, &registry, &["Transform", "Parent"]).to_compact();
     assert!(children.starts_with(r#"{"count":1,"#), "{children}");
 
     // An empty filter is "show me everything".
@@ -187,7 +187,7 @@ fn a_query_for_an_unregistered_name_narrows_to_nothing() {
     let registry = registry();
     let mut world = World::new();
     let handle = world.spawn();
-    world.insert(handle, Transform2d::default());
+    world.insert(handle, Transform::default());
 
     let found = query(&world, &registry, &["Nonsense"]).to_compact();
     assert!(found.starts_with(r#"{"count":0,"#), "{found}");
@@ -202,7 +202,7 @@ fn query_output_is_stable_regardless_of_storage_churn() {
     let mut direct = World::new();
     for index in 0..3 {
         let handle = direct.spawn();
-        direct.insert(handle, Transform2d::at(index as f32, 0.0));
+        direct.insert(handle, Transform::at(index as f32, 0.0));
     }
 
     let mut churned = World::new();
@@ -210,13 +210,13 @@ fn query_output_is_stable_regardless_of_storage_churn() {
     churned.despawn(scratch);
     for index in 0..3 {
         let handle = churned.spawn();
-        churned.insert(handle, Transform2d::at(index as f32, 0.0));
+        churned.insert(handle, Transform::at(index as f32, 0.0));
     }
 
     // Not identical -- the churned world's handles have a bumped generation -- but the *shape* and
     // ordering must match, which is what `World::entities` sorting buys.
-    let a = query(&direct, &registry, &["Transform2d"]).to_pretty();
-    let b = query(&churned, &registry, &["Transform2d"]).to_pretty();
+    let a = query(&direct, &registry, &["Transform"]).to_pretty();
+    let b = query(&churned, &registry, &["Transform"]).to_pretty();
     assert_eq!(a.lines().count(), b.lines().count(), "\n{a}\n---\n{b}");
     assert_eq!(
         a.replace("\"generation\": 0", "\"generation\": X"),

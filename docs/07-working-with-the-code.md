@@ -119,7 +119,7 @@ up, the way `cargo` and `git` do.
 | `amadeo status --ticks 600` | tick, state hash, and what is registered, after 600 ticks |
 | `amadeo describe` | the whole component schema, as JSON |
 | `amadeo describe Velocity` | one type: fields, units, ranges, docs |
-| `amadeo query Transform2d Player` | entities carrying **all** of those components |
+| `amadeo query Transform Player` | entities carrying **all** of those components |
 | `amadeo entity 5` | one entity's components and values |
 | `amadeo schedule Simulation` | systems in resolved execution order |
 | `amadeo call <method> --params '{...}'` | any protocol method, so the CLI never lags the protocol |
@@ -129,7 +129,7 @@ up, the way `cargo` and `git` do.
 
 **`fmt` and `check` are different questions.** `fmt` asks "is this file written canonically" and is
 pure syntax, so it runs in the CLI. `check` asks "would this scene load" — which means knowing that
-`Transform2d` exists and has a `position` field — so it launches the game. A file can be perfectly
+`Transform` exists and has a `translation` field — so it launches the game. A file can be perfectly
 formatted and still name a component nobody registered.
 
 Everything except `fmt` compiles and launches the game, because a game's components are Rust types in
@@ -404,7 +404,7 @@ fn enemy_ai(world: &mut World) {
     // A resource and the entities, in the same pass. `with_resource_taken` lifts the RNG out
     // so the query can still borrow the world -- see the entry above.
     world.with_resource_taken::<SimRng, ()>(|world, rng| {
-        world.for_each_triple_mut::<Enemy, Velocity, Transform2d>(
+        world.for_each_triple_mut::<Enemy, Velocity, Transform>(
             |_entity, enemy, velocity, transform| {
                 *velocity = decide(enemy, transform.position, rng);
             },
@@ -429,7 +429,7 @@ write back:
 
 ```rust
 let enemies: Vec<(Entity, Enemy, [f32; 2])> = world
-    .iter_pair::<Enemy, Transform2d>()
+    .iter_pair::<Enemy, Transform>()
     .map(|(entity, enemy, transform)| (entity, *enemy, transform.position))
     .collect();
 
@@ -493,7 +493,7 @@ and wants to know what the type is *for*. Implementation history is noise there:
 // Moved here from `amadeo-render` by ADR 0015 — true, useful to a maintainer, and pure noise in a
 // schema dump. So it is `//`, not `///`.
 #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
-pub struct Transform2d { /* ... */ }
+pub struct Transform { /* ... */ }
 ```
 
 Rule of thumb: **`///` answers "how do I use this", `//` answers "why is it like this".** Both are
@@ -513,7 +513,7 @@ scene corridor_a
 version 1
 
 entity a1 "Corridor"           # entity <id> "<name>"
-  Transform2d                  # a component
+  Transform                  # a component
     position 0.0 0.0           # a field; several values on a line is a list
     rotation 0.0
 
@@ -549,7 +549,7 @@ rather than untidy, and you get a line-numbered error instead of a guess. Tabs a
 
 **Two layers.** `amadeo-scene` today is layer 1 — syntax only, no schema. It will happily parse a
 scene naming a component that does not exist, which is what lets `amadeo fmt` work on a file whose
-module is not loaded. Checking that `Transform2d` exists and has a `position` field is layer 2,
+module is not loaded. Checking that `Transform` exists and has a `translation` field is layer 2,
 against the reflection registry, and is not built yet.
 
 ### Pattern: the game binary hosts the agent, and the CLI launches it
@@ -586,7 +586,7 @@ unknown method lists both halves in one list.
 
 ```rust
 // 1. Register the components you use, so `describe` can see them and scenes can name them.
-app.register_component::<Transform2d>()?;
+app.register_component::<Transform>()?;
 app.register_component::<Velocity>()?;
 
 // 2. Hand over, before any window exists.

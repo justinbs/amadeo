@@ -3,7 +3,8 @@
 **Last updated:** 2026-07-31 (session 6)
 **Current phase:** **M0 complete. M1 well under way** — reflection, the scene format, the agent's read
 layer, **and the agent protocol plus a working `amadeo` CLI** have all landed. What remains in M1 is
-the 2D renderer (blocked on Q3), assets, snapshots, and the small game that closes the exit gate.
+the 2D renderer, assets, snapshots, and the small game that closes the exit gate. Q3 and Q13 both
+closed too, so nothing is blocked.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private) — **nothing pushed yet**
 
 ---
@@ -15,7 +16,7 @@ resolving Q1. Session 5 built most of M1's foundations.
 
 **Twelve crates plus one game**, all tested: `amadeo-derive`, `amadeo-core`, `amadeo-reflect`,
 `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-input`, `amadeo-render`, `amadeo-scene`,
-`amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`. **476 tests passing**; fmt, clippy
+`amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`. **480 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Four things work end to end today:
@@ -44,23 +45,23 @@ checkpoints asserted, and CI runs it in the determinism job.
 done. Gates 2 and 4 describe verifying and authoring *through* the CLI and RPC, which now exist —
 gate 4 in particular ("`describe` output is sufficient to write a new component without reading
 engine source") is testable today by actually doing it. Gate 1 (a complete small 2D game) still needs
-the sprite renderer, so it waits on Q3. Gate 5 (golden replays still pass) holds.
+the sprite renderer, which ADR 0018 has now unblocked. Gate 5 (golden replays still pass) holds.
 
-**No blockers of any kind.** Q14 was the last one; it closed in session 6 and was built the same
-session.
+**No blockers of any kind.** Q14, Q13, and two thirds of Q3 all closed in session 6, each built the
+same session it was decided.
 
 ## The single most important thing to do next
 
-**Resolve Q3 — how 2D and 3D coexist in the renderer.** It is now the highest-priority open question
-and it blocks two separate things: the sprite renderer that M1's exit gate 1 needs, and
-`GlobalTransform` propagation, which has been waiting since ADR 0015.
+**Build `GlobalTransform` and its propagation system.** ADR 0018 unblocked it by settling what a
+transform is, and it has been waiting since ADR 0015. Composing a child transform with its parent is
+the easy part; what was missing was the decision.
 
-It is the same shape of question as Q1 and Q2, both of which were settled by building the candidates
-rather than arguing about them — so the likely move is a `spikes/q3-2d-3d/` workspace with the
-options built far enough to compare. Three are written up in `docs/04-subsystems.md` §4: a unified
-orthographic pipeline with a specialised sprite batcher, two pipelines sharing a render graph, or 2D
-as a compositing layer over 3D. Expensive to reverse, so it wants an ADR before M1's 2D work rather
-than before M2's 3D work.
+`GlobalTransform` is a **computed 4x4 matrix** — never authored, never written to a scene file, and
+therefore free to be whatever the maths wants rather than whatever a human can type. That is what
+lets the authored `Transform` stay Euler-degrees and hand-writable.
+
+After that the 2D renderer is unblocked too: it can be written against `Transform` and `SortOrder`
+without waiting for the pipeline choice, which ADR 0018 deliberately deferred.
 
 Then, in order:
 
@@ -70,18 +71,19 @@ Then, in order:
    in the protocol is waiting on.
 2. **`snapshot.take` / `snapshot.restore`.** The Q1 spike found re-simulation, not compilation, is
    what degrades the iteration loop — 382 ms to reach 5 simulated minutes, growing linearly.
-3. **2D rendering** — sprite batcher, textures, layers. Blocked on Q3, above.
+3. **2D rendering** — sprite batcher, textures. No longer blocked: `Transform` and `SortOrder` are
+   settled, and the pipeline choice is made *inside* the batcher rather than before it.
 
 **Three things are undecided rather than unbuilt**, all in `docs/06-open-questions.md`:
 
-- **Q3 — how 2D and 3D coexist.** Blocks both the sprite renderer and transform propagation. The
-  highest-priority open question now that Q14 has closed, and the thing to do next.
+- **Q3 (the last third) — which render pipeline shape.** Dropped to P2 by ADR 0018, which settled the
+  two expensive parts. `RenderBackend` isolates what remains, so it blocks nothing; decide it while
+  writing the sprite batcher, against a real throughput number.
 - **Q7 — prefab override semantics.** The format records overrides visibly (the I1 requirement), but
   what they *mean* when a prefab changes under an instance is undesigned. Study Unity's and Godot's
   failure modes first.
-- **Q13 — `ComponentId` from code location vs canonical name.** Found while moving `Transform2d`:
-  a component's id is the hash of its *fully-qualified path*, so moving a type between crates
-  invalidates every state hash containing it. Free this time; not always.
+- **Q4 — asset identity: stable paths or GUIDs.** Needs an ADR in M1; blocks `amadeo-assets`, which
+  blocks prefab instancing.
 
 Prefab *instancing* is unbuilt rather than undecided — it needs `amadeo-assets` to resolve a path at
 all, which is why `instantiate` refuses a `from` line with an error saying exactly that.
@@ -147,6 +149,11 @@ optimisation levels) at 1.24× runtime cost, and it is the same artefact M5's we
 - **`spikes/` exists** for prototypes that answer a question with a measurement. Separate cargo
   workspaces, frozen once their ADR is written. See `spikes/README.md`.
 
+- **Q13 resolved — `ComponentId` is the hash of a component's canonical name**, not its Rust path.
+  Moving a component between crates is free; renaming one is a deliberate, visible change. ADR 0017.
+- **Q3 resolved, two thirds of it — one 3D `Transform`, and an explicit `SortOrder`.** 2D is the
+  degenerate case rather than a separate type; rotation is Euler degrees so it stays hand-writable.
+  The pipeline shape is deliberately still open. ADR 0018.
 - **Q14 resolved — the game binary hosts the agent; the CLI launches it.** One-shot JSON-RPC over
   stdio, hand-written parser, `App` owns the `ComponentRegistry`. See `docs/adr/0016`.
 
@@ -223,7 +230,7 @@ Verified on this machine (2026-07-30):
   *during* a flush wait for the next one, deliberately — an unbounded loop inside one flush would
   hang, which is far worse to diagnose than a one-stage delay.
 
-- ✅ `amadeo-render` **abstraction and null backend** — `Transform2d`, `Quad`, `Camera2d`, the
+- ✅ `amadeo-render` **abstraction and null backend** — `Transform`, `Quad`, `Camera2d`, the
   `RenderBackend` trait, `NullBackend` (records what *would* have been drawn, so draw calls are
   assertable with no GPU), and the `render_quads` collection pass. Draw order is by explicit
   `Quad::layer` with a stable sort, never by iteration order.
@@ -253,7 +260,7 @@ Verified on this machine (2026-07-30):
   never re-exported, and `[T; N]` had no `StableHash` impl.
 - ✅ **`Component: Reflect`** (ADR 0013) — invariant I8 is now enforced by the compiler rather than by
   remembering. An unreflectable type cannot be a component. Every existing component converted to
-  `#[derive(StableHash, Reflect)]`, hand-written hash impls deleted, and `Transform2d`/`Quad`/
+  `#[derive(StableHash, Reflect)]`, hand-written hash impls deleted, and `Transform`/`Quad`/
   `Camera2d` annotated with units, ranges, and ADR 0006 replication policies.
 - ✅ **Q2 resolved and `amadeo-scene` layer 1 built** (ADR 0014). Justin chose a custom,
   indentation-based format from four hand-written candidates in `spikes/q2-scene-format/`. Parser
@@ -271,7 +278,7 @@ Verified on this machine (2026-07-30):
   has no schema, and must still fill an `f32` field. Floats accept any numeric value; integers stay
   strict, since an out-of-range integer is a mistake rather than an approximation.
 
-- ✅ **`amadeo-transform`** (ADR 0015) — a new crate holding `Transform2d` (moved out of
+- ✅ **`amadeo-transform`** (ADR 0015) — a new crate holding `Transform` (moved out of
   `amadeo-render`) and `Parent`. Resolves a straight contradiction between `CLAUDE.md` §4 and
   `docs/04` §3 about where hierarchy lives; the `CLAUDE.md` note was a dependency-direction error,
   since render, physics, and animation all sit *below* `amadeo-scene` and all need transforms.
@@ -323,7 +330,7 @@ Verified on this machine (2026-07-30):
   CLI turns that into `file:line` because it is the side that still has the text. One launch covers
   every file named, since a build per scene would make checking a directory unusable.
 
-**Verified green: 476 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+**Verified green: 480 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 Two things found by running it rather than by thinking about it:
 
@@ -339,7 +346,7 @@ Two things found by running it rather than by thinking about it:
 **The golden replay did not need regenerating**, which was not guaranteed. The derive sorts fields by
 name, so any component whose fields were not already alphabetical changes fingerprint. The committed
 fixture happens to use only `Position { x, y }` and `Velocity { x, y }` — alphabetical, scalar, no
-arrays — so its hashes are byte-identical. `Transform2d`, `Quad`, and `Camera2d` *did* change, and
+arrays — so its hashes are byte-identical. `Transform`, `Quad`, and `Camera2d` *did* change, and
 nothing asserts on them. Reasoning in ADR 0013 so nobody re-derives it from scratch.
 
 Carried into M1 rather than counted as done — **now closed, in session 6:**
@@ -496,5 +503,19 @@ Then `git log --oneline -20`. Commit messages explain *why*, deliberately.
   afterwards, because a world whose construction consumed randomness would then differ from the one
   recorded and the divergence would look like a real regression.
 
-  476 tests, all four §4b commands green, and CI now replays a committed recording in a fresh
-  process. **Q3 is the top open question and the thing to do next.**
+  Then two decisions that had been waiting, each built the same session it was made. **Q13**
+  (ADR 0017): `ComponentId` now hashes a component's canonical name rather than its Rust path, so
+  moving a type between crates stopped being a silent replay-invalidating change. Both replays were
+  regenerated, and confirmed the diagnosis rather than merely obeying it — only the checkpoint lines
+  moved, with byte-identical input streams.
+
+  Then **Q3**, which turned out to be three decisions wearing one question. Reading the code showed
+  the framing everyone uses — one pipeline or two — is the *cheapest* of the three to reverse, since
+  `RenderBackend` isolates it entirely, while the two expensive ones are about data: what a transform
+  is, and what decides draw order. So a three-pipeline spike would have measured the wrong thing.
+  **ADR 0018** settles the data half: one 3D `Transform` with 2D as its degenerate case, rotation as
+  Euler degrees so it stays hand-writable, and `SortOrder` replacing `Quad::layer`. The pipeline
+  choice is deliberately deferred to when the sprite batcher exists and can be measured.
+
+  480 tests, all four §4b commands green, CI replaying a committed recording in a fresh process.
+  **`GlobalTransform` propagation is next** — waiting since ADR 0015, and now unblocked.

@@ -178,7 +178,7 @@ pub enum TypeKind {
 pub struct TypeInfo {
     /// The canonical name. This is the registry key and what appears in text files.
     ///
-    /// Short by default (`Transform2d`, not `amadeo_render::components::Transform2d`) because a
+    /// Short by default (`Transform`, not `amadeo_render::components::Transform`) because a
     /// human types it into a scene file. Collisions are rejected at registration rather than
     /// silently resolved — see [`crate::TypeRegistry::register`].
     pub name: String,

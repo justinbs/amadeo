@@ -7,9 +7,9 @@
 //! A test using invented components would prove the plumbing. This proves the engine.
 
 use amadeo_ecs::{ComponentRegistry, World};
-use amadeo_render::Quad;
+use amadeo_render::{Quad, SortOrder};
 use amadeo_scene::{instantiate, parse, to_text};
-use amadeo_transform::Transform2d;
+use amadeo_transform::Transform;
 
 /// A fragment of the sort of level M3's horror slice needs.
 const SCENE: &str = "\
@@ -19,28 +19,31 @@ version 1
 entity floor \"Floor\"
   Quad
     color 0.243 0.286 0.333 1.0
-    layer 0
     size 12.0 0.4
-  Transform2d
-    position 0.0 -3.0
-    rotation 0.0
-    scale 1.0 1.0
+  SortOrder
+    order 0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 -3.0 0.0
 
   entity marker \"Marker\"
     Quad
       color 0.898 0.588 0.243 1.0
-      layer 10
       size 1.0 1.0
-    Transform2d
-      position 2.0 1.0
-      rotation 0.25
-      scale 2.0 2.0
+    SortOrder
+      order 10
+    Transform
+      rotation 0.0 0.0 45.0
+      scale 2.0 2.0 1.0
+      translation 2.0 1.0 0.0
 ";
 
 fn registry() -> ComponentRegistry {
     let mut registry = ComponentRegistry::new();
-    registry.register::<Transform2d>().expect("registers");
+    registry.register::<Transform>().expect("registers");
     registry.register::<Quad>().expect("registers");
+    registry.register::<SortOrder>().expect("registers");
     registry
 }
 
@@ -54,16 +57,16 @@ fn a_scene_file_loads_into_a_world_with_real_components() {
 
     let marker = loaded.entities["marker"];
     assert_eq!(
-        world.get::<Transform2d>(marker),
-        Some(&Transform2d {
-            position: [2.0, 1.0],
-            rotation: 0.25,
-            scale: [2.0, 2.0],
+        world.get::<Transform>(marker),
+        Some(&Transform {
+            translation: [2.0, 1.0, 0.0],
+            rotation: [0.0, 0.0, 45.0],
+            scale: [2.0, 2.0, 1.0],
         })
     );
     assert_eq!(
         world.get::<Quad>(marker),
-        Some(&Quad::new(1.0, 1.0, [0.898, 0.588, 0.243, 1.0]).on_layer(10))
+        Some(&Quad::new(1.0, 1.0, [0.898, 0.588, 0.243, 1.0]))
     );
 
     // Nesting came through as a recorded parent link.
@@ -84,18 +87,29 @@ fn the_scene_is_already_canonical() {
 
 #[test]
 fn a_loaded_scene_is_queryable_by_the_systems_that_will_draw_it() {
-    // The renderer reads (Transform2d, Quad) pairs. If a loaded scene did not answer that query,
+    // The renderer reads (Transform, Quad) pairs. If a loaded scene did not answer that query,
     // the format would be producing data the engine cannot use.
     let document = parse(SCENE).expect("parses");
     let mut world = World::new();
     instantiate(&document, &registry(), &mut world).expect("instantiates");
 
-    let drawable: Vec<i32> = world
-        .iter_pair::<Quad, Transform2d>()
-        .map(|(_entity, quad, _transform)| quad.layer)
+    let drawable: Vec<f32> = world
+        .iter_pair::<Quad, Transform>()
+        .map(|(_entity, quad, _transform)| quad.size[0])
         .collect();
     assert_eq!(drawable.len(), 2);
-    assert!(drawable.contains(&0) && drawable.contains(&10));
+    assert!(drawable.contains(&12.0) && drawable.contains(&1.0));
+
+    // Draw order is its own component now (ADR 0018), so it is queried separately rather than read
+    // off the quad.
+    let orders: Vec<i32> = world
+        .iter::<SortOrder>()
+        .map(|(_entity, o)| o.order)
+        .collect();
+    assert!(
+        orders.contains(&0) && orders.contains(&10),
+        "got: {orders:?}"
+    );
 }
 
 #[test]
@@ -114,7 +128,7 @@ fn loading_is_deterministic_across_worlds() {
 
 #[test]
 fn a_component_the_registry_does_not_know_names_the_real_ones() {
-    // The registry only has Transform2d and Quad. Asking for Camera2d -- a real engine type that
+    // The registry only has Transform and Quad. Asking for Camera2d -- a real engine type that
     // simply was not registered -- must say so and list what is available, because "which module
     // did I forget to load" is the actual question being asked.
     let source = "scene s\nversion 1\n\nentity a \"A\"\n  Camera2d\n    height 10.0\n";
@@ -127,7 +141,7 @@ fn a_component_the_registry_does_not_know_names_the_real_ones() {
 
     assert!(message.contains("entity `a`"), "{message}");
     assert!(message.contains("`Camera2d`"), "{message}");
-    assert!(message.contains("Quad, Transform2d"), "{message}");
+    assert!(message.contains("Quad, SortOrder, Transform"), "{message}");
     assert_eq!(world.entity_count(), 0, "and nothing is left behind");
 }
 
@@ -140,10 +154,10 @@ scene s
 version 1
 
 entity a \"A\"
-  Transform2d
-    position 0.0 0.0
+  Transform
     rotation_degrees 90.0
-    scale 1.0 1.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
 ";
     let document = parse(source).expect("parses");
     let mut world = World::new();
@@ -155,7 +169,7 @@ entity a \"A\"
         "{message}"
     );
     assert!(
-        message.contains("position, rotation, scale"),
+        message.contains("translation, rotation, scale"),
         "the message should list the real fields: {message}"
     );
 }

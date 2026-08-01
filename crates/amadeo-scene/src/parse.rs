@@ -2,7 +2,7 @@
 //!
 //! Layer 1 of ADR 0014: syntax only. This never consults the reflection registry, so a scene naming
 //! a component from an unloaded module still parses — which is what lets `amadeo fmt` work on any
-//! file. Checking that `Transform2d` exists and has a `position` field is layer 2's job.
+//! file. Checking that `Transform` exists and has a `position` field is layer 2's job.
 //!
 //! # Errors are the product here
 //!
@@ -510,7 +510,7 @@ impl Parser {
         let line = self.lines[self.cursor].clone();
         let tokens = tokenize(&line.text, line.number)?;
 
-        // `override Transform2d` carries the name in the second token; a plain component in the
+        // `override Transform` carries the name in the second token; a plain component in the
         // first.
         let name = if is_override {
             tokens

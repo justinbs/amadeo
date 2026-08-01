@@ -72,7 +72,7 @@ pub trait Component: 'static + Send + Sync + fmt::Debug + StableHash + Reflect {
 /// fully-qualified path.
 ///
 /// Using the path coupled a component's identity to where its code lived: moving
-/// `amadeo_render::components::Transform2d` to `amadeo_transform::Transform2d` silently changed its
+/// `amadeo_render::components::Transform` to `amadeo_transform::Transform` silently changed its
 /// id and would have invalidated every state hash containing it. A pure refactor is not supposed to
 /// be a replay-invalidating change, and nothing warned you.
 ///

@@ -134,7 +134,7 @@ impl App {
     /// text or inspected, which is invariant I8's whole concern.
     ///
     /// Engine components are not registered automatically. A game names the ones it uses, including
-    /// `Transform2d` and `Parent`, so the schema describes that game rather than everything the
+    /// `Transform` and `Parent`, so the schema describes that game rather than everything the
     /// engine could theoretically offer.
     ///
     /// # Errors

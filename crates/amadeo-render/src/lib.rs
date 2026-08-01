@@ -8,14 +8,14 @@
 //! ```
 //! use amadeo_ecs::World;
 //! use amadeo_render::{Camera2d, NullBackend, Quad, Renderer, render_quads};
-//! use amadeo_transform::Transform2d;
+//! use amadeo_transform::Transform;
 //!
 //! let mut world = World::new();
 //! world.insert_resource(Camera2d::default());
 //! world.insert_service(Renderer::new(Box::new(NullBackend::new(800, 600))));
 //!
 //! let entity = world.spawn();
-//! world.insert(entity, Transform2d::at(1.0, 0.0));
+//! world.insert(entity, Transform::at(1.0, 0.0));
 //! world.insert(entity, Quad::new(1.0, 1.0, [1.0, 0.0, 0.0, 1.0]));
 //!
 //! render_quads(&mut world);
@@ -41,14 +41,14 @@ mod components;
 mod gpu;
 
 pub use backend::{FrameData, NullBackend, QuadInstance, RenderBackend, RenderError};
-pub use components::{Camera2d, Quad};
+pub use components::{Camera2d, Quad, SortOrder};
 #[cfg(feature = "gpu")]
 pub use gpu::WgpuBackend;
 
 use amadeo_ecs::{Service, World};
-// Not re-exported: `Transform2d` belongs to `amadeo-transform` (ADR 0015), and two import paths to
+// Not re-exported: `Transform` belongs to `amadeo-transform` (ADR 0015), and two import paths to
 // one type is exactly the sort of thing that makes people wonder whether they are the same type.
-use amadeo_transform::Transform2d;
+use amadeo_transform::Transform;
 
 /// The label the app layer registers [`render_quads`] under.
 pub const RENDER_QUADS: &str = "render_quads";
@@ -135,9 +135,9 @@ impl Renderer {
 /// Registered in the app layer's `Render` stage, outside the deterministic zone. Does nothing if no
 /// [`Renderer`] service is installed.
 ///
-/// Quads are sorted by [`Quad::layer`] with a **stable** sort, so entities on the same layer keep
+/// Quads are sorted by [`SortOrder`] with a **stable** sort, so entities sharing an order keep
 /// their iteration order — which is itself deterministic (invariant I3). Draw order is therefore
-/// reproducible without being arbitrary.
+/// reproducible without being arbitrary. An entity with no [`SortOrder`] draws at zero.
 pub fn render_quads(world: &mut World) {
     if !world.has_service::<Renderer>() {
         return;
@@ -148,26 +148,41 @@ pub fn render_quads(world: &mut World) {
         .service::<Renderer>()
         .map_or(FrameData::default().clear_color, |r| r.clear_color);
 
-    // Layer is carried alongside so the sort can use it without re-reading the world.
-    let mut collected: Vec<(i32, QuadInstance)> = world
-        .iter_pair::<Transform2d, Quad>()
-        .map(|(_entity, transform, quad)| {
+    // Collected with its entity so the second pass can read `SortOrder`. Two passes rather than an
+    // `iter_triple` because ADR 0018 makes sort order **optional** — an entity without one draws at
+    // zero. Requiring it would mean forgetting it makes a quad silently invisible, which is a much
+    // worse first failure than drawing in the wrong order.
+    let collected: Vec<(amadeo_ecs::Entity, QuadInstance)> = world
+        .iter_pair::<Transform, Quad>()
+        .map(|(entity, transform, quad)| {
             (
-                quad.layer,
+                entity,
                 QuadInstance {
-                    center: transform.position,
+                    // The renderer is 2D; a `Transform` is 3D (ADR 0018). Depth within a sort order
+                    // is the pipeline decision that ADR deliberately left open, so z is dropped
+                    // here rather than guessed at.
+                    center: [transform.translation[0], transform.translation[1]],
                     size: [
                         quad.size[0] * transform.scale[0],
                         quad.size[1] * transform.scale[1],
                     ],
-                    rotation: transform.rotation,
+                    // Stored in degrees for hand-authoring; the shader wants radians.
+                    rotation: transform.rotation[2].to_radians(),
                     color: quad.color,
                 },
             )
         })
         .collect();
 
-    collected.sort_by_key(|(layer, _)| *layer);
+    let mut collected: Vec<(i32, QuadInstance)> = collected
+        .into_iter()
+        .map(|(entity, instance)| {
+            let order = world.get::<SortOrder>(entity).copied().unwrap_or_default();
+            (order.order, instance)
+        })
+        .collect();
+
+    collected.sort_by_key(|(order, _)| *order);
 
     let frame = FrameData {
         clear_color,
@@ -191,13 +206,11 @@ mod tests {
         world
     }
 
-    fn add_quad(world: &mut World, x: f32, layer: i32) -> amadeo_ecs::Entity {
+    fn add_quad(world: &mut World, x: f32, order: i32) -> amadeo_ecs::Entity {
         let entity = world.spawn();
-        world.insert(entity, Transform2d::at(x, 0.0));
-        world.insert(
-            entity,
-            Quad::new(1.0, 1.0, [1.0, 1.0, 1.0, 1.0]).on_layer(layer),
-        );
+        world.insert(entity, Transform::at(x, 0.0));
+        world.insert(entity, Quad::new(1.0, 1.0, [1.0, 1.0, 1.0, 1.0]));
+        world.insert(entity, SortOrder::new(order));
         entity
     }
 
@@ -229,7 +242,7 @@ mod tests {
 
         // A transform with no quad, and a quad with no transform: neither is drawable.
         let no_quad = world.spawn();
-        world.insert(no_quad, Transform2d::at(9.0, 9.0));
+        world.insert(no_quad, Transform::at(9.0, 9.0));
         let no_transform = world.spawn();
         world.insert(no_transform, Quad::default());
 
@@ -243,10 +256,10 @@ mod tests {
         let entity = world.spawn();
         world.insert(
             entity,
-            Transform2d {
-                position: [0.0, 0.0],
-                rotation: 0.5,
-                scale: [2.0, 3.0],
+            Transform {
+                translation: [0.0, 0.0, 0.0],
+                rotation: [0.0, 0.0, 90.0],
+                scale: [2.0, 3.0, 1.0],
             },
         );
         world.insert(entity, Quad::new(1.0, 1.0, [1.0, 1.0, 1.0, 1.0]));
@@ -254,11 +267,17 @@ mod tests {
         render_quads(&mut world);
         let quad = last_frame(&world).quads[0];
         assert_eq!(quad.size, [2.0, 3.0]);
-        assert_eq!(quad.rotation, 0.5);
+        // Authored in degrees (ADR 0018), handed to the backend in radians. The conversion happening
+        // exactly once, here, is the thing this pins.
+        assert!(
+            (quad.rotation - std::f32::consts::FRAC_PI_2).abs() < 1e-6,
+            "90 degrees should reach the backend as pi/2, got {}",
+            quad.rotation
+        );
     }
 
     #[test]
-    fn sorts_by_layer() {
+    fn sorts_by_sort_order() {
         let mut world = world_with_renderer();
         // Added out of layer order on purpose.
         add_quad(&mut world, 1.0, 5);
@@ -321,9 +340,9 @@ mod tests {
         world.advance_tick();
         world.advance_tick();
 
-        let before = world.changed_tick::<Transform2d>(entity);
+        let before = world.changed_tick::<Transform>(entity);
         render_quads(&mut world);
-        assert_eq!(world.changed_tick::<Transform2d>(entity), before);
+        assert_eq!(world.changed_tick::<Transform>(entity), before);
     }
 
     #[test]

@@ -354,7 +354,7 @@ fn check_scenes(paths: &[PathBuf], options: &Options) -> Result<()> {
                 None => path.display().to_string(),
             };
             // The component is deliberately not repeated here when the message already names it,
-            // which it does for every schema error. Three copies of `Transform2d` in one line is
+            // which it does for every schema error. Three copies of `Transform` in one line is
             // noise, and noise is what stops people reading diagnostics.
             let names_component =
                 component.is_some_and(|name| message.contains(&format!("`{name}`")));
@@ -522,7 +522,7 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
         "query" => {
             if rest.is_empty() {
                 bail!(
-                    "`amadeo query` needs at least one component, as in `amadeo query Transform2d`"
+                    "`amadeo query` needs at least one component, as in `amadeo query Transform`"
                 );
             }
             Command::Query {
@@ -630,12 +630,12 @@ mod tests {
     #[test]
     fn flags_may_appear_anywhere() {
         let (command, options) =
-            parse_args(&["--ticks", "600", "query", "Transform2d", "--compact"]).expect("parses");
+            parse_args(&["--ticks", "600", "query", "Transform", "--compact"]).expect("parses");
 
         assert_eq!(options.ticks, 600);
         assert!(options.compact);
         match command {
-            Command::Query { components } => assert_eq!(components, vec!["Transform2d"]),
+            Command::Query { components } => assert_eq!(components, vec!["Transform"]),
             other => panic!("expected query, got {other:?}"),
         }
     }
@@ -644,7 +644,7 @@ mod tests {
     fn query_with_no_components_says_what_to_type() {
         let error = parse_args(&["query"]).expect_err("needs a component");
         assert!(
-            error.to_string().contains("amadeo query Transform2d"),
+            error.to_string().contains("amadeo query Transform"),
             "got: {error}"
         );
     }

@@ -10,7 +10,7 @@ ticks 240
 200 axis move_x 0.0
 200 axis move_y 0.0
 
-checkpoint 1 86fcfc6ac5c99888
-checkpoint 60 480b25414a9a9cb6
-checkpoint 150 f9d42e027736ea1a
-checkpoint 240 ec64b560cc9aee66
+checkpoint 1 b385ac84939d68ac
+checkpoint 60 eac580344b8a7322
+checkpoint 150 cf4c77324de47c2a
+checkpoint 240 808a5b4f489ff20e

@@ -12,22 +12,22 @@
 //! ```
 //! use amadeo_agent::{describe, query};
 //! use amadeo_ecs::{ComponentRegistry, World};
-//! use amadeo_transform::{Parent, Transform2d};
+//! use amadeo_transform::{Parent, Transform};
 //!
 //! let mut registry = ComponentRegistry::new();
-//! registry.register::<Transform2d>().expect("registers");
+//! registry.register::<Transform>().expect("registers");
 //! registry.register::<Parent>().expect("registers");
 //!
 //! // "What can I do?" -- generated from the code, so never stale and never a guess.
 //! let schema = describe(&registry).to_pretty();
-//! assert!(schema.contains("\"unit\": \"rad\""));
+//! assert!(schema.contains("\"unit\": \"deg\""));
 //!
 //! // "What did I just do?"
 //! let mut world = World::new();
 //! let entity = world.spawn();
-//! world.insert(entity, Transform2d::at(1.0, 2.0));
+//! world.insert(entity, Transform::at(1.0, 2.0));
 //!
-//! let found = query(&world, &registry, &["Transform2d"]).to_compact();
+//! let found = query(&world, &registry, &["Transform"]).to_compact();
 //! assert!(found.starts_with(r#"{"count":1,"#));
 //! ```
 //!

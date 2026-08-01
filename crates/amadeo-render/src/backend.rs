@@ -30,7 +30,7 @@ pub enum RenderError {
 
 /// One quad, flattened into what a GPU needs.
 ///
-/// Produced by the collection pass from [`Transform2d`](amadeo_transform::Transform2d) and
+/// Produced by the collection pass from [`Transform`](amadeo_transform::Transform) and
 /// [`Quad`](crate::Quad). Kept deliberately flat and `Copy` so it can be uploaded to a buffer
 /// without further transformation.
 #[derive(Debug, Clone, Copy, PartialEq)]

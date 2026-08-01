@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 /// A parsed scene file.
 ///
 /// This is the *syntactic* model — layer 1 in ADR 0014. It knows the shape of the document but
-/// nothing about whether `Transform2d` is a real component or whether `position` is one of its
+/// nothing about whether `Transform` is a real component or whether `position` is one of its
 /// fields. That check is layer 2, against the reflection registry, and keeping the two apart is what
 /// lets `amadeo fmt` work on a scene referencing a module that is not loaded.
 #[derive(Debug, Clone, PartialEq)]

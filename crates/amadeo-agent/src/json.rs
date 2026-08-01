@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn pretty_output_is_indented_and_readable() {
         let document = Json::object([
-            ("name", Json::string("Transform2d")),
+            ("name", Json::string("Transform")),
             (
                 "fields",
                 Json::Array(vec![Json::object([("name", Json::string("position"))])]),
@@ -276,7 +276,7 @@ mod tests {
 
         assert_eq!(
             document.to_pretty(),
-            "{\n  \"fields\": [\n    {\n      \"name\": \"position\"\n    }\n  ],\n  \"name\": \"Transform2d\"\n}\n"
+            "{\n  \"fields\": [\n    {\n      \"name\": \"position\"\n    }\n  ],\n  \"name\": \"Transform\"\n}\n"
         );
     }
 

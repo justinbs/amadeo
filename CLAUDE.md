@@ -67,12 +67,13 @@ crates/
 ✅ amadeo-reflect     Value tree, TypeInfo schema, TypeRegistry. ADR 0012.
 ✅ amadeo-ecs         archetype SoA storage, queries, resources, services, deferred commands,
                      ComponentRegistry (builds a component from a name + a Value)
-✅ amadeo-transform   Transform2d, Parent. The spatial vocabulary render/physics/anim/scene share.
-                     ADR 0015. GlobalTransform and propagation arrive with M2.
+✅ amadeo-transform   Transform (3D; 2D is its degenerate case, ADR 0018), Parent. The spatial
+                     vocabulary render/physics/anim/scene share. ADR 0015. GlobalTransform is a
+                     computed matrix, never authored; propagation is next.
 ✅ amadeo-events      typed double-buffered queues, EventClock total ordering
 — amadeo-assets      virtual FS, async load, import pipeline, cache, hot-reload watch
 ✅ amadeo-input       action mapping, InputState, recording/replay, the .replay text format
-✅ amadeo-render      RenderBackend trait, NullBackend, Quad/Camera2d. wgpu behind the `gpu` feature.
+✅ amadeo-render      RenderBackend trait, NullBackend, Quad/SortOrder/Camera2d. wgpu behind `gpu`.
 — amadeo-audio       mixer, buses, spatialization (null backend required)
 — amadeo-physics     rapier integration behind engine traits
 — amadeo-anim        sprite anim, skeletal, state machines, tweens
@@ -99,14 +100,15 @@ spikes/              separate cargo workspaces holding the evidence behind an AD
                      written; excluded from the engine workspace. See spikes/README.md.
 ```
 
-**Note:** an earlier version of this section said `Transform2d` would move to `amadeo-scene` with the
+**Note:** an earlier version of this section said `Transform` would move to `amadeo-scene` with the
 hierarchy components. **That was wrong** and ADR 0015 corrects it: `amadeo-render`, `amadeo-physics`,
 and `amadeo-anim` all sit *below* `amadeo-scene` and all need transforms, so I6 makes that placement
 impossible. They live in `amadeo-transform`.
 
-**Careful:** `ComponentId` is the hash of a type's *fully-qualified* path, so **moving a component
-between crates or modules changes its id and every state hash containing it**. Check what a move
-invalidates before making one — see open question Q13.
+**Careful:** `ComponentId` is the hash of a component's **canonical name** (`Reflect::type_name`),
+not its Rust path — ADR 0017. So *moving* a component between crates is free, and **renaming one
+changes its id and every state hash containing it**. `#[reflect(name = "...")]` renames the Rust type
+without changing identity. Two components may not share a canonical name; the registry refuses it.
 
 ## 4b. Verifying the build
 

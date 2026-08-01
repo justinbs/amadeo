@@ -15,7 +15,7 @@ scene corridor_a
 version 1
 
 entity a1 \"Corridor\"
-  Transform2d
+  Transform
     position 0.0 0.0
     rotation 0.0
     scale 1.0 1.0
@@ -33,7 +33,7 @@ entity a1 \"Corridor\"
     override Door
       key_id \"rusted_key\"
       locked true
-    override Transform2d
+    override Transform
       position 4.0 0.0
 
   entity a4 \"Wanderer\"
@@ -70,7 +70,7 @@ version 1
 
 
 entity a1 \"Corridor\"     # the room itself
-  Transform2d
+  Transform
     scale 1.0 1.0
     position 0.0 0.0
     rotation 0.0

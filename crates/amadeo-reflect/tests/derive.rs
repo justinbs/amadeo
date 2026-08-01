@@ -164,7 +164,7 @@ struct Player;
 
 /// Registered under a different name than its Rust identifier.
 #[derive(Debug, PartialEq, Reflect)]
-#[reflect(name = "Transform2d")]
+#[reflect(name = "Transform")]
 struct InternalTransformRepresentation {
     /// World position.
     position: [f32; 2],
@@ -193,17 +193,17 @@ fn a_unit_struct_round_trips() {
 
 #[test]
 fn a_type_can_be_renamed_for_the_registry() {
-    assert_eq!(InternalTransformRepresentation::type_name(), "Transform2d");
+    assert_eq!(InternalTransformRepresentation::type_name(), "Transform");
     assert_eq!(
         InternalTransformRepresentation::type_info().name,
-        "Transform2d"
+        "Transform"
     );
 
     let mut registry = TypeRegistry::new();
     registry
         .register::<InternalTransformRepresentation>()
         .expect("registers");
-    assert!(registry.contains("Transform2d"));
+    assert!(registry.contains("Transform"));
 }
 
 #[test]

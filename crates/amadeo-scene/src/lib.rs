@@ -10,7 +10,7 @@
 //! version 1
 //!
 //! entity a1 \"Corridor\"
-//!   Transform2d
+//!   Transform
 //!     position 0.0 0.0
 //!     rotation 0.0
 //!

@@ -91,7 +91,7 @@ pub enum RegistryError {
 
 /// Every component the engine can build from a name and a [`Value`].
 ///
-/// This is the bridge between reflection and the ECS. `amadeo-reflect` knows what a `Transform2d`
+/// This is the bridge between reflection and the ECS. `amadeo-reflect` knows what a `Transform`
 /// *looks like*; this knows how to put one on an entity. A scene file needs both.
 ///
 /// It owns a [`TypeRegistry`] rather than sitting beside one, so [`ComponentRegistry::register`] is

@@ -16,12 +16,6 @@ pub struct Quad {
     /// Linear RGBA, each channel in `0.0..=1.0`.
     #[reflect(min = 0.0, max = 1.0)]
     pub color: [f32; 4],
-    /// Draw order. Higher values draw on top of lower ones.
-    ///
-    /// An explicit integer rather than an implied ordering, because iteration order is an
-    /// implementation detail and must never decide what appears in front (invariant I3 makes it
-    /// reproducible, but reproducible-and-arbitrary is still the wrong thing to rely on).
-    pub layer: i32,
 }
 
 impl Default for Quad {
@@ -29,31 +23,61 @@ impl Default for Quad {
         Self {
             size: [1.0, 1.0],
             color: [1.0, 1.0, 1.0, 1.0],
-            layer: 0,
         }
     }
 }
 
 impl Quad {
-    /// A quad of a given size and colour on layer zero.
+    /// A quad of a given size and colour.
     #[must_use]
     pub fn new(width: f32, height: f32, color: [f32; 4]) -> Self {
         Self {
             size: [width, height],
             color,
-            layer: 0,
         }
-    }
-
-    /// Places this quad on a draw layer.
-    #[must_use]
-    pub fn on_layer(mut self, layer: i32) -> Self {
-        self.layer = layer;
-        self
     }
 }
 
 impl Component for Quad {}
+
+/// What draws on top of what.
+///
+/// Higher values draw later, so they appear in front. Absent means zero.
+// Not a doc comment: this is the description `amadeo describe` prints.
+//
+// ADR 0018. This used to be `Quad::layer`, and it moved out for two reasons. It is not a property of
+// being a rectangle -- a mesh needs it too -- and having a per-primitive layer *and* a shared order
+// would mean two things deciding what is in front, which is how "why is this behind that" becomes a
+// half-hour question.
+//
+// Explicit data rather than an implied ordering, because iteration order is an implementation detail
+// and must never decide what appears in front. Invariant I3 makes iteration order reproducible, but
+// reproducible-and-arbitrary is still the wrong thing to rely on.
+//
+// In 3D this dominates the depth buffer rather than replacing it: within one `SortOrder`, opaque
+// geometry uses depth and transparent geometry sorts back to front. A 2D scene leaves everything at
+// one depth and distinguishes purely by this. "UI over the world" is a higher `SortOrder`, not a
+// separate concept.
+//
+// A named field rather than a tuple struct, which is what it started as: the reflection derive turns
+// a tuple struct into a newtype, and a newtype has no field name for a scene file to write. Every
+// other component in a `.scene` is an indented block of named fields, and `SortOrder` being the one
+// exception would be a format wart for the sake of two characters in Rust.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub struct SortOrder {
+    /// Higher draws later, so it appears in front.
+    pub order: i32,
+}
+
+impl SortOrder {
+    /// A sort order.
+    #[must_use]
+    pub fn new(order: i32) -> Self {
+        Self { order }
+    }
+}
+
+impl Component for SortOrder {}
 
 /// An orthographic 2D camera.
 ///
@@ -113,18 +137,29 @@ mod tests {
 
     #[test]
     fn quad_builder_reads_clearly() {
-        let quad = Quad::new(2.0, 3.0, [1.0, 0.0, 0.0, 1.0]).on_layer(5);
+        let quad = Quad::new(2.0, 3.0, [1.0, 0.0, 0.0, 1.0]);
         assert_eq!(quad.size, [2.0, 3.0]);
-        assert_eq!(quad.layer, 5);
+        assert_eq!(quad.color, [1.0, 0.0, 0.0, 1.0]);
     }
 
     #[test]
     fn components_hash_by_value() {
-        // Layer is part of the value, so a layer change is a state change.
         assert_ne!(
             stable_hash_of(&Quad::default()),
-            stable_hash_of(&Quad::default().on_layer(1))
+            stable_hash_of(&Quad::new(2.0, 2.0, [1.0, 1.0, 1.0, 1.0]))
         );
+        // Sort order is a component in its own right (ADR 0018), and part of the state hash --
+        // moving something in front of something else is a real change.
+        assert_ne!(
+            stable_hash_of(&SortOrder::default()),
+            stable_hash_of(&SortOrder::new(1))
+        );
+    }
+
+    #[test]
+    fn sort_order_defaults_to_zero() {
+        // The renderer treats an absent SortOrder as this, so the two must agree.
+        assert_eq!(SortOrder::default(), SortOrder::new(0));
     }
 
     #[test]

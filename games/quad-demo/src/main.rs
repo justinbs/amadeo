@@ -27,8 +27,8 @@ use amadeo_input::{
     ActionId, InputDriver, InputState, LiveSource, NullSource, SAMPLE_INPUT, sample_input,
 };
 use amadeo_reflect::{Reflect, RegistryError};
-use amadeo_render::{Camera2d, Quad, RENDER_QUADS, Renderer, WgpuBackend, render_quads};
-use amadeo_transform::Transform2d;
+use amadeo_render::{Camera2d, Quad, RENDER_QUADS, Renderer, SortOrder, WgpuBackend, render_quads};
+use amadeo_transform::Transform;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -85,9 +85,9 @@ fn apply_input(world: &mut World) {
 /// Uses `FIXED_DT`, never a measured frame time. That is what makes the same input produce the same
 /// result regardless of frame rate (invariant I3).
 fn integrate(world: &mut World) {
-    world.for_each_pair_mut::<Transform2d, Velocity>(|_entity, transform, velocity| {
-        transform.position[0] += velocity.x * FIXED_DT;
-        transform.position[1] += velocity.y * FIXED_DT;
+    world.for_each_pair_mut::<Transform, Velocity>(|_entity, transform, velocity| {
+        transform.translation[0] += velocity.x * FIXED_DT;
+        transform.translation[1] += velocity.y * FIXED_DT;
     });
 }
 
@@ -96,9 +96,9 @@ fn clamp_to_view(world: &mut World) {
     const LIMIT_X: f32 = 8.0;
     const LIMIT_Y: f32 = 4.5;
 
-    world.for_each_pair_mut::<Transform2d, Player>(|_entity, transform, _player| {
-        transform.position[0] = transform.position[0].clamp(-LIMIT_X, LIMIT_X);
-        transform.position[1] = transform.position[1].clamp(-LIMIT_Y, LIMIT_Y);
+    world.for_each_pair_mut::<Transform, Player>(|_entity, transform, _player| {
+        transform.translation[0] = transform.translation[0].clamp(-LIMIT_X, LIMIT_X);
+        transform.translation[1] = transform.translation[1].clamp(-LIMIT_Y, LIMIT_Y);
     });
 }
 
@@ -118,8 +118,9 @@ fn build_simulation() -> Result<App, RegistryError> {
     // Registration is what puts a type into `amadeo describe` and lets a scene file name it
     // (ADR 0016, invariant I8). Game components and engine components alike: the schema describes
     // *this game*, not everything the engine could offer.
-    app.register_component::<Transform2d>()?;
+    app.register_component::<Transform>()?;
     app.register_component::<Quad>()?;
+    app.register_component::<SortOrder>()?;
     app.register_component::<Velocity>()?;
     app.register_component::<Player>()?;
 
@@ -148,22 +149,20 @@ fn build_simulation() -> Result<App, RegistryError> {
         (0.0, 0.0),
     ] {
         let marker = app.world.spawn();
-        app.world.insert(marker, Transform2d::at(x, y));
-        app.world.insert(
-            marker,
-            Quad::new(0.6, 0.6, [0.243, 0.286, 0.333, 1.0]).on_layer(0),
-        );
+        app.world.insert(marker, Transform::at(x, y));
+        app.world
+            .insert(marker, Quad::new(0.6, 0.6, [0.243, 0.286, 0.333, 1.0]));
     }
 
     // The player, on a higher layer so it always draws over the markers.
     let player = app.world.spawn();
-    app.world.insert(player, Transform2d::at(0.0, 0.0));
+    app.world.insert(player, Transform::at(0.0, 0.0));
     app.world.insert(player, Velocity { x: 0.0, y: 0.0 });
     app.world.insert(player, Player);
-    app.world.insert(
-        player,
-        Quad::new(1.0, 1.0, [0.898, 0.588, 0.243, 1.0]).on_layer(10),
-    );
+    app.world
+        .insert(player, Quad::new(1.0, 1.0, [0.898, 0.588, 0.243, 1.0]));
+    // Above the markers, so the thing you steer is never hidden behind one.
+    app.world.insert(player, SortOrder::new(10));
 
     Ok(app)
 }

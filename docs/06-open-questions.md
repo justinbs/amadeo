@@ -7,13 +7,22 @@ Priority: **P0** blocks work now · **P1** needed for the current milestone · *
 
 ---
 
-## Q3 · P1 · How do 2D and 3D coexist in the renderer?
+## Q3 · P2 · Which render pipeline shape?
 
-Detailed in `04-subsystems.md` §4. Unified orthographic pipeline with a specialized sprite batcher,
-two separate pipelines sharing the render graph, or 2D as a compositing layer over 3D.
+**Two thirds of this question are resolved — see `adr/0018`.** The original Q3 bundled three
+decisions with very different reversal costs. The two expensive ones, both *data*, are settled: one
+3D `Transform` with 2D as its degenerate case, and an explicit `SortOrder` that dominates depth.
 
-Expensive to reverse. Needs an ADR before M1's 2D work, not before M2's 3D work — otherwise M1's
-sprite renderer gets built on an assumption M2 has to undo.
+What remains is the pipeline itself: a unified orthographic pipeline with a specialised sprite
+batcher, two pipelines sharing the render graph, or 2D composited over 3D (`04-subsystems.md` §4).
+
+**Dropped to P2**, which is the point of having split it. `RenderBackend` isolates this completely —
+no scene file, no component schema, and no state hash can observe which was chosen — so it is the
+cheapest of the three to change and does not block `GlobalTransform` propagation or the sprite
+batcher's *interface*.
+
+Decide it **while writing the sprite batcher**, against a real throughput target (§4 suggests 20k
+sprites at 60 fps). A spike of three prototypes would measure less than the real thing does.
 
 ---
 
@@ -149,6 +158,7 @@ be less coupled than they look. Decide in M2.
 | Reflection shape | Value tree plus two derives, not dynamic field access; metadata vocabulary fixed | `adr/0012` |
 | Is reflection optional? | No — `Component: Reflect` makes I8 a compiler-enforced bound | `adr/0013` |
 | **Q13** — `ComponentId` derivation | **The canonical name** (`Reflect::type_name`), not the Rust path. Moving a component between crates is free; renaming one is a deliberate, visible change | `adr/0017` |
+| **Q3** (two thirds) — transform and sort order | **One 3D `Transform`**, 2D is its degenerate case; rotation is Euler degrees so it stays hand-writable. **`SortOrder`** replaces `Quad::layer` and dominates depth. Pipeline shape still open | `adr/0018` |
 | **Q2** — scene file syntax | **A custom, indentation-based, line-oriented format.** Chosen by Justin from four hand-written candidates; TOML is the fallback, *not* KDL | `adr/0014` |
 | Where hierarchy components live | `amadeo-transform`, below `amadeo-scene` — render, physics, and anim all need transforms | `adr/0015` |
 | **Q14** — where `describe` runs | **The game binary hosts the agent; `amadeo-cli` launches it and speaks JSON-RPC over stdio.** First transport is one-shot batch, not a live session; `App` owns the `ComponentRegistry`; the JSON parser is hand-written | `adr/0016` |

@@ -78,7 +78,7 @@ of a milestone.
   into entities atomically. **Still to do:** materialising hierarchy as components (blocked on where
   `Parent` lives — see below), prefab instancing (needs `amadeo-assets`), and prefab override
   *semantics* (Q7).
-- ✅ **`amadeo-transform`** (ADR 0015) — `Transform2d` moved out of `amadeo-render`, plus `Parent`.
+- ✅ **`amadeo-transform`** (ADR 0015) — `Transform` moved out of `amadeo-render`, plus `Parent`.
   Settles where hierarchy lives; scenes now load their tree as real components. `GlobalTransform`
   and propagation wait on Q3, alongside the 2D renderer.
 - 🟡 `amadeo-agent` v1 — the **read** half exists: `describe` (the schema as JSON), `entity` and
@@ -90,7 +90,7 @@ of a milestone.
   Methods: `describe`, `world.list`, `world.entity`, `world.query`, `schedule.list`, `sim.status` —
   all read-only. The mutating calls and the persistent session wait for M4's editor to need them.
 - ✅ **`App` owns a `ComponentRegistry`** (ADR 0016) — `App::register_component::<T>()`, so a game
-  registers once. `quad-demo` registers its own `Velocity` and `Player` alongside `Transform2d` and
+  registers once. `quad-demo` registers its own `Velocity` and `Player` alongside `Transform` and
   `Quad`, which is what makes `amadeo describe Velocity` describe a *game's* type.
 - ✅ Protocol spec in `docs/protocol/v1.md`, versioned, written against the batch method set.
 - 🟡 `amadeo-cli` — **built:** `describe`, `query`, `entity`, `schedule`, `status`, `call`, `check`,
