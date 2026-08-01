@@ -148,6 +148,10 @@ put it higher up the stack — pushing things down later is easy; pulling them o
 1. Update `STATUS.md`: what landed, what broke, what's next, any new sharp edges.
 2. Update `docs/06-open-questions.md` — remove resolved, add discovered.
 3. Commit. Message body should explain *why*, not restate the diff.
+   **No `Co-Authored-By: Claude` trailer.** Justin asked for this in session 6: it is a personal
+   project, he knows Claude worked on it, and he does not want the paired authorship on GitHub. This
+   overrides the default Claude Code convention of appending one. End the message at the last line
+   of the body.
 
 ## 6. Conventions
 

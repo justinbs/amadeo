@@ -16,7 +16,7 @@ resolving Q1. Session 5 built most of M1's foundations.
 
 **Twelve crates plus one game**, all tested: `amadeo-derive`, `amadeo-core`, `amadeo-reflect`,
 `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-input`, `amadeo-render`, `amadeo-scene`,
-`amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`. **498 tests passing**; fmt, clippy
+`amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`. **501 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Four things work end to end today:
@@ -357,7 +357,7 @@ Verified on this machine (2026-07-30):
   CLI turns that into `file:line` because it is the side that still has the text. One launch covers
   every file named, since a build per scene would make checking a directory unusable.
 
-**Verified green: 498 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+**Verified green: 501 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 Two things found by running it rather than by thinking about it:
 

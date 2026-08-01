@@ -48,7 +48,12 @@ pub use gpu::WgpuBackend;
 use amadeo_ecs::{Service, World};
 // Not re-exported: `Transform` belongs to `amadeo-transform` (ADR 0015), and two import paths to
 // one type is exactly the sort of thing that makes people wonder whether they are the same type.
-use amadeo_transform::Transform;
+use amadeo_transform::{GlobalTransform, Mat4, Transform};
+
+/// One entity's own transform as a matrix, for the fallback when propagation has not run.
+fn local_matrix(transform: &Transform) -> Mat4 {
+    Mat4::from_transform(transform.translation, transform.rotation, transform.scale)
+}
 
 /// The label the app layer registers [`render_quads`] under.
 pub const RENDER_QUADS: &str = "render_quads";
@@ -148,37 +153,55 @@ pub fn render_quads(world: &mut World) {
         .service::<Renderer>()
         .map_or(FrameData::default().clear_color, |r| r.clear_color);
 
-    // Collected with its entity so the second pass can read `SortOrder`. Two passes rather than an
-    // `iter_triple` because ADR 0018 makes sort order **optional** — an entity without one draws at
-    // zero. Requiring it would mean forgetting it makes a quad silently invisible, which is a much
-    // worse first failure than drawing in the wrong order.
-    let collected: Vec<(amadeo_ecs::Entity, QuadInstance)> = world
+    // Collected first, then resolved: the closure below needs to look up two more components per
+    // entity, which it cannot do while a query borrow is live. Two passes rather than a wider query
+    // because both `SortOrder` and `GlobalTransform` are **optional** — an entity missing either
+    // still draws, at zero and at its local transform respectively. Requiring them would mean
+    // forgetting a system makes quads silently invisible, a much worse first failure.
+    let drawable: Vec<(amadeo_ecs::Entity, Quad)> = world
         .iter_pair::<Transform, Quad>()
-        .map(|(entity, transform, quad)| {
-            (
-                entity,
-                QuadInstance {
-                    // The renderer is 2D; a `Transform` is 3D (ADR 0018). Depth within a sort order
-                    // is the pipeline decision that ADR deliberately left open, so z is dropped
-                    // here rather than guessed at.
-                    center: [transform.translation[0], transform.translation[1]],
-                    size: [
-                        quad.size[0] * transform.scale[0],
-                        quad.size[1] * transform.scale[1],
-                    ],
-                    // Stored in degrees for hand-authoring; the shader wants radians.
-                    rotation: transform.rotation[2].to_radians(),
-                    color: quad.color,
-                },
-            )
-        })
+        .map(|(entity, _transform, quad)| (entity, *quad))
         .collect();
 
-    let mut collected: Vec<(i32, QuadInstance)> = collected
+    let mut collected: Vec<(i32, QuadInstance)> = drawable
         .into_iter()
-        .map(|(entity, instance)| {
+        .filter_map(|(entity, quad)| {
+            // `GlobalTransform` is what the entity's parents have made of its transform, so this is
+            // where hierarchy finally reaches the screen. Falls back to the local `Transform` when
+            // propagation has not run — correct for an unparented entity, and better than drawing
+            // nothing at all for a game that forgot the system.
+            let placement = match world.get::<GlobalTransform>(entity) {
+                Some(global) => *global,
+                None => GlobalTransform::from(local_matrix(world.get::<Transform>(entity)?)),
+            };
+
+            let matrix = placement.to_mat4();
+            let translation = matrix.translation();
+
+            // Scale and rotation are read back out of the composed matrix rather than off the local
+            // transform, so a parent's scale and turn apply too. The columns of a transform matrix
+            // are its scaled axes, so a column's length is that axis's total scale.
+            let axis_x = [matrix.columns[0][0], matrix.columns[0][1]];
+            let axis_y = [matrix.columns[1][0], matrix.columns[1][1]];
+            let scale_x = axis_x[0].hypot(axis_x[1]);
+            let scale_y = axis_y[0].hypot(axis_y[1]);
+
             let order = world.get::<SortOrder>(entity).copied().unwrap_or_default();
-            (order.order, instance)
+
+            Some((
+                order.order,
+                QuadInstance {
+                    // The renderer is 2D; a transform is 3D (ADR 0018). Depth within a sort order is
+                    // the pipeline decision Q3 deliberately left open, so z is dropped here rather
+                    // than guessed at.
+                    center: [translation[0], translation[1]],
+                    size: [quad.size[0] * scale_x, quad.size[1] * scale_y],
+                    // The angle of the composed x axis. Already in radians — the degrees an author
+                    // wrote were converted when the matrix was built.
+                    rotation: axis_x[1].atan2(axis_x[0]),
+                    color: quad.color,
+                },
+            ))
         })
         .collect();
 
@@ -248,6 +271,82 @@ mod tests {
 
         render_quads(&mut world);
         assert_eq!(last_frame(&world).quads.len(), 1);
+    }
+
+    #[test]
+    fn a_child_is_drawn_where_its_parent_puts_it() {
+        // The reason propagation exists, seen from the screen. Without reading GlobalTransform the
+        // child would draw at its local (2, 0) rather than the (0, 2) its parent's quarter turn
+        // puts it at.
+        use amadeo_transform::{Parent, propagate_transforms};
+
+        let mut world = world_with_renderer();
+
+        let mut turned = Transform::default();
+        turned.rotation[2] = 90.0;
+        let parent = world.spawn();
+        world.insert(parent, turned);
+
+        let child = world.spawn();
+        world.insert(child, Transform::at(2.0, 0.0));
+        world.insert(child, Parent(parent));
+        world.insert(child, Quad::new(1.0, 1.0, [1.0, 1.0, 1.0, 1.0]));
+
+        propagate_transforms(&mut world);
+        render_quads(&mut world);
+
+        let drawn = last_frame(&world).quads[0];
+        assert!(
+            (drawn.center[0] - 0.0).abs() < 1e-5,
+            "got {:?}",
+            drawn.center
+        );
+        assert!(
+            (drawn.center[1] - 2.0).abs() < 1e-5,
+            "got {:?}",
+            drawn.center
+        );
+    }
+
+    #[test]
+    fn a_parents_scale_reaches_the_quad_size() {
+        use amadeo_transform::{Parent, propagate_transforms};
+
+        let mut world = world_with_renderer();
+
+        let parent = world.spawn();
+        world.insert(
+            parent,
+            Transform {
+                scale: [3.0, 3.0, 1.0],
+                ..Transform::default()
+            },
+        );
+
+        let child = world.spawn();
+        world.insert(child, Transform::at(0.0, 0.0));
+        world.insert(child, Parent(parent));
+        world.insert(child, Quad::new(2.0, 2.0, [1.0, 1.0, 1.0, 1.0]));
+
+        propagate_transforms(&mut world);
+        render_quads(&mut world);
+
+        let drawn = last_frame(&world).quads[0];
+        assert!((drawn.size[0] - 6.0).abs() < 1e-5, "got {:?}", drawn.size);
+    }
+
+    #[test]
+    fn a_quad_still_draws_without_propagation_having_run() {
+        // The fallback. A game that never registers `propagate_transforms` should still see its
+        // unparented entities, rather than a blank screen with no explanation.
+        let mut world = world_with_renderer();
+        let entity = world.spawn();
+        world.insert(entity, Transform::at(4.0, -1.0));
+        world.insert(entity, Quad::new(1.0, 1.0, [1.0, 1.0, 1.0, 1.0]));
+
+        render_quads(&mut world);
+
+        assert_eq!(last_frame(&world).quads[0].center, [4.0, -1.0]);
     }
 
     #[test]
