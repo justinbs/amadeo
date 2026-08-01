@@ -92,6 +92,27 @@ scales, and art directions:
 in the core; the divergence tells us what must stay pluggable. That distinction *is* the
 genre-agnostic design (G1), and it is now grounded in real targets rather than speculation.
 
+### The targets are a priority signal, not a scope limit
+
+All three happen to be 3D. **That orders the work; it does not narrow the engine.** Amadeo supports
+2D and 3D as equal first-class capabilities — decided in session 1, restated by Justin in session 6
+after ADR 0018 leaned too hard on "all three targets are 3D" while justifying a 3D-first transform.
+
+The distinction that matters:
+
+- **Legitimate:** doing 3D work *earlier*, because that is what the reference games need first.
+- **Not legitimate:** treating 2D as a stepping stone to be discarded, shipping a 2D feature that is
+  worse than its 3D equivalent, or making a design choice that forecloses 2D.
+
+This is a genre-agnostic engine (G1). A 2D game is a genre. If a decision would leave 2D as a
+second-class citizen, that is the signal to choose differently — the same way the divergence table
+below forbids baking in one art direction.
+
+Read this alongside ADR 0018, which retired `Transform2d` in favour of one 3D `Transform`. That
+decision is **not** a deprioritisation of 2D: two transform types would have meant two hierarchies in
+any world mixing them, which would have made 2D-over-3D harder, not easier. One transform serves both
+better. The reasoning was right and some of its wording was not.
+
 ### Common to all three → core, not modules
 
 - 3D real-time with a character controller

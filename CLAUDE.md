@@ -240,6 +240,11 @@ Things that will quietly destroy the design if allowed:
 8. **Baking an art style into the renderer.** The target games span stylised-realistic outdoors,
    low-poly, and dark atmospheric interiors. A pipeline tuned for one is a pipeline that can't do the
    others. Post-process and lighting stay configurable.
+9. **Letting 2D become second-class because the target games are 3D.** All three targets being 3D
+   orders the *work*; it does not narrow the *engine*. Amadeo supports 2D and 3D equally — a 2D game
+   is a genre, and I4 says genres are not privileged. Doing 3D earlier is fine; shipping a 2D feature
+   that is worse than its 3D equivalent, or foreclosing 2D with a design choice, is not. Raised
+   explicitly by Justin in session 6. See `docs/00-vision.md` § "The targets are a priority signal".
 
 ## 8. Reading order for the design docs
 

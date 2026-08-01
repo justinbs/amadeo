@@ -122,7 +122,8 @@ optimisation levels) at 1.24× runtime cost, and it is the same artefact M5's we
 
 ### Decided
 - Name: **Amadeo**.
-- Unified 2D **and** 3D from the start (not 2D-first).
+- Unified 2D **and** 3D from the start (not 2D-first, and not 3D-only). Restated in session 6: the
+  three 3D target games order the work, they do not narrow the engine. `CLAUDE.md` §7 trap 9.
 - Native desktop first, Windows as the primary target. Web export deferred to M5.
 - Graphical editor **and** full text/code/headless parity are both first-class requirements.
 - Stack: Rust + wgpu + winit + glam + rapier + egui. See `docs/adr/0002`.

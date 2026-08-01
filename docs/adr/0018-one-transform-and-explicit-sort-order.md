@@ -2,6 +2,18 @@
 
 **Status:** Accepted · **Date:** 2026-08-01 · **Partially resolves:** Q3
 
+> **Clarification, 2026-08-01, after review by Justin. No decision below is changed.**
+>
+> This ADR justifies a 3D-first transform partly with "all three target games are 3D". Read alone,
+> that reads as though 2D were being demoted. It is not. **Amadeo supports 2D and 3D as equal
+> first-class capabilities** — decided in session 1 and restated here; see `docs/00-vision.md`
+> § "The targets are a priority signal, not a scope limit".
+>
+> The target games order the *work*, not the *scope*. And the decision below is the 2D-friendly one
+> on its own merits: two transform types would have meant two hierarchies in any world mixing them,
+> making 2D-over-3D harder. One transform serves both better. Annotated rather than superseded
+> because the reasoning stands and only its emphasis was wrong.
+
 ## Context
 
 Q3 asks "how do 2D and 3D coexist in the renderer?" and `docs/04-subsystems.md` §4 frames it as a
@@ -27,10 +39,13 @@ A spike that built three wgpu pipelines would therefore spend its effort measuri
 easy to change. That is the failure Q2 already hit once, where the prescribed criterion turned out
 not to discriminate between candidates.
 
-**One fact dominates the transform decision.** All three target games — Palworld, Schedule I, Inside
-the Backrooms (`docs/00-vision.md`) — are 3D. M1's exit-gate game is 2D because it is the cheapest
-way to prove the collaboration surface, not because 2D is a destination. An engine whose *primary*
-transform is 2D would be optimising for the stepping stone.
+**One fact weighs heavily on the transform decision.** All three target games — Palworld, Schedule I,
+Inside the Backrooms (`docs/00-vision.md`) — are 3D, so 3D is what the engine needs to be good at
+*first*. An engine whose only transform is 2D would be building the wrong thing first.
+
+That is a statement about **ordering, not scope.** 2D remains a first-class capability (see the
+clarification at the top of this ADR). It happens that the same decision serves both: one transform
+means one hierarchy, which is what makes a 2D layer over a 3D world tractable at all.
 
 ## Decision
 
