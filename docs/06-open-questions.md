@@ -146,6 +146,7 @@ be less coupled than they look. Decide in M2.
 | Reflection shape | Value tree plus two derives, not dynamic field access; metadata vocabulary fixed | `adr/0012` |
 | Is reflection optional? | No — `Component: Reflect` makes I8 a compiler-enforced bound | `adr/0013` |
 | **Q13** — `ComponentId` derivation | **The canonical name** (`Reflect::type_name`), not the Rust path. Moving a component between crates is free; renaming one is a deliberate, visible change | `adr/0017` |
+| Asset load timing vs determinism | **The simulation never observes asset state** — gameplay holds an id and never asks whether it is loaded, and anything gameplay needs is authored rather than derived. Plus a load barrier at scene entry. Makes streaming safe to add later without a redesign | `adr/0021` |
 | **Q4** — asset identity | **A declared `id` in the asset's sidecar**, not its path and not a GUID. Defaults to the filename stem on import, so it reads like a path but survives a move. Duplicate ids refused at scan time, naming both files | `adr/0020` |
 | **Q3** (two thirds) — transform and sort order | **One 3D `Transform`**, 2D is its degenerate case; rotation is Euler degrees so it stays hand-writable. **`SortOrder`** replaces `Quad::layer` and dominates depth. Pipeline shape still open | `adr/0018` |
 | **Q2** — scene file syntax | **A custom, indentation-based, line-oriented format.** Chosen by Justin from four hand-written candidates; TOML is the fallback, *not* KDL | `adr/0014` |

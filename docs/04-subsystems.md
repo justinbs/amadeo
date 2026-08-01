@@ -130,12 +130,14 @@ The runtime never parses source formats.
 `.ama-meta` sidecar or similar.
 ✅ Handle-based access with async loading. Hot-reload via filesystem watch.
 
-⚠️ **Load timing must not affect simulation.** If spawn order or behavior depends on which asset
-finished loading first, determinism dies. Likely answer: simulation blocks on a declared asset set
-before a scene becomes active, so load order is never observable. Decide before the first async load.
-⚠️ **Identity: paths or GUIDs?** Paths are human-readable and diff-friendly (good for I1) but break on
-move/rename. GUIDs survive moves but are opaque and are exactly what makes Unity's files unreadable.
-Leaning: **stable paths as the primary identity**, with a rename-tracking tool. Needs an ADR.
+✅ **Load timing cannot affect simulation** — ADR 0021. Two rules: gameplay holds an asset *id* and
+never observes an asset's *state*, so there is nothing to branch on; and a scene declares what it
+needs, with no tick running until it is resident. Anything gameplay needs (hitbox, collision shape)
+is authored, never derived from the loaded file. Streaming is therefore safe to add later without a
+redesign.
+✅ **Identity: a declared `id` in the sidecar** — ADR 0020. Not the path (a location, so moving a file
+would break every reference) and not a GUID (opaque, which is what makes Unity's files unreadable).
+Defaults to the filename stem on import, so it reads like a path and survives a move.
 ⚠️ **Cache invalidation and build determinism.** Same source in, same compiled bytes out — otherwise
 asset builds churn and can't be cached or verified.
 ⚠️ **Dependency graph.** A material references textures; a prefab references meshes. Needs cycle

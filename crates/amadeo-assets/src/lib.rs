@@ -21,15 +21,29 @@
 //! changes nothing. The same reasoning ADR 0017 applied to components one layer down: coupling
 //! identity to *where something lives* turns a refactor into a silent breakage.
 //!
+//! # The rule loading has to obey — ADR 0021
+//!
+//! **Gameplay may hold an asset id. It may never observe an asset's *state*.** No simulation system
+//! asks whether an asset is loaded, how big it is, or what is in it. Anything gameplay needs — a
+//! hitbox, a collision shape, a footstep's timing — is **authored** in the scene file, never derived
+//! from the loaded file.
+//!
+//! That is what makes determinism structural rather than conventional: "is it loaded yet" depends on
+//! disk speed and OS scheduling, so a simulation that can ask it does not reproduce. One that cannot
+//! ask has nothing to branch on, and an asset arriving at tick 900 instead of tick 300 changes what
+//! is on screen and nothing else.
+//!
+//! Rendering and audio sit outside the deterministic zone and *are* free to look. A missing texture
+//! draws a placeholder and reports itself; it does not crash and it does not stall the tick.
+//!
+//! The cost is real and is the accepted trade: you cannot size a hitbox from a sprite, so you type
+//! it out.
+//!
 //! # What is not here yet
 //!
-//! **Loading.** This layer answers "what assets exist and where are their files". Reading bytes,
-//! decoding them, handing out handles, and hot-reloading are the next piece, and they carry a
-//! determinism question that has to be settled first: `docs/04-subsystems.md` §5 requires that
-//! **load order is never observable by the simulation**, or replays stop reproducing. The likely
-//! answer is that a scene declares the asset set it needs and the simulation does not start until
-//! all of it is resident, but that deserves its own ADR rather than being decided by whichever
-//! loader gets written first.
+//! **Loading itself.** This layer answers "what assets exist and where are their files". Reading
+//! bytes, decoding them, handing out handles, and hot-reloading come next, to the rule above plus
+//! the load barrier — a scene declares what it needs, and no tick runs until all of it is resident.
 //!
 //! **The import pipeline.** Compiling `.png` into an internal format so the runtime never parses
 //! source formats. Needs the loading layer underneath it.
