@@ -181,6 +181,23 @@ Verified on this machine (2026-07-30):
 | Smart App Control | **Resolved.** It was blocking every binary this project builds — confirmed via event log (3118, policy `{0283ac0f-…}`). Justin disabled it (one-way change on Win11). If a future machine hits `os error 4551`, this is why; see `docs/07-working-with-the-code.md` §5. |
 | Gotcha — winget | `winget install` on an already-installed package attempts an *upgrade* and silently ignores `--override`, so it cannot add a workload. Use the VS Installer to modify an existing install. |
 | Gotcha — wgpu | This project is on **wgpu 30**, which differs from most material online. Read the crate source under `~/.cargo/registry/src/*/wgpu-30.0.0/src/api/` rather than trusting search results. `docs/07` records the three changes that cost the most time. |
+| **Gotcha — line endings** | `core.autocrlf` is **true** by default on Windows and on GitHub's windows-latest runners. It rewrites committed LF into CRLF on checkout, breaking byte comparisons of `.replay` and `.scene` fixtures — invariant I2. `.gitattributes` pins `eol=lf`; **do not remove it**. This machine has `core.autocrlf=false` set locally, which is why it reproduced nowhere here. Tell: only the *Windows* CI jobs fail, because Linux checkout does no conversion. |
+
+## CI
+
+Green as of session 6. Five jobs: `check` (fmt + clippy), `test` on windows-latest and
+ubuntu-latest, `determinism` (the suite three times serially, then release, then a separate-process
+replay), and `docs`.
+
+**The first push, in session 6, went red 3/5 and stayed red for four commits.** Not a determinism
+failure despite looking exactly like one — see the line-endings gotcha above. Worth knowing that the
+run before the fix failed *with identical state hashes on both sides of the assertion*; the
+simulation was never wrong.
+
+Older commits still show red on GitHub. That is correct and needs no action: CI ran against trees
+that had no `.gitattributes`, so re-running them would fail identically. The code in them is fine —
+in every red run, `golden_file_replays_to_its_recorded_hashes` (the test that actually asserts state
+hashes) passed.
 
 ## Next actions
 

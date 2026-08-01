@@ -673,6 +673,27 @@ brackets the tick range where behaviour changed, and from there `App::step` plus
 it down quickly. `amadeo replay` reports *every* failing checkpoint, not just the first, which is
 usually enough to bracket it in one run.
 
+### If a golden replay fails on CI but passes locally, check line endings first
+
+This cost a red CI afternoon, so it is written down.
+
+The symptom is a `recording_matches_the_committed_golden_file` failure whose two strings have
+**identical checkpoint hashes** and differ only in `\n` versus `\r\n`. That is not a determinism
+failure — it is git rewriting the file on checkout.
+
+`core.autocrlf` defaults to **true** on Windows, and GitHub's `windows-latest` runners ship with it
+on. Without `.gitattributes`, a fixture committed with LF arrives on disk as CRLF, so a byte
+comparison against freshly generated text fails. It reproduces nowhere on a machine that has
+`core.autocrlf=false`.
+
+`.gitattributes` at the repository root fixes it with `eol=lf`, and **must not be removed.** Line
+endings are part of the `.replay` and `.scene` formats, not a platform preference — invariant I2
+says an unchanged file saves byte-identically, which is meaningless if git rewrites it per platform.
+
+The tell that it is this and not a real regression: **only the Windows jobs fail.** Linux checkout
+does no conversion, so `test (ubuntu-latest)` stays green. The golden test now checks for CR bytes
+before comparing and says so directly.
+
 ### The two halves: in-process and separate-process
 
 The `cargo test` version above proves a recording survives a **rebuild**. It cannot prove one
