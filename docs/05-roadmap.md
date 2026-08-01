@@ -80,7 +80,7 @@ of a milestone.
   *semantics* (Q7).
 - ✅ **`amadeo-transform`** (ADR 0015) — `Transform` moved out of `amadeo-render`, plus `Parent`.
   Settles where hierarchy lives; scenes now load their tree as real components. `GlobalTransform`
-  and propagation wait on Q3, alongside the 2D renderer.
+  and propagation landed in session 6 once ADR 0018 settled what a transform is.
 - 🟡 `amadeo-agent` v1 — the **read** half exists: `describe` (the schema as JSON), `entity` and
   `query` (the live world), and a deterministic JSON writer whose output is sorted and therefore
   diffable. Still to do: the mutating calls (`world.spawn`, `world.set_component`, `sim.step`,
@@ -100,7 +100,8 @@ of a milestone.
   now runs in the determinism job against `games/quad-demo/replays/wander.replay`.
 - `amadeo-assets` — virtual FS, handles, async load with load-order isolation, hot reload, import
   pipeline, text sidecar metadata, placeholder assets on failure.
-- 2D rendering — sprite batcher, textures, cameras, layers/sorting, transform hierarchy.
+- ✅ **Transform hierarchy** — `GlobalTransform` plus `propagate_transforms`, excluded from the state
+  hash because it is derived (ADR 0019). Still to do in this line: sprite batcher, textures, cameras.
 - Game logic layer, per the Q1 decision: **nothing to build.** ADR 0011 settled this as "Rust systems
   in the game crate", which is what `games/quad-demo` already does. `amadeo-script` is not created.
 - **`snapshot.take` / `snapshot.restore`, treated as the iteration-loop priority rather than as two

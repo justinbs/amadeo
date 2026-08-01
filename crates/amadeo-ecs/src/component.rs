@@ -54,7 +54,25 @@ use std::fmt;
 ///
 /// impl Component for Health {}
 /// ```
-pub trait Component: 'static + Send + Sync + fmt::Debug + StableHash + Reflect {}
+pub trait Component: 'static + Send + Sync + fmt::Debug + StableHash + Reflect {
+    /// Whether this component is **recomputed from scratch every tick** from other components.
+    ///
+    /// Derived components are skipped by [`crate::World::state_hash`] — ADR 0019. Almost every
+    /// component leaves this alone.
+    ///
+    /// # Set this only if it is true
+    ///
+    /// The rule is the name: the value must be rebuilt every tick from other state, so that hashing
+    /// it would add nothing the inputs do not already say. `GlobalTransform` qualifies; it is
+    /// recomputed from `Transform` and `Parent` on every tick.
+    ///
+    /// **Marking real simulation state as derived silently removes it from every replay
+    /// assertion, and nothing fails.** That is the same failure `#[derive(StableHash)]` exists to
+    /// prevent one level down — a hand-written hash that forgets a field still compiles and still
+    /// produces a plausible number. If a system writes this component and expects the value to
+    /// survive to the next tick, it is not derived.
+    const DERIVED: bool = false;
+}
 
 /// Identifies a component type.
 ///
@@ -146,6 +164,12 @@ pub(crate) trait Column: fmt::Debug + Send + Sync {
 
     /// Feeds the value at `row` into a state fingerprint.
     fn stable_hash_row(&self, row: usize, hasher: &mut StableHasher);
+
+    /// Whether this column holds a derived component, which the state hash skips.
+    ///
+    /// Lives on the trait rather than being looked up per call because the column is type-erased by
+    /// the time the hash walks it -- `TypedColumn<T>` is the last place `T::DERIVED` is reachable.
+    fn is_derived(&self) -> bool;
 }
 
 /// A concrete column: every value of one component type in one archetype.
@@ -260,6 +284,10 @@ impl<T: Component> Column for TypedColumn<T> {
 
     fn empty_clone(&self) -> Box<dyn Column> {
         Box::new(TypedColumn::<T>::new())
+    }
+
+    fn is_derived(&self) -> bool {
+        T::DERIVED
     }
 
     fn stable_hash_row(&self, row: usize, hasher: &mut StableHasher) {

@@ -38,6 +38,12 @@
 //! representations consistent is a well-known source of dangling references. It arrives when a
 //! system needs fast child iteration, not before.
 
+mod matrix;
+mod propagate;
+
+pub use matrix::Mat4;
+pub use propagate::{GlobalTransform, MAX_DEPTH, PROPAGATE_TRANSFORMS, propagate_transforms};
+
 use amadeo_core::StableHash;
 use amadeo_ecs::{Component, Entity};
 use amadeo_reflect::Reflect;

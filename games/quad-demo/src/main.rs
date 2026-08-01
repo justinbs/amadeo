@@ -28,7 +28,7 @@ use amadeo_input::{
 };
 use amadeo_reflect::{Reflect, RegistryError};
 use amadeo_render::{Camera2d, Quad, RENDER_QUADS, Renderer, SortOrder, WgpuBackend, render_quads};
-use amadeo_transform::Transform;
+use amadeo_transform::{GlobalTransform, PROPAGATE_TRANSFORMS, Transform, propagate_transforms};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -121,6 +121,7 @@ fn build_simulation() -> Result<App, RegistryError> {
     app.register_component::<Transform>()?;
     app.register_component::<Quad>()?;
     app.register_component::<SortOrder>()?;
+    app.register_component::<GlobalTransform>()?;
     app.register_component::<Velocity>()?;
     app.register_component::<Player>()?;
 
@@ -138,6 +139,11 @@ fn build_simulation() -> Result<App, RegistryError> {
     app.add_system(
         Stage::PostSimulation,
         system("clamp_to_view", clamp_to_view),
+    );
+    // After clamping, so the composed transform reflects where things finally ended up.
+    app.add_system(
+        Stage::PostSimulation,
+        system(PROPAGATE_TRANSFORMS, propagate_transforms).after("clamp_to_view"),
     );
 
     // Static markers, so movement is visible against something.

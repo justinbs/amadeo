@@ -331,6 +331,12 @@ impl Archetype {
     /// happened to be inserted, or on any hash map's layout.
     pub(crate) fn stable_hash_row(&self, row: usize, hasher: &mut StableHasher) {
         for (index, id) in self.component_ids.iter().enumerate() {
+            // Derived components contribute nothing -- not their value and not even their id
+            // (ADR 0019). Skipping the id too matters: were it written, adding `GlobalTransform` to
+            // an entity would still move the hash, which is exactly the coupling being avoided.
+            if self.columns[index].is_derived() {
+                continue;
+            }
             hasher.write_u64(id.raw());
             self.columns[index].stable_hash_row(row, hasher);
         }

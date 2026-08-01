@@ -67,9 +67,9 @@ crates/
 ✅ amadeo-reflect     Value tree, TypeInfo schema, TypeRegistry. ADR 0012.
 ✅ amadeo-ecs         archetype SoA storage, queries, resources, services, deferred commands,
                      ComponentRegistry (builds a component from a name + a Value)
-✅ amadeo-transform   Transform (3D; 2D is its degenerate case, ADR 0018), Parent. The spatial
-                     vocabulary render/physics/anim/scene share. ADR 0015. GlobalTransform is a
-                     computed matrix, never authored; propagation is next.
+✅ amadeo-transform   Transform (3D; 2D is its degenerate case, ADR 0018), Parent, GlobalTransform +
+                     propagate_transforms, and a scalar Mat4. GlobalTransform is computed, never
+                     authored, and DERIVED so it stays out of the state hash (ADR 0019).
 ✅ amadeo-events      typed double-buffered queues, EventClock total ordering
 — amadeo-assets      virtual FS, async load, import pipeline, cache, hot-reload watch
 ✅ amadeo-input       action mapping, InputState, recording/replay, the .replay text format

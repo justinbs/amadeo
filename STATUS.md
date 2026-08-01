@@ -16,7 +16,7 @@ resolving Q1. Session 5 built most of M1's foundations.
 
 **Twelve crates plus one game**, all tested: `amadeo-derive`, `amadeo-core`, `amadeo-reflect`,
 `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-input`, `amadeo-render`, `amadeo-scene`,
-`amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`. **480 tests passing**; fmt, clippy
+`amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`. **498 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Four things work end to end today:
@@ -52,16 +52,15 @@ same session it was decided.
 
 ## The single most important thing to do next
 
-**Build `GlobalTransform` and its propagation system.** ADR 0018 unblocked it by settling what a
-transform is, and it has been waiting since ADR 0015. Composing a child transform with its parent is
-the easy part; what was missing was the decision.
+**Build the 2D renderer** — sprite batcher, textures, and the pipeline decision that Q3 deliberately
+left open. Everything it needs is now settled: `Transform`, `SortOrder`, and `GlobalTransform` all
+exist, and `RenderBackend` means the pipeline shape is chosen *inside* the batcher against a real
+throughput number (`docs/04-subsystems.md` §4 suggests 20k sprites at 60 fps) rather than argued
+about beforehand.
 
-`GlobalTransform` is a **computed 4x4 matrix** — never authored, never written to a scene file, and
-therefore free to be whatever the maths wants rather than whatever a human can type. That is what
-lets the authored `Transform` stay Euler-degrees and hand-writable.
-
-After that the 2D renderer is unblocked too: it can be written against `Transform` and `SortOrder`
-without waiting for the pipeline choice, which ADR 0018 deliberately deferred.
+The renderer currently reads `Transform` directly and ignores hierarchy. Switching it to
+`GlobalTransform` is a small change and the point of having built propagation — worth doing as part
+of the batcher work rather than as a separate pass.
 
 Then, in order:
 
@@ -71,8 +70,7 @@ Then, in order:
    in the protocol is waiting on.
 2. **`snapshot.take` / `snapshot.restore`.** The Q1 spike found re-simulation, not compilation, is
    what degrades the iteration loop — 382 ms to reach 5 simulated minutes, growing linearly.
-3. **2D rendering** — sprite batcher, textures. No longer blocked: `Transform` and `SortOrder` are
-   settled, and the pipeline choice is made *inside* the batcher rather than before it.
+3. **`amadeo-assets`** — needed by prefab instancing, and blocked on Q4 (paths vs GUIDs).
 
 **Three things are undecided rather than unbuilt**, all in `docs/06-open-questions.md`:
 
@@ -323,6 +321,34 @@ Verified on this machine (2026-07-30):
   instead of a divergence that looks like a regression. Reports every failing checkpoint, not the
   first. Fixture at `games/quad-demo/replays/wander.replay`, hand-written and then filled in from the
   mismatch report — which is the intended way to author one.
+- ✅ **`GlobalTransform` and `propagate_transforms`** (ADR 0019) — waiting since ADR 0015, unblocked
+  by ADR 0018 settling what a transform is. Walks up the parent chain per entity rather than keeping
+  a depth-sorted work list, because that list is a cache with an invalidation story and hierarchies
+  are shallow. A `Parent` cycle falls back to the local transform rather than hanging.
+
+  **`GlobalTransform` is `DERIVED`, so it is excluded from the state hash** — Justin decided this
+  directly, and it is the reason matrix arithmetic cannot move a replay. Proven rather than asserted:
+  `quad-demo` now carries a `GlobalTransform` on every entity and **both replay fixtures are
+  byte-unchanged**. Two tests guard each other — one that propagation does not move the hash, one
+  that a real change still does, so neither can pass because hashing quietly broke.
+
+  Also a scalar `Mat4` in `amadeo-transform` rather than creating `amadeo-math` or taking glam:
+  propagation needs compose-and-multiply and nothing else, and designing a maths surface backwards
+  from its first caller is how a wrong abstraction gets locked in.
+- ✅ **`GlobalTransform` and `propagate_transforms`** (ADR 0019) — waiting since ADR 0015, unblocked
+  by ADR 0018 settling what a transform is. Walks up the parent chain per entity rather than keeping
+  a depth-sorted work list, because that list is a cache with an invalidation story and hierarchies
+  are shallow. A `Parent` cycle falls back to the local transform rather than hanging.
+
+  **`GlobalTransform` is `DERIVED`, so it is excluded from the state hash** — Justin decided this
+  directly, and it is the reason matrix arithmetic cannot move a replay. Proven rather than asserted:
+  `quad-demo` now carries a `GlobalTransform` on every entity and **both replay fixtures are
+  byte-unchanged**. Two tests guard each other — one that propagation does not move the hash, one
+  that a real change still does — so neither can pass because hashing quietly broke.
+
+  Also a scalar `Mat4` in `amadeo-transform` rather than creating `amadeo-math` or taking glam:
+  propagation needs compose-and-multiply and nothing else, and designing a maths surface backwards
+  from its first caller is how a wrong abstraction gets locked in.
 - ✅ **`amadeo check`** — validates scene files against the game's *real* schema, which is precisely
   what a standalone tool cannot do. Reports **every** problem in one pass rather than the first:
   `instantiate` stops at the first error because that is right for loading and wrong for checking, so
@@ -331,7 +357,7 @@ Verified on this machine (2026-07-30):
   CLI turns that into `file:line` because it is the side that still has the text. One launch covers
   every file named, since a build per scene would make checking a directory unusable.
 
-**Verified green: 480 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+**Verified green: 498 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 Two things found by running it rather than by thinking about it:
 
