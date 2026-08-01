@@ -139,6 +139,19 @@ put it higher up the stack — pushing things down later is easy; pulling them o
 **During a session:**
 - Any decision that constrains future work gets an ADR in `docs/adr/`. Cheap to write, saves entire
   sessions of re-litigation. Number sequentially, never edit a decided ADR — supersede it.
+
+- **How to put a choice to Justin.** He has no game-engine-development background and has said he
+  tends to take whichever option is recommended. That means offering a menu is not sharing the
+  decision — the burden is on the recommendation to have been *earned*. So:
+  - **Research before asking, not instead of asking.** When the codebase alone cannot settle a
+    trade-off, go read how real engines solve it. He explicitly endorsed spending the time.
+  - **Pros *and* cons for every option**, including the recommended one. A list of upsides with one
+    "(Recommended)" tag is not a decision aid.
+  - **Plain language.** Define the vocabulary — "sprite batcher", "render graph", "gimbal lock" —
+    at the point where it affects a choice he has to make.
+  - **Prefer the more complete option over the faster one.** Stated directly in session 6: he would
+    rather have a complete engine than one that accumulates problems, and does not mind more steps.
+    Do not quietly narrow scope to save effort; that is not the trade he wants.
 - Prefer a working vertical slice over a complete horizontal layer. Every milestone must end with
   something runnable.
 - Write the determinism test alongside the feature, not after. Retrofitting determinism is the
