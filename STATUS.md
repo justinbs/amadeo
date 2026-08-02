@@ -2,25 +2,33 @@
 
 **Last updated:** 2026-08-02 (end of session 7)
 **Current phase:** **M0 complete. M1 well under way** — reflection, the scene format, the agent's read
-layer, **and the agent protocol plus a working `amadeo` CLI** have all landed. What remains in M1 is
-the 2D renderer, assets, snapshots, and the small game that closes the exit gate. Q3, Q13 and Q4 all
-closed too, so nothing is blocked.
-**Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). **Pushed as of session 6**,
-which means CI has started running for the first time — see "CI" below.
+layer, the agent protocol and a working `amadeo` CLI, the whole asset layer, and the sprite batcher
+have all landed. What remains in M1 is **sprites reaching the GPU**, snapshots, and the small game
+that closes the exit gate. Q3, Q4, Q13, Q14, Q16 and Q17 are all closed, so nothing is blocked.
+**Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
+
+> ### ⚠️ Two working rules that changed in session 7 — read before doing anything
+>
+> 1. **Do not `git push`. Justin pushes.** Commit as much as you like; leave it on the local branch
+>    and tell him what is waiting. Checking CI with `gh` after *he* pushes is still right.
+> 2. **Consult him on anything hard to reverse** — the test is cost-to-undo, not visibility. An
+>    internal mechanism nobody would read still warrants asking if ripping it out later means
+>    rewriting a lot. Both rules are in `CLAUDE.md` §5.
 
 ---
 
 ## Where we are
 
 Sessions 1–2 established scope, stack, and architecture. Session 3 built M0. Session 4 closed it by
-resolving Q1. Session 5 built most of M1's foundations. **Session 6 was the largest so far**: it
-resolved six open questions (Q14, Q13, two thirds of Q3, Q4, plus ADRs 0019 and 0021), built the
-whole agent transport and CLI, and found the CI line-endings bug. ADRs 0016–0021.
+resolving Q1. Session 5 built most of M1's foundations. Session 6 resolved six open questions and
+built the whole agent transport and CLI. **Session 7 finished `amadeo-assets`, audited the earlier
+work, took the target list from three games to eight, built the sprite batcher, and then chased its
+cost down through two layers of the ECS.** ADRs 0022–0025.
 
 **Thirteen crates plus one game**, all tested: `amadeo-derive`, `amadeo-core`, `amadeo-reflect`,
 `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`, `amadeo-render`,
 `amadeo-scene`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`.
-**578 tests passing**; fmt, clippy
+**610 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Seven things work end to end today:
@@ -46,6 +54,9 @@ Seven things work end to end today:
 - **Loading cannot move a replay.** quad-demo loads a real file at startup and `wander.replay` still
   matches all four checkpoints, because ADR 0009's `Service` split keeps asset state out of the hash
   structurally rather than by convention.
+- **Sprites batch into draw calls.** 20,000 fully interleaved sprites collapse to 32 batches in
+  2.58 ms (15.5% of a 60 Hz frame); 50,000 tiles on one sheet are a single draw call. Not yet on
+  screen — the wgpu backend draws quads, not sprites.
 
 **M0 exit gate: 4 of 4, nothing carried.** Gate item 2's "separate process" half — open since M0
 because it needed `amadeo-cli` — closed in session 6: `amadeo replay` plays
@@ -668,7 +679,10 @@ If you are starting cold, this is the shortest path to being useful:
    **CI**. Those three are the whole handoff; everything else here is background.
 3. `docs/07-working-with-the-code.md` — the Rust patterns this engine uses and why, the everyday
    `amadeo` commands, and the golden-replay mechanism. Skip if you already know the codebase.
-4. `docs/adr/` — 21 of them now, so read by need rather than in order:
+4. `docs/adr/` — 25 of them now, so read by need rather than in order:
+   - **0023** before touching the renderer, **0024** and **0025** before touching `amadeo-ecs`.
+     0025 in particular: `world.query` is the API every read path should use, and its module docs
+     explain the one piece of deliberately non-boring Rust in the engine.
    - **0005** (determinism), **0008** (ECS storage), **0009** (resource vs service) and **0019**
      (derived components) before touching `amadeo-ecs` or anything that reaches `state_hash`.
    - **0003** and **0004** before touching scenes or the editor; **0014** for the scene format.
@@ -677,19 +691,26 @@ If you are starting cold, this is the shortest path to being useful:
    - **0016** plus `docs/protocol/v1.md` before touching the CLI, the agent, or process boundaries.
    - **0017** before moving or renaming a component (moving is free now; renaming is not).
    - **0018** before touching transforms or draw order; **0020** and **0021** before assets.
-5. `docs/06-open-questions.md` — before assuming anything undecided. Eight remain, none blocking.
+5. `docs/06-open-questions.md` — before assuming anything undecided. Nine remain, none blocking.
+   **Q15** (modding vs ADR 0011) and the **`from` conflict inside Q7** are the two that were raised
+   in session 7 and deliberately left for Justin.
 
 Then `git log --oneline -25`. Commit messages explain *why*, deliberately, and session 6's are long
 on purpose — several record a diagnosis that took a while to reach.
 
-**Two things that will bite a cold session specifically:**
+**Things that will bite a cold session specifically:**
 
 - **`cargo` is not on PATH for tool invocations.** Prefix with
   `$env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"`.
+- **`gh` is not on PATH either.** It is at `C:\Program Files\GitHub CLI\gh.exe`.
 - **Windows PowerShell 5.1 reads UTF-8 as ANSI and writes back a BOM.** If you script a file edit,
   use .NET APIs with `UTF8Encoding($false)`, or every em-dash in the repo is silently corrupted.
   Console *display* of em-dashes as mojibake is harmless; a `git diff --stat` showing the whole file
   changed is not.
+- **PowerShell here-strings break `git commit -m`** when the message contains quotes — the message
+  gets split into pathspecs and the commit fails confusingly. Write the message to a file with the
+  Write tool (which emits UTF-8 with no BOM) and use `git commit -F <file>`.
+- **Do not push.** See the box at the top of this file.
 
 ## Session log
 
@@ -871,3 +892,28 @@ on purpose — several record a diagnosis that took a while to reach.
   sprite batcher does. And **modding became a target-driven requirement**, which puts ADR 0011 under
   a kind of pressure Q1 never evaluated: it decided by measuring the developer's iteration speed, and
   a mod author cannot rebuild the engine at any speed. Filed as **Q15**, deliberately not decided.
+
+  **Then the sprite batcher (ADR 0023), which closed Q3 and then kept going.** The batching rule is
+  `(sort order, texture)`: layering exact across orders, grouped by texture within one. 20,000
+  interleaved sprites collapse to exactly 32 batches, and a whole tilesheet is one draw call.
+
+  What made the rest of the session was that **the measurement did not agree with the theory.**
+  Collecting 20,000 sprites took 5.1 ms, and removing the batcher's own trigonometry moved it by 4% —
+  which ruled out the obvious suspect and pointed into the ECS twice over:
+
+  - **ADR 0024** — `ComponentId::of` was allocating a `String` and hashing it *on every call*, on the
+    hot path of every component access. Now a compile-time constant via two new `Reflect` consts.
+    5.13 → 3.32 ms, and it made the whole engine faster, not just rendering.
+  - **ADR 0025** — the ECS could not express an *optional* component in a query, so the renderer fell
+    back to `world.get` per entity: 40,000 lookups a frame, which is exactly what archetype storage
+    exists to avoid. `world.query::<(&A, &B, Option<&C>)>()` now resolves each column once per
+    archetype. 3.32 → 2.58 ms. **Justin chose this design** from three options after research.
+
+  Two near-misses worth keeping. A `static` cache inside a generic function is shared across
+  monomorphisations, not per-type — it collapsed every component onto one id and the archetype tests
+  caught it instantly. And the throughput fixture gave no entity a `GlobalTransform`, so it was
+  measuring a fallback path no shipped game takes; fixing it changed the final number materially.
+
+  **610 tests, all four verification commands green, both replays unchanged throughout** — which
+  mattered most for ADR 0024, where a wrong hash would have invalidated every committed replay at
+  once.

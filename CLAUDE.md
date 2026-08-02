@@ -180,6 +180,11 @@ put it higher up the stack — pushing things down later is easy; pulling them o
    project, he knows Claude worked on it, and he does not want the paired authorship on GitHub. This
    overrides the default Claude Code convention of appending one. End the message at the last line
    of the body.
+4. **Do not `git push`. Justin pushes.** Stated in session 7. Commit as much as you like and leave it
+   on the local branch, then say how many commits are waiting and what is in them. Do not offer to
+   push "just this once" — pushing is what makes the work public and starts CI, and he holds that
+   gate. If you need CI to settle something, say the push is needed rather than pushing to find out.
+   Checking CI with `gh` after *he* pushes is still the right habit.
 
 ## 6. Conventions
 
