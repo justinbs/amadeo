@@ -56,15 +56,20 @@ mod archetype;
 mod commands;
 mod component;
 mod entity;
+mod query;
 mod registry;
 mod resource;
 mod service;
 mod type_hash;
 mod world;
 
+// Exported only so `QueryTerm` can name it. All of its methods are crate-private.
+#[doc(hidden)]
+pub use archetype::Archetype;
 pub use commands::{Command, Commands};
 pub use component::{Component, ComponentId};
 pub use entity::Entity;
+pub use query::{QueryIter, QueryTerm};
 pub use registry::{ComponentRegistry, RegistryError};
 pub use resource::{Resource, ResourceId};
 pub use service::{Service, ServiceId};

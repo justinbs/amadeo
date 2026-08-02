@@ -655,6 +655,46 @@ impl World {
         }
     }
 
+    /// Asks for every entity matching a query, with the components it asked for.
+    ///
+    /// A query is a tuple of terms: `&T` requires a component, `Option<&T>` includes it when present
+    /// and never excludes an entity for lacking it.
+    ///
+    /// ```
+    /// # use amadeo_ecs::{Component, World};
+    /// # use amadeo_reflect::Reflect;
+    /// # use amadeo_core::StableHash;
+    /// # #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+    /// # struct Position { /// x
+    /// # x: f32 }
+    /// # impl Component for Position {}
+    /// # #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+    /// # struct Frozen { /// f
+    /// # f: bool }
+    /// # impl Component for Frozen {}
+    /// # let mut world = World::new();
+    /// # let e = world.spawn();
+    /// # world.insert(e, Position { x: 3.0 });
+    /// for (entity, (position, frozen)) in world.query::<(&Position, Option<&Frozen>)>() {
+    ///     let _ = (entity, position.x, frozen.is_some());
+    /// }
+    /// ```
+    ///
+    /// **Each column is located once per archetype, not once per entity**, which is the whole reason
+    /// this exists — see the [`crate::query`](crate::QueryTerm) docs and Q17. The alternative, asking
+    /// for the required components and then calling [`World::get`] per entity for the optional ones,
+    /// is the pattern archetype storage exists to avoid.
+    ///
+    /// Read-only. Mutation still goes through [`World::for_each_mut`] and its pair and triple
+    /// variants, which can hand out `&mut` safely because they know exactly which columns are
+    /// involved.
+    ///
+    /// Iteration order is archetype order, then row order within an archetype — the same order every
+    /// other read query uses, and reproducible (invariant I3).
+    pub fn query<'w, Q: crate::QueryTerm<'w>>(&'w self) -> crate::QueryIter<'w, Q> {
+        crate::QueryIter::new(&self.archetypes)
+    }
+
     /// A fingerprint of all simulation state in this world.
     ///
     /// This is the value golden replay tests assert on (ADR 0005). Two worlds that reached the same

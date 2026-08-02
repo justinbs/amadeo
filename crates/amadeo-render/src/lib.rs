@@ -157,26 +157,29 @@ pub fn render_quads(world: &mut World) {
         .service::<Renderer>()
         .map_or(FrameData::default().clear_color, |r| r.clear_color);
 
-    // Collected first, then resolved: the closure below needs to look up two more components per
-    // entity, which it cannot do while a query borrow is live. Two passes rather than a wider query
-    // because both `SortOrder` and `GlobalTransform` are **optional** — an entity missing either
-    // still draws, at zero and at its local transform respectively. Requiring them would mean
-    // forgetting a system makes quads silently invisible, a much worse first failure.
-    let drawable: Vec<(amadeo_ecs::Entity, Quad)> = world
-        .iter_pair::<Transform, Quad>()
-        .map(|(entity, _transform, quad)| (entity, *quad))
-        .collect();
-
-    let mut collected: Vec<(i32, QuadInstance)> = drawable
-        .into_iter()
-        .filter_map(|(entity, quad)| {
+    // One query, four components, two of them optional. `SortOrder` and `GlobalTransform` are both
+    // optional on purpose — an entity missing either still draws, at order zero and at its local
+    // transform respectively, because requiring them would mean forgetting a system makes quads
+    // silently invisible, which is a much worse first failure than a slightly wrong one.
+    //
+    // This used to collect into a `Vec` and then look those two up per entity, because the ECS had
+    // no way to express an optional term. Q17 gave it one, and the columns are now resolved once per
+    // archetype instead of once per quad.
+    let mut collected: Vec<(i32, QuadInstance)> = world
+        .query::<(
+            &Transform,
+            &Quad,
+            Option<&SortOrder>,
+            Option<&GlobalTransform>,
+        )>()
+        .map(|(_entity, (transform, quad, order, global))| {
             // `GlobalTransform` is what the entity's parents have made of its transform, so this is
             // where hierarchy finally reaches the screen. Falls back to the local `Transform` when
             // propagation has not run — correct for an unparented entity, and better than drawing
             // nothing at all for a game that forgot the system.
-            let placement = match world.get::<GlobalTransform>(entity) {
+            let placement = match global {
                 Some(global) => *global,
-                None => GlobalTransform::from(local_matrix(world.get::<Transform>(entity)?)),
+                None => GlobalTransform::from(local_matrix(transform)),
             };
 
             let matrix = placement.to_mat4();
@@ -190,10 +193,8 @@ pub fn render_quads(world: &mut World) {
             let scale_x = axis_x[0].hypot(axis_x[1]);
             let scale_y = axis_y[0].hypot(axis_y[1]);
 
-            let order = world.get::<SortOrder>(entity).copied().unwrap_or_default();
-
-            Some((
-                order.order,
+            (
+                order.copied().unwrap_or_default().order,
                 QuadInstance {
                     // The renderer is 2D; a transform is 3D (ADR 0018). Depth within a sort order is
                     // the pipeline decision Q3 deliberately left open, so z is dropped here rather
@@ -205,7 +206,7 @@ pub fn render_quads(world: &mut World) {
                     rotation: axis_x[1].atan2(axis_x[0]),
                     color: quad.color,
                 },
-            ))
+            )
         })
         .collect();
 

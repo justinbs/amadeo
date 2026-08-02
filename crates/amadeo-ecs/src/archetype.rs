@@ -23,8 +23,12 @@ type TripleMut<'a, A, B, C> = (&'a [Entity], &'a mut [A], &'a mut [B], &'a [C]);
 /// - Columns live in a slice, which lets a query take disjoint mutable borrows of two different
 ///   columns via [`slice::get_disjoint_mut`]. That is what makes multi-component mutable queries
 ///   possible without `unsafe`.
+///
+/// The type is `pub` only so that [`crate::QueryTerm`] can name it in its method signatures. Every
+/// method on it is crate-private, which makes that trait effectively sealed — an implementation
+/// outside this crate could not do anything with an `&Archetype`.
 #[derive(Debug)]
-pub(crate) struct Archetype {
+pub struct Archetype {
     /// The component types held here, sorted. Parallel to `columns`.
     component_ids: Vec<ComponentId>,
     /// One column per entry in `component_ids`.

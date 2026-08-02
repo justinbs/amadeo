@@ -40,7 +40,7 @@
 use crate::backend::{SpriteBatch, SpriteInstance};
 use crate::components::{SortOrder, Sprite};
 use crate::local_matrix;
-use amadeo_ecs::{Entity, World};
+use amadeo_ecs::World;
 use amadeo_transform::{GlobalTransform, Transform};
 
 /// The label the app layer registers [`collect_sprites`] under.
@@ -90,18 +90,20 @@ pub fn collect_sprites(world: &World) -> Vec<SpriteBatch> {
     let mut distinct: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
     let mut rows: Vec<(&str, i32, SpriteInstance)> = Vec::new();
 
-    for (entity, transform, sprite) in world.iter_pair::<Transform, Sprite>() {
-        let order = world
-            .get::<SortOrder>(entity)
-            .copied()
-            .unwrap_or_default()
-            .order;
-
+    // One query, four components, two of them optional. `SortOrder` and `GlobalTransform` are
+    // resolved **once per archetype** rather than looked up per entity — which is the whole of Q17
+    // and, after ADR 0024, was the batcher's dominant remaining cost.
+    for (_entity, (transform, sprite, order, global)) in world.query::<(
+        &Transform,
+        &Sprite,
+        Option<&SortOrder>,
+        Option<&GlobalTransform>,
+    )>() {
         distinct.insert(sprite.texture.as_str());
         rows.push((
             sprite.texture.as_str(),
-            order,
-            instance_for(world, entity, transform, sprite),
+            order.copied().unwrap_or_default().order,
+            instance_for(transform, sprite, global),
         ));
     }
 
@@ -154,20 +156,18 @@ pub fn collect_sprites(world: &World) -> Vec<SpriteBatch> {
 
 /// Flattens one entity's transform and sprite into a GPU-ready instance.
 ///
-/// Takes the `transform` and `sprite` the caller already has from its query, rather than looking
-/// them up again — an archetype lookup per component per entity is not free at twenty thousand
-/// sprites, and the caller is holding both anyway.
+/// Everything it needs comes from the query rather than from further lookups — that is the point of
+/// asking for all four components at once.
 fn instance_for(
-    world: &World,
-    entity: Entity,
     transform: &Transform,
     sprite: &Sprite,
+    global: Option<&GlobalTransform>,
 ) -> SpriteInstance {
     // `GlobalTransform` is what this entity's parents made of its transform, so this is where
     // hierarchy reaches the screen. Falls back to the local transform when propagation has not run —
     // correct for an unparented entity, and better than drawing nothing for a game that forgot the
     // system.
-    let placement = match world.get::<GlobalTransform>(entity) {
+    let placement = match global {
         Some(global) => *global,
         None => GlobalTransform::from(local_matrix(transform)),
     };
@@ -202,6 +202,7 @@ fn instance_for(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use amadeo_ecs::Entity;
 
     fn add_sprite(world: &mut World, texture: &str, x: f32, order: i32) -> Entity {
         let entity = world.spawn();

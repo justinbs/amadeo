@@ -65,8 +65,10 @@ crates/
 — amadeo-math        vectors, matrices, quaternions, rects, curves. No engine deps.
 ✅ amadeo-core        Tick, FIXED_DT, Rng (PCG32), StableHasher (FNV-1a), StableId/NetId/Authority
 ✅ amadeo-reflect     Value tree, TypeInfo schema, TypeRegistry. ADR 0012.
-✅ amadeo-ecs         archetype SoA storage, queries, resources, services, deferred commands,
-                     ComponentRegistry (builds a component from a name + a Value)
+✅ amadeo-ecs         archetype SoA storage, resources, services, deferred commands,
+                     ComponentRegistry (builds a component from a name + a Value), and queries:
+                     `world.query::<(&A, Option<&B>)>()` resolves each column once per archetype
+                     (ADR 0025). Read-only; mutation stays with for_each_*_mut.
 ✅ amadeo-transform   Transform (3D; 2D is its degenerate case, ADR 0018), Parent, GlobalTransform +
                      propagate_transforms, and a scalar Mat4. GlobalTransform is computed, never
                      authored, and DERIVED so it stays out of the state hash (ADR 0019).
@@ -146,6 +148,12 @@ put it higher up the stack — pushing things down later is easy; pulling them o
 **During a session:**
 - Any decision that constrains future work gets an ADR in `docs/adr/`. Cheap to write, saves entire
   sessions of re-litigation. Number sequentially, never edit a decided ADR — supersede it.
+
+- **When to put a choice to Justin: anything hard to reverse.** Stated by him in session 7, choosing
+  this deliberately over the narrower "only things I'd read or write often". **The test is cost to
+  undo, not visibility** — an internal mechanism nobody would look at still warrants asking if
+  ripping it out later would mean rewriting a lot. Genuinely cheap-to-change internals can still be
+  decided alone and flagged in the summary, as ADR 0022 was.
 
 - **How to put a choice to Justin.** He has no game-engine-development background and has said he
   tends to take whichever option is recommended. That means offering a menu is not sharing the

@@ -24,7 +24,7 @@
 
 use amadeo_ecs::World;
 use amadeo_render::{SortOrder, Sprite, collect_sprites};
-use amadeo_transform::Transform;
+use amadeo_transform::{GlobalTransform, Transform, propagate_transforms};
 
 /// One 60 Hz frame. The whole budget, for everything — so the batcher wanting a *fraction* of it is
 /// the actual bar.
@@ -40,17 +40,27 @@ const FRAME_BUDGET: std::time::Duration = std::time::Duration::from_micros(16_66
 /// This deliberately **interleaves** textures, which is the worst realistic case for batching since
 /// consecutive entities never share one. A real tilemap is far more clustered, so these numbers are
 /// pessimistic rather than flattering.
+///
+/// Every entity gets a `GlobalTransform`, because every real game registers `propagate_transforms`
+/// and so every drawable entity has one. Without it the batcher takes its fallback path and rebuilds
+/// a matrix from Euler angles per sprite — three `sin_cos` calls each — which measured the cost of a
+/// configuration no shipped game is in. An earlier version of this file did exactly that.
 fn populate(count: usize, textures: usize, layers: usize) -> World {
     let mut world = World::new();
     for i in 0..count {
         let entity = world.spawn();
-        world.insert(entity, Transform::at(i as f32, 0.0));
+        let transform = Transform::at(i as f32, 0.0);
+        world.insert(entity, transform);
         world.insert(
             entity,
             Sprite::new(format!("texture_{}", i % textures), 1.0, 1.0),
         );
         world.insert(entity, SortOrder::new(((i / textures) % layers) as i32));
+        world.insert(entity, GlobalTransform::default());
     }
+    // One propagation pass, as a game's schedule would run, so the composed transforms are real
+    // rather than identity.
+    propagate_transforms(&mut world);
     world
 }
 

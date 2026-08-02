@@ -26,7 +26,20 @@ sprites at 60 fps). A spike of three prototypes would measure less than the real
 
 ---
 
-## Q17 · P1 · The ECS cannot express an optional component in a query
+## ~~Q17~~ · **Resolved — ADR 0025.** Queries are tuples of terms, and a term may be optional
+
+Justin chose the trait-plus-macro approach over hand-writing each shape or a lower-level accessor.
+`world.query::<(&Transform, &Sprite, Option<&SortOrder>, Option<&GlobalTransform>)>()` now resolves
+each column once per archetype. Sprite collection at 20,000 sprites went 3.32 ms → 2.58 ms, and
+5.13 ms → 2.58 ms across ADR 0024 and 0025 together. Kept read-only: generic mutable queries would
+need `unsafe`, which this crate forbids, and the measured problem was all on the read side.
+
+The original text is below for the reasoning that led there.
+
+<details>
+<summary>Q17 as filed</summary>
+
+### The ECS cannot express an optional component in a query
 
 **Found in session 7**, as the successor to Q16 — fixing that one removed the id cost and left this
 as the dominant remaining expense.
@@ -74,6 +87,8 @@ Zomboid are all large-entity-count simulations. ECS throughput stopped being an 
 became a target requirement (`docs/00-vision.md` § Divergent).
 
 **Worth doing before the sprite batcher reaches the GPU**, and worth doing on its own merits.
+
+</details>
 
 ---
 

@@ -63,31 +63,28 @@ of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**Q17 — the ECS cannot express an optional component in a query.**
+**Sprites reach the screen.** The batcher exists and is measured (ADR 0023), the ECS underneath it is
+now fast enough (ADRs 0024 and 0025), and the **wgpu backend still does not draw sprites**.
 
-This is Q16's successor: fixing that one (ADR 0024) removed the id cost and left this as the dominant
-remaining expense. It is also the single clearest gap between this ECS and a mature one.
+That needs texture upload, a sampler, and bind groups — and before any of it, a **decoder**, because
+`amadeo-assets` deliberately hands over bytes, not pixels. Where the decoder lives is a real choice
+and worth thinking about rather than defaulting: `assets/textures/*.ppm` are ASCII PPM precisely so
+the first one can be ten hand-checkable lines instead of a dependency, but PNG is what any real game
+ships and that means either the `image` crate or a lot of code.
 
-Archetype ECSs are fast because **a query matches whole archetypes, not individual entities** — the
-column is found once per archetype and then iterated contiguously. Amadeo does that for *required*
-components and cannot do it for optional ones, because there is no way to say "and this component if
-present". So the sprite batcher falls back to `world.get::<T>(entity)` per entity for `SortOrder` and
-`GlobalTransform` — 40,000 individual lookups at 20,000 sprites, which is precisely the pattern
-archetype storage exists to avoid. `render_quads` has the same shape.
+Note this is the first thing in a while with **no open question in front of it**.
 
-Note this is a **query-API design question**, not just an optimisation: query shapes currently stop at
-three components and each is a hand-written method, so adding optional terms multiplies that
-combinatorially. It may be the moment the query API needs a real abstraction — and that is exactly
-where "boring Rust over clever Rust" pulls against the generic machinery Bevy uses. Worth putting to
-Justin with options. Full write-up in `docs/06-open-questions.md`.
+### Then, in rough order
 
-### Then: sprites reach the screen
+- **`Resource: Reflect`** — the other half of I8, deliberately deferred by ADR 0013.
+- **`snapshot.take` / `snapshot.restore`** — the iteration-loop priority ADR 0011 identified.
+- **Q7 — prefab semantics**, which needs the `from` conflict settled first.
 
-The batcher exists and is measured (ADR 0023); the **wgpu backend does not draw sprites yet**. That
-needs texture upload, a sampler, and bind groups — and before any of it, a decoder, because
-`amadeo-assets` deliberately hands over **bytes, not pixels**. Where the decoder lives is a real
-choice; `assets/textures/*.ppm` are ASCII PPM precisely so the first one can be ten hand-checkable
-lines rather than a dependency.
+### Also worth knowing
+
+Two questions were raised this session that block nothing today but should not be discovered late:
+**Q15** (modding versus ADR 0011, raised by the target list growing) and the **ADR 0014 / ADR 0020
+disagreement about `from`** (filed under Q7).
 
 ### `amadeo-assets` and the sprite batcher — done, session 7
 
@@ -534,7 +531,25 @@ hashes) passed.
   separate-process `amadeo replay` pass unchanged, which is the assertion that matters, since a
   different hash would have invalidated every committed replay at once.
 
-**Verified green: 595 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+- ✅ **Queries are tuples of terms, and a term may be optional — ADR 0025, resolving Q17.**
+  `world.query::<(&Transform, &Sprite, Option<&SortOrder>, Option<&GlobalTransform>)>()`. Each column
+  is resolved **once per archetype** instead of once per entity, which is the structural reason
+  archetype ECSs are fast and the thing Amadeo's hand-written query methods could not express.
+
+  **Justin chose this**, over hand-writing every shape or a lower-level per-archetype accessor, after
+  the trade was put to him with the legibility cost stated. It is the one deliberate piece of clever
+  Rust in the ECS — a trait with an associated type plus a macro writing the tuple impls — and the
+  module docs explain each part of the machinery next to the code rather than only in the ADR.
+
+  Read-only on purpose: a generic *mutable* query cannot prove two type parameters are different
+  columns, so Bevy uses `unsafe` for it, this crate forbids `unsafe`, and the measured problem was
+  entirely on the read side. `for_each_pair_mut` and friends are untouched, and a test asserts the
+  old and new paths see the same world.
+
+  Sprite collection: **3.32 ms → 2.58 ms** at 20,000 sprites, and **5.13 → 2.58 ms** across ADRs 0024
+  and 0025 together — 15.5% of a 60 Hz frame, from 31%.
+
+**Verified green: 610 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 ### The audit Justin asked for, session 7
 

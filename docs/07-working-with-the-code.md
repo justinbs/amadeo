@@ -268,6 +268,46 @@ Returning an *iterator* that yields `&mut` from multiple columns requires higher
 bounds and a hand-written iterator type — a lot of hard-to-read Rust for a modest ergonomic gain. The
 closure form does the same job in a way you can read. This is a deliberate call under `CLAUDE.md` §6.
 
+### `world.query` — asking for several components, some of them optional
+
+The general read query. A query is a **tuple of terms**, and each term says what you want:
+
+```rust
+// Every entity with a Transform and a Sprite, plus its SortOrder and GlobalTransform if it has them.
+for (entity, (transform, sprite, order, global)) in
+    world.query::<(&Transform, &Sprite, Option<&SortOrder>, Option<&GlobalTransform>)>()
+{
+    let layer = order.copied().unwrap_or_default().order;   // absent -> 0
+}
+```
+
+| Term | Means |
+|---|---|
+| `&T` | **required** — an entity without it is not in the results |
+| `Option<&T>` | **optional** — included when present, `None` when not, never a reason to exclude |
+
+Up to eight terms. Use it for anything that reads; use `for_each_pair_mut` and friends to write.
+
+**Why optional matters more than it sounds.** Requiring a component means an entity *silently
+disappearing* from a query when someone forgets to add it — which is a horrible first failure,
+because nothing errors, the entity just stops being processed. So most things a system reads should
+be optional, with a sensible default when absent.
+
+**Why this is fast, and why the old way was not.** Before this existed, a system wanting an optional
+component asked for the required ones and then called `world.get::<T>(entity)` inside the loop. That
+looks harmless and is not: an archetype ECS stores components in columns, and the whole point is to
+find a column *once* and then walk it. A per-entity lookup throws that away. The renderer was doing
+40,000 of them per frame; removing them took sprite collection from 3.32 ms to 2.58 ms, on top of a
+separate fix that had already taken it from 5.13 ms.
+
+**If you find yourself calling `world.get` inside a loop over a query, that is the smell.** Add the
+component to the query as an `Option<&T>` instead.
+
+The implementation (`crates/amadeo-ecs/src/query.rs`) is the one place in the ECS with a trait plus a
+code-generating macro, which is against this project's usual preference for boring Rust. ADR 0025
+records why, and the module's own docs explain each piece of the machinery next to the code. You
+should not need to read any of it to *use* a query.
+
 ### `Resource` vs `Service` — the split that keeps replays honest
 
 Both are single-instance globals living in the `World`, and both are reachable from a system. The
