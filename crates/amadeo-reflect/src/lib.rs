@@ -202,7 +202,34 @@ impl ReflectError {
 /// into a live one. Type-erased operations that *do* need a trait object (inserting a component onto
 /// an entity by name) are built in `amadeo-ecs` from monomorphised function pointers instead.
 pub trait Reflect: Sized + 'static {
+    /// The canonical name as a **compile-time constant**, or `""` when it is only known at runtime.
+    ///
+    /// `#[derive(Reflect)]` fills this in for every struct and enum, honouring
+    /// `#[reflect(name = "...")]`. It is empty for the generic impls — `[T; N]`, `Option<T>`,
+    /// `Vec<T>` — whose names are built from their parameters and so cannot be a single constant.
+    ///
+    /// # Why a constant as well as [`Reflect::type_name`]
+    ///
+    /// `ComponentId` is the hash of this name (ADR 0017), and a component's name never changes while
+    /// the program runs — so its id is a constant. But `type_name()` returns a fresh `String`, which
+    /// means computing that id allocates *and* hashes, and it sits on the hot path of every
+    /// component lookup. At 20,000 sprites that cost dominated the sprite batcher (Q16).
+    ///
+    /// So concrete types carry their name here, where [`Reflect::STATIC_NAME_HASH`] can turn it into
+    /// an id before the program starts. Anything that cannot falls back to the old path and is no
+    /// worse off — nothing that reaches `ComponentId` is generic, because a component is a struct.
+    const STATIC_NAME: &'static str = "";
+
+    /// FNV-1a of [`Reflect::STATIC_NAME`], computed at compile time.
+    ///
+    /// Never override this. It has a default precisely so that setting `STATIC_NAME` is the only
+    /// thing a type has to do, and so the two cannot disagree.
+    const STATIC_NAME_HASH: u64 = amadeo_core::StableHasher::hash_str(Self::STATIC_NAME);
+
     /// The canonical name, as it appears in text files and in the registry.
+    ///
+    /// Allocates. Prefer [`Reflect::STATIC_NAME`] on any path that runs more than once, and see the
+    /// note there for why both exist.
     fn type_name() -> String;
 
     /// The full schema.

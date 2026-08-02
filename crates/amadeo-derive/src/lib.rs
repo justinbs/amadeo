@@ -288,6 +288,11 @@ fn expand(input: DeriveInput) -> syn::Result<TokenStream2> {
 
     Ok(quote! {
         impl ::amadeo_reflect::Reflect for #ident {
+            // The same string `type_name` returns, as a constant. This is what lets `ComponentId`
+            // be computed at compile time instead of allocating and hashing on every lookup (Q16).
+            // `STATIC_NAME_HASH` follows from it automatically and must not be set by hand.
+            const STATIC_NAME: &'static str = #canonical;
+
             fn type_name() -> ::std::string::String {
                 #canonical.to_string()
             }

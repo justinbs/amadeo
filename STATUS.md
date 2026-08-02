@@ -63,17 +63,23 @@ of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**Q16 — `ComponentId::of` recomputes a `String` allocation and a hash on every component lookup.**
+**Q17 — the ECS cannot express an optional component in a query.**
 
-This came out of measuring the sprite batcher and it is the highest-value thing available: it is on
-the hot path of `World::get`, `World::insert`, and every query, so it taxes the entire engine.
-Collecting 20,000 sprites costs ~5.1 ms, of which the batching itself is a few hundred microseconds
-— the rest is re-hashing `"SortOrder"` and `"GlobalTransform"` forty thousand times a frame.
+This is Q16's successor: fixing that one (ADR 0024) removed the id cost and left this as the dominant
+remaining expense. It is also the single clearest gap between this ECS and a mature one.
 
-The fix is an associated `const NAME: &'static str` on `Reflect` plus a `const fn` FNV hash, making
-an id a compile-time constant. It touches the trait, the derive, and every impl, which is why it was
-filed rather than done in passing. **Do it before the sprite batcher reaches the GPU**, or any
-pipeline tuning is tuning the wrong thing. Full write-up in `docs/06-open-questions.md`.
+Archetype ECSs are fast because **a query matches whole archetypes, not individual entities** — the
+column is found once per archetype and then iterated contiguously. Amadeo does that for *required*
+components and cannot do it for optional ones, because there is no way to say "and this component if
+present". So the sprite batcher falls back to `world.get::<T>(entity)` per entity for `SortOrder` and
+`GlobalTransform` — 40,000 individual lookups at 20,000 sprites, which is precisely the pattern
+archetype storage exists to avoid. `render_quads` has the same shape.
+
+Note this is a **query-API design question**, not just an optimisation: query shapes currently stop at
+three components and each is a hand-written method, so adding optional terms multiplies that
+combinatorially. It may be the moment the query API needs a real abstraction — and that is exactly
+where "boring Rust over clever Rust" pulls against the generic machinery Bevy uses. Worth putting to
+Justin with options. Full write-up in `docs/06-open-questions.md`.
 
 ### Then: sprites reach the screen
 
@@ -517,7 +523,18 @@ hashes) passed.
   through trigonometry on both the CPU and the shader — and is strictly more expressive, since a
   size-and-angle pair cannot represent a sheared or non-uniformly-scaled-then-rotated sprite.
 
-**Verified green: 593 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+- ✅ **Component ids are compile-time constants now — ADR 0024, resolving Q16.** `Reflect` gained
+  `STATIC_NAME` (filled in by the derive) and `STATIC_NAME_HASH` (a `const fn` FNV-1a over it), so
+  `ComponentId::of::<T>()` is a constant load rather than a `String` allocation plus a hash on
+  **every** component access.
+
+  This is an engine-wide win, not a rendering one — `World::get`, `World::insert`, and every query
+  pay it. Sprite collection went **5.13 ms → 3.32 ms** at 20,000 sprites (31% → 20% of a frame), and
+  the 50,000-tile case **11.55 ms → 6.77 ms**. Ids are byte-identical: both golden replays and the
+  separate-process `amadeo replay` pass unchanged, which is the assertion that matters, since a
+  different hash would have invalidated every committed replay at once.
+
+**Verified green: 595 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 ### The audit Justin asked for, session 7
 

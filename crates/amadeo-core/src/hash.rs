@@ -94,6 +94,37 @@ impl StableHasher {
         self.write_bytes(value.as_bytes());
     }
 
+    /// Hashes a string at **compile time**.
+    ///
+    /// Exactly equivalent to `StableHasher::new()`, `write_str(name)`, `finish()` — pinned by
+    /// `const_hash_agrees_with_the_hasher` below, because the two drifting apart would silently
+    /// change every [`crate::StableHash`]-derived id in the engine.
+    ///
+    /// # Why this exists
+    ///
+    /// `ComponentId` is the FNV-1a hash of a component's canonical name (ADR 0017). That name is
+    /// fixed at compile time, so the id is a constant — but computing it through the hasher happens
+    /// at runtime, on the hot path of every component lookup. Measured at 20,000 sprites, that cost
+    /// dominated the sprite batcher (Q16).
+    ///
+    /// Written as a `while` loop over bytes rather than an iterator because `for` and `Iterator` are
+    /// not available in a `const fn`. That is the only reason; it is otherwise the same three lines
+    /// as [`StableHasher::write_u8`].
+    #[must_use]
+    pub const fn hash_str(name: &str) -> u64 {
+        let bytes = name.as_bytes();
+        let mut state = FNV_OFFSET_BASIS;
+        let mut index = 0;
+
+        while index < bytes.len() {
+            state ^= bytes[index] as u64;
+            state = state.wrapping_mul(FNV_PRIME);
+            index += 1;
+        }
+
+        state
+    }
+
     /// Absorbs an `f32`, canonicalising the awkward cases first.
     ///
     /// Two float values need special handling before hashing, or identical-looking states would
@@ -288,6 +319,47 @@ impl<A: StableHash, B: StableHash> StableHash for (A, B) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn const_hash_agrees_with_the_hasher() {
+        // The safety net for `hash_str`. If these two ever disagreed, every `ComponentId` would
+        // change, every state hash containing a component would change, and every committed replay
+        // would fail at once — with nothing pointing at the cause.
+        //
+        // The empty string is included deliberately: it is the default `Reflect::STATIC_NAME`, so
+        // it is the value a type that opts out of the constant path carries.
+        for name in [
+            "",
+            "a",
+            "Transform",
+            "GlobalTransform",
+            "SortOrder",
+            "some::path::With::Colons",
+            "unicode \u{2014} em dash",
+        ] {
+            let mut hasher = StableHasher::new();
+            hasher.write_str(name);
+
+            assert_eq!(
+                StableHasher::hash_str(name),
+                hasher.finish(),
+                "const and runtime hashes disagree for {name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn const_hash_really_is_const() {
+        // Evaluated at compile time, not merely evaluatable. If `hash_str` stopped being a `const
+        // fn` this would not compile, which is the point — the whole optimisation is that the
+        // answer exists before the program runs.
+        const NAME: &str = "Transform";
+        const HASHED: u64 = StableHasher::hash_str(NAME);
+
+        let mut hasher = StableHasher::new();
+        hasher.write_str(NAME);
+        assert_eq!(HASHED, hasher.finish());
+    }
 
     #[test]
     fn identical_input_gives_identical_hash() {

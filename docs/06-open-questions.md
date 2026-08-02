@@ -26,45 +26,54 @@ sprites at 60 fps). A spike of three prototypes would measure less than the real
 
 ---
 
-## Q16 · P1 · `ComponentId::of` recomputes a compile-time constant on every lookup
+## Q17 · P1 · The ECS cannot express an optional component in a query
 
-**Found by measurement in session 7**, while benchmarking the sprite batcher. Not a design flaw —
-ADR 0017's decision to derive a component's id from its canonical name is right — but the
-implementation recomputes that id every single time it is asked for.
+**Found in session 7**, as the successor to Q16 — fixing that one removed the id cost and left this
+as the dominant remaining expense.
 
-`ComponentId::of::<T>()` calls `Reflect::type_name()`, which **allocates a fresh `String`**, and then
-FNV-hashes every byte of it. It sits on the hot path of every component lookup: `World::get`,
-`World::insert`, and every query call it to locate a column.
+Archetype ECSs are fast for one structural reason: **a query matches whole archetypes, not individual
+entities.** The column is located once per archetype and then iterated contiguously, which is why
+Flecs describes archetype matching as the main source of query speed and why Bevy caches that
+matching in `QueryState` — "gathering archetypes is a costly operation, so it is cached".
 
-**The measured effect.** Collecting 20,000 sprites takes ~5.1 ms — about 30% of a 60 Hz frame — for
-work that is a handful of arithmetic per sprite. Each sprite does two optional-component lookups
-(`SortOrder` and `GlobalTransform`), so a frame re-hashes `"SortOrder"` and `"GlobalTransform"`
-forty thousand times, allocating a `String` each time. Removing the batcher's own trigonometry moved
-the number by only 4%, which is what points the finger here.
+Amadeo's queries do this for their *required* components. They cannot do it for optional ones,
+because there is no way to say "and this component if it is present".
 
-### The fix, and why it was not done in passing
+**The consequence, measured.** The sprite batcher needs `SortOrder` and `GlobalTransform`, and both
+are deliberately optional — an entity without them still draws, at order zero and at its local
+transform. So it falls back to `world.get::<T>(entity)` per entity, which is exactly the per-entity
+lookup archetype storage exists to avoid. At 20,000 sprites that is 40,000 individual lookups, each
+one a location fetch plus a binary search plus a downcast, and after ADR 0024 it is what the
+remaining ~3.3 ms is spent on.
 
-Make the canonical name an associated `const NAME: &'static str` on `Reflect`, and make the FNV hash
-a `const fn`. Then `ComponentId::of::<T>()` becomes a compile-time constant and every lookup drops to
-an integer comparison.
+The same shape appears in `render_quads`, and will appear in every system that wants to treat a
+component as optional — which is most of them, since requiring a component means an entity silently
+disappearing from a query when someone forgets to add it.
 
-That touches the `Reflect` trait, `amadeo-derive`, and every hand-written impl, which is a focused
-piece of work rather than an afterthought at the end of a session.
+### What to build
 
-**A caching shortcut was tried and reverted, and the reason is worth recording:** a `static` declared
-inside a generic function is **not** instantiated per `T` — it is shared across every
-monomorphisation. So `static CACHED: OnceLock<u64>` inside `of::<T>()` gave every component type the
-same id. The archetype tests failed immediately, which is exactly what they are for. If anyone
-reaches for that trick again, this is why it does not work.
+An `Option<&T>` query term: resolve the column once per archetype, yield `Some(&value)` for
+archetypes that have it and `None` for those that do not. No per-entity lookup at all.
 
-### Why it matters more now than it would have last week
+Sub-questions worth settling first:
 
-The target list grew to eight games in session 7, and Stellaris, Terraria, and RimWorld are all
-large-entity-count simulations. ECS lookup cost stopped being an aesthetic concern and became a
-target requirement (`docs/00-vision.md` § Divergent).
+- **How far does it generalise?** Query shapes currently stop at three components (`iter_triple`) and
+  each new shape is a hand-written method. Adding optional terms multiplies that combinatorially, so
+  this may be the moment the query API needs a real abstraction rather than another method — which
+  is a bigger design question, and one where `CLAUDE.md`'s "boring Rust over clever Rust" pulls hard
+  against the generic machinery Bevy uses for it.
+- **Does it change iteration order?** It must not: draw order and state hashes both depend on
+  iteration being reproducible (I3).
+- **Is the archetype match cached, as Bevy does, or recomputed per call?** Caching needs invalidation
+  when a new archetype appears, which is a correctness risk to weigh against the saving.
 
-**Do this before the sprite batcher reaches the GPU**, since the batcher's cost is currently
-dominated by it and any pipeline tuning done first would be tuning the wrong thing.
+### Why this matters now
+
+The target list grew to eight games in session 7, and Stellaris, Terraria, RimWorld, and Project
+Zomboid are all large-entity-count simulations. ECS throughput stopped being an aesthetic concern and
+became a target requirement (`docs/00-vision.md` § Divergent).
+
+**Worth doing before the sprite batcher reaches the GPU**, and worth doing on its own merits.
 
 ---
 
