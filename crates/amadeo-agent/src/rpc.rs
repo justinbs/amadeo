@@ -295,7 +295,13 @@ pub fn failure(id: &Json, error: &RpcError) -> Json {
 }
 
 /// The methods answerable from a world and a registry alone.
-pub const WORLD_METHODS: &[&str] = &["describe", "world.entity", "world.query", "world.list"];
+pub const WORLD_METHODS: &[&str] = &[
+    "assets.list",
+    "describe",
+    "world.entity",
+    "world.list",
+    "world.query",
+];
 
 /// Answers a request that needs only the world and the registry.
 ///
@@ -334,6 +340,10 @@ pub fn dispatch_world(
                 }
             }
         }
+
+        // ADR 0020 requires this to exist *before* ids become the reference syntax, so that the
+        // first agent to author a scene can look the ids up rather than guess at them.
+        "assets.list" => Ok(Some(crate::assets::list(world))),
 
         "world.list" => {
             let entities: Vec<Json> = world

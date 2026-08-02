@@ -9,6 +9,8 @@ rust-version.workspace = true
 
 [dependencies]
 amadeo-agent.workspace = true
+# The asset catalogue is installed on the World before the first tick -- ADR 0021's load barrier.
+amadeo-assets.workspace = true
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 amadeo-events.workspace = true

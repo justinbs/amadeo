@@ -22,10 +22,11 @@ mod launch;
 mod project;
 
 use amadeo_agent::Json;
+use amadeo_assets::ImportPlan;
 use anyhow::{Context, Result, bail};
 use launch::{ask_once, request};
 use project::Project;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// What the user asked for.
 #[derive(Debug)]
@@ -48,6 +49,10 @@ enum Command {
     Check { paths: Vec<PathBuf> },
     /// Replay a recording in a fresh process and verify its checkpoint hashes.
     Replay { path: PathBuf },
+    /// List every asset id, the file behind it, and anything not yet importable.
+    Assets,
+    /// Write a sidecar for every asset file that has none.
+    Import { check: bool },
 }
 
 /// Options that apply to any command that launches the game.
@@ -89,6 +94,14 @@ fn run(command: Command, options: &Options) -> Result<()> {
         return replay(&path, options);
     }
 
+    if let Command::Assets = command {
+        return list_assets(options);
+    }
+
+    if let Command::Import { check } = command {
+        return import_assets(check, options);
+    }
+
     let (method, params) = match &command {
         Command::Describe { type_name } => (
             "describe",
@@ -124,7 +137,11 @@ fn run(command: Command, options: &Options) -> Result<()> {
             }
             (method.as_str(), parsed)
         }
-        Command::Fmt { .. } | Command::Check { .. } | Command::Replay { .. } => {
+        Command::Fmt { .. }
+        | Command::Check { .. }
+        | Command::Replay { .. }
+        | Command::Assets
+        | Command::Import { .. } => {
             unreachable!("handled above")
         }
     };
@@ -439,6 +456,194 @@ fn format_scenes(paths: &[PathBuf], check_only: bool) -> Result<()> {
     Ok(())
 }
 
+/// Asks the game for its asset catalogue and prints it.
+///
+/// ADR 0020 requires this to exist before ids are used as the reference syntax, so that authoring a
+/// scene means *looking up* an id rather than guessing one. It goes through the game rather than
+/// scanning here for the same reason `describe` does: the game is the process that knows where its
+/// assets are, and a second implementation in the CLI could disagree with it.
+///
+/// Rendered as a table rather than dumped as JSON, because a listing is the one thing here a human
+/// reads straight through. `--compact` still gives the raw reply for a script.
+fn list_assets(options: &Options) -> Result<()> {
+    let reply = ask_game(
+        "assets.list",
+        Json::object([] as [(&str, Json); 0]),
+        options,
+    )?;
+
+    if options.compact {
+        println!("{}", reply.to_compact());
+        return Ok(());
+    }
+
+    let Json::Object(result) = &reply else {
+        bail!("assets.list replied with something that is not an object");
+    };
+
+    if result.get("installed") == Some(&Json::Bool(false)) {
+        println!("This game has no asset catalogue.");
+        if let Some(Json::String(note)) = result.get("note") {
+            println!("{note}.");
+        }
+        return Ok(());
+    }
+
+    if let (Some(Json::String(root)), Some(Json::String(anchor))) =
+        (result.get("root"), result.get("root_anchor"))
+    {
+        // Where it looked and why. "Looked in the wrong place" and "the files are missing" have
+        // identical symptoms, so the listing always says which directory it is describing.
+        println!("root  {root}  ({anchor})");
+        println!();
+    }
+
+    let assets = match result.get("assets") {
+        Some(Json::Array(items)) => items.clone(),
+        _ => Vec::new(),
+    };
+
+    if assets.is_empty() {
+        println!("No assets are catalogued.");
+    } else {
+        // Column widths from the data, so ids and paths line up without a fixed guess that is
+        // either too narrow or mostly blank.
+        let width = assets
+            .iter()
+            .filter_map(|asset| string_field(asset, "id"))
+            .map(str::len)
+            .max()
+            .unwrap_or(2)
+            .max(2);
+
+        println!("{:<width$}  SOURCE", "ID", width = width);
+        for asset in &assets {
+            let id = string_field(asset, "id").unwrap_or("?");
+            let source = string_field(asset, "source").unwrap_or("?");
+            println!("{id:<width$}  {source}", width = width);
+        }
+        println!();
+        println!("{} asset(s)", assets.len());
+    }
+
+    print_paths(
+        result.get("unimported"),
+        "NOT IMPORTED (no .ama-meta sidecar, so nothing can refer to them)",
+        Some("Run `amadeo import` to give each one an id from its filename."),
+    );
+    print_paths(
+        result.get("orphaned"),
+        "ORPHANED SIDECARS (the asset file they describe is gone)",
+        Some("Delete them, or restore the files they name."),
+    );
+
+    Ok(())
+}
+
+/// Writes a sidecar for every asset file that has none.
+///
+/// The root comes from the game, via `assets.list`, but the *writing* happens here. That is the same
+/// division `scene.check` uses: the game knows things the CLI cannot, and the CLI touches the
+/// filesystem the game has no business touching.
+fn import_assets(check: bool, options: &Options) -> Result<()> {
+    let reply = ask_game(
+        "assets.list",
+        Json::object([] as [(&str, Json); 0]),
+        options,
+    )?;
+
+    let Json::Object(result) = &reply else {
+        bail!("assets.list replied with something that is not an object");
+    };
+
+    let Some(Json::String(root)) = result.get("root") else {
+        bail!(
+            "this game has no asset directory, so there is nothing to import into. \
+             A game scans one with `App::scan_assets(\"assets\")` before it runs"
+        );
+    };
+
+    let plan = ImportPlan::prepare(Path::new(root))?;
+
+    if plan.is_empty() {
+        println!(
+            "Nothing to import — all {} asset(s) already have a sidecar.",
+            plan.already_imported
+        );
+        return Ok(());
+    }
+
+    for planned in &plan.sidecars {
+        println!(
+            "{}  {}  ->  {}",
+            if check { "would create" } else { "created    " },
+            planned.asset.display(),
+            planned.id
+        );
+    }
+
+    if check {
+        // Same shape as `fmt --check`: report and fail, so it can gate a commit.
+        bail!(
+            "{} asset(s) have no sidecar. Run `amadeo import` to create them",
+            plan.sidecars.len()
+        );
+    }
+
+    let written = plan.apply()?;
+    println!();
+    println!("{} sidecar(s) written.", written.len());
+    Ok(())
+}
+
+/// Launches the game, asks one question, and returns the result.
+///
+/// A thin wrapper over [`ask_once`] that does the project discovery every game command repeats.
+fn ask_game(method: &str, params: Json, options: &Options) -> Result<Json> {
+    let here = std::env::current_dir().context("could not read the current directory")?;
+    let project = Project::discover(&here)?;
+    let package = options.package.clone().unwrap_or(project.game);
+
+    ask_once(
+        &project.root,
+        &package,
+        options.ticks,
+        request(method, params, 1),
+    )
+}
+
+/// A string field out of a JSON object, or `None` if it is missing or not a string.
+fn string_field<'a>(value: &'a Json, name: &str) -> Option<&'a str> {
+    let Json::Object(members) = value else {
+        return None;
+    };
+    match members.get(name) {
+        Some(Json::String(text)) => Some(text),
+        _ => None,
+    }
+}
+
+/// Prints a titled list of paths, or nothing at all when the list is empty.
+fn print_paths(value: Option<&Json>, title: &str, hint: Option<&str>) {
+    let Some(Json::Array(items)) = value else {
+        return;
+    };
+    if items.is_empty() {
+        return;
+    }
+
+    println!();
+    println!("{title}");
+    for item in items {
+        if let Json::String(path) = item {
+            println!("    {path}");
+        }
+    }
+    if let Some(hint) = hint {
+        println!("{hint}");
+    }
+}
+
 /// Splits the arguments into a command and the options around it.
 fn parse(arguments: &[String]) -> Result<(Command, Options)> {
     let mut options = Options {
@@ -559,6 +764,8 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
         "check" => Command::Check {
             paths: rest.iter().map(PathBuf::from).collect(),
         },
+        "assets" => Command::Assets,
+        "import" => Command::Import { check },
         "replay" => Command::Replay {
             path: rest
                 .first()
@@ -584,8 +791,11 @@ RUNS HERE (no game needed)
         --check              report unformatted files instead of fixing them
 
 RUNS IN THE GAME (launches it, asks, exits)
+    assets                   every asset id and the file behind it
     check <file>...          validate scene files against the real component schema
     describe [type]          the component schema — everything, or one type
+    import                   write a sidecar for each asset file that has none
+        --check              report them instead of writing
     query <component>...     entities carrying all of the named components
     entity <index>           one entity's components
     replay <file>            replay a recording and verify its checkpoint hashes
@@ -743,6 +953,37 @@ mod tests {
             error.to_string().contains("amadeo replay walk.replay"),
             "got: {error}"
         );
+    }
+
+    #[test]
+    fn assets_takes_no_arguments() {
+        let (command, _) = parse_args(&["assets"]).expect("parses");
+        assert!(matches!(command, Command::Assets), "got {command:?}");
+    }
+
+    #[test]
+    fn import_carries_the_check_flag() {
+        // `--check` means the same thing here as it does for `fmt`: report, do not write, and fail
+        // so it can gate a commit.
+        let (plain, _) = parse_args(&["import"]).expect("parses");
+        assert!(
+            matches!(plain, Command::Import { check: false }),
+            "got {plain:?}"
+        );
+
+        let (checked, _) = parse_args(&["import", "--check"]).expect("parses");
+        assert!(
+            matches!(checked, Command::Import { check: true }),
+            "got {checked:?}"
+        );
+    }
+
+    #[test]
+    fn the_usage_text_lists_the_asset_commands() {
+        // ADR 0020 requires a way to look ids up before they are used as the reference syntax. If it
+        // is not in --help, an agent will not find it, which defeats the point.
+        assert!(USAGE.contains("assets"));
+        assert!(USAGE.contains("import"));
     }
 
     #[test]

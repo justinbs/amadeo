@@ -26,7 +26,7 @@ use amadeo_ecs::{Component, World};
 use amadeo_input::{
     ActionId, InputDriver, InputState, LiveSource, NullSource, SAMPLE_INPUT, sample_input,
 };
-use amadeo_reflect::{Reflect, RegistryError};
+use amadeo_reflect::Reflect;
 use amadeo_render::{Camera2d, Quad, RENDER_QUADS, Renderer, SortOrder, WgpuBackend, render_quads};
 use amadeo_transform::{GlobalTransform, PROPAGATE_TRANSFORMS, Transform, propagate_transforms};
 use winit::application::ApplicationHandler;
@@ -102,15 +102,22 @@ fn clamp_to_view(world: &mut World) {
     });
 }
 
+/// The seed this game runs at unless told otherwise.
+const DEFAULT_SEED: u64 = 0;
+
+/// Where this game keeps its assets, relative to the project root.
+///
+/// Relative to the nearest `amadeo.toml`, *not* to the working directory — see
+/// `amadeo_assets::resolve`. That is what makes `cargo run` from a subdirectory and a
+/// CLI-launched agent session find the same files.
+const ASSET_DIRECTORY: &str = "assets";
+
 /// Builds the world: a player quad plus static markers to move against.
 ///
 /// The palette is deliberate rather than default — a cool near-black ground, muted slate markers, and
 /// a single warm amber for the thing you control, so the player reads instantly against everything
 /// else.
-/// The seed this game runs at unless told otherwise.
-const DEFAULT_SEED: u64 = 0;
-
-fn build_simulation() -> Result<App, RegistryError> {
+fn build_simulation() -> anyhow::Result<App> {
     // Asked for *before* the app exists, because `with_seed` fixes the seed at construction and a
     // replay only reproduces against the seed that recorded it. `amadeo replay` passes it.
     let mut app = App::with_seed(amadeo_app::requested_seed().unwrap_or(DEFAULT_SEED));
@@ -124,6 +131,10 @@ fn build_simulation() -> Result<App, RegistryError> {
     app.register_component::<GlobalTransform>()?;
     app.register_component::<Velocity>()?;
     app.register_component::<Player>()?;
+
+    // Before the first tick, never during one — ADR 0021's load barrier. The simulation never
+    // observes an asset arriving, so there is nothing about load timing for it to branch on.
+    app.scan_assets(ASSET_DIRECTORY)?;
 
     app.insert_resource(Camera2d {
         center: [0.0, 0.0],
@@ -174,7 +185,7 @@ fn build_simulation() -> Result<App, RegistryError> {
 }
 
 /// The windowed game: the shared simulation, plus live input and a GPU renderer.
-fn build_app(backend: WgpuBackend) -> Result<App, RegistryError> {
+fn build_app(backend: WgpuBackend) -> anyhow::Result<App> {
     let mut app = build_simulation()?;
 
     amadeo_input::install(
@@ -196,7 +207,7 @@ fn build_app(backend: WgpuBackend) -> Result<App, RegistryError> {
 /// Sharing `build_simulation` with the windowed path is the point: an answer the agent gives about
 /// this world is an answer about the game that actually runs (invariant I7). A separate headless
 /// setup would drift, and the drift would be invisible until it mattered.
-fn build_headless() -> Result<App, RegistryError> {
+fn build_headless() -> anyhow::Result<App> {
     let mut app = build_simulation()?;
     amadeo_input::install(&mut app.world, InputDriver::new(Box::new(NullSource)));
     Ok(app)

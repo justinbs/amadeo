@@ -38,27 +38,33 @@
 //! is a separate piece of work, and keeping the read side independent means an agent can always look
 //! at a world without wondering whether looking changed it.
 //!
+//! # Where the transport lives
+//!
+//! This crate owns the *protocol*: [`Request`] parsing, the JSON-RPC envelope, and [`dispatch_world`]
+//! for the methods that need only a world and a registry. It does not own the *hosting* — the stdin
+//! loop and the methods needing an `App` are in `amadeo-app`, because `App` is defined there and
+//! invariant I6 forbids reaching down for it. ADR 0016 explains the split; a client never sees it.
+//!
+//! Both halves of the JSON codec are here: [`Json`] writes, [`Json::parse`] reads, hand-written on
+//! the same legibility grounds that kept PCG32 and FNV-1a hand-written.
+//!
 //! # What is not here yet
 //!
-//! **The transport.** There is no JSON-RPC server yet — this is the library one is built on. The
-//! process model was the open part, and **ADR 0016 settled it**: because ADR 0011 compiles game logic
-//! into the game binary, that binary is the only process that knows a game's components, so it hosts
-//! the agent and `amadeo-cli` launches it and talks over stdio. The first transport is one-shot
-//! batch: one invocation is one fresh deterministic run.
+//! **The mutating methods.** `world.spawn`, `world.set_component`, and `sim.step` wait for the
+//! persistent session, which M4's editor is the first thing to actually need. Under the one-shot
+//! batch model each invocation is a fresh deterministic run, so there is nothing to mutate *into*.
 //!
-//! **JSON parsing.** [`Json`] writes; nothing reads. The RPC server needs a parser, and that is a
-//! larger piece than the writer. ADR 0016 keeps it hand-written and in this crate, next to the
-//! writer, rather than taking a dependency.
-//!
-//! **`render.capture` and `render.describe`.** The agent's eyes. They need the 2D renderer, which
-//! needs Q3 settled.
+//! **`render.capture` and `render.describe`.** The agent's eyes. They need the 2D renderer, and
+//! specifically the sprite batcher that Q3's remaining third gets decided against.
 
+mod assets;
 mod describe;
 mod inspect;
 mod json;
 mod parse;
 mod rpc;
 
+pub use assets::list as list_assets;
 pub use describe::{DESCRIBE_FORMAT_VERSION, describe, describe_type};
 pub use inspect::{entity, query, value_to_json};
 pub use json::Json;

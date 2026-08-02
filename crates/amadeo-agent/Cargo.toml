@@ -8,6 +8,9 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# `assets.list` reports the catalogue, which lives on the World as a Service. amadeo-assets sits
+# below this crate in the dependency order (CLAUDE.md §4), so reading it here is with the grain.
+amadeo-assets.workspace = true
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 amadeo-reflect.workspace = true

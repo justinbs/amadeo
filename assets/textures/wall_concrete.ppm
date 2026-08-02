@@ -1,0 +1,8 @@
+P3
+# A stand-in wall texture, and the asset ADR 0020's worked example refers to by name.
+# ASCII PPM for the same reason placeholder.ppm is: a real image format that is also a text file, so
+# it can be read and edited without a tool (invariant I1).
+2 2
+255
+92 90 86    74 72 69
+74 72 69    92 90 86

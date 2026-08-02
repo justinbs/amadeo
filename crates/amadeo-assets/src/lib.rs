@@ -48,8 +48,14 @@
 //! **The import pipeline.** Compiling `.png` into an internal format so the runtime never parses
 //! source formats. Needs the loading layer underneath it.
 
+mod import;
+mod root;
+mod scan;
 mod sidecar;
 
+pub use import::{ImportError, ImportPlan, ImportProblem, PlannedSidecar};
+pub use root::{Anchor, AssetRoot, PROJECT_MARKER, project_root_from, resolve};
+pub use scan::{Scan, ScanError, ScanProblem};
 pub use sidecar::{
     SIDECAR_EXTENSION, Sidecar, SidecarError, SidecarErrorKind, asset_path_for, is_usable_id,
     sidecar_path_for,
@@ -94,17 +100,77 @@ pub struct AssetEntry {
 
 /// Every asset in a project, by id.
 ///
-/// A [`Service`] rather than a `Resource`: it is engine machinery describing what is on disk, not
-/// simulation state, so it is excluded from the state hash (ADR 0009). Two runs of the same game
-/// with the same scene must agree on their state hash whether or not an unrelated texture exists.
-#[derive(Debug, Default)]
+/// Held inside [`Assets`], which is the thing a `World` actually stores.
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct AssetCatalogue {
     /// Ordered by id, so listing is reproducible and diffable — the same reason every other registry
     /// in this engine uses a `BTreeMap` (invariant I3).
     assets: BTreeMap<String, AssetEntry>,
 }
 
-impl Service for AssetCatalogue {}
+/// Everything the engine knows about the assets on disk.
+///
+/// This is what a `World` holds, as a [`Service`] rather than a `Resource`: it is engine machinery
+/// describing what is on disk, not simulation state, so it is excluded from the state hash
+/// (ADR 0009). Two runs of the same game with the same scene must agree on their state hash whether
+/// or not an unrelated texture exists — and ADR 0021 goes further, requiring that gameplay never
+/// observe any of this at all.
+///
+/// It carries the scan's *complaints* alongside its results, because "the file is right there but
+/// has no sidecar" is the papercut ADR 0020 explicitly named, and it can only be reported by
+/// something that remembered it.
+#[derive(Debug, Default)]
+pub struct Assets {
+    /// Where the scan looked, and how that directory was decided.
+    ///
+    /// `None` when the catalogue was built by hand rather than scanned, which is what tests do.
+    pub root: Option<AssetRoot>,
+
+    /// Every asset that has a sidecar, by id.
+    pub catalogue: AssetCatalogue,
+
+    /// Asset files with no sidecar, so not referenceable yet. Sorted, relative to the root.
+    pub unimported: Vec<std::path::PathBuf>,
+
+    /// Sidecars whose asset file is gone. Sorted, relative to the root.
+    pub orphaned: Vec<std::path::PathBuf>,
+}
+
+impl Service for Assets {}
+
+impl Assets {
+    /// Scans an asset directory named relative to the project root.
+    ///
+    /// See [`resolve`] for how a relative path becomes a real directory — the short version is that
+    /// it is relative to the nearest `amadeo.toml`, not to the working directory, so the answer does
+    /// not depend on where the process was started from.
+    ///
+    /// # Errors
+    ///
+    /// [`ScanError`] listing every problem found, including a missing directory.
+    pub fn scan(relative: &Path) -> Result<Assets, ScanError> {
+        let root = resolve(relative);
+        let scanned = AssetCatalogue::scan(&root.path)?;
+
+        Ok(Assets {
+            root: Some(root),
+            catalogue: scanned.catalogue,
+            unimported: scanned.unimported,
+            orphaned: scanned.orphaned,
+        })
+    }
+
+    /// An `Assets` holding a catalogue built by hand, with no directory behind it.
+    ///
+    /// For tests and for a game that builds its catalogue some other way.
+    #[must_use]
+    pub fn from_catalogue(catalogue: AssetCatalogue) -> Assets {
+        Assets {
+            catalogue,
+            ..Assets::default()
+        }
+    }
+}
 
 impl AssetCatalogue {
     /// An empty catalogue.

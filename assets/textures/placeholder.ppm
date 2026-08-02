@@ -1,0 +1,14 @@
+P3
+# The missing-texture stand-in. ADR 0021 requires a visible placeholder rather than a crash: a
+# missing asset must still draw something and report itself, because the agent's only eyes are
+# render.describe and render.capture.
+#
+# Plain ASCII PPM (P3) on purpose. It is a real image format that is also a hand-editable text file,
+# which is the same trade every other format in this project makes (invariant I1). A 4x4 magenta and
+# near-black check reads unmistakably as "this is not the texture you wanted".
+4 4
+255
+230 0 230   26 26 31   230 0 230   26 26 31
+26 26 31    230 0 230  26 26 31    230 0 230
+230 0 230   26 26 31   230 0 230   26 26 31
+26 26 31    230 0 230  26 26 31    230 0 230

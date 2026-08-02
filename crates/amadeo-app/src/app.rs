@@ -1,11 +1,13 @@
 //! The application: a world, its schedules, and the fixed-timestep loop that drives them.
 
 use crate::schedule::{Schedule, ScheduleError, Stage, SystemConfig};
+use amadeo_assets::{Assets, ScanError};
 use amadeo_core::{FIXED_DT_NANOS, Rng, StableHash, StableHasher, Tick};
 use amadeo_ecs::{Commands, Component, ComponentRegistry, Resource, Service, World};
 use amadeo_events::{Event, WorldEvents};
 use amadeo_reflect::RegistryError;
 use std::collections::BTreeMap;
+use std::path::Path;
 
 /// The simulation's random number generator, seeded once and advanced deterministically.
 ///
@@ -193,6 +195,37 @@ impl App {
     pub fn insert_service<T: Service>(&mut self, value: T) -> &mut Self {
         self.world.insert_service(value);
         self
+    }
+
+    /// Scans an asset directory and installs the catalogue.
+    ///
+    /// `relative` is resolved against the nearest `amadeo.toml` rather than against the working
+    /// directory, so a game finds the same assets whether it was started by `cargo run`, by the CLI,
+    /// or by double-clicking the executable. See `amadeo_assets::resolve` for the full rule and why
+    /// it is the marker file rather than an environment variable.
+    ///
+    /// Called **before** the first tick, and never during one. That is ADR 0021's load barrier: the
+    /// simulation never observes an asset arriving, so there is nothing about load timing for it to
+    /// branch on and nothing for a replay to disagree about.
+    ///
+    /// The catalogue goes in as a [`Service`], so it stays out of [`App::state_hash`] by construction
+    /// rather than by anyone remembering (ADR 0009).
+    ///
+    /// # Errors
+    ///
+    /// [`amadeo_assets::ScanError`] listing every duplicate id, malformed sidecar, and unreadable
+    /// path — including a missing asset directory, which is an error rather than an empty catalogue
+    /// so that a mistyped path cannot look like a project with no assets.
+    pub fn scan_assets(&mut self, relative: impl AsRef<Path>) -> Result<&mut Self, ScanError> {
+        let assets = Assets::scan(relative.as_ref())?;
+        self.world.insert_service(assets);
+        Ok(self)
+    }
+
+    /// What the game knows about assets on disk, if a catalogue was installed.
+    #[must_use]
+    pub fn assets(&self) -> Option<&Assets> {
+        self.world.service::<Assets>()
     }
 
     /// The current simulation tick.
