@@ -63,17 +63,27 @@ of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**The sprite batcher.** All five `amadeo-assets` steps below landed in session 7, so the thing that
-was blocking the renderer is no longer blocking it.
+**Q16 — `ComponentId::of` recomputes a `String` allocation and a hash on every component lookup.**
 
-This is where **Q3's remaining third** (pipeline shape) gets decided — against a real throughput
-number (`docs/04-subsystems.md` §4 suggests 20k sprites at 60 fps) rather than argued beforehand.
-`Transform`, `SortOrder`, and `GlobalTransform` are all settled, the renderer already reads the
-composed transform, and textures can now be loaded. Nothing is in the way.
+This came out of measuring the sprite batcher and it is the highest-value thing available: it is on
+the hot path of `World::get`, `World::insert`, and every query, so it taxes the entire engine.
+Collecting 20,000 sprites costs ~5.1 ms, of which the batching itself is a few hundred microseconds
+— the rest is re-hashing `"SortOrder"` and `"GlobalTransform"` forty thousand times a frame.
 
-Note that a texture arrives as **bytes**, not pixels: `amadeo-assets` deliberately does not decode.
-The batcher needs a decoder, and where that lives is a real choice — `assets/textures/*.ppm` are
-ASCII PPM precisely so the first one can be ten lines and hand-checkable rather than a dependency.
+The fix is an associated `const NAME: &'static str` on `Reflect` plus a `const fn` FNV hash, making
+an id a compile-time constant. It touches the trait, the derive, and every impl, which is why it was
+filed rather than done in passing. **Do it before the sprite batcher reaches the GPU**, or any
+pipeline tuning is tuning the wrong thing. Full write-up in `docs/06-open-questions.md`.
+
+### Then: sprites reach the screen
+
+The batcher exists and is measured (ADR 0023); the **wgpu backend does not draw sprites yet**. That
+needs texture upload, a sampler, and bind groups — and before any of it, a decoder, because
+`amadeo-assets` deliberately hands over **bytes, not pixels**. Where the decoder lives is a real
+choice; `assets/textures/*.ppm` are ASCII PPM precisely so the first one can be ten hand-checkable
+lines rather than a dependency.
+
+### `amadeo-assets` and the sprite batcher — done, session 7
 
 ### `amadeo-assets` — done, in the order STATUS.md previously listed
 
@@ -85,6 +95,7 @@ ASCII PPM precisely so the first one can be ten lines and hand-checkable rather 
    reference syntax. Also `amadeo import`, and `--check` on it so it can gate a commit.
 4. ✅ **Loading**, to ADR 0021's rule, plus the barrier and the `assets` block a scene declares in.
 5. ✅ **`amadeo check` verifies asset ids**, with `similar_to` giving "did you mean".
+6. ✅ **The sprite batcher and ADR 0023**, settling Q3's last third against a measurement.
 
 **One decision came up that STATUS.md had said would not** — see ADR 0022 below.
 
@@ -118,9 +129,11 @@ Worth knowing for next time: "no open decisions left" is a claim that should be 
 
 **Three things are undecided rather than unbuilt**, all in `docs/06-open-questions.md`:
 
-- **Q3 (the last third) — which render pipeline shape.** Dropped to P2 by ADR 0018, which settled the
-  two expensive parts. `RenderBackend` isolates what remains, so it blocks nothing; decide it while
-  writing the sprite batcher, against a real throughput number.
+- ~~**Q3 (the last third) — which render pipeline shape.**~~ **Resolved in session 7 — ADR 0023.**
+  Sprites batch by `(sort order, texture)`. Decided against measurements, as the question demanded:
+  20,000 interleaved sprites collapse to exactly 32 batches, and a whole tilesheet is one draw call.
+  The measurement also found that the pipeline shape is *not* currently the limiting factor — Q16 is
+  — which is the opposite of what the question expected.
 - **Q7 — prefab override semantics.** The format records overrides visibly (the I1 requirement), but
   what they *mean* when a prefab changes under an instance is undesigned. Study Unity's and Godot's
   failure modes first. **Now carries a smaller question that has to be answered first**, found in
@@ -487,8 +500,24 @@ hashes) passed.
   checkpoints, because `Assets` is a `Service` and ADR 0009 excludes those by trait bound.
 - ✅ **`amadeo check` validates asset ids**, with near-miss suggestions.
 - ✅ **A PCG32 reference cross-check** — see the audit below.
+- ✅ **The sprite batcher — ADR 0023, resolving Q3's last third.** A `Sprite` component holding a
+  texture *id* (ADR 0020) plus a `region`, so a tilesheet is one texture and one batch. Batches are
+  `(sort order, texture)` pairs: layering is never violated, and within one order the relative order
+  of *different* textures is explicitly not guaranteed — that is the trade, and `SortOrder` is the
+  mechanism for controlling it.
 
-**Verified green: 578 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+  Decided against numbers, as the question demanded. 20,000 fully interleaved sprites collapse to
+  exactly **32** batches — the theoretical minimum that preserves layering — and 50,000 tiles on one
+  sheet are **one** draw call. Batch counts are asserted (a pure function of the world, no clock);
+  times are printed, with only an algorithmic-collapse ceiling asserted.
+
+  Two things the measurement changed. The first version sorted by `(order, &str)` and was 55% slower;
+  keying on an index into a sorted texture table made the sort integer-only. And `SpriteInstance`
+  carries the transform's **axes** rather than a size and an angle, which removes a round trip
+  through trigonometry on both the CPU and the shader — and is strictly more expressive, since a
+  size-and-angle pair cannot represent a sheared or non-uniformly-scaled-then-rotated sprite.
+
+**Verified green: 593 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
 ### The audit Justin asked for, session 7
 

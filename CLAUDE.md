@@ -76,7 +76,9 @@ crates/
                      ADR 0021's barrier. Asset-root resolution is by marker file (ADR 0022).
                      Typed handles, the import/decode pipeline, and hot-reload still to come.
 ✅ amadeo-input       action mapping, InputState, recording/replay, the .replay text format
-✅ amadeo-render      RenderBackend trait, NullBackend, Quad/SortOrder/Camera2d. wgpu behind `gpu`.
+🟡 amadeo-render      RenderBackend trait, NullBackend, Quad/Sprite/SortOrder/Camera2d, and the
+                     sprite batcher (ADR 0023: batches are (sort order, texture) pairs). wgpu behind
+                     `gpu` — it draws quads but NOT sprites yet, which needs a texture decoder first.
 — amadeo-audio       mixer, buses, spatialization (null backend required)
 — amadeo-physics     rapier integration behind engine traits
 — amadeo-anim        sprite anim, skeletal, state machines, tweens

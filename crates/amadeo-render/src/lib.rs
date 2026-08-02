@@ -39,11 +39,15 @@ mod backend;
 mod components;
 #[cfg(feature = "gpu")]
 mod gpu;
+mod sprites;
 
-pub use backend::{FrameData, NullBackend, QuadInstance, RenderBackend, RenderError};
-pub use components::{Camera2d, Quad, SortOrder};
+pub use backend::{
+    FrameData, NullBackend, QuadInstance, RenderBackend, RenderError, SpriteBatch, SpriteInstance,
+};
+pub use components::{Camera2d, Quad, SortOrder, Sprite};
 #[cfg(feature = "gpu")]
 pub use gpu::WgpuBackend;
+pub use sprites::{COLLECT_SPRITES, collect_sprites};
 
 use amadeo_ecs::{Service, World};
 // Not re-exported: `Transform` belongs to `amadeo-transform` (ADR 0015), and two import paths to
@@ -211,6 +215,10 @@ pub fn render_quads(world: &mut World) {
         clear_color,
         camera,
         quads: collected.into_iter().map(|(_, quad)| quad).collect(),
+        // Sprites are collected in the same pass rather than a separate system, so one frame is one
+        // consistent read of the world. Two passes could see different worlds if anything ran
+        // between them, and "the sprites are one frame behind the quads" is a miserable bug to find.
+        batches: collect_sprites(world),
     };
 
     world.with_service_taken::<Renderer, ()>(|_world, renderer| {

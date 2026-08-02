@@ -106,6 +106,28 @@ pub struct ComponentId(u64);
 
 impl ComponentId {
     /// The id for component type `T`.
+    ///
+    /// # This is more expensive than it looks, and that is a known defect
+    ///
+    /// A type's canonical name is fixed at compile time, so its id is a constant — but this
+    /// recomputes it on **every call**: [`Reflect::type_name`](amadeo_reflect::Reflect::type_name)
+    /// allocates a fresh `String`, and `hash_name` then walks every byte of it. And this sits on the
+    /// hot path of every component lookup, since `World::get`, `World::insert`, and every query call
+    /// it to find a column.
+    ///
+    /// Found by measurement while benchmarking the sprite batcher: at 20,000 sprites the two
+    /// optional-component lookups per sprite re-hash `"SortOrder"` and `"GlobalTransform"` forty
+    /// thousand times per frame, and that dominates the batcher's cost. Numbers in
+    /// `crates/amadeo-render/tests/sprite_throughput.rs`.
+    ///
+    /// **This is not a problem with ADR 0017's decision**, which is right — only with how often its
+    /// answer is recomputed. The fix is to make the name an associated `&'static str` and the hash a
+    /// `const fn`, so an id becomes a compile-time constant. That is a change to the `Reflect` trait,
+    /// its derive, and every impl, so it is filed as **Q16** rather than done in passing.
+    ///
+    /// A caching attempt using a `static` inside this generic function was tried and **reverted**:
+    /// such a static is shared across every instantiation, not one per `T`, so every component type
+    /// collapsed onto a single id. The archetype tests caught it immediately.
     #[must_use]
     pub fn of<T: Component>() -> Self {
         ComponentId::of_name(&T::type_name())

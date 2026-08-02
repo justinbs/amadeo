@@ -45,6 +45,81 @@ pub struct QuadInstance {
     pub color: [f32; 4],
 }
 
+/// One textured sprite, flattened into what a GPU needs.
+///
+/// Deliberately holds no texture id: a sprite's texture is decided by which [`SpriteBatch`] it is
+/// in, so it does not need repeating twenty thousand times. That is the whole point of batching.
+///
+/// # Why this carries axes rather than a size and an angle
+///
+/// [`QuadInstance`] stores `size` plus `rotation`, which means the collection pass has to *decompose*
+/// the transform matrix — two `hypot` calls and an `atan2` per instance — and the shader then has to
+/// recompose it with a sine and a cosine. That is a round trip through trigonometry to recover
+/// numbers the matrix already contained.
+///
+/// Storing the matrix's linear part instead removes both ends of it. Measured at 20,000 sprites,
+/// dropping the decomposition was worth roughly a third of the batcher's total cost
+/// (`tests/sprite_throughput.rs`).
+///
+/// It is also strictly more expressive: a size-and-angle pair cannot represent a sheared or
+/// non-uniformly scaled-then-rotated sprite, so the decomposition was quietly lossy for any entity
+/// whose parent scaled it on one axis and turned it.
+///
+/// `QuadInstance` keeps its older shape for now because the wgpu backend already renders it and
+/// nothing was broken; it should follow when that backend is next touched.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpriteInstance {
+    /// World-space centre.
+    pub center: [f32; 2],
+    /// The sprite's two half-extent axes in world space, as `[x_axis, y_axis]`.
+    ///
+    /// A corner at local `(u, v)`, with `u` and `v` in `-0.5..=0.5`, sits at
+    /// `center + axes[0] * u * 2 + axes[1] * v * 2`. For an unrotated sprite these are
+    /// `[width, 0]` and `[0, height]`.
+    pub axes: [[f32; 2]; 2],
+    /// Linear RGBA tint.
+    pub color: [f32; 4],
+    /// Sub-rectangle of the texture, `[x, y, width, height]` in `0.0..=1.0`.
+    pub region: [f32; 4],
+}
+
+impl SpriteInstance {
+    /// The sprite's world-space width and height.
+    ///
+    /// Recovered from the axes, so it costs two square roots — for diagnostics and tests, not for
+    /// the render path, which is precisely why the axes are what gets stored.
+    #[must_use]
+    pub fn size(&self) -> [f32; 2] {
+        [
+            self.axes[0][0].hypot(self.axes[0][1]),
+            self.axes[1][0].hypot(self.axes[1][1]),
+        ]
+    }
+
+    /// The sprite's rotation in radians, from the angle of its x axis.
+    ///
+    /// As with [`SpriteInstance::size`], this is for looking at rather than for drawing.
+    #[must_use]
+    pub fn rotation(&self) -> f32 {
+        self.axes[0][1].atan2(self.axes[0][0])
+    }
+}
+
+/// A run of sprites sharing one texture, drawn in one call.
+///
+/// A batch is the unit of work a backend turns into a draw call. Binding a texture is the expensive
+/// state change in 2D rendering, so the number of batches — not the number of sprites — is what
+/// decides whether a frame is fast.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpriteBatch {
+    /// The declared asset id of the texture every instance in this batch uses (ADR 0020).
+    pub texture: String,
+    /// The sort order this batch belongs to. Batches are emitted in ascending order.
+    pub order: i32,
+    /// The sprites, in draw order.
+    pub instances: Vec<SpriteInstance>,
+}
+
 /// Everything needed to draw one frame.
 ///
 /// Built by reading the world, then handed to a backend. Nothing in here borrows the world, which is
@@ -57,6 +132,24 @@ pub struct FrameData {
     pub camera: Camera2d,
     /// Quads to draw, already sorted by layer.
     pub quads: Vec<QuadInstance>,
+    /// Textured sprites, grouped into draw calls and ordered by [`SpriteBatch::order`].
+    pub batches: Vec<SpriteBatch>,
+}
+
+impl FrameData {
+    /// How many sprites are in the frame, across every batch.
+    #[must_use]
+    pub fn sprite_count(&self) -> usize {
+        self.batches.iter().map(|batch| batch.instances.len()).sum()
+    }
+
+    /// How many draw calls the sprite batches will cost.
+    ///
+    /// The number worth watching: sprites are cheap and state changes are not.
+    #[must_use]
+    pub fn batch_count(&self) -> usize {
+        self.batches.len()
+    }
 }
 
 impl Default for FrameData {
@@ -67,6 +160,7 @@ impl Default for FrameData {
             clear_color: [0.06, 0.07, 0.09, 1.0],
             camera: Camera2d::default(),
             quads: Vec::new(),
+            batches: Vec::new(),
         }
     }
 }

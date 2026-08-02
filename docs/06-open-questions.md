@@ -26,6 +26,48 @@ sprites at 60 fps). A spike of three prototypes would measure less than the real
 
 ---
 
+## Q16 · P1 · `ComponentId::of` recomputes a compile-time constant on every lookup
+
+**Found by measurement in session 7**, while benchmarking the sprite batcher. Not a design flaw —
+ADR 0017's decision to derive a component's id from its canonical name is right — but the
+implementation recomputes that id every single time it is asked for.
+
+`ComponentId::of::<T>()` calls `Reflect::type_name()`, which **allocates a fresh `String`**, and then
+FNV-hashes every byte of it. It sits on the hot path of every component lookup: `World::get`,
+`World::insert`, and every query call it to locate a column.
+
+**The measured effect.** Collecting 20,000 sprites takes ~5.1 ms — about 30% of a 60 Hz frame — for
+work that is a handful of arithmetic per sprite. Each sprite does two optional-component lookups
+(`SortOrder` and `GlobalTransform`), so a frame re-hashes `"SortOrder"` and `"GlobalTransform"`
+forty thousand times, allocating a `String` each time. Removing the batcher's own trigonometry moved
+the number by only 4%, which is what points the finger here.
+
+### The fix, and why it was not done in passing
+
+Make the canonical name an associated `const NAME: &'static str` on `Reflect`, and make the FNV hash
+a `const fn`. Then `ComponentId::of::<T>()` becomes a compile-time constant and every lookup drops to
+an integer comparison.
+
+That touches the `Reflect` trait, `amadeo-derive`, and every hand-written impl, which is a focused
+piece of work rather than an afterthought at the end of a session.
+
+**A caching shortcut was tried and reverted, and the reason is worth recording:** a `static` declared
+inside a generic function is **not** instantiated per `T` — it is shared across every
+monomorphisation. So `static CACHED: OnceLock<u64>` inside `of::<T>()` gave every component type the
+same id. The archetype tests failed immediately, which is exactly what they are for. If anyone
+reaches for that trick again, this is why it does not work.
+
+### Why it matters more now than it would have last week
+
+The target list grew to eight games in session 7, and Stellaris, Terraria, and RimWorld are all
+large-entity-count simulations. ECS lookup cost stopped being an aesthetic concern and became a
+target requirement (`docs/00-vision.md` § Divergent).
+
+**Do this before the sprite batcher reaches the GPU**, since the batcher's cost is currently
+dominated by it and any pipeline tuning done first would be tuning the wrong thing.
+
+---
+
 ## Q15 · P1 · Modding, and whether ADR 0011 still holds
 
 **Raised session 7, when the target list went from three games to eight.** Four of the five

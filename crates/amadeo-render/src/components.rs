@@ -40,6 +40,86 @@ impl Quad {
 
 impl Component for Quad {}
 
+/// A textured rectangle.
+///
+/// The 2D workhorse. Three of the eight target games — Terraria, RimWorld, and Project Zomboid —
+/// ship on this rather than on meshes, so it is a first-class path and not a stepping stone to 3D
+/// (`docs/00-vision.md` § Target games).
+///
+/// # Why the texture is a `String`
+///
+/// It is an asset **id**, not a path and not a handle (ADR 0020), and ids are what a scene file
+/// writes and what `amadeo assets` lists. Storing the id itself means the component reads the same
+/// in a `.scene`, in a `world.entity` dump, and in memory — no resolution step where the three could
+/// disagree.
+///
+/// The cost is a heap allocation per sprite and a string comparison when batching, which at Terraria
+/// scale is a real question rather than a theoretical one. **It was measured rather than assumed** —
+/// see `crates/amadeo-render/tests/sprite_throughput.rs` and ADR 0023.
+///
+/// # It never observes the asset's state
+///
+/// ADR 0021: gameplay holds an id and nothing else. A `Sprite` whose texture has not loaded is not
+/// an error and is not a branch — the renderer draws a placeholder and reports it. Nothing about
+/// whether the texture is resident can reach the simulation.
+#[derive(Debug, Clone, PartialEq, StableHash, Reflect)]
+pub struct Sprite {
+    /// The texture's declared asset id (ADR 0020), as `amadeo assets` lists it.
+    pub texture: String,
+    /// Full width and height in world units, before the transform's scale is applied.
+    #[reflect(unit = "world units")]
+    pub size: [f32; 2],
+    /// Linear RGBA multiplied into the texture. White leaves it unchanged.
+    #[reflect(min = 0.0, max = 1.0)]
+    pub color: [f32; 4],
+    /// Which part of the texture to draw, as `[x, y, width, height]` in `0.0..=1.0`.
+    ///
+    /// The whole texture by default. This is what makes a tilesheet or a sprite atlas work without a
+    /// separate concept: a tile is a region of one shared texture, which is also what lets thousands
+    /// of tiles collapse into a single batch.
+    #[reflect(min = 0.0, max = 1.0)]
+    pub region: [f32; 4],
+}
+
+impl Default for Sprite {
+    fn default() -> Self {
+        Self {
+            texture: String::new(),
+            size: [1.0, 1.0],
+            color: [1.0, 1.0, 1.0, 1.0],
+            region: [0.0, 0.0, 1.0, 1.0],
+        }
+    }
+}
+
+impl Sprite {
+    /// A sprite drawing a whole texture at a given size.
+    #[must_use]
+    pub fn new(texture: impl Into<String>, width: f32, height: f32) -> Self {
+        Self {
+            texture: texture.into(),
+            size: [width, height],
+            ..Sprite::default()
+        }
+    }
+
+    /// The same sprite showing only part of its texture — one cell of a tilesheet.
+    #[must_use]
+    pub fn with_region(mut self, x: f32, y: f32, width: f32, height: f32) -> Self {
+        self.region = [x, y, width, height];
+        self
+    }
+
+    /// The same sprite, tinted.
+    #[must_use]
+    pub fn with_color(mut self, color: [f32; 4]) -> Self {
+        self.color = color;
+        self
+    }
+}
+
+impl Component for Sprite {}
+
 /// What draws on top of what.
 ///
 /// Higher values draw later, so they appear in front. Absent means zero.
