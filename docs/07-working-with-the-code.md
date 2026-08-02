@@ -716,6 +716,70 @@ Then: is the id in the scene's `assets` block (nothing loads that is not declare
 whose texture failed still draws — as a magenta check — so a *completely* invisible sprite is a
 transform, camera, or sort-order problem rather than a texture one.
 
+### Reflection: what a type has to be able to say about itself
+
+Three traits in this engine require `Reflect`, and it is the same argument each time:
+
+| Trait | Since | Why |
+|---|---|---|
+| `Component` | ADR 0013 | A component the agent cannot see still works at runtime, so the omission surfaces milestones later. |
+| `Resource` | ADR 0027 | Same, and it is what makes `world.resources` possible at all. |
+| `Event` | ADR 0027 | The event log is how an agent answers "what did I just do?". |
+
+Usually this costs nothing — add `Reflect` to the derive list and give every field a doc comment:
+
+```rust
+/// How much damage something can take.
+#[derive(Debug, Clone, PartialEq, StableHash, Reflect)]
+pub struct Health {
+    /// Current hit points.
+    #[reflect(min = 0.0, max = 100.0, unit = "hp")]
+    current: f32,
+}
+```
+
+**The one case where it does not just work: a type whose state is private to a lower crate.**
+`Reflect` lives in `amadeo-reflect`, so nothing below it can implement the trait (invariant I6).
+There are two answers, and which one applies depends on whether the state is public:
+
+- **Public state** — write the impl in `amadeo-reflect` itself. It depends on `amadeo-core`, so
+  `impl Reflect for amadeo_core::Tick` is legal there. The impl goes where the *trait* lives rather
+  than where the type does.
+- **Private state** — expose it, then reflect one layer up. `Rng::state()` and `Rng::from_state()`
+  exist for exactly this, and `SimRng` in `amadeo-app` hand-writes the impl on top of them.
+
+### Maps in a reflected type
+
+`BTreeMap<K, V>` reflects, as long as `K` implements `ReflectKey` — `String` and the fixed-width
+integers already do. Two things worth knowing:
+
+**Keys are strings on the way out.** So a `BTreeMap<u32, T>` round-trips through decimal text. The
+contract is that `to_key` is **injective**; if two keys render the same, an entry is silently lost,
+which is why the impl carries a `debug_assert` on the entry count.
+
+**A key that is a hash reads badly.** `InputState` is keyed by `ActionId`, which is a hash whose name
+is not kept, so `world.resources` shows `"8831028638596390904"` rather than `"move_x"`. That is a
+known gap (Q18), not something you have done wrong — but it is worth avoiding in a *new* type. If
+you are choosing a key, prefer one a human can read.
+
+### Regenerating a replay: verify the diagnosis, don't just obey it
+
+When a change moves a state hash, the golden-replay procedure below says to be sure the change is
+correct before regenerating. The useful way to be sure is to **isolate the cause**: temporarily undo
+only the part you believe is responsible, and check the committed hashes come back.
+
+Two worked examples from session 8, both of which changed the answer from "probably fine" to "proven":
+
+- Sprites were added to `quad-demo` and all four checkpoints moved. Removing *only* the ten new
+  entities — while leaving the texture cache installed and a second asset loaded — restored every
+  hash exactly. So the new machinery was invisible to the simulation, and the content change was the
+  whole cause.
+- `SimRng`'s hash changed at the same time as five types gained reflection. Reverting *only* the hash
+  restored both replays, proving the reflection work touched nothing.
+
+If the hashes do *not* come back, the change is bigger than you thought, and that is exactly what you
+wanted to find out before committing.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

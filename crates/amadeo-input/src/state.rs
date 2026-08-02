@@ -3,22 +3,27 @@
 use crate::action::ActionId;
 use amadeo_core::{StableHash, StableHasher};
 use amadeo_ecs::Resource;
+use amadeo_reflect::Reflect;
 use std::collections::BTreeMap;
 
 /// A button's state this tick and last tick.
 ///
 /// Keeping the previous value is what makes "just pressed" derivable without any timing or edge
 /// bookkeeping: it is simply `pressed && !was_pressed`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-struct ButtonState {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Reflect)]
+pub(crate) struct ButtonState {
+    /// Held right now.
     pressed: bool,
+    /// Held on the previous tick. The difference between the two is the edge.
     was_pressed: bool,
 }
 
 /// An axis's value this tick and last tick.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-struct AxisState {
+#[derive(Debug, Clone, Copy, PartialEq, Default, Reflect)]
+pub(crate) struct AxisState {
+    /// This tick's position, normally in `-1.0..=1.0`.
     value: f32,
+    /// The previous tick's position.
     previous: f32,
 }
 
@@ -29,9 +34,29 @@ struct AxisState {
 ///
 /// `BTreeMap` throughout: input feeds directly into simulation, so iteration order has to be
 /// reproducible (invariant I3).
-#[derive(Debug, Clone, Default, PartialEq)]
+///
+/// # What its reflected form looks like, and the sharp edge in it
+///
+/// Two maps, keyed by [`ActionId`] — and an `ActionId` is the *hash of an action's name* with the
+/// name not kept (ADR 0020's reasoning one layer down). So a reflected dump reads:
+///
+/// ```text
+/// buttons: { "10531907191866937718": { pressed: true, was_pressed: false } }
+/// ```
+///
+/// which is faithful and close to unreadable. **This is a known gap, not an oversight.** The names
+/// do exist — the input driver holds a table of them, which is how a `.replay` file writes
+/// `axis move_x 1.0` instead of a number — but they are outside `InputState` on purpose, because a
+/// resource participates in `state_hash` and two runs that registered different *names* for the same
+/// actions must not diverge.
+///
+/// The fix belongs at the presentation layer: `world.resources` in the protocol should join these
+/// keys against the driver's name table when it renders them. Recorded in `docs/06-open-questions.md`.
+#[derive(Debug, Clone, Default, PartialEq, Reflect)]
 pub struct InputState {
+    /// Per-action button state, keyed by action id.
     buttons: BTreeMap<ActionId, ButtonState>,
+    /// Per-action axis state, keyed by action id.
     axes: BTreeMap<ActionId, AxisState>,
 }
 

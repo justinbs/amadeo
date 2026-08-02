@@ -1,11 +1,11 @@
 # Amadeo — Current Status
 
 **Last updated:** 2026-08-03 (end of session 8)
-**Current phase:** **M0 complete. M1 well under way** — reflection, the scene format, the agent's read
-layer, the agent protocol and a working `amadeo` CLI, the whole asset layer, the sprite batcher, and
-now **textured sprites on the GPU** have all landed. What remains in M1 is `Resource: Reflect`,
-snapshots, and the small game that closes the exit gate. Q3, Q4, Q13, Q14, Q16 and Q17 are all
-closed, so nothing is blocked.
+**Current phase:** **M0 complete. M1 nearly done** — reflection, the scene format, the agent's read
+layer, the agent protocol and a working `amadeo` CLI, the whole asset layer, the sprite batcher,
+**textured sprites on the GPU**, and **invariant I8 fully closed** have all landed. What remains in
+M1 is **snapshots** and the small game that closes the exit gate. Q3, Q4, Q13, Q14, Q16 and Q17 are
+all closed, so nothing is blocked.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
 
 > ### ⚠️ Two working rules that changed in session 7 — read before doing anything
@@ -25,15 +25,16 @@ resolving Q1. Session 5 built most of M1's foundations. Session 6 resolved six o
 built the whole agent transport and CLI. Session 7 finished `amadeo-assets`, audited the earlier
 work, took the target list from three games to eight, built the sprite batcher, and then chased its
 cost down through two layers of the ECS. **Session 8 put sprites on the screen** — a decoder crate, a
-texture cache, and the wgpu texture path. ADRs 0022–0026.
+texture cache, and the wgpu texture path — **and then closed invariant I8**, making `Reflect` a
+compiler-enforced bound on resources and events and shipping `world.resources`. ADRs 0022–0027.
 
 **Fourteen crates plus one game**, all tested: `amadeo-derive`, `amadeo-image`, `amadeo-core`,
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`.
-**669 tests passing**; fmt, clippy
+**698 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
-Nine things work end to end today:
+Ten things work end to end today:
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -66,6 +67,9 @@ Nine things work end to end today:
 - **A missing texture is visible and explainable, not fatal.** Three-step fallback ending in an image
   built in code, so the last resort cannot itself be a missing file, and `TextureCache::failures()`
   says which ids fell back and why.
+- **The engine describes its whole state, not just half of it.** `amadeo call world.resources`
+  reports `Camera2d`, `InputState` and `SimRng` with live values from a running game. Entities carry
+  components and everything else is a resource; before ADR 0027 the second half was invisible.
 
 **M0 exit gate: 4 of 4, nothing carried.** Gate item 2's "separate process" half — open since M0
 because it needed `amadeo-cli` — closed in session 6: `amadeo replay` plays
@@ -85,16 +89,22 @@ of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**`Resource: Reflect`** — the other half of invariant I8, deliberately deferred by ADR 0013 and now
-the oldest unpaid debt in the engine. Components are reflectable by compiler-enforced bound;
-resources are not, so `world.resources` in the protocol cannot be implemented and half the
-simulation state is invisible to the agent and the editor.
+**`snapshot.take` / `snapshot.restore`.** ADR 0011's spike found that what degrades the agent's
+iteration loop is **re-simulation, not compilation** — 382 ms to reach five simulated minutes,
+growing linearly with session length. Snapshots are the answer it named, and they are now unblocked:
+ADR 0027 made every resource reflectable, and `snapshot.restore` is precisely
+`from_value(to_value(x))` with a file in the middle.
 
-Two things have to happen first, and both are small:
+The round trip is already asserted for every resource in
+`crates/amadeo-app/tests/resource_reflection.rs`, including the sharp case — that a restored `SimRng`
+draws the *same next numbers*, which equality alone does not prove. So the pieces exist; what is
+missing is capturing entities and components the same way, choosing a file format, and the two
+protocol methods.
 
-- **`Rng`'s state has to be exposed** so `SimRng` can reflect. That also retires the `Debug`-based
-  `StableHash` that has been flagged as inelegant since M0.
-- **`Reflect` needs map support**, for `InputState`.
+**Design questions to settle first**, none of them large: whether a snapshot is one file or a
+directory, whether it stores the full world or a diff against a base, and whether restoring into a
+*different* build is allowed (it should probably refuse, loudly, on a schema mismatch — the same
+argument `.replay` makes about tick rate).
 
 **The sprite path has been confirmed on screen** — Justin ran `cargo run -p quad-demo` at the end of
 session 8 and the screenshot checks out against the world coordinates: nine floor tiles alternating
@@ -111,8 +121,12 @@ goes in, check it is not upside down**, and if it is, that one line is the suspe
 
 ### Then, in rough order
 
-- **`snapshot.take` / `snapshot.restore`** — the iteration-loop priority ADR 0011 identified.
+- **A complete small 2D game** — M1 exit gate 1, which no longer needs any engine work.
 - **Q7 — prefab semantics**, which needs the `from` conflict settled first.
+- **`render.capture`** — headless render-target readback. Worth flagging that **the GPU path has no
+  automated coverage at all**: the wgpu backend is exercised only by running the demo and looking at
+  it. `render.capture` is the thing that would fix that, and ADR 0021 already names it as the agent's
+  eyes.
 - **The import pipeline**, when a target game wants compressed textures or mip levels. ADR 0026 sets
   out exactly what changes and what does not; the short version is that nothing above `TextureCache`
   is affected.
@@ -139,16 +153,9 @@ disagreement about `from`** (filed under Q7).
 
 **One decision came up that STATUS.md had said would not** — see ADR 0022 below.
 
-Then, in order:
-
-1. **`Resource: Reflect`** — the other half of I8, deliberately deferred by ADR 0013. Needs `Rng`'s
-   state exposed so `SimRng` can reflect (retiring the `Debug`-based `StableHash` flagged as
-   inelegant since M0), and map support in `Reflect` for `InputState`. Also what `world.resources`
-   in the protocol is waiting on.
-2. **`snapshot.take` / `snapshot.restore`.** The Q1 spike found re-simulation, not compilation, is
-   what degrades the iteration loop — 382 ms to reach 5 simulated minutes, growing linearly.
-3. **Q7 — prefab override semantics**, which `amadeo-assets` makes reachable and which is the
-   hardest design problem left in the scene subsystem.
+The list that followed it here — `Resource: Reflect`, then snapshots, then Q7 — is kept current at
+**The single most important thing to do next** near the top of this file. The first item is done as
+of session 8 (ADR 0027); snapshots are now next.
 
 ### ADR 0022, and a correction to what this file said
 
@@ -628,7 +635,48 @@ produced full-extent axes and `SpriteInstance::size()` has always read them back
 The code was consistent; the contract was wrong, and the shader would have been written to it. Fixed,
 and the doc now names `QuadInstance` as the convention it shares.
 
-**Verified green: 669 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+### Invariant I8 closed — ADR 0027, session 8
+
+The other half of I8, deferred by ADR 0013 because it was **not yet possible**: two of the four
+resources could not reflect at all. `SimRng` wraps an `Rng` whose state is private to `amadeo-core`,
+which sits *below* `amadeo-reflect` and so cannot implement the trait (I6); and `InputState` is two
+maps, which the value tree could not represent.
+
+- ✅ **`Resource: Reflect` and `Event: Reflect`**, both compiler-enforced. Events were not in the
+  original scope and were added once the work started — `Events<T>` is a `Resource`, so it hit the
+  bound transitively, and the argument turns out to be *stronger* for events: the event log is how an
+  agent answers "what did I just do?".
+- ✅ **`Value::Map`, with string keys.** Kept distinct from `Value::Struct` even though they hold the
+  same shape, because a struct's fields are fixed and a map's keys are data — which is what lets
+  `from_value` be strict about one and permissive about the other. **Justin chose string keys** over
+  Bevy's and Godot's arbitrary-key maps, after the trade was researched: `Value` holds floats and so
+  has no total order to sort arbitrary keys by, and a struct-as-a-key has no hand-writable syntax.
+- ✅ **`Rng::state()` / `from_state()`**, serving three things that all need to *observe* a generator
+  rather than draw from it: reflection, hashing, and snapshots. And **`Reflect for Tick` written
+  inside `amadeo-reflect`** — the simpler answer when the state is already public, since the impl can
+  go where the trait lives rather than where the type does.
+- ✅ **`world.resources`**, the concrete payoff. `amadeo call world.resources` reports a real game's
+  `Camera2d`, `InputState` and `SimRng` with live values. Blocked in `docs/protocol/v1.md` on exactly
+  this bound; a resource behind a trait object had thrown away everything about its type but a hash.
+
+**Both replays were regenerated, and the diagnosis was verified rather than assumed.** `SimRng` used
+to hash `format!("{:?}", rng)` — which made every committed replay depend on the exact text of a
+`Debug` impl, so renaming a private field would have invalidated all of them for a reason nobody
+would connect to the failure. Justin chose to pay the regeneration now rather than leave it armed.
+Reverting *only* that hash — with `Resource: Reflect` in force and five types newly reflected —
+restored both replays exactly, proving the reflection work is invisible to the state hash.
+
+**One gap created rather than found, and recorded as Q18.** `InputState` reflects faithfully and
+unreadably: its keys are `ActionId`s, which are hashes whose names are not kept, so the protocol
+reports `"8831028638596390904"` instead of `"move_x"`. Only visible once `world.resources` existed
+and could be pointed at a running game. Nothing is blocked, and the fix belongs at the presentation
+layer rather than in the type.
+
+**Verified green: 698 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+
+### The sprite work, session 8
+
+**Verified green: 669 tests at that point; all four commands clean.**
 
 **And verified on screen.** Justin ran the demo and the screenshot matches the world coordinates
 exactly — tile positions, marker positions, sprite widths at the window's aspect ratio, the
@@ -757,12 +805,15 @@ If you are starting cold, this is the shortest path to being useful:
    **CI**. Those three are the whole handoff; everything else here is background.
 3. `docs/07-working-with-the-code.md` — the Rust patterns this engine uses and why, the everyday
    `amadeo` commands, and the golden-replay mechanism. Skip if you already know the codebase.
-4. `docs/adr/` — 26 of them now, so read by need rather than in order:
+4. `docs/adr/` — 27 of them now, so read by need rather than in order:
    - **0023** and **0026** before touching the renderer, **0024** and **0025** before touching
      `amadeo-ecs`. 0026 in particular if you are about to add an asset kind or wonder why the engine
      has a dependency that is not `thiserror`.
      0025 in particular: `world.query` is the API every read path should use, and its module docs
      explain the one piece of deliberately non-boring Rust in the engine.
+   - **0013** and **0027** before adding a component, resource, or event — all three require
+     `Reflect` by trait bound, and 0027 covers the one awkward case (a type whose state is private to
+     a crate below `amadeo-reflect`) plus how maps work.
    - **0005** (determinism), **0008** (ECS storage), **0009** (resource vs service) and **0019**
      (derived components) before touching `amadeo-ecs` or anything that reaches `state_hash`.
    - **0003** and **0004** before touching scenes or the editor; **0014** for the scene format.
@@ -771,9 +822,10 @@ If you are starting cold, this is the shortest path to being useful:
    - **0016** plus `docs/protocol/v1.md` before touching the CLI, the agent, or process boundaries.
    - **0017** before moving or renaming a component (moving is free now; renaming is not).
    - **0018** before touching transforms or draw order; **0020** and **0021** before assets.
-5. `docs/06-open-questions.md` — before assuming anything undecided. Nine remain, none blocking.
+5. `docs/06-open-questions.md` — before assuming anything undecided. Ten remain, none blocking.
    **Q15** (modding vs ADR 0011) and the **`from` conflict inside Q7** are the two that were raised
-   in session 7 and deliberately left for Justin.
+   in session 7 and deliberately left for Justin. **Q18** is new in session 8 and is the smallest of
+   the three: a reflected `ActionId` is a hash nobody can read.
 
 Then `git log --oneline -25`. Commit messages explain *why*, deliberately, and session 6's are long
 on purpose — several record a diagnosis that took a while to reach.
@@ -1037,3 +1089,34 @@ on purpose — several record a diagnosis that took a while to reach.
   669 tests, all four verification commands green, and **confirmed on screen** — Justin ran the demo
   and the screenshot checks out against the world coordinates, including the alternating tile colours
   that prove `region` is picking a different texel per tile.
+
+  **Then invariant I8 was closed — ADR 0027.** `Resource: Reflect` had been the oldest unpaid debt in
+  the engine, deferred by ADR 0013 because it was genuinely *not yet possible*: `SimRng` wraps an
+  `Rng` whose state is private to a crate sitting below `amadeo-reflect`, and `InputState` is two
+  maps, which the value tree could not represent. Both had to be solved before the bound could exist.
+
+  **Two decisions went to Justin and he took both recommendations.** Maps in the value tree get
+  **string keys** rather than Bevy's and Godot's arbitrary ones — researched, and the deciding facts
+  were that `Value` holds floats and so has no total order to sort arbitrary keys by, and that a
+  struct-as-a-key has no hand-writable syntax in an indentation-based format. And **`SimRng`'s
+  `Debug`-based hash was retired now** rather than left, at the cost of regenerating both replays.
+
+  The scope grew twice in ways worth recording. **Events joined the bound** — `Events<T>` is a
+  `Resource`, so it hit it transitively, and the argument turns out to be stronger for events than
+  for resources, since the event log is how an agent answers "what did I just do?". And
+  **`world.resources` was built on top**, because the bound alone is invisible: it exists so that
+  something can be *shown*, and the protocol doc had listed that method as blocked on exactly this.
+
+  Two things worth keeping. **A type below `amadeo-reflect` has two different answers** depending on
+  whether its state is public: `Tick`'s impl was written *inside* `amadeo-reflect` (legal, since the
+  impl can live where the trait does), while `Rng` had to expose `state()` and be reflected a layer
+  up. And **the replay regeneration was diagnosed, not obeyed** — reverting only the `SimRng` hash,
+  with five types newly reflected and the bound in force, restored both replays exactly, proving the
+  reflection work never touched the state hash.
+
+  One gap was **created** rather than found, and only became visible once `world.resources` could be
+  pointed at a running game: `InputState`'s keys are `ActionId`s, which are hashes whose names are
+  not kept, so it reports `"8831028638596390904"` instead of `"move_x"`. Filed as **Q18** with the
+  recommendation deliberately withheld until a second instance shows what the general shape should be.
+
+  698 tests, all four verification commands green, both replays regenerated and passing.

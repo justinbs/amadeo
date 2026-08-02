@@ -41,8 +41,9 @@ struct RenderCount(u32);
 
 impl Service for RenderCount {}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Reflect)]
 struct Bounced {
+    /// Which entity bounced.
     entity_index: u32,
 }
 

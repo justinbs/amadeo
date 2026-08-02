@@ -5,6 +5,7 @@
 
 use crate::type_hash::hash_type_name;
 use amadeo_core::{StableHash, StableHasher};
+use amadeo_reflect::Reflect;
 use std::any::Any;
 use std::fmt;
 
@@ -22,7 +23,26 @@ use std::fmt;
 ///
 /// This split is what keeps `World` hashable in full, which in turn is what makes snapshots and
 /// replay verification possible (ADR 0005).
-pub trait Resource: 'static + Send + Sync + fmt::Debug + StableHash {}
+///
+/// # Why [`Reflect`] is required — ADR 0027, closing invariant I8
+///
+/// I8 says a type that cannot be reflected cannot be serialised, inspected, or edited. ADR 0013 made
+/// that a compiler-enforced bound for components; this is the other half, and it was deliberately
+/// deferred then because two resources could not yet reflect at all — `SimRng`'s state was private
+/// to `amadeo-core`, and `InputState` needed a map in the value tree that did not exist.
+///
+/// Requiring it here rather than trusting a convention is the same argument ADR 0013 made: a
+/// resource that is invisible to the agent still works perfectly at runtime, so the omission is
+/// found three milestones later by someone wondering why `world.resources` is missing something.
+/// The bound makes that unrepresentable.
+///
+/// The practical consequence: **a resource cannot be a type whose state is private to a lower
+/// crate.** That is not a burden, it is the invariant doing its job — see [`Rng::state`] for what it
+/// forced, and why exposing it was right for three independent reasons.
+///
+/// [`Reflect`]: amadeo_reflect::Reflect
+/// [`Rng::state`]: amadeo_core::Rng::state
+pub trait Resource: 'static + Send + Sync + fmt::Debug + StableHash + Reflect {}
 
 /// Identifies a resource type.
 ///
@@ -68,6 +88,19 @@ pub(crate) trait ResourceSlot: fmt::Debug + Send + Sync {
 
     /// Feeds this resource into a state fingerprint.
     fn stable_hash_value(&self, hasher: &mut StableHasher);
+
+    /// The resource's canonical name, as `describe` reports it.
+    ///
+    /// Reachable only because of the [`Reflect`] bound on [`Resource`] — a resource stored behind a
+    /// trait object has otherwise thrown away everything about its type except an id, which is a
+    /// hash and cannot be turned back into a name.
+    fn type_name_value(&self) -> String;
+
+    /// The resource's state as a reflected value.
+    ///
+    /// This is what makes `world.resources` possible at all, and it is the concrete payoff of
+    /// ADR 0027: before the bound, the world could hash a resource but could not *show* one.
+    fn to_reflected_value(&self) -> amadeo_reflect::Value;
 }
 
 impl<T: Resource> ResourceSlot for T {
@@ -86,13 +119,21 @@ impl<T: Resource> ResourceSlot for T {
     fn stable_hash_value(&self, hasher: &mut StableHasher) {
         self.stable_hash(hasher);
     }
+
+    fn type_name_value(&self) -> String {
+        T::type_name()
+    }
+
+    fn to_reflected_value(&self) -> amadeo_reflect::Value {
+        Reflect::to_value(self)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, amadeo_reflect::Reflect)]
     struct Score(u32);
 
     impl StableHash for Score {
@@ -102,7 +143,7 @@ mod tests {
     }
     impl Resource for Score {}
 
-    #[derive(Debug)]
+    #[derive(Debug, amadeo_reflect::Reflect)]
     struct Rounds(u32);
 
     impl StableHash for Rounds {

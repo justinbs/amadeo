@@ -188,6 +188,183 @@ impl<T: Reflect> Reflect for Vec<T> {
     }
 }
 
+/// [`Reflect`] for `amadeo-core`'s small value types.
+///
+/// # Why these live here rather than beside their definitions
+///
+/// `amadeo-core` sits **below** this crate, so it cannot implement a trait defined here (invariant
+/// I6). But this crate depends on `amadeo-core`, so implementing the trait for its types is legal
+/// in both directions — the impl is written where the *trait* lives instead of where the type does.
+///
+/// That is the standard answer for a type that has to reflect but sits below the reflection layer.
+/// The alternative, exposing state and hand-writing the impl further up, is only necessary when the
+/// state is private — see `Rng::state` and `SimRng` for that case.
+impl Reflect for amadeo_core::Tick {
+    const STATIC_NAME: &'static str = "Tick";
+
+    fn type_name() -> String {
+        Self::STATIC_NAME.to_string()
+    }
+
+    fn type_info() -> TypeInfo {
+        TypeInfo {
+            name: Self::type_name(),
+            docs: "A simulation tick number, counting from zero at world creation.".to_string(),
+            version: 1,
+            // A scalar rather than a one-field struct: a tick *is* a number, and rendering it as
+            // `{0: 42}` in a dump would be noise around the only thing anyone wants to read.
+            kind: TypeKind::Scalar(ScalarKind::UnsignedInt),
+        }
+    }
+
+    fn to_value(&self) -> Value {
+        Value::U64(self.0)
+    }
+
+    fn from_value(value: &Value) -> Result<Self, ReflectError> {
+        u64::from_value(value).map(amadeo_core::Tick)
+    }
+}
+
+/// A type that can be a map key in the reflection tree.
+///
+/// ADR 0027 makes map keys strings, so any key type has to say how it renders and how it parses
+/// back. Most implementations are one line each.
+///
+/// # The contract, and what breaks if it is not met
+///
+/// [`ReflectKey::to_key`] **must be injective**: two keys that are different under `Ord` must
+/// produce different strings. If they do not, two entries collapse into one when the map is
+/// converted to a [`Value`] and the data is silently lost.
+///
+/// That cannot be reported as an error, because [`Reflect::to_value`] does not return a `Result` —
+/// so [`BTreeMap`](std::collections::BTreeMap)'s impl carries a `debug_assert` that the entry count
+/// survived the conversion.
+/// A collision therefore fails loudly in tests and in a debug build, which is where a key type gets
+/// written.
+///
+/// # Why not just require `Display` and `FromStr`
+///
+/// Both are general-purpose formatting traits that a type may already implement for a *human*
+/// audience — `ActionId`'s `Display`, for instance, renders `action#1a2b` for a diagnostic. Reusing
+/// it as an identity would tie the on-disk key to how a message happens to read, and changing a log
+/// line would rewrite every saved file. A separate trait keeps the two free to differ.
+pub trait ReflectKey: Sized + Ord + 'static {
+    /// The key type's name, for [`TypeKind::Map`].
+    fn key_type_name() -> String;
+
+    /// Renders this key. Must be injective — see the trait docs.
+    fn to_key(&self) -> String;
+
+    /// Parses a key back.
+    ///
+    /// # Errors
+    ///
+    /// A [`ReflectError`] naming what the key should have looked like.
+    fn from_key(text: &str) -> Result<Self, ReflectError>;
+}
+
+impl ReflectKey for String {
+    fn key_type_name() -> String {
+        "string".to_string()
+    }
+
+    fn to_key(&self) -> String {
+        self.clone()
+    }
+
+    fn from_key(text: &str) -> Result<Self, ReflectError> {
+        Ok(text.to_string())
+    }
+}
+
+/// Implements [`ReflectKey`] for an integer, rendering it as plain decimal.
+///
+/// Injective for every integer type: distinct integers have distinct decimal spellings.
+macro_rules! reflect_integer_key {
+    ($type:ty, $name:literal) => {
+        impl ReflectKey for $type {
+            fn key_type_name() -> String {
+                $name.to_string()
+            }
+
+            fn to_key(&self) -> String {
+                self.to_string()
+            }
+
+            fn from_key(text: &str) -> Result<Self, ReflectError> {
+                text.parse::<$type>()
+                    .map_err(|_| ReflectError::TypeMismatch {
+                        type_name: format!("map key <{}>", $name),
+                        expected: concat!("a ", $name, " written in decimal").to_string(),
+                        found: format!("`{text}`"),
+                    })
+            }
+        }
+    };
+}
+
+reflect_integer_key!(i32, "i32");
+reflect_integer_key!(i64, "i64");
+reflect_integer_key!(u32, "u32");
+reflect_integer_key!(u64, "u64");
+
+impl<K: ReflectKey, V: Reflect> Reflect for std::collections::BTreeMap<K, V> {
+    fn type_name() -> String {
+        format!("map<{}, {}>", K::key_type_name(), V::type_name())
+    }
+
+    fn type_info() -> TypeInfo {
+        TypeInfo {
+            name: Self::type_name(),
+            docs: String::new(),
+            version: 1,
+            kind: TypeKind::Map {
+                key: K::key_type_name(),
+                value: V::type_name(),
+            },
+        }
+    }
+
+    fn to_value(&self) -> Value {
+        let entries: std::collections::BTreeMap<String, Value> = self
+            .iter()
+            .map(|(key, value)| (key.to_key(), value.to_value()))
+            .collect();
+
+        // The `ReflectKey` contract, checked where it can actually be observed. Two keys rendering
+        // to the same string would silently drop an entry here, and the loss would surface much
+        // later as a value that mysteriously reverted.
+        debug_assert_eq!(
+            entries.len(),
+            self.len(),
+            "two keys of {} rendered to the same string, so an entry was lost. \
+             ReflectKey::to_key must be injective",
+            Self::type_name()
+        );
+
+        Value::Map(entries)
+    }
+
+    fn from_value(value: &Value) -> Result<Self, ReflectError> {
+        match value {
+            // A `Struct` is accepted alongside a `Map`, for the same reason floats accept any
+            // numeric variant: **a `Value` does not always come from `to_value`.** It also comes
+            // from a text parser that has no schema, and a parser reading an indented block of
+            // `name value` lines cannot know whether the type behind it declared a struct or a map —
+            // they are written identically, deliberately (ADR 0027).
+            //
+            // Being strict here would mean the only way to author a map is to already know it is
+            // one, which defeats the point of the format being hand-writable.
+            Value::Map(entries) | Value::Struct(entries) => entries
+                .iter()
+                .map(|(key, value)| Ok((K::from_key(key)?, V::from_value(value)?)))
+                .collect(),
+            other => Err(ReflectError::mismatch(Self::type_name(), "map", other)),
+        }
+    }
+}
+
 impl<T: Reflect> Reflect for Option<T> {
     fn type_name() -> String {
         format!("option<{}>", T::type_name())
@@ -412,5 +589,134 @@ mod tests {
                 element: "f32".to_string()
             }
         );
+    }
+
+    // --- Maps. ADR 0027. ---
+
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn a_string_keyed_map_round_trips() {
+        let mut stats = BTreeMap::new();
+        stats.insert("strength".to_string(), 10u32);
+        stats.insert("agility".to_string(), 12u32);
+        round_trips(stats);
+    }
+
+    #[test]
+    fn an_integer_keyed_map_round_trips_through_decimal_text() {
+        // The cost of string keys, stated as a test: the key goes out as `"7"` and comes back as 7.
+        let mut slots = BTreeMap::new();
+        slots.insert(7u32, "sword".to_string());
+        slots.insert(11u32, "shield".to_string());
+
+        let encoded = slots.to_value();
+        assert_eq!(
+            encoded.entry("7"),
+            Some(&Value::String("sword".to_string()))
+        );
+        round_trips(slots);
+    }
+
+    #[test]
+    fn a_map_and_a_struct_do_not_hash_alike() {
+        // They hold the same shape, so without distinct discriminants a type changing from one to
+        // the other would be invisible to every replay assertion.
+        use amadeo_core::stable_hash_of;
+
+        let entries = [("a".to_string(), Value::U64(1))];
+        let as_map = Value::Map(entries.iter().cloned().collect());
+        let as_struct = Value::Struct(entries.iter().cloned().collect());
+
+        assert_ne!(stable_hash_of(&as_map), stable_hash_of(&as_struct));
+    }
+
+    #[test]
+    fn map_entries_are_sorted_regardless_of_insertion_order() {
+        // Invariant I2, falling out of the data structure rather than out of remembering to sort.
+        let mut forwards = BTreeMap::new();
+        forwards.insert("a".to_string(), 1u8);
+        forwards.insert("z".to_string(), 2u8);
+
+        let mut backwards = BTreeMap::new();
+        backwards.insert("z".to_string(), 2u8);
+        backwards.insert("a".to_string(), 1u8);
+
+        assert_eq!(forwards.to_value(), backwards.to_value());
+        assert_eq!(forwards.to_value().to_string(), "{a => 1, z => 2}");
+    }
+
+    #[test]
+    fn a_map_accepts_a_struct_because_the_scene_parser_has_no_schema() {
+        // A text parser reading an indented block cannot tell a struct from a map -- they are
+        // written identically on purpose. Being strict here would mean the only way to author a map
+        // is to already know it is one.
+        let written_by_a_parser = Value::structure([("strength", Value::I64(10))]);
+        let decoded = BTreeMap::<String, u32>::from_value(&written_by_a_parser).expect("lenient");
+
+        assert_eq!(decoded.get("strength"), Some(&10));
+    }
+
+    #[test]
+    fn a_map_refuses_a_shape_that_is_not_one() {
+        let error = BTreeMap::<String, u32>::from_value(&Value::List(Vec::new()))
+            .expect_err("a list is not a map");
+        let message = error.to_string();
+
+        assert!(message.contains("map<string, u32>"), "{message}");
+        assert!(message.contains("found list"), "{message}");
+    }
+
+    #[test]
+    fn a_key_that_will_not_parse_says_what_it_should_have_been() {
+        let bad = Value::map([("not_a_number", Value::String("x".to_string()))]);
+        let error = BTreeMap::<u32, String>::from_value(&bad).expect_err("bad key");
+        let message = error.to_string();
+
+        assert!(message.contains("u32"), "{message}");
+        assert!(message.contains("decimal"), "{message}");
+        assert!(message.contains("not_a_number"), "{message}");
+    }
+
+    #[test]
+    fn a_map_reports_both_of_its_type_names_to_the_schema() {
+        // What an editor reads to decide between a fixed inspector and an add-and-remove list.
+        assert_eq!(
+            BTreeMap::<String, f32>::type_info().kind,
+            TypeKind::Map {
+                key: "string".to_string(),
+                value: "f32".to_string(),
+            }
+        );
+        assert_eq!(
+            BTreeMap::<u64, Vec<f32>>::type_name(),
+            "map<u64, list<f32>>"
+        );
+    }
+
+    #[test]
+    fn a_map_of_compound_values_round_trips() {
+        // The shape `InputState` needs: a key pointing at something that is not a scalar. A struct
+        // as the value is exercised in `amadeo-input`, where `#[derive(Reflect)]` is usable -- the
+        // derive emits `amadeo_reflect::` paths, which do not resolve inside this crate.
+        let mut paths = BTreeMap::new();
+        paths.insert("patrol".to_string(), vec![1.5f32, 2.0, -3.25]);
+        paths.insert("retreat".to_string(), Vec::new());
+        round_trips(paths);
+    }
+
+    #[test]
+    fn a_map_nested_in_a_map_round_trips() {
+        let mut inner = BTreeMap::new();
+        inner.insert("strength".to_string(), 10u32);
+
+        let mut outer = BTreeMap::new();
+        outer.insert("player".to_string(), inner);
+        round_trips(outer);
+    }
+
+    #[test]
+    fn an_empty_map_round_trips() {
+        round_trips(BTreeMap::<String, u32>::new());
     }
 }

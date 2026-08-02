@@ -208,6 +208,31 @@ impl World {
         self.resources.contains_key(&ResourceId::of::<T>())
     }
 
+    /// Every resource, as a name paired with its reflected state.
+    ///
+    /// **Sorted by name**, not by resource id. The ids are hashes, so their order is arbitrary and
+    /// would put resources in a sequence nobody could predict — fine for hashing, useless for
+    /// reading. Anything generated from this gets looked at by a human or diffed by an agent, so it
+    /// is sorted the way a reader expects (invariant I3 either way: both orders are reproducible,
+    /// only one is legible).
+    ///
+    /// Read-only, and allocating: this builds a whole value tree per resource. Called when something
+    /// asks what the world contains, never in a simulation tick.
+    ///
+    /// This is what invariant I8 buys at the resource layer, and it could not be written before
+    /// ADR 0027 — a resource behind a trait object had thrown away everything about its type except
+    /// a hash.
+    #[must_use]
+    pub fn resources(&self) -> Vec<(String, amadeo_reflect::Value)> {
+        let mut named: Vec<(String, amadeo_reflect::Value)> = self
+            .resources
+            .values()
+            .map(|slot| (slot.type_name_value(), slot.to_reflected_value()))
+            .collect();
+        named.sort_by(|left, right| left.0.cmp(&right.0));
+        named
+    }
+
     /// Removes a resource and returns it.
     pub fn remove_resource<T: Resource>(&mut self) -> Option<T> {
         let slot = self.resources.remove(&ResourceId::of::<T>())?;
@@ -1321,7 +1346,7 @@ mod tests {
 
     // --- Resources ---
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, amadeo_reflect::Reflect)]
     struct Score(u32);
 
     impl StableHash for Score {

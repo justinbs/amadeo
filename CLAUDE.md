@@ -34,7 +34,7 @@ stop and raise it instead of working around it.
 | **I5** | **Anything the editor can do, the CLI and RPC can do.** The editor is built strictly on top of the same protocol the agent uses. No editor-only capabilities, ever. | Guarantees the agent never falls behind the human. |
 | **I6** | **Dependencies flow one way.** The crate graph is a strict DAG (see §4). A lower layer never references a higher one. No cyclic crates, no "just this once." | Keeps the engine comprehensible and testable in isolation. |
 | **I7** | **Every subsystem is headless-capable.** Rendering, audio, and input all have null backends. The whole engine must run with no window and no GPU. | Headless is how the agent runs and verifies games, and how CI works. |
-| **I8** | **Reflection is not optional.** Every component and resource registers a machine-readable schema. If it can't be reflected, it can't be serialized, inspected, or edited. | One registry powers serialization, the editor, and agent introspection. |
+| **I8** | **Reflection is not optional.** Every component, resource, and event registers a machine-readable schema. If it can't be reflected, it can't be serialized, inspected, or edited. **Enforced by trait bound** — ADR 0013 for components, ADR 0027 for the other two. | One registry powers serialization, the editor, and agent introspection. |
 
 ## 3. Tech stack (decided)
 
@@ -69,7 +69,10 @@ crates/
                      only non-`thiserror` dependency in the engine; that is why it is its own crate.
 — amadeo-math        vectors, matrices, quaternions, rects, curves. No engine deps.
 ✅ amadeo-core        Tick, FIXED_DT, Rng (PCG32), StableHasher (FNV-1a), StableId/NetId/Authority
-✅ amadeo-reflect     Value tree, TypeInfo schema, TypeRegistry. ADR 0012.
+✅ amadeo-reflect     Value tree, TypeInfo schema, TypeRegistry. ADR 0012. Values include maps with
+                     string keys (ADR 0027) — a key type implements ReflectKey, and `to_key` must be
+                     injective. Also holds `Reflect for Tick`: a type below this crate cannot
+                     implement the trait (I6), so the impl goes where the *trait* lives instead.
 ✅ amadeo-ecs         archetype SoA storage, resources, services, deferred commands,
                      ComponentRegistry (builds a component from a name + a Value), and queries:
                      `world.query::<(&A, Option<&B>)>()` resolves each column once per archetype
@@ -99,8 +102,9 @@ crates/
                      ADR 0020 disagree about whether `from` holds a path or an asset id.
 ✖ amadeo-script      NOT BUILT. ADR 0011: game logic is plain Rust in the game crate.
 🟡 amadeo-agent       the protocol: JSON reader and writer, JSON-RPC envelope, and the methods that
-                     need only a world + registry (describe, world.query/entity/list). Read-only.
-                     Mutation, snapshots, and capture pending. ADR 0016, spec in docs/protocol/v1.md.
+                     need only a world + registry (describe, world.query/entity/list/resources).
+                     Read-only. Mutation, snapshots, and capture pending. ADR 0016, spec in
+                     docs/protocol/v1.md.
 ✅ amadeo-app         Stage/Schedule, fixed-timestep loop, SimRng, ComponentRegistry, and the agent
                      *host* — serve_if_requested reads stdin and answers. The host lives here rather
                      than in amadeo-agent because it needs App and I6 forbids reaching down.

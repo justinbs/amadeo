@@ -95,7 +95,15 @@ fn inline_value(value: &Value) -> Option<String> {
             let parts: Option<Vec<String>> = items.iter().map(inline_value).collect();
             parts.map(|parts| parts.join(" "))
         }
-        Value::Unit | Value::Struct(_) | Value::Enum(_) => None,
+        // A map joins nested structs here, and for the same reason: the scene format has no syntax
+        // for either yet. A field with no inline value parses as a *list* of `- ` items (see
+        // `parse_field`), so writing a map as an indented block would produce a file the parser
+        // reads back as something else. Falling through to `write_field`'s bare form instead means
+        // a round trip fails loudly at parse time rather than quietly changing shape.
+        //
+        // Nothing authors a map in a scene today — resources are not scene-authorable at all — so
+        // this is a gap ADR 0027 records rather than one it widens.
+        Value::Unit | Value::Struct(_) | Value::Map(_) | Value::Enum(_) => None,
     }
 }
 

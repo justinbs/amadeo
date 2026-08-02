@@ -94,6 +94,15 @@ pub fn describe_type(info: &TypeInfo) -> Json {
             members.push(("kind", Json::string("optional")));
             members.push(("inner", Json::string(inner)));
         }
+        // Reported as its own kind rather than as a struct, because the difference is exactly what a
+        // client needs in order to render it: a struct gets a fixed inspector with one row per known
+        // field, a map gets an add-and-remove list. The data is indistinguishable in JSON — both are
+        // objects — so the schema is the only place this can be said.
+        TypeKind::Map { key, value } => {
+            members.push(("kind", Json::string("map")));
+            members.push(("key", Json::string(key)));
+            members.push(("value", Json::string(value)));
+        }
     }
 
     Json::object(members)

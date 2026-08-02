@@ -145,6 +145,45 @@ reason to open the hatch now exists, and it should be recorded rather than redis
 
 ---
 
+## Q18 · P2 · A reflected `ActionId` is a number nobody can read
+
+New in session 8, created by ADR 0027 rather than found by it — the gap only became visible once
+`world.resources` existed and could be pointed at a running game.
+
+`InputState` is two maps keyed by `ActionId`, and an `ActionId` is the FNV-1a hash of an action's
+name **with the name not kept** — deliberately, since that is what makes it fixed-size, `Copy`, and
+cheap enough to look up every tick. So the protocol reports:
+
+```json
+"InputState": { "axes": { "8831028638596390904": { "previous": 0.0, "value": 0.0 } } }
+```
+
+Faithful, and useless. Pillar 3 is "what did I just do?", and this is the one resource whose whole
+purpose is answering that.
+
+**The names do exist.** The input driver holds a table of them — that is how a `.replay` file writes
+`axis move_x 1.0` rather than a number. They sit outside `InputState` on purpose: a resource is part
+of `state_hash`, and two runs that registered different *names* for the same actions must not
+diverge.
+
+### What to decide
+
+Where the join happens, and how general it is:
+
+- **At the presentation layer**, in `world.resources`: look up the driver's table when rendering. The
+  narrow fix. Costs a crate edge from `amadeo-agent` to `amadeo-input`, which couples a generic
+  protocol layer to one specific subsystem — the part worth thinking about.
+- **A general "key alias" mechanism** in reflection, so any hash-derived key can carry a display
+  form. More honest about the fact that this will recur — a chunk coordinate, a texture id, an
+  entity relation could all want it — and more machinery.
+- **Leave it.** The raw id is sufficient for a machine that also has `describe`, and an agent could
+  hash the names itself to match them up.
+
+Recommendation is deliberately not stated yet; this needs the second real instance before the general
+shape is knowable. Nothing is blocked — `amadeo describe` and the `.replay` format both read fine.
+
+---
+
 ## Q12 · P1 · `Service: Send + Sync` excludes every non-`Sync` runtime
 
 Found by the Q1 spike (ADR 0011), which could not put a script VM in the world.

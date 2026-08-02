@@ -65,6 +65,7 @@ mod registry;
 mod value;
 
 pub use amadeo_derive::Reflect;
+pub use impls::ReflectKey;
 pub use info::{
     FieldInfo, Interpolation, Range, Replication, ScalarKind, SyncPolicy, TypeInfo, TypeKind,
     VariantInfo,

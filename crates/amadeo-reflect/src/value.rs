@@ -48,6 +48,26 @@ pub enum Value {
     List(Vec<Value>),
     /// Named fields, always sorted by name. See the type-level note on canonical form.
     Struct(BTreeMap<String, Value>),
+    /// Keys chosen by the author, always sorted. Values are all the same type.
+    ///
+    /// # Why this is a separate variant when it holds the same map as [`Value::Struct`]
+    ///
+    /// They are structurally identical and semantically opposite. A struct has a **fixed, known**
+    /// set of field names, so an unrecognised one is a typo worth reporting (`ReflectError::
+    /// UnknownField`). A map has **arbitrary** keys, so an unrecognised one is the entire point and
+    /// rejecting it would be a bug.
+    ///
+    /// Keeping them apart is what lets `from_value` be strict about one and permissive about the
+    /// other, and what lets the editor render a fixed inspector for a struct and an add-and-remove
+    /// list for a map. Merging them would mean choosing one behaviour for both.
+    ///
+    /// # Why the key is a string — ADR 0027
+    ///
+    /// A key type renders to a string and parses back, via [`ReflectKey`](crate::ReflectKey). That
+    /// keeps a map readable and hand-writable in the scene format — indented `strength 10`, exactly
+    /// like a struct's fields, which is what ADR 0014 chose that format for — and it sidesteps the
+    /// fact that `Value` contains floats and therefore has no total order to sort arbitrary keys by.
+    Map(BTreeMap<String, Value>),
     /// One variant of an enum, with its payload.
     Enum(EnumValue),
 }
@@ -104,15 +124,43 @@ impl Value {
             Value::String(_) => "string",
             Value::List(_) => "list",
             Value::Struct(_) => "struct",
+            Value::Map(_) => "map",
             Value::Enum(_) => "enum",
         }
     }
 
+    /// Builds a map value from key/value pairs.
+    ///
+    /// The counterpart to [`Value::structure`], and the same convenience: for tests and for
+    /// hand-construction. The generic impl emits the map directly.
+    #[must_use]
+    pub fn map<K: Into<String>>(entries: impl IntoIterator<Item = (K, Value)>) -> Value {
+        Value::Map(
+            entries
+                .into_iter()
+                .map(|(key, value)| (key.into(), value))
+                .collect(),
+        )
+    }
+
     /// Looks up a field, if this is a struct that has one by that name.
+    ///
+    /// Deliberately does **not** look inside a [`Value::Map`]. A field is a schema-known name and a
+    /// map key is author-supplied data; conflating them would let a caller reach into a map by
+    /// accident and get a value the type system said could not be there.
     #[must_use]
     pub fn field(&self, name: &str) -> Option<&Value> {
         match self {
             Value::Struct(fields) => fields.get(name),
+            _ => None,
+        }
+    }
+
+    /// Looks up an entry, if this is a map that has one under that key.
+    #[must_use]
+    pub fn entry(&self, key: &str) -> Option<&Value> {
+        match self {
+            Value::Map(entries) => entries.get(key),
             _ => None,
         }
     }
@@ -150,6 +198,19 @@ impl fmt::Display for Value {
                         write!(f, ", ")?;
                     }
                     write!(f, "{name}: {value}")?;
+                }
+                write!(f, "}}")
+            }
+            // Rendered with `=>` rather than `:` so a map and a struct are distinguishable at a
+            // glance in an error message. They hold the same shape, and telling a reader "expected
+            // a struct, found {a: 1}" when the value was a map would be actively misleading.
+            Value::Map(entries) => {
+                write!(f, "{{")?;
+                for (index, (key, value)) in entries.iter().enumerate() {
+                    if index > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{key} => {value}")?;
                 }
                 write!(f, "}}")
             }
@@ -214,6 +275,18 @@ impl StableHash for Value {
                 hasher.write_u8(9);
                 hasher.write_str(&value.variant);
                 value.payload.stable_hash(hasher);
+            }
+            // Discriminant 10, distinct from `Struct`'s 8, so a map and a struct holding identical
+            // entries do not hash alike. Without that a replay assertion could miss a type genuinely
+            // changing from one to the other.
+            Value::Map(entries) => {
+                hasher.write_u8(10);
+                hasher.write_u64(entries.len() as u64);
+                // BTreeMap iterates sorted, so this order is reproducible with no extra work.
+                for (key, value) in entries {
+                    hasher.write_str(key);
+                    value.stable_hash(hasher);
+                }
             }
         }
     }

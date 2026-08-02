@@ -34,6 +34,19 @@ pub struct Rng {
 /// The LCG multiplier specified by PCG for a 64-bit state.
 const PCG_MULTIPLIER: u64 = 6_364_136_223_846_793_005;
 
+impl crate::StableHash for Rng {
+    /// Hashes the two words that *are* the generator.
+    ///
+    /// Written by hand rather than derived only because `#[derive(StableHash)]` emits
+    /// `::amadeo_core::` paths, which do not resolve inside `amadeo-core` itself. The body is
+    /// exactly what the derive would produce: fields in sorted name order, `increment` before
+    /// `state`.
+    fn stable_hash(&self, hasher: &mut crate::StableHasher) {
+        hasher.write_u64(self.increment);
+        hasher.write_u64(self.state);
+    }
+}
+
 impl Rng {
     /// Creates a generator from a seed.
     #[must_use]
@@ -79,6 +92,49 @@ impl Rng {
         let seed = self.next_u64();
         let stream = self.next_u64();
         Rng::with_stream(seed, stream)
+    }
+
+    /// The generator's complete internal state, as `[state, increment]`.
+    ///
+    /// # Why this is public
+    ///
+    /// Three things need to see inside a generator, and none of them can be served by drawing
+    /// numbers from it — drawing *consumes* it, which is the opposite of observing it.
+    ///
+    /// 1. **Reflection.** `SimRng` is a resource, and invariant I8 says a resource that cannot be
+    ///    reflected cannot be inspected or serialised. `Rng` itself deliberately does *not*
+    ///    implement `Reflect`: that trait lives in `amadeo-reflect`, which sits **above**
+    ///    `amadeo-core`, and I6 forbids reaching upward. So the state is exposed here and the
+    ///    reflection is written where `Reflect` is visible.
+    /// 2. **Hashing.** `SimRng`'s `StableHash` used to go through `format!("{:?}")`, which meant a
+    ///    change to a derived `Debug` impl would silently invalidate every committed replay.
+    /// 3. **Snapshots.** `snapshot.take` and `snapshot.restore` need to capture and reinstate a
+    ///    generator mid-run without perturbing it.
+    ///
+    /// These two words *are* the generator. Nothing else about it is stateful.
+    #[must_use]
+    pub fn state(&self) -> [u64; 2] {
+        [self.state, self.increment]
+    }
+
+    /// Rebuilds a generator from [`Rng::state`].
+    ///
+    /// Exact for anything `state()` produced, so `Rng::from_state(rng.state()) == rng`.
+    ///
+    /// # An invalid increment is repaired rather than accepted
+    ///
+    /// The LCG only reaches its full period when the increment is odd, so an even one is forced
+    /// odd here. That means a *hand-written or corrupted* even increment does not round-trip — it
+    /// comes back as the next odd number up. Deliberate: a generator with a short period is a
+    /// silent statistical fault, and quietly fixing it is far better than faithfully reproducing a
+    /// broken one. Every increment `state()` ever returns is already odd, so this never fires on a
+    /// value the engine produced.
+    #[must_use]
+    pub fn from_state(state: [u64; 2]) -> Rng {
+        Rng {
+            state: state[0],
+            increment: state[1] | 1,
+        }
     }
 
     /// Advances the internal state by one LCG step.

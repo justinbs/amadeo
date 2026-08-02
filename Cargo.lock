@@ -120,6 +120,7 @@ version = "0.1.0"
 dependencies = [
  "amadeo-core",
  "amadeo-ecs",
+ "amadeo-reflect",
 ]
 
 [[package]]
@@ -136,6 +137,7 @@ version = "0.1.0"
 dependencies = [
  "amadeo-core",
  "amadeo-ecs",
+ "amadeo-reflect",
  "thiserror 2.0.19",
 ]
 

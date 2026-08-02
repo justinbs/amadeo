@@ -6,16 +6,18 @@
 //! different system *reads* it next tick.
 //!
 //! ```
-//! use amadeo_core::{StableHash, StableHasher};
+//! use amadeo_core::StableHash;
 //! use amadeo_ecs::World;
 //! use amadeo_events::{Event, WorldEvents};
+//! use amadeo_reflect::Reflect;
 //!
-//! #[derive(Debug, Clone, PartialEq)]
-//! struct DamageDealt { amount: u32 }
-//!
-//! impl StableHash for DamageDealt {
-//!     fn stable_hash(&self, h: &mut StableHasher) { self.amount.stable_hash(h); }
+//! /// Something took damage.
+//! #[derive(Debug, Clone, PartialEq, StableHash, Reflect)]
+//! struct DamageDealt {
+//!     /// How much.
+//!     amount: u32,
 //! }
+//!
 //! impl Event for DamageDealt {}
 //!
 //! let mut world = World::new();
@@ -50,6 +52,7 @@
 
 use amadeo_core::{StableHash, StableHasher, Tick};
 use amadeo_ecs::{Resource, World};
+use amadeo_reflect::{FieldInfo, Reflect, ReflectError, Replication, TypeInfo, TypeKind, Value};
 use std::fmt;
 
 /// Something that happened, broadcast to any system that cares.
@@ -58,7 +61,12 @@ use std::fmt;
 ///
 /// [`StableHash`] is required because queued events are part of simulation state at a tick boundary:
 /// two runs that agree on everything except pending events have not actually agreed.
-pub trait Event: 'static + Send + Sync + fmt::Debug + StableHash {}
+///
+/// [`Reflect`] is required for the same reason it is on `Resource` and `Component` (ADR 0027,
+/// ADR 0013) plus one specific to events: **the event log is how an agent answers "what did I just
+/// do?"** — Pillar 3 of `docs/03-ai-native-design.md`. A queue full of events nobody can read is a
+/// queue that cannot serve its most valuable purpose.
+pub trait Event: 'static + Send + Sync + fmt::Debug + StableHash + Reflect {}
 
 /// An event plus when it happened and where it sits in the global order.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,6 +87,82 @@ impl<T: StableHash> StableHash for EventRecord<T> {
     }
 }
 
+/// Hand-written rather than derived because the derive does not handle a generic parameter, and
+/// this type is generic over every event a game defines.
+///
+/// The body is what the derive would emit: fields sorted by name into a struct value.
+impl<T: Reflect> Reflect for EventRecord<T> {
+    fn type_name() -> String {
+        format!("event-record<{}>", T::type_name())
+    }
+
+    fn type_info() -> TypeInfo {
+        TypeInfo {
+            name: Self::type_name(),
+            docs: "One event, with when it was sent and where it sits in the global order."
+                .to_string(),
+            version: 1,
+            kind: TypeKind::Struct {
+                fields: vec![
+                    field(
+                        "sequence",
+                        "u64",
+                        "Position in the global send order across all event types. Strictly increasing.",
+                    ),
+                    field("tick", "Tick", "The tick during which this event was sent."),
+                    field("event", &T::type_name(), "The event itself."),
+                ],
+            },
+        }
+    }
+
+    fn to_value(&self) -> Value {
+        Value::structure([
+            ("sequence", Value::U64(self.sequence)),
+            ("tick", self.tick.to_value()),
+            ("event", self.event.to_value()),
+        ])
+    }
+
+    fn from_value(value: &Value) -> Result<Self, ReflectError> {
+        let name = Self::type_name();
+        let Value::Struct(fields) = value else {
+            return Err(ReflectError::mismatch(name, "struct", value));
+        };
+
+        let take = |field_name: &str| -> Result<&Value, ReflectError> {
+            fields
+                .get(field_name)
+                .ok_or_else(|| ReflectError::MissingField {
+                    type_name: name.clone(),
+                    field: field_name.to_string(),
+                    required: "sequence, tick, event".to_string(),
+                })
+        };
+
+        Ok(EventRecord {
+            sequence: u64::from_value(take("sequence")?)?,
+            tick: Tick::from_value(take("tick")?)?,
+            event: T::from_value(take("event")?)?,
+        })
+    }
+}
+
+/// One entry of a hand-written schema.
+///
+/// A helper because `FieldInfo` has no constructor — the derive builds it literally, and the two
+/// generic types here are the only ones in the engine that write a schema by hand.
+fn field(name: &str, type_name: &str, docs: &str) -> FieldInfo {
+    FieldInfo {
+        name: name.to_string(),
+        type_name: type_name.to_string(),
+        docs: docs.to_string(),
+        range: None,
+        unit: None,
+        replication: Replication::default(),
+    }
+}
+
 /// Hands out the sequence numbers that give events a total order.
 ///
 /// # Why a shared counter rather than per-type numbering
@@ -90,15 +174,17 @@ impl<T: StableHash> StableHash for EventRecord<T> {
 ///
 /// A single monotonic counter is deterministic because sends happen in deterministic order, so this
 /// costs nothing in reproducibility.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+///
+/// # Its one field is private but reflected
+///
+/// `next` has no public setter — handing out a way to rewind the event clock would let two events
+/// share a sequence number, which is exactly what it exists to prevent. Reflection still sees it,
+/// because invariant I8 is about what the agent and the editor can *observe*, and a resource with an
+/// invisible field is a resource whose state a snapshot cannot restore.
+#[derive(Debug, Default, Clone, PartialEq, Eq, StableHash, Reflect)]
 pub struct EventClock {
+    /// How many events have been sent since the world was created; the next one takes this number.
     next: u64,
-}
-
-impl StableHash for EventClock {
-    fn stable_hash(&self, hasher: &mut StableHasher) {
-        hasher.write_u64(self.next);
-    }
 }
 
 impl Resource for EventClock {}
@@ -146,6 +232,72 @@ impl<T: Event> StableHash for Events<T> {
         // Both buffers count: a pending event is state that will affect the next tick.
         self.writing.as_slice().stable_hash(hasher);
         self.reading.as_slice().stable_hash(hasher);
+    }
+}
+
+/// Reflected as its two buffers, because **both are simulation state**.
+///
+/// An event sent this tick has not been read yet but will be, so a snapshot that captured only the
+/// read buffer would restore a world that then silently skipped a tick's worth of events. The
+/// `StableHash` impl above already takes both for exactly that reason; this keeps the two in step.
+impl<T: Event> Reflect for Events<T> {
+    fn type_name() -> String {
+        format!("events<{}>", T::type_name())
+    }
+
+    fn type_info() -> TypeInfo {
+        let record = EventRecord::<T>::type_name();
+        TypeInfo {
+            name: Self::type_name(),
+            docs: "A double-buffered event queue. Sends land in `writing`; readers see `reading`; \
+                   the two swap at the tick boundary."
+                .to_string(),
+            version: 1,
+            kind: TypeKind::Struct {
+                fields: vec![
+                    field(
+                        "reading",
+                        &format!("list<{record}>"),
+                        "Events sent last tick. What readers see now.",
+                    ),
+                    field(
+                        "writing",
+                        &format!("list<{record}>"),
+                        "Events sent this tick, not yet visible to readers.",
+                    ),
+                ],
+            },
+        }
+    }
+
+    fn to_value(&self) -> Value {
+        Value::structure([
+            ("reading", self.reading.to_value()),
+            ("writing", self.writing.to_value()),
+        ])
+    }
+
+    fn from_value(value: &Value) -> Result<Self, ReflectError> {
+        let name = Self::type_name();
+        let Value::Struct(fields) = value else {
+            return Err(ReflectError::mismatch(name, "struct", value));
+        };
+
+        let take = |field_name: &str| -> Result<Vec<EventRecord<T>>, ReflectError> {
+            let inner = fields
+                .get(field_name)
+                .ok_or_else(|| ReflectError::MissingField {
+                    type_name: name.clone(),
+                    field: field_name.to_string(),
+                    required: "reading, writing".to_string(),
+                })?;
+            Vec::<EventRecord<T>>::from_value(inner)
+        };
+
+        Ok(Events {
+            reading: take("reading")?,
+            writing: take("writing")?,
+        })
     }
 }
 
@@ -268,7 +420,7 @@ impl WorldEvents for World {
 mod tests {
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[derive(Debug, Clone, PartialEq, Eq, Reflect)]
     struct Hit {
         amount: u32,
     }
@@ -280,7 +432,7 @@ mod tests {
     }
     impl Event for Hit {}
 
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[derive(Debug, Clone, PartialEq, Eq, Reflect)]
     struct Spawned;
 
     impl StableHash for Spawned {

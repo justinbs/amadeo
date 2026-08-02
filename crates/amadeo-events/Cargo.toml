@@ -10,6 +10,8 @@ rust-version.workspace = true
 [dependencies]
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
+# `EventClock` is a `Resource`, and ADR 0027 makes every resource reflectable.
+amadeo-reflect.workspace = true
 
 [lints]
 workspace = true

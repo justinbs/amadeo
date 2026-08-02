@@ -301,6 +301,7 @@ pub const WORLD_METHODS: &[&str] = &[
     "world.entity",
     "world.list",
     "world.query",
+    "world.resources",
 ];
 
 /// Answers a request that needs only the world and the registry.
@@ -344,6 +345,27 @@ pub fn dispatch_world(
         // ADR 0020 requires this to exist *before* ids become the reference syntax, so that the
         // first agent to author a scene can look the ids up rather than guess at them.
         "assets.list" => Ok(Some(crate::assets::list(world))),
+
+        // The other half of "what is in this world": entities carry components, and everything
+        // else is a resource. Blocked until ADR 0027, because a resource behind a trait object had
+        // thrown away everything about its type except a hash — the world could *hash* one but not
+        // show one.
+        //
+        // An object keyed by name rather than an array of `{name, value}` pairs: a caller almost
+        // always wants one specific resource, and `resources.SimRng` beats scanning a list for it.
+        // Names are unique by construction — a `ResourceId` is the hash of one — so nothing is lost.
+        "world.resources" => {
+            let resources: Vec<(String, Json)> = world
+                .resources()
+                .into_iter()
+                .map(|(name, value)| (name, crate::value_to_json(&value)))
+                .collect();
+
+            Ok(Some(Json::object([
+                ("count", Json::Int(resources.len() as i64)),
+                ("resources", Json::Object(resources.into_iter().collect())),
+            ])))
+        }
 
         "world.list" => {
             let entities: Vec<Json> = world
@@ -650,6 +672,76 @@ mod tests {
             error.to_string(),
             "`world.entity`: `entity` must be a whole number, found \"three\""
         );
+    }
+
+    /// A resource with something worth reading in it.
+    #[derive(Debug, Clone, Copy, PartialEq, amadeo_core::StableHash, Reflect)]
+    struct Score {
+        /// Points so far.
+        points: u32,
+    }
+    impl amadeo_ecs::Resource for Score {}
+
+    #[test]
+    fn world_resources_reports_every_resource_by_name() {
+        // What ADR 0027 was for. Before the `Reflect` bound this method could not exist: a resource
+        // behind a trait object had thrown away everything about its type except a hash.
+        let mut world = World::new();
+        world.insert_resource(Score { points: 7 });
+
+        let reply = dispatch_world(
+            &request(r#"{"jsonrpc":"2.0","method":"world.resources","id":1}"#),
+            &world,
+            &registry(),
+        )
+        .expect("dispatches")
+        .expect("world.resources is a world method");
+
+        let text = reply.to_compact();
+        assert!(text.contains(r#""count":1"#), "got: {text}");
+        assert!(text.contains(r#""Score":{"points":7}"#), "got: {text}");
+    }
+
+    #[test]
+    fn world_resources_is_keyed_by_name_and_sorted() {
+        // Sorted by *name* rather than by resource id, because an id is a hash and its ordering is
+        // arbitrary — reproducible, but in a sequence no reader could predict.
+        #[derive(Debug, Clone, Copy, PartialEq, amadeo_core::StableHash, Reflect)]
+        struct Ammo {
+            /// Rounds left.
+            rounds: u32,
+        }
+        impl amadeo_ecs::Resource for Ammo {}
+
+        let mut world = World::new();
+        world.insert_resource(Score { points: 1 });
+        world.insert_resource(Ammo { rounds: 2 });
+
+        let reply = dispatch_world(
+            &request(r#"{"jsonrpc":"2.0","method":"world.resources","id":1}"#),
+            &world,
+            &registry(),
+        )
+        .expect("dispatches")
+        .expect("present");
+
+        let text = reply.to_compact();
+        let ammo = text.find("Ammo").expect("Ammo present");
+        let score = text.find("Score").expect("Score present");
+        assert!(ammo < score, "resources must be sorted by name: {text}");
+    }
+
+    #[test]
+    fn an_empty_world_reports_no_resources() {
+        let reply = dispatch_world(
+            &request(r#"{"jsonrpc":"2.0","method":"world.resources","id":1}"#),
+            &World::new(),
+            &registry(),
+        )
+        .expect("dispatches")
+        .expect("present");
+
+        assert!(reply.to_compact().contains(r#""count":0"#));
     }
 
     #[test]

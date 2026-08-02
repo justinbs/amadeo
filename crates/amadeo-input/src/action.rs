@@ -44,6 +44,44 @@ impl ActionId {
     }
 }
 
+impl amadeo_reflect::ReflectKey for ActionId {
+    /// Plain decimal, which is injective because the id *is* a `u64`.
+    ///
+    /// # Why not the action's name, which is what a reader wants
+    ///
+    /// Because an `ActionId` does not have one. It is a hash, and the name that produced it is not
+    /// kept — deliberately, since that is what makes an id fixed-size, `Copy`, and cheap enough to
+    /// look up every tick.
+    ///
+    /// The result is that a reflected [`InputState`](crate::InputState) has unreadable keys. That is
+    /// a real gap and it is recorded as one; the fix is for the protocol layer to join these against
+    /// the input driver's name table when rendering, not for this type to start carrying a `String`.
+    ///
+    /// # Why not [`fmt::Display`], which already renders one
+    ///
+    /// `Display` produces `action#1a2b3c4d` for a diagnostic, and reusing it here would tie the
+    /// on-disk key to how a log line happens to read. Changing a message should not rewrite saved
+    /// files.
+    fn key_type_name() -> String {
+        "action-id".to_string()
+    }
+
+    fn to_key(&self) -> String {
+        self.0.to_string()
+    }
+
+    fn from_key(text: &str) -> Result<Self, amadeo_reflect::ReflectError> {
+        text.parse::<u64>()
+            .map(ActionId)
+            .map_err(|_| amadeo_reflect::ReflectError::TypeMismatch {
+                type_name: "ActionId".to_string(),
+                expected: "an action id written in decimal, as `amadeo describe` reports it"
+                    .to_string(),
+                found: format!("`{text}`"),
+            })
+    }
+}
+
 impl fmt::Display for ActionId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "action#{:016x}", self.0)

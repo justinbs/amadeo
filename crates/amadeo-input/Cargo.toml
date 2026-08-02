@@ -10,6 +10,9 @@ rust-version.workspace = true
 [dependencies]
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
+# `InputState` is a `Resource`, and ADR 0027 makes every resource reflectable. `ActionId` is a map
+# key in it, so it implements `ReflectKey` too.
+amadeo-reflect.workspace = true
 thiserror.workspace = true
 
 [lints]

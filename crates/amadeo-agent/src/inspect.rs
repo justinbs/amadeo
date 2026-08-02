@@ -38,6 +38,16 @@ pub fn value_to_json(value: &Value) -> Json {
                 .map(|(name, inner)| (name.clone(), value_to_json(inner)))
                 .collect(),
         ),
+        // A map becomes a JSON object too, which is exactly right for a reader: `{"jump": {...}}`
+        // is what anyone expects. The struct/map distinction is real in `Value` and is preserved
+        // where it matters — `describe` reports the *kind*, so a client that needs to tell them
+        // apart asks the schema rather than guessing from the data.
+        Value::Map(entries) => Json::Object(
+            entries
+                .iter()
+                .map(|(key, inner)| (key.clone(), value_to_json(inner)))
+                .collect(),
+        ),
         Value::Enum(inner) => match inner.payload.as_ref() {
             Value::Unit => Json::string(&inner.variant),
             payload => Json::object([

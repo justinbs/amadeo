@@ -2,10 +2,12 @@
 
 use crate::schedule::{Schedule, ScheduleError, Stage, SystemConfig};
 use amadeo_assets::{Assets, ScanError};
-use amadeo_core::{FIXED_DT_NANOS, Rng, StableHash, StableHasher, Tick};
+use amadeo_core::{FIXED_DT_NANOS, Rng, StableHash, Tick};
 use amadeo_ecs::{Commands, Component, ComponentRegistry, Resource, Service, World};
 use amadeo_events::{Event, WorldEvents};
-use amadeo_reflect::RegistryError;
+use amadeo_reflect::{
+    FieldInfo, Reflect, ReflectError, RegistryError, Replication, TypeInfo, TypeKind, Value,
+};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -16,19 +18,92 @@ use std::path::Path;
 ///
 /// Systems needing randomness should [`Rng::fork`] a child stream rather than sharing this one
 /// directly, so that system execution order cannot influence the values any single system receives.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// # How its state is hashed, and what used to be wrong with it
+///
+/// The two words behind [`Rng::state`] are hashed directly. That is worth a note because it did
+/// not used to be: this impl previously hashed `format!("{:?}", rng)`, on the reasoning that a
+/// derived `Debug` is a faithful function of the fields. It is — but it made **every committed
+/// replay depend on the exact text of a `Debug` impl**, so renaming a private field or adding
+/// `#[derive]` ordering would have invalidated all of them for a reason no one would ever connect
+/// to the failure. Hashing the state directly removes that coupling entirely.
+#[derive(Debug, Clone, PartialEq, Eq, StableHash)]
 pub struct SimRng(pub Rng);
 
-impl StableHash for SimRng {
-    fn stable_hash(&self, hasher: &mut StableHasher) {
-        // The generator's observable state is captured by cloning and drawing, which would consume
-        // it. Instead the debug representation is hashed: it is derived purely from the internal
-        // state fields, and is stable because `Rng`'s Debug output is derived.
-        hasher.write_str(&format!("{:?}", self.0));
+impl Resource for SimRng {}
+
+/// One `u64` field of [`SimRng`]'s schema.
+///
+/// A small helper because `FieldInfo` has no constructor — the derive builds it literally, and this
+/// is the one place in the engine that writes a schema by hand.
+fn raw_state_field(name: &str, docs: &str) -> FieldInfo {
+    FieldInfo {
+        name: name.to_string(),
+        type_name: "u64".to_string(),
+        docs: docs.to_string(),
+        range: None,
+        unit: None,
+        replication: Replication::default(),
     }
 }
 
-impl Resource for SimRng {}
+impl Reflect for SimRng {
+    /// Hand-written rather than derived, because the two words it exposes are private to `Rng` and
+    /// reached through [`Rng::state`] — see the note there for why `Rng` itself cannot be
+    /// `Reflect` (invariant I6: `amadeo-reflect` sits above `amadeo-core`).
+    const STATIC_NAME: &'static str = "SimRng";
+
+    fn type_name() -> String {
+        Self::STATIC_NAME.to_string()
+    }
+
+    fn type_info() -> TypeInfo {
+        TypeInfo {
+            name: Self::type_name(),
+            docs: "The simulation's random number generator. Both fields are the generator's raw \
+                   internal state; editing either changes every random value from here on."
+                .to_string(),
+            version: 1,
+            kind: TypeKind::Struct {
+                fields: vec![
+                    raw_state_field("state", "The evolving LCG state. Advances on every draw."),
+                    raw_state_field(
+                        "increment",
+                        "The stream selector, always odd. Two generators with different \
+                         increments produce unrelated sequences from the same seed.",
+                    ),
+                ],
+            },
+        }
+    }
+
+    fn to_value(&self) -> Value {
+        let [state, increment] = self.0.state();
+        Value::structure([
+            ("state", Value::U64(state)),
+            ("increment", Value::U64(increment)),
+        ])
+    }
+
+    fn from_value(value: &Value) -> Result<Self, ReflectError> {
+        let Value::Struct(fields) = value else {
+            return Err(ReflectError::mismatch("SimRng", "struct", value));
+        };
+
+        let read = |name: &str| -> Result<u64, ReflectError> {
+            let field = fields.get(name).ok_or_else(|| ReflectError::MissingField {
+                type_name: "SimRng".to_string(),
+                field: name.to_string(),
+                required: "state, increment".to_string(),
+            })?;
+            u64::from_value(field)
+        };
+
+        let state = read("state")?;
+        let increment = read("increment")?;
+        Ok(SimRng(Rng::from_state([state, increment])))
+    }
+}
 
 /// How many simulation ticks a single real-time frame may run.
 ///

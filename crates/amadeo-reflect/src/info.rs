@@ -166,6 +166,19 @@ pub enum TypeKind {
         /// The element type's name.
         element: String,
     },
+    /// Author-chosen keys pointing at values of one type.
+    ///
+    /// Distinct from [`TypeKind::Struct`] even though [`crate::Value::Map`] and
+    /// [`crate::Value::Struct`] hold the same shape: a struct's field set is fixed and an unknown
+    /// name is an error, while a map's keys are data and an unknown one is ordinary. An editor reads
+    /// this to decide between a fixed inspector and an add-and-remove list.
+    Map {
+        /// The key type's name. Always something that renders to a string — see
+        /// [`ReflectKey`](crate::ReflectKey).
+        key: String,
+        /// The value type's name.
+        value: String,
+    },
     /// A value that may be absent.
     Optional {
         /// The contained type's name.
