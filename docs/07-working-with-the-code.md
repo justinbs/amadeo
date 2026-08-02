@@ -661,6 +661,61 @@ which is not true of poking at an attached, already-running process.
 
 The full method list is `docs/protocol/v1.md`.
 
+### How a texture gets from a file onto the screen
+
+Worth following once end to end, because it crosses four crates and each one deliberately refuses to
+do the next one's job.
+
+```
+assets/textures/wall_concrete.ppm      a file
+  + wall_concrete.ppm.ama-meta         declares  id = "wall_concrete"        (ADR 0020)
+        |
+        |  amadeo-assets: scan + load. Reads BYTES. Does not look inside them.
+        v
+  Assets.store["wall_concrete"] = Vec<u8>
+        |
+        |  amadeo-image: decode(). Picks the format by sniffing the leading
+        |  bytes, not the extension, and normalises everything to RGBA8.
+        v
+  TextureData { width, height, format: Rgba8UnormSrgb, pixels }
+        |
+        |  amadeo-render: TextureCache holds it, keyed by the same id.
+        v
+  Sprite { texture: "wall_concrete", .. }  ->  collect_sprites  ->  SpriteBatch
+        |
+        |  WgpuBackend::upload_texture: one wgpu::Texture + one bind group, once.
+        v
+  one draw call per batch
+```
+
+**The five things worth knowing about that chain:**
+
+1. **The id is the same string the whole way.** A scene file, `amadeo assets`, a `world.entity` dump,
+   and the GPU's texture table all use `wall_concrete`. There is no resolution step where two of
+   them could disagree.
+2. **`amadeo-assets` deliberately does not decode.** Image formats are per-kind knowledge, and that
+   crate has none. This is why `amadeo-image` exists as a separate crate rather than a module.
+3. **`TextureCache::get` never fails.** Missing, unloaded, or corrupt all fall back — first to an
+   asset called `placeholder`, then to a magenta check built in code. The code fallback is the one
+   that matters: a placeholder that is itself a file cannot cover "files are the problem".
+4. **A fallback is always reported.** `TextureCache::failures()` says which ids fell back and why. If
+   the screen is magenta, that list is the answer, and it is what `render.describe` will surface.
+5. **None of it can move a replay.** `Assets` and `TextureCache` are both `Service`s, which
+   `World::state_hash` excludes by trait bound (ADR 0009). This is not a convention anyone has to
+   remember — it is enforced by the type system, and `sprite_textures.rs` asserts it by running the
+   same world with the texture present and absent and getting the same hash.
+
+**If a sprite is not showing up**, in the order worth checking:
+
+```bash
+amadeo assets          # is the id catalogued, and did its file load?
+```
+
+Then: is the id in the scene's `assets` block (nothing loads that is not declared)? Is
+`TextureCache` installed as a service? Is `render_quads` registered in the `Render` stage? A sprite
+whose texture failed still draws — as a magenta check — so a *completely* invisible sprite is a
+transform, camera, or sort-order problem rather than a texture one.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

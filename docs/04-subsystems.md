@@ -115,8 +115,17 @@ with world cameras.
 ⚠️ **`render.describe` support.** Screen-space bounds of visible entities must be extractable, since
 that's a primary agent verification channel. Design it in — it needs data the culling pass already
 computes, so it's nearly free if planned and awkward if not.
-🔬 **Sprite batching throughput.** Target a concrete number (e.g. 20k sprites at 60fps) and measure
-early. Numbers, not vibes.
+✅ **Sprite batching throughput** — measured, ADR 0023. 20,000 fully interleaved sprites collapse to
+32 batches in 2.58 ms (15.5% of a 60 Hz frame); 50,000 tiles on one sheet are one draw call. The
+measurement is re-runnable: `cargo test -p amadeo-render --test sprite_throughput -- --nocapture`.
+✅ **Sprites reach the GPU** — ADR 0026. `TextureCache` turns an asset id into pixels;
+`WgpuBackend::upload_texture` puts them on the device with one bind group each; the sprite pass binds
+once per batch and draws every batch's instances out of one shared buffer.
+⚠️ **Texture filtering is one global nearest-neighbour sampler.** Right for the three pixel-art target
+games and wrong for a photographic one. The `.ama-meta` sidecar already carries a `filter` setting;
+wire it through when the first asset needs linear.
+⚠️ **Mip levels.** None are generated, so a sprite drawn much smaller than its texture will shimmer.
+Belongs to the import pipeline rather than the runtime — see §5 and ADR 0026.
 
 ---
 
@@ -124,8 +133,14 @@ early. Numbers, not vibes.
 
 **Job:** get data from disk into memory, correctly, asynchronously, and hot-reloadably.
 
-✅ Import pipeline: source assets (`.png`, `.gltf`, `.wav`) are compiled once into internal formats.
-The runtime never parses source formats.
+🟡 Import pipeline: source assets (`.png`, `.gltf`, `.wav`) are compiled once into internal formats.
+The runtime never parses source formats. **Still the destination, but not yet true — ADR 0026.** The
+runtime *does* parse PNG and PPM today, via `amadeo-image`, because the only thing an import step
+could emit right now is the same RGBA the decoder produces anyway. What makes the eventual move
+cheap is that the runtime already carries an explicit `PixelFormat`, so a compiled BC7 texture is a
+new variant and a new producer rather than a redesign of everything downstream. The trigger is the
+first target game that wants GPU-compressed textures or mip levels — compression is minutes per
+texture and can *only* happen offline, which is why this is a "when", not an "if".
 ✅ Asset metadata is text and hand-editable (I1) — import settings live next to the asset, in a
 `.ama-meta` sidecar or similar.
 ✅ Handle-based access with async loading. Hot-reload via filesystem watch.

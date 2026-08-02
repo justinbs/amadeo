@@ -62,6 +62,11 @@ Crates are listed in dependency order. **A crate may only depend on crates above
 crates/
 ✅ amadeo-derive      proc macros: #[derive(Reflect)], #[derive(StableHash)]. No engine deps, so it
                      sits below even amadeo-core. Re-exported next to each trait; never used directly.
+✅ amadeo-image       decodes PNG (via the `png` crate) and PPM (hand-written) into TextureData —
+                     width, height, an explicit PixelFormat, and flat pixels. Also no engine deps.
+                     ADR 0026: decoding happens at load time *for now*, and the format tag is what
+                     makes the eventual import pipeline an addition rather than a rewrite. Holds the
+                     only non-`thiserror` dependency in the engine; that is why it is its own crate.
 — amadeo-math        vectors, matrices, quaternions, rects, curves. No engine deps.
 ✅ amadeo-core        Tick, FIXED_DT, Rng (PCG32), StableHasher (FNV-1a), StableId/NetId/Authority
 ✅ amadeo-reflect     Value tree, TypeInfo schema, TypeRegistry. ADR 0012.
@@ -78,9 +83,12 @@ crates/
                      ADR 0021's barrier. Asset-root resolution is by marker file (ADR 0022).
                      Typed handles, the import/decode pipeline, and hot-reload still to come.
 ✅ amadeo-input       action mapping, InputState, recording/replay, the .replay text format
-🟡 amadeo-render      RenderBackend trait, NullBackend, Quad/Sprite/SortOrder/Camera2d, and the
-                     sprite batcher (ADR 0023: batches are (sort order, texture) pairs). wgpu behind
-                     `gpu` — it draws quads but NOT sprites yet, which needs a texture decoder first.
+🟡 amadeo-render      RenderBackend trait, NullBackend, Quad/Sprite/SortOrder/Camera2d, the sprite
+                     batcher (ADR 0023: batches are (sort order, texture) pairs), and TextureCache —
+                     id -> bytes -> pixels, with a three-step placeholder fallback ending in an
+                     image built in code so it cannot itself be missing. wgpu behind `gpu` draws
+                     **quads and sprites**: texture upload, a nearest sampler, one bind group per
+                     texture, one draw call per batch. Still to come: render targets, `render.capture`.
 — amadeo-audio       mixer, buses, spatialization (null backend required)
 — amadeo-physics     rapier integration behind engine traits
 — amadeo-anim        sprite anim, skeletal, state machines, tweens

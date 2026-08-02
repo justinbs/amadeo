@@ -8,8 +8,13 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# `Sprite` already names its texture by asset id (ADR 0020), so the renderer is the layer that has
+# to turn an id into pixels. `amadeo-assets` sits below this crate, so the edge points the right way
+# (invariant I6), and `amadeo-image` sits below everything.
+amadeo-assets.workspace = true
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
+amadeo-image.workspace = true
 amadeo-reflect.workspace = true
 amadeo-transform.workspace = true
 thiserror.workspace = true

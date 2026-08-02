@@ -1,6 +1,7 @@
 //! The rendering backend abstraction, and the null backend every build must have.
 
 use crate::components::Camera2d;
+use amadeo_image::TextureData;
 use std::fmt;
 
 /// What can go wrong while rendering.
@@ -71,11 +72,16 @@ pub struct QuadInstance {
 pub struct SpriteInstance {
     /// World-space centre.
     pub center: [f32; 2],
-    /// The sprite's two half-extent axes in world space, as `[x_axis, y_axis]`.
+    /// The sprite's two full-extent axes in world space, as `[x_axis, y_axis]`.
+    ///
+    /// Each is the transform matrix's corresponding column scaled by the sprite's size, so it points
+    /// along that edge and its length *is* that edge's world-space length. For an unrotated sprite
+    /// they are `[width, 0]` and `[0, height]`.
     ///
     /// A corner at local `(u, v)`, with `u` and `v` in `-0.5..=0.5`, sits at
-    /// `center + axes[0] * u * 2 + axes[1] * v * 2`. For an unrotated sprite these are
-    /// `[width, 0]` and `[0, height]`.
+    /// `center + axes[0] * u + axes[1] * v`. That is the same convention [`QuadInstance::size`]
+    /// uses — a full size, halved by the corner offsets — and `sprite.wgsl` builds its four corners
+    /// exactly that way.
     pub axes: [[f32; 2]; 2],
     /// Linear RGBA tint.
     pub color: [f32; 4],
@@ -191,6 +197,31 @@ pub trait RenderBackend: fmt::Debug + Send + Sync {
     /// Tells the backend the drawable size changed.
     fn resize(&mut self, width: u32, height: u32);
 
+    /// Whether the backend already holds this texture and can draw a batch naming it.
+    ///
+    /// # Why textures are pushed to the backend rather than carried in the frame
+    ///
+    /// A [`FrameData`] holds texture *ids*, not pixels, and that is deliberate: a frame is rebuilt
+    /// every tick, and copying several megabytes of decoded image into it sixty times a second to
+    /// draw the same wall would be the most expensive thing the renderer did.
+    ///
+    /// So pixels travel once, out of band, through [`RenderBackend::upload_texture`], and the
+    /// backend keeps whatever GPU state it needs keyed by id. This method is how the caller knows
+    /// whether that has happened yet.
+    fn has_texture(&self, id: &str) -> bool;
+
+    /// Hands the backend a decoded texture to hold under `id`, replacing any earlier one.
+    ///
+    /// Replacing rather than refusing is what makes a late arrival work: a texture that fell back to
+    /// a placeholder on frame one and decoded on frame ten is uploaded again, and the sprites using
+    /// it change without anything being respawned. ADR 0021 explicitly permits that.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError`] if the backend could not take it — typically out of video memory, or a size
+    /// beyond what the device supports.
+    fn upload_texture(&mut self, id: &str, texture: &TextureData) -> Result<(), RenderError>;
+
     /// Draws one frame.
     fn render(&mut self, frame: &FrameData) -> Result<(), RenderError>;
 }
@@ -205,6 +236,9 @@ pub struct NullBackend {
     viewport: (u32, u32),
     frames_rendered: u64,
     last_frame: Option<FrameData>,
+    /// What was uploaded, by id — the whole texture, so a headless test can assert on the pixels a
+    /// GPU would have received. Ordered, so listing it is reproducible (invariant I3).
+    textures: std::collections::BTreeMap<String, TextureData>,
 }
 
 impl Default for NullBackend {
@@ -221,6 +255,7 @@ impl NullBackend {
             viewport: (width, height),
             frames_rendered: 0,
             last_frame: None,
+            textures: std::collections::BTreeMap::new(),
         }
     }
 
@@ -243,6 +278,20 @@ impl NullBackend {
             .as_ref()
             .map_or(0, |frame| frame.quads.len())
     }
+
+    /// The pixels uploaded under an id, if any.
+    ///
+    /// The reason texture work is testable with no GPU: a headless test can assert that the *right*
+    /// image reached the backend, which is a much sharper claim than "no error was returned".
+    #[must_use]
+    pub fn texture(&self, id: &str) -> Option<&TextureData> {
+        self.textures.get(id)
+    }
+
+    /// Every uploaded texture id, in order.
+    pub fn texture_ids(&self) -> impl Iterator<Item = &str> {
+        self.textures.keys().map(String::as_str)
+    }
 }
 
 impl RenderBackend for NullBackend {
@@ -260,6 +309,15 @@ impl RenderBackend for NullBackend {
 
     fn resize(&mut self, width: u32, height: u32) {
         self.viewport = (width, height);
+    }
+
+    fn has_texture(&self, id: &str) -> bool {
+        self.textures.contains_key(id)
+    }
+
+    fn upload_texture(&mut self, id: &str, texture: &TextureData) -> Result<(), RenderError> {
+        self.textures.insert(id.to_string(), texture.clone());
+        Ok(())
     }
 
     fn render(&mut self, frame: &FrameData) -> Result<(), RenderError> {

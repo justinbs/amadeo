@@ -40,6 +40,7 @@ mod components;
 #[cfg(feature = "gpu")]
 mod gpu;
 mod sprites;
+mod textures;
 
 pub use backend::{
     FrameData, NullBackend, QuadInstance, RenderBackend, RenderError, SpriteBatch, SpriteInstance,
@@ -48,8 +49,14 @@ pub use components::{Camera2d, Quad, SortOrder, Sprite};
 #[cfg(feature = "gpu")]
 pub use gpu::WgpuBackend;
 pub use sprites::{COLLECT_SPRITES, collect_sprites};
+pub use textures::{PLACEHOLDER_TEXTURE_ID, TextureCache, TextureFailure, decode_frame_textures};
+// Re-exported because a caller holding a `TextureCache` needs to talk about what is in it, and
+// making them add `amadeo-image` to their own manifest for a type this crate hands them would be a
+// dependency they did not choose.
+pub use amadeo_image::{PixelFormat, TextureData};
 
 use amadeo_ecs::{Service, World};
+use std::collections::BTreeSet;
 // Not re-exported: `Transform` belongs to `amadeo-transform` (ADR 0015), and two import paths to
 // one type is exactly the sort of thing that makes people wonder whether they are the same type.
 use amadeo_transform::{GlobalTransform, Mat4, Transform};
@@ -72,6 +79,13 @@ pub struct Renderer {
     pub clear_color: [f32; 4],
     /// Set when the last frame could not be drawn. Cleared on the next success.
     last_error: Option<RenderError>,
+    /// Ids whose uploaded pixels are a placeholder rather than the real texture.
+    ///
+    /// Needed because [`RenderBackend::has_texture`] answers "is *something* uploaded", which is the
+    /// wrong question for an asset that arrives late: without this, a texture that fell back on
+    /// frame one would keep its placeholder forever, since the backend would report it as present.
+    /// Every id in here is re-checked each frame and re-uploaded the moment it really decodes.
+    placeholders_uploaded: BTreeSet<String>,
 }
 
 impl Service for Renderer {}
@@ -84,6 +98,7 @@ impl Renderer {
             backend,
             clear_color: FrameData::default().clear_color,
             last_error: None,
+            placeholders_uploaded: BTreeSet::new(),
         }
     }
 
@@ -126,6 +141,44 @@ impl Renderer {
     #[must_use]
     pub fn null_backend(&self) -> Option<&NullBackend> {
         self.backend.as_any().downcast_ref::<NullBackend>()
+    }
+
+    /// Uploads any texture this frame needs that the backend does not already hold.
+    ///
+    /// Runs before every draw. The common case is that nothing happens: after the first frame, each
+    /// batch's texture is already on the GPU and this is one map lookup per *batch* — of which
+    /// ADR 0023 keeps there being very few.
+    ///
+    /// Two cases do upload:
+    ///
+    /// - **First sight.** The backend has nothing under this id.
+    /// - **A late arrival.** The id was uploaded as a placeholder and has since decoded for real,
+    ///   which is the streaming case ADR 0021 permits. Without this check the placeholder would be
+    ///   permanent, because the backend would keep answering "yes, I have that texture".
+    ///
+    /// Failures are recorded, not propagated: a texture that will not fit in video memory should
+    /// leave the game running and visibly wrong, not stop it.
+    fn upload_frame_textures(&mut self, frame: &FrameData, cache: &TextureCache) {
+        for batch in &frame.batches {
+            let id = batch.texture.as_str();
+            let decoded_for_real = cache.is_decoded(id);
+            let needs_upload = !self.backend.has_texture(id)
+                || (decoded_for_real && self.placeholders_uploaded.contains(id));
+            if !needs_upload {
+                continue;
+            }
+
+            match self.backend.upload_texture(id, cache.get(id)) {
+                Ok(()) => {
+                    if decoded_for_real {
+                        self.placeholders_uploaded.remove(id);
+                    } else {
+                        self.placeholders_uploaded.insert(id.to_string());
+                    }
+                }
+                Err(error) => self.last_error = Some(error),
+            }
+        }
     }
 
     /// Draws a frame.
@@ -222,7 +275,17 @@ pub fn render_quads(world: &mut World) {
         batches: collect_sprites(world),
     };
 
-    world.with_service_taken::<Renderer, ()>(|_world, renderer| {
+    // Turn every texture id this frame names into pixels, before anything tries to draw with one.
+    // Reads `Assets` and fills `TextureCache`; both are services, so neither can move the state
+    // hash (ADR 0009).
+    decode_frame_textures(world, &frame);
+
+    world.with_service_taken::<Renderer, ()>(|world, renderer| {
+        // The cache is read *inside* the taken-service closure because the renderer and the cache
+        // are two entries in the same service map, and only one of them can be borrowed at a time.
+        if let Some(cache) = world.service::<TextureCache>() {
+            renderer.upload_frame_textures(&frame, cache);
+        }
         renderer.render(&frame);
     });
 }

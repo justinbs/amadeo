@@ -27,7 +27,10 @@ use amadeo_input::{
     ActionId, InputDriver, InputState, LiveSource, NullSource, SAMPLE_INPUT, sample_input,
 };
 use amadeo_reflect::Reflect;
-use amadeo_render::{Camera2d, Quad, RENDER_QUADS, Renderer, SortOrder, WgpuBackend, render_quads};
+use amadeo_render::{
+    Camera2d, PLACEHOLDER_TEXTURE_ID, Quad, RENDER_QUADS, Renderer, SortOrder, Sprite,
+    TextureCache, WgpuBackend, render_quads,
+};
 use amadeo_transform::{GlobalTransform, PROPAGATE_TRANSFORMS, Transform, propagate_transforms};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
@@ -112,8 +115,15 @@ const DEFAULT_SEED: u64 = 0;
 /// CLI-launched agent session find the same files.
 const ASSET_DIRECTORY: &str = "assets";
 
-/// The asset id every renderer falls back to when a texture is missing.
-const PLACEHOLDER_TEXTURE: &str = "placeholder";
+/// The textured floor strip's asset id — a real file in `assets/textures/`.
+const FLOOR_TEXTURE: &str = "wall_concrete";
+
+/// An asset id that deliberately does not exist.
+///
+/// One sprite in the demo asks for it, so the missing-texture path is something you can *see*
+/// running rather than only read about in a test. ADR 0021 requires a visible stand-in plus a
+/// structured report; this is the visible half, and `amadeo assets` is the other.
+const DELIBERATELY_MISSING_TEXTURE: &str = "a_texture_that_does_not_exist";
 
 /// Builds the world: a player quad plus static markers to move against.
 ///
@@ -130,6 +140,7 @@ fn build_simulation() -> anyhow::Result<App> {
     // *this game*, not everything the engine could offer.
     app.register_component::<Transform>()?;
     app.register_component::<Quad>()?;
+    app.register_component::<Sprite>()?;
     app.register_component::<SortOrder>()?;
     app.register_component::<GlobalTransform>()?;
     app.register_component::<Velocity>()?;
@@ -140,8 +151,15 @@ fn build_simulation() -> anyhow::Result<App> {
     app.scan_assets(ASSET_DIRECTORY)?;
     // The missing-texture stand-in, which ADR 0021 makes a required feature rather than a nicety:
     // a renderer has to be able to draw *something* for an asset that failed, and it cannot load
-    // that something lazily without observing state.
-    app.load_assets([PLACEHOLDER_TEXTURE]);
+    // that something lazily without observing state. The floor texture joins it, because a scene
+    // declares everything it needs at the barrier rather than discovering it mid-frame.
+    app.load_assets([PLACEHOLDER_TEXTURE_ID, FLOOR_TEXTURE]);
+
+    // Turns a loaded asset's bytes into pixels the first time a sprite asks for them. Installed in
+    // the *shared* setup rather than only in the windowed path, so the headless world the agent
+    // inspects differs from the one that runs only in its backend and its input source (invariant
+    // I7). It is a `Service`, so it cannot reach the state hash either way (ADR 0009).
+    app.insert_service(TextureCache::new());
 
     app.insert_resource(Camera2d {
         center: [0.0, 0.0],
@@ -163,6 +181,37 @@ fn build_simulation() -> anyhow::Result<App> {
         Stage::PostSimulation,
         system(PROPAGATE_TRANSFORMS, propagate_transforms).after("clamp_to_view"),
     );
+
+    // A strip of textured floor tiles along the bottom. This is the part that proves sprites reach
+    // the screen, and it is deliberately built the way a tilemap is: **one texture, many sprites,
+    // each showing a different cell of it**, so the whole row collapses to a single draw call
+    // (ADR 0023).
+    //
+    // `wall_concrete.ppm` is 2x2 pixels, so each quarter of it is one texel and the row alternates
+    // between two greys. Reading a *region* rather than the whole image is what a tilesheet does,
+    // and doing it here means the UV path is exercised by the demo rather than only by tests.
+    for column in 0..9 {
+        let tile = app.world.spawn();
+        app.world
+            .insert(tile, Transform::at(column as f32 - 4.0, -4.0));
+
+        let cell = column % 2;
+        app.world.insert(
+            tile,
+            Sprite::new(FLOOR_TEXTURE, 1.0, 1.0).with_region(cell as f32 * 0.5, 0.0, 0.5, 0.5),
+        );
+        // Below everything else, so the floor is a floor.
+        app.world.insert(tile, SortOrder::new(-10));
+    }
+
+    // One sprite asking for a texture that is not there. It draws the magenta-and-black check, and
+    // `amadeo assets` says why -- which is the whole of ADR 0021's "visible stand-in plus a
+    // structured report", visible in the running game rather than only in a test.
+    let broken = app.world.spawn();
+    app.world.insert(broken, Transform::at(7.0, -4.0));
+    app.world
+        .insert(broken, Sprite::new(DELIBERATELY_MISSING_TEXTURE, 1.0, 1.0));
+    app.world.insert(broken, SortOrder::new(-10));
 
     // Static markers, so movement is visible against something.
     for (x, y) in [

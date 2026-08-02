@@ -1,10 +1,11 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-02 (end of session 7)
+**Last updated:** 2026-08-03 (end of session 8)
 **Current phase:** **M0 complete. M1 well under way** — reflection, the scene format, the agent's read
-layer, the agent protocol and a working `amadeo` CLI, the whole asset layer, and the sprite batcher
-have all landed. What remains in M1 is **sprites reaching the GPU**, snapshots, and the small game
-that closes the exit gate. Q3, Q4, Q13, Q14, Q16 and Q17 are all closed, so nothing is blocked.
+layer, the agent protocol and a working `amadeo` CLI, the whole asset layer, the sprite batcher, and
+now **textured sprites on the GPU** have all landed. What remains in M1 is `Resource: Reflect`,
+snapshots, and the small game that closes the exit gate. Q3, Q4, Q13, Q14, Q16 and Q17 are all
+closed, so nothing is blocked.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
 
 > ### ⚠️ Two working rules that changed in session 7 — read before doing anything
@@ -21,17 +22,18 @@ that closes the exit gate. Q3, Q4, Q13, Q14, Q16 and Q17 are all closed, so noth
 
 Sessions 1–2 established scope, stack, and architecture. Session 3 built M0. Session 4 closed it by
 resolving Q1. Session 5 built most of M1's foundations. Session 6 resolved six open questions and
-built the whole agent transport and CLI. **Session 7 finished `amadeo-assets`, audited the earlier
+built the whole agent transport and CLI. Session 7 finished `amadeo-assets`, audited the earlier
 work, took the target list from three games to eight, built the sprite batcher, and then chased its
-cost down through two layers of the ECS.** ADRs 0022–0025.
+cost down through two layers of the ECS. **Session 8 put sprites on the screen** — a decoder crate, a
+texture cache, and the wgpu texture path. ADRs 0022–0026.
 
-**Thirteen crates plus one game**, all tested: `amadeo-derive`, `amadeo-core`, `amadeo-reflect`,
-`amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`, `amadeo-render`,
-`amadeo-scene`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`.
-**610 tests passing**; fmt, clippy
+**Fourteen crates plus one game**, all tested: `amadeo-derive`, `amadeo-image`, `amadeo-core`,
+`amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
+`amadeo-render`, `amadeo-scene`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`.
+**669 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
-Seven things work end to end today:
+Nine things work end to end today:
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -55,8 +57,15 @@ Seven things work end to end today:
   matches all four checkpoints, because ADR 0009's `Service` split keeps asset state out of the hash
   structurally rather than by convention.
 - **Sprites batch into draw calls.** 20,000 fully interleaved sprites collapse to 32 batches in
-  2.58 ms (15.5% of a 60 Hz frame); 50,000 tiles on one sheet are a single draw call. Not yet on
-  screen — the wgpu backend draws quads, not sprites.
+  2.58 ms (15.5% of a 60 Hz frame); 50,000 tiles on one sheet are a single draw call.
+- **Sprites are on the screen.** `cargo run -p quad-demo` shows a strip of textured floor tiles, each
+  reading a different cell of one 2×2 texture through its `region` — one texture, one draw call — plus
+  one sprite deliberately asking for an id that does not exist, which draws the magenta placeholder.
+  A file becomes an id becomes bytes becomes pixels becomes a GPU texture, with a decoder crate
+  (`amadeo-image`), a `TextureCache`, and the wgpu texture path in between. ADR 0026.
+- **A missing texture is visible and explainable, not fatal.** Three-step fallback ending in an image
+  built in code, so the last resort cannot itself be a missing file, and `TextureCache::failures()`
+  says which ids fell back and why.
 
 **M0 exit gate: 4 of 4, nothing carried.** Gate item 2's "separate process" half — open since M0
 because it needed `amadeo-cli` — closed in session 6: `amadeo replay` plays
@@ -66,30 +75,42 @@ checkpoints asserted, and CI runs it in the determinism job.
 **M1 exit gate: 1 of 5, with 2 and 4 now reachable.** Gate 3 (scene round-trip byte-identical) is
 done. Gates 2 and 4 describe verifying and authoring *through* the CLI and RPC, which now exist —
 gate 4 in particular ("`describe` output is sufficient to write a new component without reading
-engine source") is testable today by actually doing it. Gate 1 (a complete small 2D game) still needs
-the sprite renderer, which ADR 0018 has now unblocked. Gate 5 (golden replays still pass) holds.
+engine source") is testable today by actually doing it. **Gate 1 (a complete small 2D game) is no
+longer blocked on the engine** — as of session 8 a textured sprite reaches the screen, which was the
+last missing capability. What it needs now is a game, not a subsystem. Gate 5 (golden replays still
+pass) holds.
 
 **No blockers of any kind.** Q14, Q13, Q4, and two thirds of Q3 all closed in session 6 — every one
 of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**Sprites reach the screen.** The batcher exists and is measured (ADR 0023), the ECS underneath it is
-now fast enough (ADRs 0024 and 0025), and the **wgpu backend still does not draw sprites**.
+**`Resource: Reflect`** — the other half of invariant I8, deliberately deferred by ADR 0013 and now
+the oldest unpaid debt in the engine. Components are reflectable by compiler-enforced bound;
+resources are not, so `world.resources` in the protocol cannot be implemented and half the
+simulation state is invisible to the agent and the editor.
 
-That needs texture upload, a sampler, and bind groups — and before any of it, a **decoder**, because
-`amadeo-assets` deliberately hands over bytes, not pixels. Where the decoder lives is a real choice
-and worth thinking about rather than defaulting: `assets/textures/*.ppm` are ASCII PPM precisely so
-the first one can be ten hand-checkable lines instead of a dependency, but PNG is what any real game
-ships and that means either the `image` crate or a lot of code.
+Two things have to happen first, and both are small:
 
-Note this is the first thing in a while with **no open question in front of it**.
+- **`Rng`'s state has to be exposed** so `SimRng` can reflect. That also retires the `Debug`-based
+  `StableHash` that has been flagged as inelegant since M0.
+- **`Reflect` needs map support**, for `InputState`.
+
+**One thing to verify before starting anything else:** open `cargo run -p quad-demo` and *look at
+it*. Session 8 built the sprite path and confirmed it runs for twelve seconds with no wgpu
+validation errors, which proves the pipeline and bind groups are valid — but nobody has seen the
+window. If the floor strip is upside down, the wrong colour, or in the wrong place, that is a shader
+bug and `crates/amadeo-render/src/sprite.wgsl` is fifty lines long. The most likely candidate is the
+`1.0 - corner.y` in the UV calculation, because the 2×2 test texture is vertically symmetric and
+therefore cannot catch a flip.
 
 ### Then, in rough order
 
-- **`Resource: Reflect`** — the other half of I8, deliberately deferred by ADR 0013.
 - **`snapshot.take` / `snapshot.restore`** — the iteration-loop priority ADR 0011 identified.
 - **Q7 — prefab semantics**, which needs the `from` conflict settled first.
+- **The import pipeline**, when a target game wants compressed textures or mip levels. ADR 0026 sets
+  out exactly what changes and what does not; the short version is that nothing above `TextureCache`
+  is affected.
 
 ### Also worth knowing
 
@@ -560,7 +581,58 @@ hashes) passed.
   Sprite collection: **3.32 ms → 2.58 ms** at 20,000 sprites, and **5.13 → 2.58 ms** across ADRs 0024
   and 0025 together — 15.5% of a 60 Hz frame, from 31%.
 
-**Verified green: 610 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+### M1 continued (session 8) — sprites reach the screen
+
+- ✅ **`amadeo-image`, a new crate at the bottom of the graph** — ADR 0026. Decodes PNG and PPM into
+  `TextureData { width, height, format, pixels }`. Depends on **no engine crate at all**, so it sits
+  beside `amadeo-derive` below even `amadeo-core`.
+
+  **The format tag is the load-bearing part.** `PixelFormat` has exactly one variant today, and it is
+  there so that adding GPU-compressed textures later is a new variant plus a new producer rather than
+  a change to the loader, the cache, the backend, and every test that asserts on pixels. That is the
+  one genuinely expensive-to-retrofit piece of this design, and it costs nothing now.
+
+  Format is chosen by **sniffing the leading bytes, not the extension** — which matters more here
+  than in most engines, because ADR 0020 makes the path bookkeeping an author may freely change.
+
+- ✅ **`TextureCache` in `amadeo-render`** — id → bytes → pixels, held. `get` **never fails**: a
+  three-step fallback ends in a magenta check built in code, because a placeholder that is itself a
+  file cannot cover the case where files are the problem. Every fallback is reported, since a frame
+  that silently draws magenta is a frame an agent cannot diagnose.
+
+- ✅ **The wgpu backend draws sprites.** Texture upload, one nearest-neighbour sampler, one bind group
+  per texture built once at upload rather than per frame, and a second pipeline sharing the camera
+  bind group with the quad one. Every batch's instances go into **one** buffer and each batch draws
+  its own slice, so there is one buffer write per frame regardless of batch count — the batches only
+  decide how often the texture binding changes, which is the cost ADR 0023 is actually about.
+
+- ✅ **quad-demo shows it.** A nine-tile floor strip, each tile reading a different `region` of one 2×2
+  texture, plus one sprite deliberately naming an id that does not exist so the placeholder path is
+  visible in the running game rather than only in a test.
+
+**`wander.replay` was regenerated, and the diagnosis was verified rather than assumed.** All four
+checkpoints moved. With *only the ten new sprite entities* removed — but `TextureCache` installed,
+`Sprite` registered, and a second asset loaded — every checkpoint matched its committed value
+exactly. So none of the new machinery touches the state hash; the divergence is authored content
+changing, which is what a replay should catch. The diff is four checkpoint lines and a byte-identical
+input stream.
+
+**One real error found by writing the shader.** `SpriteInstance::axes` documented itself as carrying
+*half*-extent axes and gave a corner formula multiplying by two, while `instance_for` has always
+produced full-extent axes and `SpriteInstance::size()` has always read them back as full extents.
+The code was consistent; the contract was wrong, and the shader would have been written to it. Fixed,
+and the doc now names `QuadInstance` as the convention it shares.
+
+**Verified green: 669 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+
+**Not verified: what the window actually looks like.** The demo runs for twelve seconds with no wgpu
+validation errors, which proves the pipeline, the bind group layouts, and the vertex layout all agree
+— wgpu is loud about any mismatch. It does not prove the pixels are in the right place. See "The
+single most important thing to do next".
+
+### Session 7's work
+
+**Verified green at the end of session 7: 610 tests passing; clippy, fmt, and rustdoc all clean.**
 
 ### The audit Justin asked for, session 7
 
@@ -679,8 +751,10 @@ If you are starting cold, this is the shortest path to being useful:
    **CI**. Those three are the whole handoff; everything else here is background.
 3. `docs/07-working-with-the-code.md` — the Rust patterns this engine uses and why, the everyday
    `amadeo` commands, and the golden-replay mechanism. Skip if you already know the codebase.
-4. `docs/adr/` — 25 of them now, so read by need rather than in order:
-   - **0023** before touching the renderer, **0024** and **0025** before touching `amadeo-ecs`.
+4. `docs/adr/` — 26 of them now, so read by need rather than in order:
+   - **0023** and **0026** before touching the renderer, **0024** and **0025** before touching
+     `amadeo-ecs`. 0026 in particular if you are about to add an asset kind or wonder why the engine
+     has a dependency that is not `thiserror`.
      0025 in particular: `world.query` is the API every read path should use, and its module docs
      explain the one piece of deliberately non-boring Rust in the engine.
    - **0005** (determinism), **0008** (ECS storage), **0009** (resource vs service) and **0019**
@@ -917,3 +991,41 @@ on purpose — several record a diagnosis that took a while to reach.
   **610 tests, all four verification commands green, both replays unchanged throughout** — which
   mattered most for ADR 0024, where a wrong hash would have invalidated every committed replay at
   once.
+- **S8 (2026-08-03):** **Sprites reach the screen**, which is what STATUS.md had named the single
+  most important thing to do next.
+
+  **The decision turned out to be bigger than the handoff framed it.** The handoff asked where the
+  decoder should live. Reading `docs/04-subsystems.md` §5 found something else: an import pipeline
+  was already recorded there as **decided** — "the runtime never parses source formats" — with a ✅
+  beside it, no ADR behind it, and code doing the opposite. A decision that exists on paper,
+  contradicts reality, and has never met real work is worth re-deriving rather than obeying.
+
+  Researched rather than reasoned about. **The reason an import pipeline is eventually mandatory is
+  concrete**: GPU-compressed formats like BC7 are deliberately asymmetric, cheap to decode and
+  minutes-to-hours per texture to *encode*, so compression can only ever happen offline. Godot, Unity
+  and Unreal all import for that reason; Bevy is the outlier, and this project has already declined
+  Bevy's answer twice on its merits.
+
+  **What dissolved the tension was noticing that the expensive part is the type, not the pipeline.**
+  Give the runtime an explicit `PixelFormat` on day one and the import step becomes a later
+  *addition* rather than a later rewrite, because everything above the decoder already speaks
+  `TextureData` and cannot tell where one came from. Building the pipeline now would mean a compiled
+  file format, a cache, and cache invalidation — which §5 still lists as unsolved — carrying nothing
+  but the same RGBA the decoder produces anyway.
+
+  **The dependency question was measured, not argued**, since it breaks a pattern the project has
+  held to deliberately: `png` costs 9 crates and a 3.2 s clean release build, `image` costs 15 and
+  14.5 s, and both are one-time. What justifies the break is that PNG data is DEFLATE-compressed, so
+  hand-writing it means hand-writing inflate — ~800 lines whose failure mode is *slightly corrupt
+  pixels* rather than a wrong known answer. PCG32 and FNV-1a were worth hand-rolling; this is not the
+  same kind of thing. Justin chose all three recommendations after the trade was put to him.
+
+  Then built it: `amadeo-image`, `TextureCache`, the wgpu texture path, and a demo that shows it.
+  Two things worth keeping. **The contract for `SpriteInstance::axes` was wrong** — it claimed
+  half-extents where the code has always produced full extents — and it was only caught because the
+  shader had to be written from it, which is a good argument for writing the consumer of a doc
+  comment rather than trusting it. And **`wander.replay`'s regeneration was diagnosed rather than
+  obeyed**: removing only the ten new entities restored all four committed hashes exactly, proving
+  the new machinery is invisible to the simulation and the content change is the whole cause.
+
+  669 tests, all four verification commands green. **Nobody has looked at the window yet.**

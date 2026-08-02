@@ -18,7 +18,9 @@
 //! [`WgpuBackend::render`].
 
 use crate::backend::{FrameData, RenderBackend, RenderError};
+use amadeo_image::{PixelFormat, TextureData};
 use std::any::Any;
+use std::collections::BTreeMap;
 
 /// One quad as the GPU sees it.
 ///
@@ -36,6 +38,24 @@ struct GpuInstance {
     color: [f32; 4],
 }
 
+/// One sprite as the GPU sees it.
+///
+/// Four `vec4`s, matching `sprite.wgsl`'s `InstanceInput` field for field. The layout is padded to
+/// 16-byte boundaries because both WGSL and the vertex buffer layout require it — `axis_y` carries
+/// two real floats and two of padding for exactly that reason.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct GpuSprite {
+    /// xy = world centre, zw = the full-extent x axis.
+    center_axis_x: [f32; 4],
+    /// xy = the full-extent y axis, zw = padding.
+    axis_y: [f32; 4],
+    /// Linear RGBA tint.
+    color: [f32; 4],
+    /// Texture sub-rectangle, `[x, y, width, height]` in 0..1.
+    region: [f32; 4],
+}
+
 /// The camera as the GPU sees it.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -47,6 +67,24 @@ struct GpuCamera {
 /// How many instances the buffer starts with. Grows as needed; never shrinks.
 const INITIAL_INSTANCE_CAPACITY: usize = 256;
 
+/// One uploaded texture and the bind group that binds it.
+///
+/// The bind group is built once at upload and kept, rather than rebuilt per frame: creating one is a
+/// driver-side allocation, and doing it per batch per frame would reintroduce exactly the per-draw
+/// cost ADR 0023's batching exists to remove.
+///
+/// The `wgpu::Texture` is held alongside the view purely to keep it alive — dropping it would
+/// invalidate the view and the bind group that reference it.
+#[derive(Debug)]
+struct GpuTexture {
+    #[allow(
+        dead_code,
+        reason = "held to keep the texture alive; the view and bind group borrow from it"
+    )]
+    texture: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
+}
+
 /// A wgpu-backed renderer drawing into a window surface.
 #[derive(Debug)]
 pub struct WgpuBackend {
@@ -55,11 +93,28 @@ pub struct WgpuBackend {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     pipeline: wgpu::RenderPipeline,
+    sprite_pipeline: wgpu::RenderPipeline,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     instance_buffer: wgpu::Buffer,
     /// How many instances the current buffer can hold.
     instance_capacity: usize,
+    /// Sprite instances, in a buffer of their own so quads and sprites do not fight over one.
+    sprite_buffer: wgpu::Buffer,
+    /// How many sprite instances the current buffer can hold.
+    sprite_capacity: usize,
+    /// Uploaded textures, by asset id. Ordered, like every other registry in this engine.
+    textures: BTreeMap<String, GpuTexture>,
+    /// The layout every texture bind group is built against. Kept so an upload does not have to
+    /// rebuild it.
+    texture_layout: wgpu::BindGroupLayout,
+    /// One sampler shared by every texture.
+    ///
+    /// **Nearest-neighbour, deliberately.** Three of the eight target games are pixel art, where
+    /// linear filtering turns crisp art into mush, and the `.ama-meta` sidecar already carries a
+    /// `filter` setting for the day this becomes per-asset. One sampler is also one fewer thing to
+    /// switch between batches.
+    sampler: wgpu::Sampler,
 }
 
 impl WgpuBackend {
@@ -238,16 +293,143 @@ impl WgpuBackend {
             mapped_at_creation: false,
         });
 
+        // --- The sprite pipeline, from here down. ---
+        //
+        // A second pipeline rather than one shared with quads, because the two draw genuinely
+        // different things: a quad reads no texture and needs no second bind group, and folding
+        // them together would mean binding a dummy texture for every untextured rectangle. They do
+        // share the camera bind group, which is the only state that is actually common.
+
+        // Group 1: the texture and its sampler. `filterable: false` on the sample type together
+        // with `NonFiltering` on the sampler is what keeps this working on every adapter --
+        // requiring a filterable float texture is a capability some hardware does not advertise for
+        // every format, and nearest-neighbour sampling does not need it.
+        let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("amadeo sprite texture layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                    count: None,
+                },
+            ],
+        });
+
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("amadeo sprite sampler"),
+            // Clamping rather than repeating: a `region` is a rectangle inside a shared sheet, and
+            // repeating would bleed a neighbouring tile in at the seam.
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            // A separate enum from the min/mag filters in wgpu 30, and only relevant once textures
+            // carry mip levels -- which they do not until the import pipeline generates them.
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            ..Default::default()
+        });
+
+        let sprite_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("amadeo sprite shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("sprite.wgsl").into()),
+        });
+
+        let sprite_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("amadeo sprite pipeline layout"),
+                // Group 0 is the camera, shared with the quad pipeline; group 1 is the texture,
+                // rebound once per batch.
+                bind_group_layouts: &[Some(&camera_layout), Some(&texture_layout)],
+                immediate_size: 0,
+            });
+
+        // Four vec4s per instance, matching `GpuSprite` and the shader's `InstanceInput`. Locations
+        // continue from 0 because this is a separate pipeline with its own shader, not a
+        // continuation of the quad one.
+        let sprite_layout = wgpu::VertexBufferLayout {
+            array_stride: size_of::<GpuSprite>() as u64,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &wgpu::vertex_attr_array![
+                0 => Float32x4,
+                1 => Float32x4,
+                2 => Float32x4,
+                3 => Float32x4,
+            ],
+        };
+
+        let sprite_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("amadeo sprite pipeline"),
+            layout: Some(&sprite_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &sprite_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[Some(sprite_layout)],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &sprite_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    // Alpha blending, because a sprite sheet's transparent margins are the normal
+                    // case rather than an effect.
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                // No culling: a sprite flipped by a negative scale must still be visible, which is
+                // how a character faces left.
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        let sprite_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("amadeo sprite buffer"),
+            size: (size_of::<GpuSprite>() * INITIAL_INSTANCE_CAPACITY) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Ok(Self {
             surface,
             device,
             queue,
             config,
             pipeline,
+            sprite_pipeline,
             camera_buffer,
             camera_bind_group,
             instance_buffer,
             instance_capacity: INITIAL_INSTANCE_CAPACITY,
+            sprite_buffer,
+            sprite_capacity: INITIAL_INSTANCE_CAPACITY,
+            textures: BTreeMap::new(),
+            texture_layout,
+            sampler,
         })
     }
 
@@ -271,6 +453,25 @@ impl WgpuBackend {
             mapped_at_creation: false,
         });
         self.instance_capacity = capacity;
+    }
+
+    /// The same doubling growth for the sprite buffer.
+    fn ensure_sprite_capacity(&mut self, needed: usize) {
+        if needed <= self.sprite_capacity {
+            return;
+        }
+        let mut capacity = self.sprite_capacity.max(1);
+        while capacity < needed {
+            capacity *= 2;
+        }
+
+        self.sprite_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("amadeo sprite buffer"),
+            size: (size_of::<GpuSprite>() * capacity) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.sprite_capacity = capacity;
     }
 }
 
@@ -296,6 +497,89 @@ impl RenderBackend for WgpuBackend {
         self.config.width = width;
         self.config.height = height;
         self.surface.configure(&self.device, &self.config);
+    }
+
+    fn has_texture(&self, id: &str) -> bool {
+        self.textures.contains_key(id)
+    }
+
+    fn upload_texture(&mut self, id: &str, texture: &TextureData) -> Result<(), RenderError> {
+        let format = match texture.format {
+            // `Srgb` here and an sRGB surface format together are what make colours come out right:
+            // the art is gamma-encoded, the GPU converts to linear when sampling, blending happens
+            // in linear, and the surface converts back on the way out.
+            PixelFormat::Rgba8UnormSrgb => wgpu::TextureFormat::Rgba8UnormSrgb,
+        };
+
+        let limit = self.device.limits().max_texture_dimension_2d;
+        if texture.width > limit || texture.height > limit {
+            return Err(RenderError::InitFailed {
+                backend: "wgpu",
+                reason: format!(
+                    "texture `{id}` is {}x{}, and this GPU accepts at most {limit} in either \
+                     direction. Re-export it smaller",
+                    texture.width, texture.height
+                ),
+            });
+        }
+
+        let size = wgpu::Extent3d {
+            width: texture.width,
+            height: texture.height,
+            depth_or_array_layers: 1,
+        };
+
+        let gpu_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(id),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        self.queue.write_texture(
+            gpu_texture.as_image_copy(),
+            &texture.pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                // `TextureData` guarantees tightly packed rows with no padding, which is why this is
+                // a plain multiply and not a round-up to 256. That guarantee is checked once, in
+                // `TextureData::new`, rather than here.
+                bytes_per_row: Some(texture.width * texture.format.bytes_per_pixel()),
+                rows_per_image: Some(texture.height),
+            },
+            size,
+        );
+
+        let view = gpu_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(id),
+            layout: &self.texture_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+
+        // Inserting replaces any earlier texture under this id, and dropping the old one releases
+        // its video memory. That is what makes a late-arriving asset, and later hot-reload, work.
+        self.textures.insert(
+            id.to_string(),
+            GpuTexture {
+                texture: gpu_texture,
+                bind_group,
+            },
+        );
+        Ok(())
     }
 
     fn render(&mut self, frame: &FrameData) -> Result<(), RenderError> {
@@ -362,6 +646,37 @@ impl RenderBackend for WgpuBackend {
                 .write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&instances));
         }
 
+        // Every batch's sprites go into **one** buffer, laid out back to back in batch order, and
+        // each batch then draws its own slice of it. So the number of buffer writes per frame is
+        // one regardless of how many batches there are -- the batches only decide how many times
+        // the texture bind group changes, which is the cost ADR 0023 is actually about.
+        //
+        // `first` is recorded alongside each batch here rather than recomputed in the pass, because
+        // a running offset maintained in two places is exactly the sort of thing that drifts.
+        let mut sprites: Vec<GpuSprite> = Vec::with_capacity(frame.sprite_count());
+        let mut draws: Vec<(&str, std::ops::Range<u32>)> = Vec::with_capacity(frame.batches.len());
+        for batch in &frame.batches {
+            let first = sprites.len() as u32;
+            sprites.extend(batch.instances.iter().map(|sprite| GpuSprite {
+                center_axis_x: [
+                    sprite.center[0],
+                    sprite.center[1],
+                    sprite.axes[0][0],
+                    sprite.axes[0][1],
+                ],
+                axis_y: [sprite.axes[1][0], sprite.axes[1][1], 0.0, 0.0],
+                color: sprite.color,
+                region: sprite.region,
+            }));
+            draws.push((batch.texture.as_str(), first..sprites.len() as u32));
+        }
+
+        self.ensure_sprite_capacity(sprites.len());
+        if !sprites.is_empty() {
+            self.queue
+                .write_buffer(&self.sprite_buffer, 0, bytemuck::cast_slice(&sprites));
+        }
+
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -399,6 +714,30 @@ impl RenderBackend for WgpuBackend {
                 pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
                 // Four vertices (one strip), once per instance. One draw call for the whole frame.
                 pass.draw(0..4, 0..instances.len() as u32);
+            }
+
+            // Sprites draw after quads, so a textured sprite sits over an untextured rectangle at
+            // the same position. `SortOrder` governs order *within* each of the two, and the two
+            // passes do not interleave -- worth knowing, and the reason a background drawn as a
+            // `Quad` behind sprites works without any sort order at all.
+            if !sprites.is_empty() {
+                pass.set_pipeline(&self.sprite_pipeline);
+                pass.set_bind_group(0, &self.camera_bind_group, &[]);
+                pass.set_vertex_buffer(0, self.sprite_buffer.slice(..));
+
+                for (texture_id, range) in &draws {
+                    // A batch naming a texture that was never uploaded is skipped rather than
+                    // drawn untextured. It should not happen -- `Renderer::upload_frame_textures`
+                    // uploads at least a placeholder for every batch before this runs -- and
+                    // binding the previous batch's texture instead would draw the wrong picture
+                    // silently, which is worse than a gap.
+                    let Some(texture) = self.textures.get(*texture_id) else {
+                        continue;
+                    };
+                    pass.set_bind_group(1, &texture.bind_group, &[]);
+                    // The one state change per batch that the whole batcher exists to minimise.
+                    pass.draw(0..4, range.clone());
+                }
             }
         }
 

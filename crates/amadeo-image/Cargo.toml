@@ -1,0 +1,27 @@
+[package]
+name = "amadeo-image"
+description = "Decodes image files into the flat pixel data a GPU can accept."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# No engine crates at all. This crate knows about image *files* and nothing about entities,
+# components, worlds, or rendering -- so it sits at the very bottom of the graph next to
+# amadeo-derive, and invariant I6 holds without anyone having to think about it.
+thiserror.workspace = true
+
+# The one non-`thiserror` dependency in the engine, chosen deliberately -- see ADR 0026. PNG's image
+# data is zlib/DEFLATE-compressed, so hand-writing a decoder means hand-writing inflate: roughly 800
+# lines whose failure mode is corrupt pixels rather than an error message. Measured cost of taking
+# the crate instead: 9 crates and a 3.2 s clean release build, all pure Rust with no C.
+#
+# `image` was the alternative and was rejected at 15 crates and 14.5 s for formats no target game
+# needs. If a second source format is ever wanted, revisit that comparison rather than stacking
+# single-format crates.
+png = "0.18"
+
+[lints]
+workspace = true
