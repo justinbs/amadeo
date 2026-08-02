@@ -244,6 +244,7 @@ Verified on this machine (2026-07-30):
 | **Toolchain status** | ✅ **No blockers.** Compiles, links, runs, tests. |
 | Also missing | Python, cmake. Neither is needed. |
 | Gotcha — PATH | Installers update the persistent PATH but not running processes. VS Code's integrated terminal needs **VS Code itself** restarted, not just a new tab. |
+| **Gotcha — `gh`** | The GitHub CLI is installed but **not on PATH** for tool invocations, the same as `cargo`. It lives at `C:\Program Files\GitHub CLI\gh.exe`; prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`. Worth knowing because checking CI yourself after a push is faster than waiting to be told it is red. |
 | Smart App Control | **Resolved.** It was blocking every binary this project builds — confirmed via event log (3118, policy `{0283ac0f-…}`). Justin disabled it (one-way change on Win11). If a future machine hits `os error 4551`, this is why; see `docs/07-working-with-the-code.md` §5. |
 | Gotcha — winget | `winget install` on an already-installed package attempts an *upgrade* and silently ignores `--override`, so it cannot add a workload. Use the VS Installer to modify an existing install. |
 | Gotcha — wgpu | This project is on **wgpu 30**, which differs from most material online. Read the crate source under `~/.cargo/registry/src/*/wgpu-30.0.0/src/api/` rather than trusting search results. `docs/07` records the three changes that cost the most time. |
