@@ -96,13 +96,18 @@ Two things have to happen first, and both are small:
   `StableHash` that has been flagged as inelegant since M0.
 - **`Reflect` needs map support**, for `InputState`.
 
-**One thing to verify before starting anything else:** open `cargo run -p quad-demo` and *look at
-it*. Session 8 built the sprite path and confirmed it runs for twelve seconds with no wgpu
-validation errors, which proves the pipeline and bind groups are valid — but nobody has seen the
-window. If the floor strip is upside down, the wrong colour, or in the wrong place, that is a shader
-bug and `crates/amadeo-render/src/sprite.wgsl` is fifty lines long. The most likely candidate is the
-`1.0 - corner.y` in the UV calculation, because the 2×2 test texture is vertically symmetric and
-therefore cannot catch a flip.
+**The sprite path has been confirmed on screen** — Justin ran `cargo run -p quad-demo` at the end of
+session 8 and the screenshot checks out against the world coordinates: nine floor tiles alternating
+light/dark (so each is reading a *different texel* of one shared texture through its `region`, which
+is the tilesheet mechanism), the 4×4 magenta placeholder where the deliberately-missing sprite is,
+markers and player where their transforms put them, and texture colours matching the literal values
+in the `.ppm` (so the sRGB texture format and sRGB surface agree rather than double-converting).
+
+**One thing that is still unexercised: the vertical flip in `sprite.wgsl`.** The UV calculation does
+`1.0 - corner.y` because world space has +Y up and texture space has v = 0 on the top row. With a
+2-row test texture and `region.height = 0.5`, every sample lands in the top row whichever way v runs
+— so a flipped image would look identical. **The first time a real photograph or a tall sprite sheet
+goes in, check it is not upside down**, and if it is, that one line is the suspect.
 
 ### Then, in rough order
 
@@ -625,10 +630,11 @@ and the doc now names `QuadInstance` as the convention it shares.
 
 **Verified green: 669 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
 
-**Not verified: what the window actually looks like.** The demo runs for twelve seconds with no wgpu
-validation errors, which proves the pipeline, the bind group layouts, and the vertex layout all agree
-— wgpu is loud about any mismatch. It does not prove the pixels are in the right place. See "The
-single most important thing to do next".
+**And verified on screen.** Justin ran the demo and the screenshot matches the world coordinates
+exactly — tile positions, marker positions, sprite widths at the window's aspect ratio, the
+alternating tile colours proving `region` picks a different texel per tile, and texture colours
+coming back as the literal values in the file. The one thing it does *not* exercise is the vertical
+flip; see "The single most important thing to do next".
 
 ### Session 7's work
 
@@ -1028,4 +1034,6 @@ on purpose — several record a diagnosis that took a while to reach.
   obeyed**: removing only the ten new entities restored all four committed hashes exactly, proving
   the new machinery is invisible to the simulation and the content change is the whole cause.
 
-  669 tests, all four verification commands green. **Nobody has looked at the window yet.**
+  669 tests, all four verification commands green, and **confirmed on screen** — Justin ran the demo
+  and the screenshot checks out against the world coordinates, including the alternating tile colours
+  that prove `region` is picking a different texel per tile.
