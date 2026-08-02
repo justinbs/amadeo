@@ -74,6 +74,27 @@ state, ever.
 
 Needs design work in M1, and it's worth studying both engines' failure modes first.
 
+### A smaller question inside it, found in session 7 and needing an answer first
+
+**What does `from` actually hold — a path or an asset id?** Two accepted ADRs disagree:
+
+- **ADR 0014** specifies the grammar as `entity <id> "<name>" from <path>` and its worked example,
+  which a test pins byte-for-byte, uses `from prefabs/door_metal`.
+- **ADR 0020** decided an asset is named by a declared id rather than a path, and its worked example
+  uses `entity a1 "Wall" from wall_concrete`.
+
+These are not reconcilable as written: `prefabs/door_metal` is not a usable asset id, because
+`is_usable_id` rejects `/` — an id appears bare in a scene line and a slash would be ambiguous.
+
+The likely answer is that ADR 0020 supersedes 0014 here, since under 0020 a prefab is simply an
+asset with a declared id, which makes `from` an ordinary asset reference and unifies the two ideas.
+But that has consequences this question owns: a prefab reference would then count toward ADR 0021's
+load barrier, and `amadeo check` would validate it against the catalogue.
+
+Nothing is broken today because prefab instancing is refused outright (`PrefabNotSupported`), and
+`SceneDocument::required_assets` deliberately covers only the declared `assets` block and says why.
+**Decide this before building prefab instancing**, and supersede whichever ADR loses.
+
 ---
 
 ## Q8 · P2 · General entity relations, or just parent/child?

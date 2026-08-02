@@ -71,8 +71,10 @@ crates/
                      propagate_transforms, and a scalar Mat4. GlobalTransform is computed, never
                      authored, and DERIVED so it stays out of the state hash (ADR 0019).
 ✅ amadeo-events      typed double-buffered queues, EventClock total ordering
-🟡 amadeo-assets      AssetCatalogue (declared id -> file, ADR 0020) and the .ama-meta sidecar
-                     format. Loading, handles, import pipeline and hot-reload still to come.
+🟡 amadeo-assets      AssetCatalogue (declared id -> file, ADR 0020), the .ama-meta sidecar format,
+                     a sorted directory scan, sidecar generation on import, and byte loading behind
+                     ADR 0021's barrier. Asset-root resolution is by marker file (ADR 0022).
+                     Typed handles, the import/decode pipeline, and hot-reload still to come.
 ✅ amadeo-input       action mapping, InputState, recording/replay, the .replay text format
 ✅ amadeo-render      RenderBackend trait, NullBackend, Quad/SortOrder/Camera2d. wgpu behind `gpu`.
 — amadeo-audio       mixer, buses, spatialization (null backend required)
@@ -80,7 +82,9 @@ crates/
 — amadeo-anim        sprite anim, skeletal, state machines, tweens
 — amadeo-ui          retained-mode game UI: layout, theming, focus navigation
 🟡 amadeo-scene       the .scene text format (ADR 0014): parser, canonical writer, instantiate into
-                     a World. Prefab instancing and hierarchy-as-components still pending.
+                     a World, and the `assets` block a scene declares its requirements in (ADR 0021).
+                     Prefab instancing still pending, and blocked on Q7's sub-question — ADR 0014 and
+                     ADR 0020 disagree about whether `from` holds a path or an asset id.
 ✖ amadeo-script      NOT BUILT. ADR 0011: game logic is plain Rust in the game crate.
 🟡 amadeo-agent       the protocol: JSON reader and writer, JSON-RPC envelope, and the methods that
                      need only a world + registry (describe, world.query/entity/list). Read-only.
@@ -90,7 +94,7 @@ crates/
                      than in amadeo-agent because it needs App and I6 forbids reaching down.
 — amadeo-editor      graphical editor. A CLIENT of amadeo-agent. No privileged access.
 🟡 amadeo-cli         the `amadeo` binary. Built: describe/query/entity/schedule/status/call/check/
-                     replay/fmt.
+                     replay/fmt/assets/import.
                      Pending: new/run/test/build/export. ADR 0016: `fmt` is standalone;
                      everything else spawns the game binary in agent mode and talks to it over stdio,
                      because only that process knows the game's components.
@@ -276,4 +280,5 @@ Things that will quietly destroy the design if allowed:
 | `docs/05-roadmap.md` | Start of every session. Milestones and their exit gates. |
 | `docs/06-open-questions.md` | Before assuming any undecided thing. |
 | `docs/07-working-with-the-code.md` | Setup, commands, and the Rust patterns this engine uses. **Justin's map into the codebase — keep it current.** |
+| `docs/08-assets.md` | You're adding an asset, or wondering why it isn't showing up. |
 | `docs/adr/` | You want to know why something is the way it is. |

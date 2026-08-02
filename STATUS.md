@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-01 (end of session 6)
+**Last updated:** 2026-08-02 (end of session 7)
 **Current phase:** **M0 complete. M1 well under way** — reflection, the scene format, the agent's read
 layer, **and the agent protocol plus a working `amadeo` CLI** have all landed. What remains in M1 is
 the 2D renderer, assets, snapshots, and the small game that closes the exit gate. Q3, Q13 and Q4 all
@@ -20,10 +20,10 @@ whole agent transport and CLI, and found the CI line-endings bug. ADRs 0016–00
 **Thirteen crates plus one game**, all tested: `amadeo-derive`, `amadeo-core`, `amadeo-reflect`,
 `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`, `amadeo-render`,
 `amadeo-scene`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`.
-**519 tests passing**; fmt, clippy
+**578 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
-Four things work end to end today:
+Seven things work end to end today:
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -39,6 +39,13 @@ Four things work end to end today:
   launches the game, plays a hand-written recording, and asserts four checkpoint hashes. This is the
   stronger half of the golden-replay claim — the in-process test proves a recording survives a
   rebuild, this proves it survives a new process — and it runs in CI.
+- **Assets are named, found, and loaded.** `amadeo assets` lists every declared id with the file
+  behind it and whether its bytes are resident; `amadeo import` gives a new file a sidecar with an id
+  from its filename. A scene declares what it needs in an `assets` block, and `amadeo check` refuses
+  one naming an id that does not exist — with "did you mean" when it is close.
+- **Loading cannot move a replay.** quad-demo loads a real file at startup and `wander.replay` still
+  matches all four checkpoints, because ADR 0009's `Service` split keeps asset state out of the hash
+  structurally rather than by convention.
 
 **M0 exit gate: 4 of 4, nothing carried.** Gate item 2's "separate process" half — open since M0
 because it needed `amadeo-cli` — closed in session 6: `amadeo replay` plays
@@ -56,31 +63,30 @@ of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**Finish `amadeo-assets`.** The naming half is built (sidecars, catalogue, duplicate detection); the
-loading half is not, and there are **no open decisions left in it** — ADR 0020 settled identity and
-ADR 0021 settled how loading avoids breaking I3. This is implementation.
+**The sprite batcher.** All five `amadeo-assets` steps below landed in session 7, so the thing that
+was blocking the renderer is no longer blocking it.
 
-In order, and none of it needs a decision from Justin:
+This is where **Q3's remaining third** (pipeline shape) gets decided — against a real throughput
+number (`docs/04-subsystems.md` §4 suggests 20k sprites at 60 fps) rather than argued beforehand.
+`Transform`, `SortOrder`, and `GlobalTransform` are all settled, the renderer already reads the
+composed transform, and textures can now be loaded. Nothing is in the way.
 
-1. **A directory scan** producing a catalogue. Sorted walk into a `BTreeMap` (I3), one sidecar per
-   asset, duplicate ids refused naming both files. `Sidecar::default_id_for` and `asset_path_for`
-   already exist for it.
-2. **Generate a missing sidecar on import**, with `id` defaulting to the filename stem. This is what
-   makes ADR 0020 ergonomic rather than bureaucratic — without it every asset needs hand-authoring
-   before it can be referenced.
-3. **`assets.list` in the protocol and `amadeo assets` in the CLI.** ADR 0020 asks for this
-   **before** ids become the reference syntax, or the first agent to author a scene has to guess —
-   the plausible-but-wrong failure Pillar 2 exists to kill. Do not skip it.
-4. **Loading**, to ADR 0021's rule: gameplay holds an id and never observes asset state. Plus the
-   barrier — a scene declares what it needs, no tick runs until it is resident.
-5. **`amadeo check` verifies asset ids too**, using `AssetCatalogue::similar_to` for "did you mean".
+Note that a texture arrives as **bytes**, not pixels: `amadeo-assets` deliberately does not decode.
+The batcher needs a decoder, and where that lives is a real choice — `assets/textures/*.ppm` are
+ASCII PPM precisely so the first one can be ten lines and hand-checkable rather than a dependency.
 
-Then the **sprite batcher**, which is where **Q3's remaining third** (pipeline shape) gets decided —
-against a real throughput number (`docs/04-subsystems.md` §4 suggests 20k sprites at 60 fps) rather
-than argued beforehand. `Transform`, `SortOrder`, and `GlobalTransform` are all settled and the
-renderer already reads the composed transform, so nothing else is in the way.
+### `amadeo-assets` — done, in the order STATUS.md previously listed
 
-That order is deliberate: textures are what the 2D renderer is missing, and textures need loading.
+1. ✅ **A directory scan** producing a catalogue. Sorted walk into a `BTreeMap` (I3), duplicate ids
+   refused naming both files, and every problem reported at once rather than the first.
+2. ✅ **A missing sidecar generated on import**, id defaulting to the filename stem. Prepare-then-apply,
+   so a dry run is the same code path as a real one and nothing is written if anything would fail.
+3. ✅ **`assets.list` and `amadeo assets`** — the ADR 0020 requirement, in place before ids became the
+   reference syntax. Also `amadeo import`, and `--check` on it so it can gate a commit.
+4. ✅ **Loading**, to ADR 0021's rule, plus the barrier and the `assets` block a scene declares in.
+5. ✅ **`amadeo check` verifies asset ids**, with `similar_to` giving "did you mean".
+
+**One decision came up that STATUS.md had said would not** — see ADR 0022 below.
 
 Then, in order:
 
@@ -93,6 +99,23 @@ Then, in order:
 3. **Q7 — prefab override semantics**, which `amadeo-assets` makes reachable and which is the
    hardest design problem left in the scene subsystem.
 
+### ADR 0022, and a correction to what this file said
+
+The previous version of this section claimed the loading half had **no open decisions left in it**.
+That was wrong on one point, found immediately on starting the work: a game names its asset directory
+with a *relative* path, and the working directory differs in all four ways a game gets started — the
+CLI sets it to the project root, `cargo run` from a subdirectory does not, and a packaged binary
+could be anywhere.
+
+Researched rather than guessed, per the standing instruction. Bevy answers with an environment-variable
+chain (`BEVY_ASSET_ROOT` → `CARGO_MANIFEST_DIR` → executable directory); Godot anchors on a marker
+file, defining `res://` as the directory holding `project.godot`. **ADR 0022 takes Godot's approach**,
+because this project already has a marker file and `amadeo-cli` already walks up for it — resolving
+the game side by a different rule would invent a disagreement about which project we are in. It also
+needs no shared code, which matters because `amadeo-cli` deliberately does not depend on `amadeo-app`.
+
+Worth knowing for next time: "no open decisions left" is a claim that should be checked, not trusted.
+
 **Three things are undecided rather than unbuilt**, all in `docs/06-open-questions.md`:
 
 - **Q3 (the last third) — which render pipeline shape.** Dropped to P2 by ADR 0018, which settled the
@@ -100,7 +123,11 @@ Then, in order:
   writing the sprite batcher, against a real throughput number.
 - **Q7 — prefab override semantics.** The format records overrides visibly (the I1 requirement), but
   what they *mean* when a prefab changes under an instance is undesigned. Study Unity's and Godot's
-  failure modes first.
+  failure modes first. **Now carries a smaller question that has to be answered first**, found in
+  session 7: ADR 0014 says `from` holds a *path* (`from prefabs/door_metal`, pinned by a test) and
+  ADR 0020 says it holds an *asset id* (`from wall_concrete`). They are not reconcilable as written —
+  a path is not a usable id, because `/` is refused. Nothing is broken today, since prefab
+  instancing is refused outright; decide before building it, and supersede whichever ADR loses.
 - **Q12 — `Service: Send + Sync`.** Not moot: a `kira` audio manager, an asset loader holding a file
   watcher, and a `wgpu` surface all hit it in M3. Decide when the first real offender lands.
 
@@ -431,7 +458,80 @@ hashes) passed.
   mapping id to file, with duplicate ids refused naming both files. Loading, handles, the import
   pipeline and hot-reload are still to come, to ADR 0021's rule.
 
-**Verified green: 519 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+### M1 continued (session 7)
+
+- ✅ **`amadeo-assets`, the loading half** — all five steps listed above. The scan reports what it
+  could *not* catalogue (unimported files, orphaned sidecars), because ADR 0020 predicted that exact
+  confusion by name: asking for `wall` is refused while `wall.png` sits right there in the tree.
+  Stored paths are normalised to forward slashes, since they go over the protocol and
+  `textures\wall.png` against `textures/wall.png` would need a special case in every cross-platform
+  assertion. Dotfiles are not assets, which is the *only* rule about what counts as one — an
+  extension allowlist would be genre knowledge and I4 forbids it.
+- ✅ **ADR 0022** — the asset root is found by walking up for `amadeo.toml`. See the correction above.
+- ✅ **The load barrier**, and the `assets` block a scene declares its requirements in. A missing
+  asset is recorded and survivable rather than fatal, per ADR 0021. **Proven, not asserted:**
+  quad-demo now loads a real 700-byte file at startup and `wander.replay` still matches all four
+  checkpoints, because `Assets` is a `Service` and ADR 0009 excludes those by trait bound.
+- ✅ **`amadeo check` validates asset ids**, with near-miss suggestions.
+- ✅ **A PCG32 reference cross-check** — see the audit below.
+
+**Verified green: 578 tests passing; clippy, fmt, and rustdoc all clean under `-D warnings`.**
+
+### The audit Justin asked for, session 7
+
+He asked for the earlier work to be re-checked, since everything before the last two additions was
+built on whichever option was recommended. What was checked, and what it found:
+
+**The invariants hold, and two of them hold better than the docs claim.**
+
+- **I3 (determinism).** There is **no `HashMap` or `HashSet` anywhere in the engine** — the only
+  occurrences are comments explaining why a `BTreeMap` is used instead. No `Instant::now` or
+  `SystemTime` in any engine crate. Transcendental functions (`sin_cos`, `atan2`, `hypot`) appear in
+  exactly **two** places, and both are outside the hashed path: `amadeo-transform`'s matrix build,
+  which feeds `GlobalTransform` (`DERIVED`, excluded by ADR 0019), and `amadeo-render`'s matrix
+  decomposition, which is render-side. That matters more than it looks — IEEE 754 does not specify
+  transcendental functions, so `sin` can differ in the last bit between platforms. **ADR 0019's
+  decision is load-bearing for cross-platform determinism in a way the ADR does not state.**
+- **The safety net is real.** The `test` CI job runs on **both** Windows and Linux and includes the
+  golden-replay test, which asserts *committed* hashes. So a hashed path growing a `sin` call would
+  fail CI on one platform. That is a genuine cross-platform determinism check and the docs undersell it.
+- **I6 (dependency DAG).** Verified crate by crate. Every edge points the right way; no cycles.
+- **`World::state_hash` is sound.** Entities sorted by index and generation, components in sorted id
+  order, resources in `BTreeMap` order, tick included, services excluded. `DERIVED` components skip
+  **their id as well as their value**, which is the subtle half — writing the id would mean adding a
+  `GlobalTransform` still moved the hash. The sorted-`component_ids` invariant it relies on is
+  enforced by `debug_assert`.
+- **The golden replay is not vacuous.** Four distinct checkpoint hashes, with a paired `assert_ne`
+  guarding against the hash being constant.
+
+**One real gap, now closed. `Rng` had no known-answer test.** Every existing test was a
+*self-consistency* property — same seed gives same sequence, different seeds diverge, outputs in
+range. All of them would still pass if the algorithm were subtly wrong (shift by 17 instead of 18),
+because a wrong generator is still a perfectly deterministic one: I3 would hold and the statistical
+quality PCG was chosen for would be silently gone. `StableHasher` *was* cross-checked against an
+independent FNV-1a when written; the generator was going on the claim in its own doc comment.
+
+Closed by `crates/amadeo-core/tests/pcg_reference_vector.rs`. **The result: `Rng` reproduces the
+official PCG32 demo output exactly** — seeded `(42, 54)` it emits `a15c02b7, 7b47f409, ba1d3330,
+83d2f293, bfa4784b, cbed606e`. So the implementation is genuinely PCG32 XSH-RR 64/32, confirmed
+against a published vector rather than against a transcription that could share a mistake with it.
+FNV-1a's constants and its xor-then-multiply ordering were checked too, and are correct.
+
+**Smaller things found and fixed in passing:**
+
+- `amadeo-agent`'s lib docs still said there was no JSON-RPC server and no JSON parser. Session 6
+  built both.
+- `quad-demo`'s `build_simulation` doc comment had been detached from it by a `const` inserted
+  between them, so the function was undocumented and `DEFAULT_SEED` was documented as a colour palette.
+- `docs/protocol/v1.md` listed `assets.list` as not implemented. Now specified.
+
+**Smaller things found and left alone, deliberately:**
+
+- Three `expect()` calls in `amadeo-app/src/schedule.rs` technically breach the "no `unwrap`/`expect`
+  in engine crates" convention. All three are provably unreachable local invariants established a few
+  lines above, each with an explanatory message; rewriting them would add unreachable error paths.
+  Every other occurrence in the engine is inside a doc-comment example, which is fine.
+- `amadeo-app` lists `amadeo-input` in both `[dependencies]` and `[dev-dependencies]`. Harmless.
 
 Two things found by running it rather than by thinking about it:
 
@@ -664,3 +764,26 @@ on purpose — several record a diagnosis that took a while to reach.
   *state*, so there is nothing to branch on.
 
   519 tests, all five CI jobs green, seventeen commits.
+- **S7 (2026-08-02):** **`amadeo-assets` finished** — all five steps the previous handoff listed, in
+  its order. The scan, sidecar generation on import, `assets.list` plus `amadeo assets` and
+  `amadeo import`, the load barrier with a scene-declared `assets` block, and asset ids validated by
+  `amadeo check`.
+
+  **The handoff's claim that the loading half had "no open decisions left in it" was wrong**, and it
+  surfaced in the first hour: a relative asset path has to resolve against *something*, and the
+  working directory differs in all four ways a game starts. Researched rather than guessed — Bevy
+  uses an environment-variable chain, Godot anchors on a marker file — and **ADR 0022** took Godot's
+  approach, because this project already has `amadeo.toml` and the CLI already walks up for it.
+
+  Then **the audit Justin asked for**, which is written up in its own section above. Headline: the
+  invariants hold, and I3 holds better than the docs claim — there is no `HashMap` anywhere in the
+  engine, and all transcendental maths is confined to non-hashed paths, which makes ADR 0019's
+  derived-component decision quietly load-bearing for cross-platform determinism. One real gap:
+  `Rng` had only self-consistency tests, which would all pass on a subtly wrong generator. Now
+  cross-checked, and it **reproduces the official PCG32 demo vector exactly**.
+
+  One unresolved conflict found and deliberately *not* decided alone: ADR 0014 and ADR 0020 disagree
+  about whether `from` holds a path or an asset id. Filed under Q7, since it has to be settled before
+  prefab instancing.
+
+  578 tests, all four verification commands green, `wander.replay` unchanged.
