@@ -139,10 +139,10 @@ without eyes, the design is wrong and we find out before 3D and the editor pile 
 - ADR on 2D/3D coexistence (see `04-subsystems.md` §4) — decided *before* code.
 - Render graph proper: declared passes, resource dependencies, transient targets.
 - 3D: mesh rendering, PBR materials, directional + point lights, shadow maps, frustum culling.
-- **Configurable post-process stack and atmosphere** — the three target games span stylised-realistic
-  outdoors, low-poly, and dark atmospheric interiors, so the renderer must not bake in a look
-  (`00-vision.md` § Divergent). Fog/volumetrics and strong dynamic point lighting are requirements
-  here, not polish — M3's horror slice depends on them.
+- **Configurable post-process stack and atmosphere** — the eight target games span stylised-realistic
+  outdoors, low-poly, dark atmospheric interiors, voxel, and pixel-art sprite work, so the renderer
+  must not bake in a look (`00-vision.md` § Divergent). Fog/volumetrics and strong dynamic point
+  lighting are requirements here, not polish — M3's horror slice depends on them.
 - Culling architecture must not preclude later world streaming (see non-goals table).
 - glTF import — meshes, materials, scene hierarchy, skins.
 - Shader/material strategy per its ADR; WGSL organization and variant handling.

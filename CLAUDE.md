@@ -255,18 +255,28 @@ Things that will quietly destroy the design if allowed:
    type, and you find out three milestones later.
 6. **Building breadth before the spine works.** Ten half-subsystems can't run a game. One thin
    working slice can.
-7. **Forgetting the reserved multiplayer hooks.** All three target games are co-op. ADR 0006 reserves
+7. **Forgetting the reserved multiplayer hooks.** Six of the eight target games are co-op or
+   multiplayer. ADR 0006 reserves
    network identity, replication metadata, and authority during M0–M2 — while those systems are being
    written for the first time. Skipping them means a sweep across every component later. Equally: do
    **not** build transport or prediction code before M6; that's scope creep in the other direction.
 8. **Baking an art style into the renderer.** The target games span stylised-realistic outdoors,
    low-poly, and dark atmospheric interiors. A pipeline tuned for one is a pipeline that can't do the
    others. Post-process and lighting stay configurable.
-9. **Letting 2D become second-class because the target games are 3D.** All three targets being 3D
-   orders the *work*; it does not narrow the *engine*. Amadeo supports 2D and 3D equally — a 2D game
-   is a genre, and I4 says genres are not privileged. Doing 3D earlier is fine; shipping a 2D feature
-   that is worse than its 3D equivalent, or foreclosing 2D with a design choice, is not. Raised
-   explicitly by Justin in session 6. See `docs/00-vision.md` § "The targets are a priority signal".
+9. **Letting 2D become second-class.** Amadeo supports 2D and 3D equally — a 2D game is a genre, and
+   I4 says genres are not privileged. Doing 3D earlier is fine; shipping a 2D feature that is worse
+   than its 3D equivalent, or foreclosing 2D with a design choice, is not. Raised by Justin in
+   session 6 when the target list was all-3D; **session 7 settled it by adding Terraria, RimWorld,
+   and Project Zomboid**, so 2D and isometric are now target requirements rather than a principle
+   being defended. See `docs/00-vision.md` § Target games.
+10. **Assuming a game has a character, a camera behind it, and a 3D world.** Of the eight targets,
+   Stellaris has no character at all, three are 2D or isometric, and three have fully destructible
+   chunked worlds. A character controller belongs in `modules/`, not in the core, and the camera rig
+   must not assume a character exists.
+11. **Designing the module boundary without thinking about mods.** Four of the eight targets are
+   defined by their modding ecosystems, which is in real tension with ADR 0011's "game logic is plain
+   Rust". Nothing needs deciding yet, but "what can a mod do" is the same question as "what is the
+   module boundary" — see **Q15**. Retrofitting a sandbox boundary is much worse than designing to one.
 
 ## 8. Reading order for the design docs
 

@@ -26,6 +26,59 @@ sprites at 60 fps). A spike of three prototypes would measure less than the real
 
 ---
 
+## Q15 · P1 · Modding, and whether ADR 0011 still holds
+
+**Raised session 7, when the target list went from three games to eight.** Four of the five
+additions — Minecraft, RimWorld, Terraria, Stellaris — are games substantially *defined* by their
+modding ecosystems. That was not true of any of the original three.
+
+**ADR 0011 decided game logic is plain Rust in the game crate**, no scripting layer, no dynamic
+reload. It was a good decision and it was made properly: four candidates prototyped and measured
+against one benchmark, with the recorded Luau prior refuted on evidence (`spikes/q1-game-logic/`).
+
+**But it answered a different question than this one.** Q1 asked how *the developer* authors game
+logic, and the deciding evidence was iteration speed — the feared 30-second rebuild measured at
+0.9–3.2 s, so no architectural cost was worth paying for it. A **mod author is not the developer**.
+They do not have the source, do not have a Rust toolchain, and cannot rebuild the engine. "Recompile
+the game to add a mod" is not a modding story at any speed.
+
+So the trigger ADR 0011 recorded does not cover this. It reserved WASM as a pre-selected escape hatch
+behind a measured threshold — *a gameplay rebuild sustaining above 5 s* — which is an
+iteration-speed trigger. Modding would open that hatch for an entirely unrelated reason.
+
+**What is genuinely encouraging:** the escape hatch that was reserved happens to be the right tool.
+The Q1 spike measured WASM as **bit-identical to native Rust** across two optimisation levels at
+1.24× runtime cost, which is precisely what a deterministic engine needs from a mod sandbox — plus
+it is sandboxed by construction, which matters far more for third-party code than for first-party.
+And it is the same artefact M5's web export needs. So this is likely to be a *confirmation* of a
+reserved option rather than a reversal of a decision.
+
+### What to decide, and when
+
+Not now. Nothing built so far is invalidated, and nothing in M1 or M2 depends on the answer. But it
+should be settled before the module system hardens (M2–M3), because "what can a mod do" is really
+"what is the module boundary", and retrofitting a sandbox boundary is far worse than designing to one.
+
+Specific sub-questions when it is time:
+
+- **Do mods get code, or only data?** RimWorld and Stellaris are heavily data-modded (XML-ish
+  definitions) with code as the escalation. Amadeo's reflection registry plus the `.scene` and
+  sidecar formats already give a strong data-modding story almost for free — that may cover most of
+  the ground at very little cost, and it is worth measuring how far it reaches before assuming a VM.
+- **If code: WASM, per the reserved hatch?** Re-run `spikes/q1-game-logic/measure.ps1` rather than
+  arguing from the old numbers; the engine has grown since.
+- **How does a mod stay inside I3?** A mod running simulation logic is simulation logic. Determinism
+  is not negotiable, which rules out anything with the `f64`-versus-`f32` divergence that killed Luau.
+- **How does a mod register components?** I8 says everything reflectable; a mod adding a component
+  has to reach the same registry, and `ComponentId` is a name hash (ADR 0017), so mod-defined names
+  need a collision story.
+
+**Do not pre-emptively build a scripting layer for this.** ADR 0011's reasoning against paying a
+permanent architectural cost up front still stands; what has changed is that a second, independent
+reason to open the hatch now exists, and it should be recorded rather than rediscovered late.
+
+---
+
 ## Q12 · P1 · `Service: Send + Sync` excludes every non-`Sync` runtime
 
 Found by the Q1 spike (ADR 0011), which could not put a script VM in the world.

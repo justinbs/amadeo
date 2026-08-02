@@ -130,6 +130,13 @@ Worth knowing for next time: "no open decisions left" is a claim that should be 
   instancing is refused outright; decide before building it, and supersede whichever ADR loses.
 - **Q12 — `Service: Send + Sync`.** Not moot: a `kira` audio manager, an asset loader holding a file
   watcher, and a `wgpu` surface all hit it in M3. Decide when the first real offender lands.
+- **Q15 — modding, and whether ADR 0011 still holds.** New in session 7, raised by the target list
+  growing. ADR 0011 decided game logic is plain Rust, by measurement — but it measured *iteration
+  speed for the developer*, and a mod author cannot rebuild the engine at any speed. The reserved
+  WASM hatch is probably the right answer (the Q1 spike measured it bit-identical to native at 1.24×,
+  and sandboxed by construction), but the trigger ADR 0011 recorded does not cover this reason.
+  **Decide before the module system hardens in M2–M3**, since "what can a mod do" is the same
+  question as "what is the module boundary". Nothing today depends on it.
 
 Prefab *instancing* is unbuilt rather than undecided — it needs `amadeo-assets` to resolve
 an id, which is why `instantiate` refuses a `from` line with an error saying exactly that.
@@ -178,9 +185,14 @@ optimisation levels) at 1.24× runtime cost, and it is the same artefact M5's we
 - Determinism is a hard invariant, designed in from tick zero. See `docs/adr/0005`.
 - **Code must stay legible to a Rust-learning human.** Justin intends to read, debug, and fix the
   codebase himself. Boring Rust over clever Rust; accepted cost in verbosity. `CLAUDE.md` §6.
-- **Target games: Palworld, Schedule I, Inside the Backrooms.** Deliberately different genres, scales,
-  and art directions — used as a prioritisation signal. The intersection defines the core; the
-  divergence defines what must stay pluggable. See `docs/00-vision.md` § Target games.
+- **Target games: eight of them, extended from three in session 7.** Palworld, Schedule I, Inside the
+  Backrooms, **Minecraft, Terraria, Project Zomboid, RimWorld, Stellaris**. Deliberately different
+  genres, dimensions, scales, and art directions — used as a prioritisation signal. The intersection
+  defines the core; the divergence defines what must stay pluggable. See `docs/00-vision.md`
+  § Target games for what the five additions changed; the short version is that 2D became a
+  requirement rather than a principle, destructible chunked worlds became a real subsystem, ECS
+  throughput and dense UI both moved up sharply, and **modding put ADR 0011 under real pressure
+  (Q15)**.
 - **Renderer must not bake in an art style.** Configurable post-process stack, flexible dynamic
   lighting, fog/volumetrics. The three targets span stylised-realistic outdoors, low-poly, and dark
   atmospheric interiors.
@@ -788,3 +800,13 @@ on purpose — several record a diagnosis that took a while to reach.
   prefab instancing.
 
   578 tests, all four verification commands green, `wander.replay` unchanged.
+
+  **Then the target list grew from three games to eight** — Minecraft, Terraria, Project Zomboid,
+  RimWorld, Stellaris added to Palworld, Schedule I, and Inside the Backrooms. Written up in
+  `docs/00-vision.md`, and it is a larger change than a list edit: the original three were all 3D,
+  all action-paced, all co-op, all rendering-led, and the five additions break every one of those.
+  Six consequences, of which two matter most. **2D stopped being a principle being defended and
+  became a requirement** — three of the eight are 2D or isometric, which lands the same week the
+  sprite batcher does. And **modding became a target-driven requirement**, which puts ADR 0011 under
+  a kind of pressure Q1 never evaluated: it decided by measuring the developer's iteration speed, and
+  a mod author cannot rebuild the engine at any speed. Filed as **Q15**, deliberately not decided.

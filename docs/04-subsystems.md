@@ -372,7 +372,9 @@ agent, because a working example beats a signature every time.
 
 ## 20. Networking — `amadeo-net` · hooks M0–M2, built M6
 
-**Job:** co-op multiplayer. All three target games require it (`00-vision.md`).
+**Job:** co-op multiplayer. Six of the eight target games require it (`00-vision.md`) — and two of
+those, Minecraft and Project Zomboid, are large-world streamed games, so interest management (only
+replicating what a client can see) is a requirement rather than an optimisation.
 
 ✅ **Client-server with server authority and client prediction** — explicitly not deterministic
 lockstep. ADR 0006.
