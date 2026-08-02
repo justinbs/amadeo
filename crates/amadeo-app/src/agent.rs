@@ -501,7 +501,15 @@ fn dispatch(
                 }
             };
 
-            let found = amadeo_scene::validate(&document, app.components());
+            // The catalogue as well as the registry, so `amadeo check` catches a scene naming an
+            // asset that does not exist — ADR 0020 gave it that job by name. `None` when the game
+            // installed no catalogue, which skips the asset half rather than calling every id
+            // missing.
+            let catalogue = app
+                .world
+                .service::<amadeo_assets::Assets>()
+                .map(|assets| &assets.catalogue);
+            let found = amadeo_scene::validate(&document, app.components(), catalogue);
             let diagnostics: Vec<Json> = found
                 .iter()
                 .map(|diagnostic| {

@@ -12,7 +12,7 @@
 
 use crate::document::{SceneDocument, SceneEntity};
 use amadeo_reflect::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// How many spaces one level of nesting costs.
 pub const INDENT: usize = 2;
@@ -66,6 +66,16 @@ pub enum ParseErrorKind {
     MissingHeader {
         /// The keyword that was expected.
         expected: String,
+    },
+
+    /// The `assets` block was malformed.
+    #[error(
+        "{detail}.\nAn assets block declares what the scene needs, one id per line:\n\
+         \n    assets\n      wall_concrete\n      footstep\n"
+    )]
+    MalformedAssets {
+        /// What specifically was wrong.
+        detail: String,
     },
 
     /// The version was not a number.
@@ -349,6 +359,10 @@ impl Parser {
             },
         })?;
 
+        // Optional, and only here -- between the header and the entities, so reading the top of a
+        // file tells you what it needs before you read what it contains (ADR 0021).
+        let assets = self.parse_assets_block()?;
+
         let mut entities = Vec::new();
         while let Some(line) = self.peek() {
             if line.level != 0 {
@@ -378,8 +392,77 @@ impl Parser {
         Ok(SceneDocument {
             name,
             version,
+            assets,
             entities,
         })
+    }
+
+    /// Consumes an optional `assets` block: the keyword at indent 0, one id per line under it.
+    ///
+    /// ```text
+    /// assets
+    ///   placeholder
+    ///   wall_concrete
+    /// ```
+    ///
+    /// One id per line rather than several on one, because these are a set that grows and a
+    /// one-per-line list gives a one-line diff when an asset is added — the same reason child
+    /// entities are one per line rather than comma-separated.
+    fn parse_assets_block(&mut self) -> Result<BTreeSet<String>, ParseError> {
+        let mut assets = BTreeSet::new();
+
+        let Some(line) = self.peek_at(0) else {
+            return Ok(assets);
+        };
+        if line.text.split_whitespace().next() != Some("assets") {
+            return Ok(assets);
+        }
+
+        let header = line.clone();
+        let tokens = tokenize(&header.text, header.number)?;
+        if tokens.len() != 1 {
+            return Err(ParseError {
+                line: header.number,
+                kind: ParseErrorKind::MalformedAssets {
+                    detail: "`assets` takes no value; the ids go on the lines under it".to_string(),
+                },
+            });
+        }
+        self.cursor += 1;
+
+        while let Some(line) = self.peek_at(1) {
+            let line = line.clone();
+            let tokens = tokenize(&line.text, line.number)?;
+
+            if tokens.len() != 1 {
+                return Err(ParseError {
+                    line: line.number,
+                    kind: ParseErrorKind::MalformedAssets {
+                        detail: "one asset id per line, and an id is a bare word".to_string(),
+                    },
+                });
+            }
+
+            let id = tokens[0].text.clone();
+            if !amadeo_assets::is_usable_id(&id) {
+                return Err(ParseError {
+                    line: line.number,
+                    kind: ParseErrorKind::MalformedAssets {
+                        detail: format!(
+                            "`{id}` is not a usable asset id. Ids are letters, digits, \
+                             underscores, dashes and dots -- run `amadeo assets` for the real ones"
+                        ),
+                    },
+                });
+            }
+
+            // A set, so a repeat is not an error -- but it is not silent either, since the
+            // canonical rewrite collapses it and the diff shows the line going away.
+            assets.insert(id);
+            self.cursor += 1;
+        }
+
+        Ok(assets)
     }
 
     /// Consumes a `<keyword> <value>` header line and returns the value.

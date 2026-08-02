@@ -112,6 +112,9 @@ const DEFAULT_SEED: u64 = 0;
 /// CLI-launched agent session find the same files.
 const ASSET_DIRECTORY: &str = "assets";
 
+/// The asset id every renderer falls back to when a texture is missing.
+const PLACEHOLDER_TEXTURE: &str = "placeholder";
+
 /// Builds the world: a player quad plus static markers to move against.
 ///
 /// The palette is deliberate rather than default — a cool near-black ground, muted slate markers, and
@@ -135,6 +138,10 @@ fn build_simulation() -> anyhow::Result<App> {
     // Before the first tick, never during one — ADR 0021's load barrier. The simulation never
     // observes an asset arriving, so there is nothing about load timing for it to branch on.
     app.scan_assets(ASSET_DIRECTORY)?;
+    // The missing-texture stand-in, which ADR 0021 makes a required feature rather than a nicety:
+    // a renderer has to be able to draw *something* for an asset that failed, and it cannot load
+    // that something lazily without observing state.
+    app.load_assets([PLACEHOLDER_TEXTURE]);
 
     app.insert_resource(Camera2d {
         center: [0.0, 0.0],

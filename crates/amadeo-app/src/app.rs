@@ -228,6 +228,34 @@ impl App {
         self.world.service::<Assets>()
     }
 
+    /// Reads the named assets into memory — ADR 0021's load barrier.
+    ///
+    /// Call before the first tick. Nothing enforces that today, and nothing needs to: under
+    /// ADR 0021's first rule the simulation never observes whether an asset is resident, so a late
+    /// load changes what is drawn and nothing that a replay compares.
+    ///
+    /// A missing asset is **not** an error. It is recorded and the game keeps running, because
+    /// ADR 0021 requires a visible stand-in plus a structured report rather than a crash — an agent
+    /// whose only eyes are the protocol has to be able to see what is broken and carry on. Ask
+    /// [`amadeo_assets::AssetStore::failures`], or `assets.list`, for what went wrong.
+    ///
+    /// Does nothing when no catalogue was installed.
+    pub fn load_assets<'a>(&mut self, ids: impl IntoIterator<Item = &'a str>) -> &mut Self {
+        if let Some(assets) = self.world.service_mut::<Assets>() {
+            assets.load(ids);
+        }
+        self
+    }
+
+    /// Loads everything a scene declares it needs.
+    ///
+    /// The barrier in the form a game actually uses it: a scene's `assets` block says what it
+    /// requires, and this makes all of it resident before the scene is instantiated.
+    pub fn load_scene_assets(&mut self, document: &amadeo_scene::SceneDocument) -> &mut Self {
+        let required = document.required_assets();
+        self.load_assets(required.iter().map(String::as_str))
+    }
+
     /// The current simulation tick.
     #[must_use]
     pub fn tick(&self) -> Tick {

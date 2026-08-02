@@ -516,14 +516,32 @@ fn list_assets(options: &Options) -> Result<()> {
             .unwrap_or(2)
             .max(2);
 
-        println!("{:<width$}  SOURCE", "ID", width = width);
+        // `resident` means the bytes are in memory; `catalogued` means the engine knows the id but
+        // has not been asked to load it. Both are normal — a scene loads what it declares, not the
+        // whole project.
+        println!("{:<width$}  {:<10}  SOURCE", "ID", "STATE", width = width);
         for asset in &assets {
             let id = string_field(asset, "id").unwrap_or("?");
+            let state = string_field(asset, "state").unwrap_or("?");
             let source = string_field(asset, "source").unwrap_or("?");
-            println!("{id:<width$}  {source}", width = width);
+            println!("{id:<width$}  {state:<10}  {source}", width = width);
         }
         println!();
         println!("{} asset(s)", assets.len());
+    }
+
+    // Anything that failed to load. ADR 0021 makes a missing asset survivable — the game draws a
+    // placeholder and keeps running — so this listing is the only place it is visible at all.
+    if let Some(Json::Array(failures)) = result.get("failures")
+        && !failures.is_empty()
+    {
+        println!();
+        println!("FAILED TO LOAD");
+        for failure in failures {
+            if let Some(message) = string_field(failure, "message") {
+                println!("    {message}");
+            }
+        }
     }
 
     print_paths(

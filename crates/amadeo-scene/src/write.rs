@@ -191,6 +191,20 @@ pub fn to_text(document: &SceneDocument) -> String {
     let _ = writeln!(output, "scene {}", document.name);
     let _ = writeln!(output, "version {}", document.version);
 
+    // Between the header and the entities, so the top of a file says what it needs before it says
+    // what it contains. Omitted entirely when empty rather than written as a bare `assets` keyword,
+    // which would be a block promising members it does not have.
+    if !document.assets.is_empty() {
+        let _ = writeln!(output);
+        let _ = writeln!(output, "assets");
+        let pad = " ".repeat(INDENT);
+        // Already sorted -- it is a BTreeSet, so canonical order is the data structure's problem
+        // rather than something to remember here (invariant I2).
+        for id in &document.assets {
+            let _ = writeln!(output, "{pad}{id}");
+        }
+    }
+
     for entity in &document.entities {
         let _ = writeln!(output);
         write_entity(&mut output, 0, entity);

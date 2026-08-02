@@ -51,13 +51,24 @@ pub fn list(world: &World) -> Json {
         .catalogue
         .iter()
         .map(|entry| {
+            // The load state ADR 0020 asked this method to report. ADR 0021 forbids *gameplay*
+            // from observing it — an agent inspecting from outside the simulation is not gameplay,
+            // and is exactly who needs to know.
+            let state = if assets.store.is_resident(&entry.id) {
+                "resident"
+            } else {
+                "catalogued"
+            };
+
             let mut members = vec![
                 ("id", Json::string(&entry.id)),
                 ("source", Json::string(show(&entry.source))),
-                // ADR 0021: gameplay may never observe this, but an agent inspecting from outside
-                // the simulation is not gameplay, and it is exactly who needs to know.
-                ("state", Json::string("catalogued")),
+                ("state", Json::string(state)),
             ];
+
+            if let Some(loaded) = assets.store.get(&entry.id) {
+                members.push(("bytes", Json::Int(loaded.len() as i64)));
+            }
 
             if !entry.settings.is_empty() {
                 members.push((
@@ -101,6 +112,27 @@ pub fn list(world: &World) -> Json {
             ),
         ),
     ];
+
+    // The structured half of ADR 0021's "visible stand-in plus a structured report". A game with a
+    // missing asset keeps running and draws a placeholder, so this is the only channel that says
+    // anything is wrong at all.
+    if assets.store.has_failures() {
+        members.push((
+            "failures",
+            Json::Array(
+                assets
+                    .store
+                    .failures()
+                    .map(|(id, failure)| {
+                        Json::object([
+                            ("id", Json::string(id)),
+                            ("message", Json::string(failure.to_string())),
+                        ])
+                    })
+                    .collect(),
+            ),
+        ));
+    }
 
     // Where the scan looked, and by which rule. "I looked in the wrong place" and "the files are
     // missing" have identical symptoms and different fixes, so the reply distinguishes them.

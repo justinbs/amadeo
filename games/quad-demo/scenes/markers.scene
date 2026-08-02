@@ -1,0 +1,39 @@
+scene markers
+version 1
+
+assets
+  placeholder
+  wall_concrete
+
+entity m1 "Marker NW"
+  Quad
+    color 0.243 0.286 0.333 1.0
+    size 0.6 0.6
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -6.0 3.0 0.0
+
+entity m2 "Marker NE"
+  Quad
+    color 0.243 0.286 0.333 1.0
+    size 0.6 0.6
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 6.0 3.0 0.0
+
+entity p1 "Player"
+  Player
+  Quad
+    color 0.898 0.588 0.243 1.0
+    size 1.0 1.0
+  SortOrder
+    order 10
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+  Velocity
+    x 0.0
+    y 0.0

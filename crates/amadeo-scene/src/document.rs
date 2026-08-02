@@ -1,7 +1,7 @@
 //! The in-memory model of a scene file.
 
 use amadeo_reflect::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// A parsed scene file.
 ///
@@ -18,6 +18,20 @@ pub struct SceneDocument {
     /// Bumped when the *format* changes incompatibly, so a loader can tell "written before the
     /// change" from "corrupt". Distinct from a component's own version (ADR 0012).
     pub version: u32,
+    /// The assets this scene needs, by declared id (ADR 0020).
+    ///
+    /// ADR 0021's load barrier: everything named here is resident before the first tick runs, so
+    /// the simulation never sees an asset arrive and has nothing about load timing to branch on.
+    ///
+    /// **Declared rather than inferred**, which ADR 0021 requires explicitly — reading the file has
+    /// to tell you what it needs. Inferring the set from component fields would be tidier and is
+    /// worth revisiting once reflection metadata can mark a field as an asset reference, but an
+    /// inferred set is invisible in the text and that is a direct hit on I1.
+    ///
+    /// A `BTreeSet`: these are a *set* of requirements, so declaring one twice is not meaningful and
+    /// the canonical order falls out of the data structure rather than out of remembering to sort —
+    /// the same trick `components` uses.
+    pub assets: BTreeSet<String>,
     /// Root entities, in the order they appear.
     pub entities: Vec<SceneEntity>,
 }
@@ -92,8 +106,30 @@ impl SceneDocument {
         Self {
             name: name.into(),
             version: 1,
+            assets: BTreeSet::new(),
             entities: Vec::new(),
         }
+    }
+
+    /// Every asset id this scene needs resident before the first tick.
+    ///
+    /// Today that is exactly the declared [`SceneDocument::assets`] block.
+    ///
+    /// # Why `from` is not included, yet
+    ///
+    /// A prefab reference *should* be an asset reference — under ADR 0020 a prefab is a file with a
+    /// declared id like any other, so `from door_metal` would name one. But **ADR 0014 and ADR 0020
+    /// disagree about what `from` holds**: 0014's grammar and worked example say a path
+    /// (`from prefabs/door_metal`), 0020's says an id (`from wall_concrete`), and a path is not even
+    /// a usable id because of the `/`.
+    ///
+    /// That conflict is unresolved and it overlaps Q7 (prefab override semantics), so this
+    /// deliberately does not pick a side. Prefab instancing is refused outright today —
+    /// `instantiate` returns `PrefabNotSupported` — so nothing is lost by waiting, and validating
+    /// `from` against the catalogue now would invent errors for scenes written to the older ADR.
+    #[must_use]
+    pub fn required_assets(&self) -> BTreeSet<String> {
+        self.assets.clone()
     }
 
     /// Every entity in the document, depth first.

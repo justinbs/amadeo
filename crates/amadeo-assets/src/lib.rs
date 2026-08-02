@@ -49,11 +49,13 @@
 //! source formats. Needs the loading layer underneath it.
 
 mod import;
+mod load;
 mod root;
 mod scan;
 mod sidecar;
 
 pub use import::{ImportError, ImportPlan, ImportProblem, PlannedSidecar};
+pub use load::{AssetStore, LoadFailure, LoadedAsset};
 pub use root::{Anchor, AssetRoot, PROJECT_MARKER, project_root_from, resolve};
 pub use scan::{Scan, ScanError, ScanProblem};
 pub use sidecar::{
@@ -134,6 +136,12 @@ pub struct Assets {
 
     /// Sidecars whose asset file is gone. Sorted, relative to the root.
     pub orphaned: Vec<std::path::PathBuf>,
+
+    /// Assets that have been read into memory.
+    ///
+    /// Filled at the load barrier, before the first tick. Gameplay must never read this — see
+    /// ADR 0021 and the `load` module docs.
+    pub store: AssetStore,
 }
 
 impl Service for Assets {}
@@ -157,6 +165,7 @@ impl Assets {
             catalogue: scanned.catalogue,
             unimported: scanned.unimported,
             orphaned: scanned.orphaned,
+            store: AssetStore::new(),
         })
     }
 
