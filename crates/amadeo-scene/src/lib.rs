@@ -63,3 +63,8 @@ pub use instantiate::{InstantiateError, Instantiated, instantiate};
 pub use parse::{INDENT, ParseError, ParseErrorKind, parse};
 pub use validate::{Diagnostic, validate};
 pub use write::to_text;
+// The scalar encoding, shared with `amadeo-snapshot`. Exposed rather than duplicated because
+// byte-stability (I2) depends on these being exactly right, and two copies of `format_float` would
+// be two things to keep in step. The two *formats* stay separate crates; only the spelling of a
+// number and the escaping of a string are common.
+pub use write::{MAX_PLAIN_DIGITS, escape, format_float, inline_value};

@@ -40,6 +40,22 @@ impl Entity {
         Self { index, generation }
     }
 
+    /// Rebuilds a handle from its two halves. **For restoring a snapshot, and nothing else.**
+    ///
+    /// Normally the allocator is the only thing that mints handles, and that is what keeps a handle
+    /// meaningful — one invented from thin air can address an entity that was never spawned, or a
+    /// slot occupied by something else, which is the use-after-free the generation counter exists to
+    /// prevent.
+    ///
+    /// A snapshot restore is the one caller with a legitimate need: it is *reinstating* handles that
+    /// an allocator really did produce, and it must reproduce them exactly, because both halves go
+    /// into `World::state_hash`. `World::restore_entities` rebuilds the allocator around them, so
+    /// the handles this makes are live by the time anything can use them.
+    #[must_use]
+    pub fn from_parts(index: u32, generation: u32) -> Self {
+        Self { index, generation }
+    }
+
     /// The slot this entity occupies.
     #[must_use]
     pub fn index(self) -> u32 {
@@ -155,6 +171,73 @@ impl EntityStore {
     /// How many entities are currently alive.
     pub(crate) fn len(&self) -> usize {
         self.slots.len() - self.free.len()
+    }
+
+    /// The free stack, as `index:generation` handles, **bottom first**.
+    ///
+    /// # Why a snapshot has to record this
+    ///
+    /// [`World::state_hash`](crate::World::state_hash) deliberately excludes the free list — it is
+    /// allocator bookkeeping, not simulation state. Which means two worlds can hash **identically**
+    /// and then hand out different entity handles on the very next `spawn`, because one of them has
+    /// a slot to reuse and the other does not.
+    ///
+    /// So a snapshot that captured only the live entities would restore a world that looked right by
+    /// every available measure and diverged a few ticks later, once something spawned. Capturing the
+    /// free list is what closes that, and it is the reason snapshot correctness is tested by *running
+    /// on* after a restore rather than by comparing hashes.
+    ///
+    /// Order is preserved because the stack is drained last-in-first-out, so the last entry here is
+    /// the next slot to be reused.
+    pub(crate) fn free_slots(&self) -> Vec<Entity> {
+        self.free
+            .iter()
+            .map(|index| Entity::new(*index, self.slots[*index as usize].generation))
+            .collect()
+    }
+
+    /// Rebuilds an allocator holding exactly these live and free slots.
+    ///
+    /// For restoring a snapshot, and nothing else. `live` supplies the occupied slots and `free` the
+    /// stack in the order [`EntityStore::free_slots`] produced it.
+    ///
+    /// Locations are left empty: the caller re-inserts each entity's components, which is what
+    /// establishes where its data actually lives.
+    ///
+    /// **Every slot index below the highest must appear in one list or the other**, since in a real
+    /// allocator a slot is either occupied or free. A gap would produce a slot that is neither, and
+    /// therefore never allocated again — a leak that nothing would report. That cannot happen from a
+    /// captured world; it can happen from a hand-edited snapshot, so the snapshot reader validates
+    /// it and says so, and this carries a `debug_assert` as the backstop.
+    pub(crate) fn restore(live: &[Entity], free: &[Entity]) -> EntityStore {
+        let highest = live
+            .iter()
+            .chain(free.iter())
+            .map(|entity| entity.index())
+            .max();
+
+        let mut slots = vec![
+            EntitySlot {
+                generation: 0,
+                location: None,
+            };
+            highest.map_or(0, |index| index as usize + 1)
+        ];
+
+        debug_assert_eq!(
+            live.len() + free.len(),
+            slots.len(),
+            "every slot must be either live or free; a gap would leak one permanently"
+        );
+
+        for entity in live.iter().chain(free.iter()) {
+            slots[entity.index() as usize].generation = entity.generation();
+        }
+
+        EntityStore {
+            slots,
+            free: free.iter().map(|entity| entity.index()).collect(),
+        }
     }
 }
 

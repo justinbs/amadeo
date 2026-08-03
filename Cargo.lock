@@ -180,6 +180,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "amadeo-snapshot"
+version = "0.1.0"
+dependencies = [
+ "amadeo-core",
+ "amadeo-ecs",
+ "amadeo-reflect",
+ "amadeo-scene",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "amadeo-transform"
 version = "0.1.0"
 dependencies = [

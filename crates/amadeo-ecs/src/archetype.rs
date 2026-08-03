@@ -101,6 +101,22 @@ impl Archetype {
         self.column_index(id).is_some()
     }
 
+    /// Drops every row, keeping the archetype's shape.
+    ///
+    /// For restoring a snapshot, which empties the world and rebuilds it. The component *set* and
+    /// this archetype's index are preserved deliberately — rebuilding archetypes from nothing would
+    /// renumber them, which the state hash does not care about but anything holding an index would.
+    ///
+    /// Columns are replaced with empty clones of themselves rather than drained row by row: a
+    /// `Column` is type-erased, so `empty_clone` is the only operation that produces a correctly
+    /// typed empty column without knowing what is in it.
+    pub(crate) fn clear(&mut self) {
+        for column in &mut self.columns {
+            *column = column.empty_clone();
+        }
+        self.entities.clear();
+    }
+
     /// Adds a row for `entity` and returns its row index.
     ///
     /// The caller is responsible for pushing a value into every column so the table stays

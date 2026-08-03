@@ -6,7 +6,25 @@ use crate::entity::{Entity, EntityLocation, EntityStore};
 use crate::resource::{Resource, ResourceId, ResourceSlot};
 use crate::service::{Service, ServiceId, ServiceSlot};
 use amadeo_core::{StableHasher, Tick};
+use amadeo_reflect::{ReflectError, Value};
 use std::collections::BTreeMap;
+
+/// Rebuilds one resource type from a reflected value.
+///
+/// A plain `fn` pointer rather than a boxed closure: each one is a monomorphised
+/// [`rebuild_resource`] that captures nothing, so no allocation is needed.
+type ResourceBuilder = fn(&mut World, &Value) -> Result<(), ReflectError>;
+
+/// Builds a `T` from a reflected value and stores it, for [`World::restore_resource`].
+///
+/// A free function so it can be turned into a plain `fn` pointer per type. A closure would need
+/// boxing, and `Reflect` is not object-safe, so this is the way back from a name to a concrete type
+/// — the same mechanism `ComponentRegistry` uses one layer up.
+fn rebuild_resource<T: Resource>(world: &mut World, value: &Value) -> Result<(), ReflectError> {
+    let restored = T::from_value(value)?;
+    world.insert_resource(restored);
+    Ok(())
+}
 
 /// All entities and components in a running simulation.
 ///
@@ -52,6 +70,16 @@ pub struct World {
     services: BTreeMap<ServiceId, Box<dyn ServiceSlot>>,
     /// The current simulation tick. Advanced by the app loop, never by gameplay code.
     tick: Tick,
+    /// How to rebuild each resource type from a reflected value, by canonical name.
+    ///
+    /// Filled in by [`World::insert_resource`] rather than by a separate registration call, so a
+    /// resource that exists in a world is always one a snapshot can put back. A monomorphised
+    /// function pointer per type, the same mechanism `ComponentRegistry` uses — `Reflect` is not
+    /// object-safe (ADR 0012), so this is the way back to a concrete type from a name.
+    ///
+    /// Not simulation state, and excluded from [`World::state_hash`]: it describes what *can* be
+    /// built, not what is.
+    resource_builders: BTreeMap<String, ResourceBuilder>,
     /// Which canonical name first claimed each [`ComponentId`], for the ADR 0017 collision guard.
     ///
     /// Only populated in debug builds — see [`World::guard_against_name_collision`]. It is a
@@ -81,6 +109,7 @@ impl World {
             archetypes: vec![empty],
             archetype_index,
             resources: BTreeMap::new(),
+            resource_builders: BTreeMap::new(),
             services: BTreeMap::new(),
             tick: Tick::ZERO,
             #[cfg(debug_assertions)]
@@ -176,7 +205,18 @@ impl World {
     }
 
     /// Stores a resource, returning the previous value if one was present.
+    ///
+    /// **Also records how to rebuild a `T` from a [`Value`](amadeo_reflect::Value)**, which is what
+    /// makes a snapshot restorable. See [`World::restore_resource`] for why that happens here rather
+    /// than through a registration call a game could forget.
     pub fn insert_resource<T: Resource>(&mut self, value: T) -> Option<T> {
+        // Recorded on the way in, so a resource that exists is a resource that can be restored.
+        // ADR 0016 found the opposite arrangement the hard way: `ComponentRegistry` had to be
+        // populated separately from spawning, and `quad-demo` registered nothing, so `describe`
+        // would have reported an empty schema for a real game's own components.
+        self.resource_builders
+            .insert(T::type_name(), rebuild_resource::<T>);
+
         let previous = self
             .resources
             .insert(ResourceId::of::<T>(), Box::new(value));
@@ -206,6 +246,40 @@ impl World {
     #[must_use]
     pub fn has_resource<T: Resource>(&self) -> bool {
         self.resources.contains_key(&ResourceId::of::<T>())
+    }
+
+    /// Rebuilds a resource from its canonical name and a reflected value.
+    ///
+    /// The write half of [`World::resources`], and what `snapshot.restore` uses. Returns whether the
+    /// name was known — a snapshot naming a resource this build does not have is a real mismatch and
+    /// the caller decides how loud to be about it.
+    ///
+    /// # Why the name is only known if a `T` was inserted at some point
+    ///
+    /// [`World::insert_resource`] records the builder, so a *fresh* world knows nothing. That is the
+    /// right shape for restore: the game's own setup runs first and inserts its resources at their
+    /// defaults, then the snapshot overwrites them with recorded values. A resource the game does
+    /// not create is one the snapshot has no business inventing.
+    ///
+    /// # Errors
+    ///
+    /// The [`ReflectError`](amadeo_reflect::ReflectError) from the type's own `from_value`, naming
+    /// the field that was wrong.
+    pub fn restore_resource(
+        &mut self,
+        name: &str,
+        value: &amadeo_reflect::Value,
+    ) -> Result<bool, amadeo_reflect::ReflectError> {
+        let Some(build) = self.resource_builders.get(name).copied() else {
+            return Ok(false);
+        };
+        build(self, value)?;
+        Ok(true)
+    }
+
+    /// Every resource name this world knows how to rebuild, in order.
+    pub fn restorable_resources(&self) -> impl Iterator<Item = &str> {
+        self.resource_builders.keys().map(String::as_str)
     }
 
     /// Every resource, as a name paired with its reflected state.
@@ -315,6 +389,51 @@ impl World {
             .collect();
         found.sort_unstable_by_key(|entity| (entity.index(), entity.generation()));
         found
+    }
+
+    /// The entity allocator's free stack, bottom first.
+    ///
+    /// Half of what a snapshot needs that [`World::entities`] does not give it — see
+    /// `EntityStore::free_slots` for why capturing this is the difference between a snapshot that
+    /// works and one that looks like it works and diverges on the next `spawn`.
+    #[must_use]
+    pub fn free_entity_slots(&self) -> Vec<Entity> {
+        self.entities.free_slots()
+    }
+
+    /// Sets the simulation tick outright.
+    ///
+    /// For restoring a snapshot. Gameplay advances the tick through the app loop and never sets it;
+    /// the tick is part of [`World::state_hash`], so writing it is a deliberate act of putting a
+    /// world back to a moment, not something a system does.
+    pub fn set_tick(&mut self, tick: Tick) {
+        self.tick = tick;
+    }
+
+    /// Empties every entity and rebuilds the allocator to hold exactly these slots.
+    ///
+    /// **Restore only.** Components are inserted afterwards, which is what puts each entity into its
+    /// real archetype; this leaves them all in the empty archetype, exactly as [`World::spawn`]
+    /// would.
+    ///
+    /// Resources and services are untouched — a restore overwrites resources by name through
+    /// [`World::restore_resource`], and services are engine machinery that a snapshot has no
+    /// business replacing (ADR 0009).
+    pub fn restore_entities(&mut self, live: &[Entity], free: &[Entity]) {
+        // Every archetype is emptied rather than dropped, so the archetype index and the component
+        // sets it maps stay valid. Rebuilding those from nothing would renumber archetypes, which is
+        // harmless for the state hash but would churn anything holding an index.
+        for archetype in &mut self.archetypes {
+            archetype.clear();
+        }
+
+        self.entities = EntityStore::restore(live, free);
+
+        for entity in live {
+            let row = self.archetypes[0].push_entity(*entity);
+            self.entities
+                .set_location(*entity, EntityLocation { archetype: 0, row });
+        }
     }
 
     /// Creates an entity with no components.

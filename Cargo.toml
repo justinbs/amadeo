@@ -27,6 +27,8 @@ amadeo-events = { path = "crates/amadeo-events", version = "0.1.0" }
 amadeo-input = { path = "crates/amadeo-input", version = "0.1.0" }
 amadeo-render = { path = "crates/amadeo-render", version = "0.1.0" }
 amadeo-scene = { path = "crates/amadeo-scene", version = "0.1.0" }
+# Above amadeo-scene, because it borrows that crate's scalar encoding (ADR 0028).
+amadeo-snapshot = { path = "crates/amadeo-snapshot", version = "0.1.0" }
 amadeo-agent = { path = "crates/amadeo-agent", version = "0.1.0" }
 amadeo-app = { path = "crates/amadeo-app", version = "0.1.0" }
 amadeo-cli = { path = "crates/amadeo-cli", version = "0.1.0" }

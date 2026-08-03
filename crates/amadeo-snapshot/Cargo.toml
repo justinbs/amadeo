@@ -1,0 +1,22 @@
+[package]
+name = "amadeo-snapshot"
+description = "The .snapshot text format: capturing a whole world to a file and putting it back."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-reflect.workspace = true
+# For the scalar encoding *only* -- `format_float` and `escape`. Those two are small and
+# byte-stability (I2) depends on them being exactly right, so a second copy that could drift is a
+# worse risk than the dependency. The two FORMATS stay in separate crates, which is what keeping
+# them apart was about (CLAUDE.md section 7, trap 4).
+amadeo-scene.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

@@ -15,7 +15,7 @@ use std::fmt::Write as _;
 ///
 /// Generous enough that everything a scene realistically contains — positions, colours, ranges,
 /// durations — stays in plain decimal, which is what a person wants to read.
-const MAX_PLAIN_DIGITS: usize = 24;
+pub const MAX_PLAIN_DIGITS: usize = 24;
 
 /// Formats a float so that reading it back produces the same bits and the same text.
 ///
@@ -29,7 +29,7 @@ const MAX_PLAIN_DIGITS: usize = 24;
 /// - **not absurd** — Rust's `{}` never uses exponent notation, so `1e300` prints as three hundred
 ///   and one digits. That still round-trips, but nobody wants it in a file, so a plain form past
 ///   [`MAX_PLAIN_DIGITS`] falls back to `{:e}` (which is also round-trip shortest).
-fn format_float(value: f64) -> String {
+pub fn format_float(value: f64) -> String {
     if value.is_nan() {
         return "nan".to_string();
     }
@@ -62,14 +62,14 @@ fn format_float(value: f64) -> String {
 }
 
 /// Escapes the two characters that would otherwise end or corrupt a quoted string.
-fn escape(text: &str) -> String {
+pub fn escape(text: &str) -> String {
     text.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 /// Renders one scalar value as it appears after a field name.
 ///
 /// Returns `None` for values that need their own lines — a list of lists, or a nested struct.
-fn inline_value(value: &Value) -> Option<String> {
+pub fn inline_value(value: &Value) -> Option<String> {
     match value {
         Value::Bool(inner) => Some(inner.to_string()),
         Value::I64(inner) => Some(inner.to_string()),
