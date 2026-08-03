@@ -1,7 +1,9 @@
 # Amadeo — Current Status
 
 **Last updated:** 2026-08-03 (end of session 8)
-**Current phase:** **M0 complete. M1 closed — all five exit gates tested, four met and one refuted.**
+**Current phase:** **M0 complete. M1 closed, M2 started.** M2 opens with its ADR done and no code yet written against it: **ADR 0031** settles 2D/3D coexistence and makes the camera an entity.
+
+**M1 closed — all five exit gates tested, four met and one refuted.**
 Reflection, the scene format, the agent's read layer, the agent protocol and a working `amadeo` CLI,
 the whole asset layer, the sprite batcher, textured sprites on the GPU, invariant I8, snapshots,
 prefabs, and **`games/vault` — a complete small 2D game** have all landed.
@@ -9,7 +11,9 @@ prefabs, and **`games/vault` — a complete small 2D game** have all landed.
 **Gate 4 was tested and found false** — `describe` is a schema, not a manual — which is a result
 rather than an omission. **ADR 0030 settles what the protocol is for** and fixes the three parts of
 that finding that were genuine holes; the API half stays in `docs/07` by invariant I5. **ADR 0029
-closes Q7** with prefabs. Q3, Q4, Q7, Q13, Q14, Q16 and Q17 are all closed; nothing is blocked.
+closes Q7** with prefabs. Q3, Q4, Q7, Q10, Q13, Q14, Q16 and Q17 are all closed; nothing is blocked.
+Two new ones are open: **Q19** (`amadeo import` cannot import a prefab) and **Q21** (the scene format
+cannot express a nested struct, a payload enum, or `None`).
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
 
 > ### ⚠️ Two working rules that changed in session 7 — read before doing anything
@@ -121,16 +125,44 @@ of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**M2, and its first item is an ADR on 2D/3D coexistence *before* any code** — `docs/04-subsystems.md`
-§4 has the three options. Nothing is blocked, and every question M1 raised has been answered.
+**Migrate the camera from a resource to a component — ADR 0031**, which is decided and written but
+not yet built. M2's first item was an ADR on 2D/3D coexistence *before* any code; that is done, and
+this is the code it calls for.
 
-### M2
+The work, in order:
 
-The next milestone is 3D. Two things to carry in:
+1. A `Camera` component in `amadeo-render`, replacing the `Camera2d` resource. Flat fields — see the
+   Q21 caveat below.
+2. `FrameData` stops being one view. `RenderBackend::render` takes a list, and the wgpu and null
+   backends both follow.
+3. `render.describe` picks a camera — lowest `order` drawing to the window by default, with an
+   optional one to ask about instead.
+4. quad-demo and the Vault each author a camera in their scene files, which is the point: the view
+   becomes part of the level rather than something code sets up (I1).
+5. **Both golden replays regenerate.** Resources are in the state hash, so removing `Camera2d` moves
+   it. Do this under the `docs/07` procedure — isolate the cause, confirm the committed hashes return
+   when the change is reverted, and only then regenerate. This is the change that file warns hardest
+   about.
 
+**One thing found while designing it, and it is worth knowing before writing components:** a scene
+file cannot express a nested struct, an enum with a payload, or `Option::None` — a payload enum emits
+a Rust `Debug` form that nothing parses, and `None` fails to parse outright. Never hit before, because
+every component so far is scalars and flat lists. It is why ADR 0031's camera is flat when
+`Projection::Orthographic { height }` is the obvious design. Filed as **Q21 at P1**, and it should be
+settled before M2's material model, where the same problem arrives at a type nobody would want to
+flatten.
+
+### The rest of M2
+
+- **The render graph proper**, running once per camera, which is the shape ADR 0031 settles. Then 3D:
+  meshes, PBR, lights, shadows, culling, glTF.
+- **Q21 — the scene format's missing shapes** (nested struct, payload enum, `None`). At P1 because
+  M2's material model runs into it, and deciding a material against a format that cannot hold it
+  would produce a second flattened type.
 - **`render.capture`** — headless render-target readback. The GPU path still has **no automated
   coverage at all**: `render.describe` checks what *should* be drawn, and nothing checks what the
-  wgpu backend actually put on screen. ADR 0021 already names capture as the agent's eyes.
+  wgpu backend actually put on screen. ADR 0021 already names capture as the agent's eyes. It becomes
+  much more natural once a camera can target a texture, which ADR 0031 gives it.
 - **Q19 — `amadeo import` cannot import a prefab.** Small, and a real hole in the tooling: `import`
   launches the game to find the asset directory, and the game will not start while a prefab it needs
   has no sidecar, so the tool that fixes the problem cannot run. The likely fix is that `import`
@@ -1359,3 +1391,47 @@ on purpose — several record a diagnosis that took a while to reach.
 
   827 tests, all four verification commands green, both replays matching all eight checkpoints
   unchanged.
+
+  **Then M2 opened with its ADR, which the roadmap requires before any code — ADR 0031.** The
+  interesting part is that the question was pointed at the wrong thing, and it was the *second* time.
+  `docs/04` §4 calls the pipeline shape "the real decision of this subsystem"; ADR 0018 had already
+  corrected that framing once, noting that Q3 emphasised the pipeline while the expensive decisions
+  were data. ADR 0023 then recorded outright that the pipeline is cheap, because `RenderBackend`
+  isolates it so completely that no file and no hash can observe it.
+
+  So the pipeline was a consequence rather than a choice: **two passes in one render graph**, neither
+  built on the other. Option (a), one unified orthographic pipeline, was not actually available —
+  ADR 0023 had already rejected depth-buffering sprites because transparent sprites erase what is
+  behind them, so "one pipeline" would have meant a 3D pipeline with depth switched off for sprites.
+  Two pipelines with the honesty removed. Option (c), compositing 2D over 3D, forecloses a 3D object
+  drawn in *front* of a 2D layer, and is the arrangement Godot needs a plane-mesh-and-SubViewport
+  workaround to escape. Bevy runs separate `Core2d` and `Core3d` subgraphs in one graph, which is
+  where this lands too.
+
+  **The expensive decision hiding inside it was the camera model, and nothing had framed it as a
+  question.** A camera is reflected data — it lives in the schema, it can live in a scene file, and
+  today it lives in the state hash. `Camera2d` is a *resource*, so a world can hold exactly one,
+  forever. Justin chose to make it an entity now rather than later, taking the full version with
+  render targets and viewport rectangles.
+
+  Three things forced it. **M4's editor needs a camera the game does not own**, and invariant I1 puts
+  it in the world rather than in private editor state — so deferring would have made M4 a migration
+  moving the scene format, the schema, the state hash and a new GUI at once. **Render-to-texture** is
+  a target setting and impossible with one camera; Backrooms and Schedule I want security monitors,
+  RimWorld and Zomboid want minimaps. And **Project Zomboid is isometric**, which is neither cleanly
+  2D nor cleanly 3D — an orthographic projection feeding sprite drawing with Y-sorting, which only
+  works if the projection belongs to the camera rather than to a pipeline. Bevy migrated to
+  camera-driven rendering the same way, which is evidence both that the shape is right and that
+  retrofitting it is expensive.
+
+  **And designing the component found a real hole in the scene format.** Probing it directly rather
+  than assuming: a nested struct emits `{height: 8}`, a Rust `Debug` form nothing parses; an enum with
+  a payload does the same; and `Option::None` writes a bare field name that the parser refuses
+  outright. Never hit before, because every component in the engine is scalars and flat lists. It is
+  why ADR 0031's camera is flat — a fieldless `projection` enum beside plain `height`, `fov`, `near`
+  and `far` — when `Projection::Orthographic { height }` is the obvious design and the better type.
+  Accepted rather than solved, and filed as **Q21 at P1**, because fixing it is a change to ADR 0014's
+  grammar and deserves its own decision. It has to be settled before M2's material model, where the
+  same problem arrives at a type nobody would want to flatten.
+
+  **No code yet.** The ADR is committed on its own, which is what "decided before code" means.

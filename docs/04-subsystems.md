@@ -100,21 +100,45 @@ hardcoded pipeline — this is what makes unified 2D/3D and later additions trac
 ✅ Rendering reads simulation state, never writes it.
 ✅ Must be fully disableable (null backend) for headless runs.
 
-⚠️ **How 2D and 3D coexist.** The real decision of this subsystem. Options: (a) 2D as orthographic 3D
-with sprites as textured quads — one pipeline, elegant, but 2D-specific optimizations get awkward;
-(b) two separate pipelines sharing the render graph and device — more code, better per-mode quality;
-(c) 2D as a compositing layer over the 3D pass. Leaning **(a) with a specialized sprite batcher**, but
-this deserves an ADR before M1 because it's expensive to reverse.
+✅ **How 2D and 3D coexist — ADR 0031.** Option (b): two passes sharing one render graph, one device,
+one frame, neither built on the other. The lean toward (a) did not survive contact with ADR 0023 —
+depth-buffering sprites was already rejected because transparent sprites erase what is behind them,
+so "one pipeline" would have meant a 3D pipeline with depth switched off for sprites, which is two
+pipelines with the honesty removed. (c) was rejected for foreclosing a 3D object drawn in front of a
+2D layer, which is the arrangement Godot needs a plane-mesh workaround to escape.
+
+**And this section had the emphasis wrong, twice.** Calling the pipeline "the real decision" is what
+ADR 0018 corrected once and ADR 0031 corrected again: `RenderBackend` isolates the pipeline so
+completely that no file and no hash can observe it. The expensive decision was the **camera model** —
+see below.
 ⚠️ **Sorting and layering.** 2D needs painter's-order layers; 3D needs depth plus separate transparent
 sorting. A unified scheme that serves both without surprising either.
-⚠️ **Material and shader model.** Hand-written WGSL, or a material graph, or a preprocessor with
-includes and variants? Shader variant explosion is a classic engine tarpit. Decide the strategy before
-writing the second shader, not the twentieth.
-⚠️ **Camera model.** Multiple cameras, render targets, viewports, and how 2D UI/HUD cameras compose
-with world cameras.
-⚠️ **`render.describe` support.** Screen-space bounds of visible entities must be extractable, since
-that's a primary agent verification channel. Design it in — it needs data the culling pass already
-computes, so it's nearly free if planned and awkward if not.
+⚠️ **Material and shader model. This is the next expensive decision here**, and it is now the one to
+watch: hand-written WGSL, a material graph, or a preprocessor with includes and variants? Shader
+variant explosion is a classic engine tarpit. Decide the strategy before writing the second shader
+*family*, not the twentieth — there are two shaders today (`quad.wgsl`, `sprite.wgsl`) and PBR is
+what makes it a family.
+
+**Settle Q21 first.** A material is reflected data in a scene file, and the natural shape
+(`Material { base_colour, metallic, texture }` nested under a mesh) is exactly what the scene format
+cannot currently express. Deciding the material model against a format that cannot hold it would
+produce another flattened type like ADR 0031's camera.
+✅ **Camera model — ADR 0031, and this was the expensive decision of the subsystem.** A camera is an
+**entity** carrying a `Camera` beside a `Transform`, not a resource. A world holds any number, each
+with a projection, a target (the window or a texture), a viewport rectangle, and an order. Position
+and orientation come from `Transform`, so parenting a camera to a character *is* a follow camera,
+with no special case. Decided now rather than when meshes land because M4's editor needs a camera the
+game does not own, and invariant I1 puts it in the world — deferring would have made M4 a migration
+across the scene format, the schema, the state hash, and a new GUI at once.
+
+The camera's fields are **flat** — a fieldless `projection` enum beside plain `height`, `fov`, `near`
+and `far` — because the scene format cannot express an enum with a payload. That is a worse type than
+it should be and it is recorded as **Q21** rather than hidden.
+✅ **`render.describe` support.** Built, and it earned its place immediately — it caught a layout bug
+in the Vault (a score readout overlapping a wall) that no simulation test could have seen. Screen-space
+bounds come from the world rather than from the last frame, so it costs nothing when nobody asks and
+works with no GPU. ADR 0031 makes it answer for **one camera at a time**, since "what is on screen"
+stops having a single answer once a world can hold several.
 ✅ **Sprite batching throughput** — measured, ADR 0023. 20,000 fully interleaved sprites collapse to
 32 batches in 2.58 ms (15.5% of a 60 Hz frame); 50,000 tiles on one sheet are one draw call. The
 measurement is re-runnable: `cargo test -p amadeo-render --test sprite_throughput -- --nocapture`.

@@ -7,22 +7,22 @@ Priority: **P0** blocks work now · **P1** needed for the current milestone · *
 
 ---
 
-## Q3 · P2 · Which render pipeline shape?
+## ~~Q3~~ · **Resolved — ADR 0018, 0023, 0031.** Two passes in one graph, and the camera is an entity
 
-**Two thirds of this question are resolved — see `adr/0018`.** The original Q3 bundled three
-decisions with very different reversal costs. The two expensive ones, both *data*, are settled: one
-3D `Transform` with 2D as its degenerate case, and an explicit `SortOrder` that dominates depth.
+Split into three across three sessions, which is what made it tractable. **ADR 0018** settled the two
+expensive parts, both *data*: one 3D `Transform` with 2D as its degenerate case, and an explicit
+`SortOrder` dominating depth. **ADR 0023** settled the batching rule against a measurement. **ADR
+0031** closed the last third in session 8 — the sprite pass and the mesh pass are separate pipelines
+sharing one render graph, neither built on the other.
 
-What remains is the pipeline itself: a unified orthographic pipeline with a specialised sprite
-batcher, two pipelines sharing the render graph, or 2D composited over 3D (`04-subsystems.md` §4).
+**The last third turned out not to be the expensive part, for the second time.** Q3's framing
+emphasised the pipeline; ADR 0018 pointed out the expensive decisions were the data around it, and
+the same held again — the pipeline was a consequence, and the genuinely hard-to-reverse decision
+hiding inside it was **the camera model**, which nothing had framed as a question. That is the half
+Justin decided: a camera is an entity, not a resource.
 
-**Dropped to P2**, which is the point of having split it. `RenderBackend` isolates this completely —
-no scene file, no component schema, and no state hash can observe which was chosen — so it is the
-cheapest of the three to change and does not block `GlobalTransform` propagation or the sprite
-batcher's *interface*.
-
-Decide it **while writing the sprite batcher**, against a real throughput target (§4 suggests 20k
-sprites at 60 fps). A spike of three prototypes would measure less than the real thing does.
+Worth remembering as a pattern. "Which pipeline" is almost always the cheap question, because
+`RenderBackend` isolates it and no file or hash can observe it. Ask what *data* the choice implies.
 
 ---
 
@@ -336,22 +336,57 @@ introspection hurts most.
 
 ---
 
-## Q10 · **P0** · One dimension per project, or both simultaneously?
+## ~~Q10~~ · **Resolved — ADR 0031.** Both simultaneously, and the camera is what selects
 
-**Raised to P0 in session 8: this is M2's first item, and the roadmap says decide it *before* any
-code.** Nothing else in M2 can start without it.
+Asked whether a project picks 2D or 3D at build time or can freely mix them. **Both, always** — there
+is no build-time switch and there never was a good case for one, because the thing that decides what
+gets drawn is a *camera*, and a camera is now an entity. A world can hold an orthographic camera
+drawing sprites and a perspective camera drawing meshes at the same time, each with its own target.
 
-Whether a project selects 2D or 3D at build time (simpler, smaller binaries, cleaner physics choice)
-or can freely mix both (2D UI over a 3D world is common; 2D minigames inside 3D games exist).
+The question anticipated "2D UI over a 3D world" as the hard case and guessed it might be an
+`amadeo-ui` concern rather than a renderer one. That guess was right and ADR 0018 had already made it
+moot: UI over the world is a higher `SortOrder`, not a separate hierarchy or a separate projection.
 
-Note that 2D UI over 3D is a `amadeo-ui` concern, not necessarily a 2D-renderer concern — so these may
-be less coupled than they look.
+The case it did *not* anticipate is the one that mattered: **isometric**. Project Zomboid is neither
+2D nor 3D — an orthographic projection feeding sprite drawing with Y-sorting. A build-time dimension
+switch would have had no answer for it. A camera does: it is a projection setting.
 
-Two things that have changed since this was filed and bear on it: **trap 9 is now a target
-requirement rather than a principle** — Terraria, RimWorld and Project Zomboid mean 2D and isometric
-are shipped genres, not a hypothetical — and **ADR 0018 already settled the data half**, with one 3D
-`Transform` whose 2D form is degenerate and an explicit `SortOrder` that dominates depth. So this
-question is now about the *pipeline*, which `RenderBackend` isolates, rather than about the format.
+---
+
+## Q21 · **P1** · A scene file cannot express a nested struct, a payload enum, or `None`
+
+**Found in session 8** by probing the format directly, while designing the camera component. Never
+hit before because no component has ever had such a field — every one so far is scalars, flat lists,
+and marker types.
+
+What a component field can be today:
+
+| Shape | |
+|---|---|
+| scalar (`f32`, `bool`, `string`, ints) | ✅ |
+| flat list (`[f32; 3]`, `Vec<f32>`) | ✅ |
+| fieldless enum variant (`phase Playing`) | ✅ |
+| **nested struct** | ❌ emits `{height: 8}`, a Rust `Debug` form nothing parses |
+| **enum with a payload** | ❌ emits `Ortho({height: 8})`, same problem |
+| **`Option::None`** | ❌ writes a bare field name, and the parser refuses it |
+| map | ❌ known, recorded by ADR 0027 |
+
+The writer does not *lie* about it — `inline_value` returns `None` and the value falls through to a
+debug rendering, which fails loudly at parse time rather than silently changing shape. That was a
+deliberate choice in ADR 0014's implementation and it is why this is a gap rather than a corruption
+bug. But it means a whole class of natural component design is unavailable.
+
+**It shaped ADR 0031's camera**, which is flat — a fieldless `Projection` enum beside plain `height`,
+`fov`, `near` and `far` fields — where the obvious design is `Projection::Orthographic { height }`.
+That is a worse type: it has representable states that mean nothing, which is exactly what the
+Vault's `Phase` comment argues against.
+
+**It will bite again at materials** (M2), where `Material { base_colour, metallic, texture }` nested
+under a mesh is the natural shape, and at anything with an optional field.
+
+The likely answer is an indented block under a field name, which the *grammar* has room for — a field
+with no inline value already introduces a block, it just only accepts `- ` list items today. Wants
+its own ADR against ADR 0014, and wants deciding before M2's material model rather than after.
 
 ---
 

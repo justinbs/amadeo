@@ -163,8 +163,12 @@ without eyes, the design is wrong and we find out before 3D and the editor pile 
 ## M2 — The Third Dimension
 
 **Build**
-- ADR on 2D/3D coexistence (see `04-subsystems.md` §4) — decided *before* code.
-- Render graph proper: declared passes, resource dependencies, transient targets.
+- ✅ **ADR 0031 on 2D/3D coexistence** — decided *before* code, as this line required. Two passes in
+  one render graph, neither built on the other; **and the camera becomes an entity rather than a
+  resource**, which turned out to be the expensive half and the one the framing had missed. Closes
+  Q3's last third and Q10.
+- Render graph proper: declared passes, resource dependencies, transient targets. Runs **once per
+  camera**, per ADR 0031.
 - 3D: mesh rendering, PBR materials, directional + point lights, shadow maps, frustum culling.
 - **Configurable post-process stack and atmosphere** — the eight target games span stylised-realistic
   outdoors, low-poly, dark atmospheric interiors, voxel, and pixel-art sprite work, so the renderer
