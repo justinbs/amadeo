@@ -248,12 +248,16 @@ visible in the file (which ruled TOML out), and owning the error messages, which
 functional requirement. **If ever revisited, the fallback is TOML, not KDL.**
 
 ✅ **Parser and canonical writer exist** with line-numbered errors and a byte-stable round-trip test.
-⚠️ **Layer 2 is not built:** binding parsed values to real component types via the reflection
-registry, narrowing numbers to declared widths, and instantiating a document into a `World`.
-⚠️ **Prefab override semantics.** The hardest problem in this subsystem, and where Unity is genuinely
-bad. An instance overriding some fields of a prefab, prefabs nesting inside prefabs, changes to a
-prefab propagating to instances that haven't overridden that field. Design carefully; leaning toward
-explicit, visible-in-text overrides with no hidden state.
+✅ **Layer 2 is built:** `ComponentRegistry` binds parsed values to real component types, narrows
+numbers to declared widths, and `instantiate` turns a document into entities atomically.
+✅ **Prefab override semantics — ADR 0029.** This was called the hardest problem in the subsystem and
+the answer turned out to be a *restriction* rather than a mechanism. An override is a top-level patch
+on the instance **root**, and there is no syntax that can name anything inside a prefab. Unity's
+overrides evaporate under nesting because they name something inside and then have to track it across
+every edit of that prefab; Godot's editable children can write back to the source scene. Both
+failures need overrides to reach inward, so here they cannot. Nesting is allowed and cycles are
+refused; a dangling override refuses to load rather than reverting quietly. The price is that you
+cannot nudge one child of an instance — you make a variant prefab, which is more files.
 ⚠️ **Merge friendliness.** Two authors editing one scene. Line-oriented, stable-ordered, one-property-
 per-line formatting makes git merges tractable. This is a formatting constraint driven by
 collaboration, and it's why "whatever the serializer emits" is not acceptable.

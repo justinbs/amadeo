@@ -6,7 +6,8 @@ gate 4 was tested and **found false**, which is a result rather than an omission
 the scene format, the agent's read layer, the agent protocol and a working `amadeo` CLI, the whole
 asset layer, the sprite batcher, textured sprites on the GPU, invariant I8, snapshots, and
 **`games/vault` — a complete small 2D game** have all landed. **Gate 4 is tested and its claim does not hold** —
-`docs/09-gate-4-describe-is-not-enough.md`. Q3, Q4, Q13, Q14, Q16 and Q17 are all closed; nothing is blocked.
+`docs/09-gate-4-describe-is-not-enough.md`. **Prefabs are built** (ADR 0029, closing Q7). Q3, Q4, Q7,
+Q13, Q14, Q16 and Q17 are all closed; nothing is blocked.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
 
 > ### ⚠️ Two working rules that changed in session 7 — read before doing anything
@@ -26,17 +27,18 @@ resolving Q1. Session 5 built most of M1's foundations. Session 6 resolved six o
 built the whole agent transport and CLI. Session 7 finished `amadeo-assets`, audited the earlier
 work, took the target list from three games to eight, built the sprite batcher, and then chased its
 cost down through two layers of the ECS. **Session 8 put sprites on the screen** — a decoder crate, a
-texture cache, and the wgpu texture path — **and then closed invariant I8**, making `Reflect` a
-compiler-enforced bound on resources and events and shipping `world.resources`. ADRs 0022–0027.
+texture cache, and the wgpu texture path — **closed invariant I8**, making `Reflect` a
+compiler-enforced bound on resources and events and shipping `world.resources`, **shipped snapshots**,
+**built `games/vault` and closed M1**, and then **settled Q7 with prefabs**. ADRs 0022–0029.
 
 **Fifteen crates plus two games**, all tested: `amadeo-derive`, `amadeo-image`, `amadeo-core`,
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
 `games/vault`.
-**798 tests passing**; fmt, clippy
+**817 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
-Ten things work end to end today:
+Fifteen things work end to end today:
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -83,19 +85,24 @@ Ten things work end to end today:
   **It was built and debugged without ever being looked at**, which is the whole point: 22 tests
   drive it headlessly, and `render.describe` caught a layout bug — the score readout overlapping the
   top wall — that no simulation test could have seen.
+- **Repeated content is written once.** `entity s1 "Sigil" from sigil_pickup` plus a two-line
+  `override Transform` is a whole sigil (ADR 0029). The prefab is an asset like any other, so
+  `amadeo check` validates the reference and offers "did you mean" on a typo. A prefab may instance
+  another; a cycle is reported with its chain rather than expanded forever.
+- **A prefab that changed cannot silently lose an override.** If an override names a component the
+  prefab no longer has, loading refuses and says which entity, which component, which prefab. That is
+  the deliberate opposite of Unity, where the value quietly reverts and you find out months later.
 
 **M0 exit gate: 4 of 4, nothing carried.** Gate item 2's "separate process" half — open since M0
 because it needed `amadeo-cli` — closed in session 6: `amadeo replay` plays
 `games/quad-demo/replays/wander.replay` through the real game binary in a fresh process, four
 checkpoints asserted, and CI runs it in the determinism job.
 
-**M1 exit gate: 1 of 5, with 2 and 4 now reachable.** Gate 3 (scene round-trip byte-identical) is
-done. Gates 2 and 4 describe verifying and authoring *through* the CLI and RPC, which now exist —
-gate 4 in particular ("`describe` output is sufficient to write a new component without reading
-engine source") is testable today by actually doing it. **Gate 1 (a complete small 2D game) is no
-longer blocked on the engine** — as of session 8 a textured sprite reaches the screen, which was the
-last missing capability. What it needs now is a game, not a subsystem. Gate 5 (golden replays still
-pass) holds.
+**M1 exit gate: all five tested.** Gate 1 (a complete small 2D game) is `games/vault`. Gate 2
+(verify it through the CLI and RPC without looking) is `tests/verified_without_eyes.rs`, and it found
+a real layout bug. Gate 3 (scene round-trip byte-identical) has held since session 5. Gate 5 (golden
+replays still pass) holds, including through the prefab conversion. **Gate 4 was tested and found
+false**, which is a result rather than an omission — see below.
 
 **No blockers of any kind.** Q14, Q13, Q4, and two thirds of Q3 all closed in session 6 — every one
 of them except Q4 built the same session it was decided.
@@ -128,7 +135,10 @@ The next milestone is 3D, and its first item is an ADR on 2D/3D coexistence *bef
 - **`render.capture`** — headless render-target readback. The GPU path still has **no automated
   coverage at all**: `render.describe` checks what *should* be drawn, and nothing checks what the
   wgpu backend actually put on screen. ADR 0021 already names capture as the agent's eyes.
-- **Q7 — prefab semantics**, which the Vault ran straight into. See the findings below.
+- **Q19 — `amadeo import` cannot import a prefab.** Small, and a real hole in the tooling: `import`
+  launches the game to find the asset directory, and the game will not start while a prefab it needs
+  has no sidecar, so the tool that fixes the problem cannot run. The likely fix is that `import`
+  should not need the game at all.
 
 ### Gate 4's result, in one paragraph
 
@@ -145,13 +155,14 @@ the gaps are ones it *noticed* rather than ones it was stopped by.
 The roadmap's bet was that a game would find what the engine is awkward at faster than reasoning
 would. It did, and these are the findings rather than a list of chores:
 
-- **The scene format is impractical for repeated content, and prefabs are what fix it.** A wall tile
-  costs ten lines of scene text; the Vault's arena has forty-four of them, which is four hundred
-  lines of near-identical text to author and to re-read on every diff. `entity w1 "Wall" from
-  wall_tile` would be one line — and prefab instancing is **blocked on Q7**, where ADR 0014 and
-  ADR 0020 disagree about whether `from` holds a path or an asset id. So the Vault's walls come from
-  a `MAP` constant in code while everything designed is in the scene file. **This is the strongest
-  argument yet for settling Q7**, and it arrived from use rather than from theory.
+- **The scene format is impractical for repeated content, and prefabs are what fix it.** A sigil cost
+  fourteen lines of scene text and there are six of them. **This is what got Q7 settled** — ADR 0029,
+  same session, decided from use rather than from theory. A sigil is three lines now and the scene
+  went from 223 lines to 142 with `collect-three.replay` matching all four checkpoints unchanged.
+  **But prefabs did not fix the walls, and should not.** Forty-four tiles as instances is 176 lines
+  against a seven-line picture of the level, so they stay in `MAP`. Prefabs fix repeated *designed*
+  content; a grid wants a tilemap (M7). "Prefabs will fix the walls" was the obvious expectation and
+  it was wrong — which is itself the finding.
 - **No game had ever loaded a scene file.** `markers.scene` had existed since session 5 and nothing
   read it. The reason was a papercut with teeth: `instantiate` needs the world mutably and the
   registry shared, `App` owns both, and the borrow checker refuses the obvious spelling — so every
@@ -189,9 +200,9 @@ what does not; the short version is that nothing above `TextureCache` is affecte
 
 ### Also worth knowing
 
-Two questions were raised this session that block nothing today but should not be discovered late:
-**Q15** (modding versus ADR 0011, raised by the target list growing) and the **ADR 0014 / ADR 0020
-disagreement about `from`** (filed under Q7).
+**Q15** — modding versus ADR 0011, raised by the target list growing — blocks nothing today but
+should not be discovered late. The other question raised alongside it, the **ADR 0014 / ADR 0020
+disagreement about `from`**, is closed: ADR 0029 says an asset id and supersedes 0014's grammar.
 
 ### `amadeo-assets` and the sprite batcher — done, session 7
 
@@ -230,20 +241,21 @@ needs no shared code, which matters because `amadeo-cli` deliberately does not d
 
 Worth knowing for next time: "no open decisions left" is a claim that should be checked, not trusted.
 
-**Three things are undecided rather than unbuilt**, all in `docs/06-open-questions.md`:
+**Two things are undecided rather than unbuilt** — Q12 and Q15. All four entries are in
+`docs/06-open-questions.md`; the struck-through two are kept here because their reasoning is still
+worth reading:
 
 - ~~**Q3 (the last third) — which render pipeline shape.**~~ **Resolved in session 7 — ADR 0023.**
   Sprites batch by `(sort order, texture)`. Decided against measurements, as the question demanded:
   20,000 interleaved sprites collapse to exactly 32 batches, and a whole tilesheet is one draw call.
   The measurement also found that the pipeline shape is *not* currently the limiting factor — Q16 is
   — which is the opposite of what the question expected.
-- **Q7 — prefab override semantics.** The format records overrides visibly (the I1 requirement), but
-  what they *mean* when a prefab changes under an instance is undesigned. Study Unity's and Godot's
-  failure modes first. **Now carries a smaller question that has to be answered first**, found in
-  session 7: ADR 0014 says `from` holds a *path* (`from prefabs/door_metal`, pinned by a test) and
-  ADR 0020 says it holds an *asset id* (`from wall_concrete`). They are not reconcilable as written —
-  a path is not a usable id, because `/` is refused. Nothing is broken today, since prefab
-  instancing is refused outright; decide before building it, and supersede whichever ADR loses.
+- ~~**Q7 — prefab override semantics.**~~ **Resolved in session 8 — ADR 0029**, and built the same
+  session. `from` holds an asset id (superseding ADR 0014's grammar); an override is a top-level
+  patch on the instance **root** and can reach nothing inside it, which is what makes nesting
+  structurally safe rather than carefully handled; a dangling override refuses to load. The Unity and
+  Godot failure modes the question told us to study are what decided the middle one — both come from
+  overrides reaching *inward*, so here they cannot.
 - **Q12 — `Service: Send + Sync`.** Not moot: a `kira` audio manager, an asset loader holding a file
   watcher, and a `wgpu` surface all hit it in M3. Decide when the first real offender lands.
 - **Q15 — modding, and whether ADR 0011 still holds.** New in session 7, raised by the target list
@@ -254,8 +266,9 @@ Worth knowing for next time: "no open decisions left" is a claim that should be 
   **Decide before the module system hardens in M2–M3**, since "what can a mod do" is the same
   question as "what is the module boundary". Nothing today depends on it.
 
-Prefab *instancing* is unbuilt rather than undecided — it needs `amadeo-assets` to resolve
-an id, which is why `instantiate` refuses a `from` line with an error saying exactly that.
+Prefab instancing, which this paragraph used to describe as unbuilt-rather-than-undecided, is now
+both decided and built: `App::prefab_library` resolves each `from` id through the asset catalogue and
+hands the parsed documents to `instantiate_with`.
 
 ## Q1 is resolved — ADR 0011
 
@@ -1226,8 +1239,65 @@ on purpose — several record a diagnosis that took a while to reach.
 
   **What the game found about the engine is written up above**, and the headline is that **the scene
   format is impractical for repeated content**: forty-four wall tiles would be four hundred lines of
-  near-identical text. That is what prefabs are for, and prefabs are blocked on Q7. The strongest
-  argument yet for settling it, and it came from use rather than from theory.
+  near-identical text. That is what prefabs are for, and prefabs were blocked on Q7 — which is what
+  got Q7 settled later the same session. The argument arrived from use rather than from theory.
 
   795 tests, all four verification commands green, and a new replay fixture asserted by CI in a
   separate process.
+
+  **Then exit gate 4, tested — and its claim is false.** The gate says `describe` output should be
+  sufficient to write a new component and system without reading engine source. Tested by doing it:
+  `Trap` and `spring_traps`, shipped in the Vault. `describe` turned out to be **sufficient to author
+  content and silent about the API** — every field carries type, unit, range and meaning, which is
+  what made `vault.scene` writable, and nothing in it says how to declare a component, register one,
+  write a system, or query a world. **Resources are absent from it entirely**, so `Run` — the very
+  resource `spring_traps` exists to change — appears nowhere. Written up in
+  `docs/09-gate-4-describe-is-not-enough.md`, with an honest caveat about the confound: the
+  experiment was run by an agent that had already read the engine source, so the gaps are ones it
+  *noticed*, not ones it was stopped by. Three options for closing it are in that document and the
+  choice is Justin's, because it decides whether the protocol is a schema or a manual.
+
+  **Then Q7 — prefabs — ADR 0029**, chosen over the roadmap's next item because the Vault had just
+  run straight into it and nothing would ever be better informed. Both halves settled:
+
+  - **`from` holds an asset id**, superseding ADR 0014's path grammar. The whole asset toolchain then
+    applies to a prefab for nothing — `amadeo check` validates the reference and offers "did you
+    mean", ADR 0021's barrier makes it resident before the first tick, `amadeo assets` lists it.
+  - **An override is a top-level patch on the instance root and reaches nothing inside it.** This is
+    the half the research decided. Unity's overrides evaporate under nesting because an override
+    names something *inside* a prefab and then has to track it across every future edit of that
+    prefab; Godot's editable children can write back to the source scene and to every other instance.
+    Both failures come from overrides reaching inward. Here there is no syntax that can, so there is
+    nothing to lose track of — nesting is **structurally** safe rather than carefully handled, and
+    `nesting_is_safe_because_overrides_cannot_reach_inside` is a passing test rather than a hope.
+  - **A dangling override refuses to load**, naming the entity, the component and the prefab. The
+    direct counter to Unity's worst behaviour: the failure arrives when the prefab changed, not
+    months later as a value that mysteriously reverted. `override Foo` on a component the prefab
+    lacks is an error, and a bare `Foo` on one it *has* is an error too, because the author meant
+    `override` and silently picking one would hide it.
+
+  **Proof it is behaviour-preserving:** the Vault's six sigils and two traps became prefab instances,
+  the scene went from **223 lines to 142**, each sigil from fourteen lines to three — and
+  `collect-three.replay` matched **all four checkpoints unchanged**. The same world, authored
+  differently.
+
+  Two costs, both recorded rather than swept up. A prefab shares one id namespace with every other
+  asset, and the Vault hit that immediately: `sigil.scene` collided with the `sigil` texture, fixed
+  by renaming to `sigil_pickup`. And **`amadeo import` cannot import a prefab** — a bootstrapping
+  deadlock, since `import` launches the game and the game refuses to start while a prefab it needs
+  has no sidecar. The Vault's two sidecars were written by hand; the deadlock is filed as **Q19**.
+
+  **What prefabs deliberately do not fix: the wall grid.** As instances the forty-four tiles would be
+  176 lines of scene text against a seven-line picture of the level, so they stay in `MAP`. Prefabs
+  fix repeated *designed* content; a grid wants a tilemap, which is `mod-tilemap` in M7. Worth
+  stating because "prefabs will fix the walls" was the obvious expectation and it is wrong.
+
+  **And a bonus find while writing the prefabs up:** `amadeo fmt --check` had never been pointed at
+  a scene file, and **all four in the repo were non-canonical** — components out of sorted order,
+  written by hand and never run through the formatter. Invariant I2 applies to hand-written scene
+  files exactly as `cargo fmt` applies to code and nothing was enforcing it. Reformatted, and CI now
+  checks all four; `collect-three.replay` still matched all four checkpoints afterwards, which is
+  also a small proof that component order within an entity does not reach the state hash.
+
+  817 tests, all four verification commands green, `amadeo check` passing on the scene and on both
+  prefabs.

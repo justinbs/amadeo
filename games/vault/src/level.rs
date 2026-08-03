@@ -10,17 +10,18 @@
 //!
 //! A wall tile in the scene format costs ten lines: an entity line, a `Wall` marker, four `Sprite`
 //! fields, three `Transform` fields. This arena has **forty-four** of them, which is four hundred
-//! lines of near-identical text to author and to re-read on every diff. That is what **prefabs**
-//! exist to fix — `entity w1 "Wall" from wall_tile` would be one line — and prefab instancing is
-//! **blocked on Q7**, where ADR 0014 and ADR 0020 disagree about whether `from` holds a path or an
-//! asset id.
+//! lines of near-identical text to author and to re-read on every diff. Hitting that is what got
+//! **prefabs** built (ADR 0029), and the sigils and traps are prefab instances now — three lines
+//! each instead of fourteen.
 //!
-//! So the honest position: the scene format is fine for designed content and impractical for
-//! repeated content, and the thing that closes the gap is already identified and already blocked.
-//! Until then the tile grid comes from [`MAP`] below, which is at least still a picture of the
-//! level that a human can edit.
+//! **The walls still are not, and that is the right answer.** A prefab instance is still four lines
+//! per tile — an entity line and a three-value `translation` override — so forty-four of them is 176
+//! lines of scene text against the seven-line picture of the level in [`MAP`] below. Prefabs fix
+//! repeated **designed** content; a *grid* wants a tilemap, which is `mod-tilemap` in M7. "Prefabs
+//! will fix the walls" was the obvious expectation and it turned out to be wrong.
 //!
-//! Written up in `STATUS.md` as one of the things building a real game found.
+//! Written up in `STATUS.md` as one of the things building a real game found, and in ADR 0029 §
+//! *What this does not fix*.
 
 use crate::game::Wall;
 use amadeo_app::App;

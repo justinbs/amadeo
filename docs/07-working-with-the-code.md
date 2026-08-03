@@ -561,9 +561,9 @@ entity a1 "Corridor"           # entity <id> "<name>"
     PointLight
       color 1.0 0.85 0.6
 
-  entity a3 "Door" from prefabs/door_metal
-    override Door              # only valid on an entity with `from`
-      locked true
+  entity a3 "Door" from door_metal
+    override Door              # `from` names an ASSET ID, not a path (ADR 0029)
+      locked true              # only the fields you name change; the rest come from the prefab
 
   entity a4 "Wanderer"
     Enemy
@@ -587,10 +587,93 @@ destroy information.
 **Indentation is structure, so `amadeo fmt` cannot repair it.** A mis-indented line is ambiguous
 rather than untidy, and you get a line-numbered error instead of a guess. Tabs are rejected outright.
 
-**Two layers.** `amadeo-scene` today is layer 1 — syntax only, no schema. It will happily parse a
-scene naming a component that does not exist, which is what lets `amadeo fmt` work on a file whose
-module is not loaded. Checking that `Transform` exists and has a `translation` field is layer 2,
-against the reflection registry, and is not built yet.
+**Two layers.** `amadeo-scene` is two layers stacked, and they are kept apart on purpose. Layer 1 is
+syntax only: it will happily parse a scene naming a component that does not exist, which is what lets
+`amadeo fmt` work on a file whose module is not loaded. Layer 2 checks that `Transform` exists and
+has a `translation` field, against the reflection registry — that is `validate` (which is what
+`amadeo check` runs) and `instantiate`. A syntax error and a schema error are different things with
+different messages rather than one confusing pile.
+
+### Prefabs: write the thing once, place it many times
+
+New in session 8 (ADR 0029). A prefab is **a scene file with exactly one root entity**, used as a
+stamp. `games/vault/assets/prefabs/sigil_pickup.scene` is one:
+
+```text
+scene sigil_pickup
+version 1
+
+assets
+  sigil
+
+entity root "Sigil"
+  Sigil
+  Sprite
+    color 1.0 1.0 1.0 1.0
+    region 0.0 0.0 1.0 1.0
+    size 0.8 0.8
+    texture "sigil"
+  SortOrder
+    order 10
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+```
+
+and the level places six of them, three lines each:
+
+```text
+entity sigil_nw "Sigil NW" from sigil_pickup
+  override Transform
+    translation -4.0 2.0 0.0
+```
+
+**Three things to know, and the third is the one people trip on.**
+
+**`from` names an asset id, not a path.** `sigil_pickup`, never `assets/prefabs/sigil_pickup.scene`.
+So a prefab needs a `.ama-meta` sidecar like any other asset, `amadeo check` will offer "did you
+mean" on a typo, and moving the file breaks nothing. The `from` line is *itself* the declaration —
+you do not also list the prefab in the `assets` block.
+
+**An override is a patch, and only the top level merges.** `override Transform` with just
+`translation` keeps the prefab's `rotation` and `scale`. But a field whose value is itself a struct
+is replaced whole — recursive merging would make "how much did that line actually change?"
+unanswerable by looking at it.
+
+**An override can only touch the instance root.** There is deliberately no syntax for reaching a
+prefab's children. If you want one child different, you make a variant prefab. This looks like a
+missing feature and is the load-bearing decision in the whole design: Unity has that syntax, and
+Unity's overrides silently evaporate under nesting because an override that names something *inside*
+a prefab has to keep track of that thing across every future edit of the prefab. Here there is
+nothing to keep track of, so nesting prefabs inside prefabs is safe by construction rather than by
+care.
+
+Two shapes on an instance, and mixing them up is an error rather than a surprise:
+
+| You write | Meaning | If you get it wrong |
+|---|---|---|
+| `override Foo` | replace what the prefab put on the root | prefab has no `Foo` → refuses to load |
+| `Foo` | add something the prefab lacks | prefab already has `Foo` → refuses to load |
+
+That second row exists because if a bare `Foo` silently overrode, a typo'd `override` keyword would
+change behaviour with nothing to see in the diff.
+
+**A prefab edit can break every scene that uses it.** Delete a component from a prefab and every
+instance overriding it refuses to load, naming the entity, the component, and the prefab. That is
+bought deliberately: `amadeo check` lists them all before anything runs, which is much better than
+Unity's version where the override quietly reverts and you find out months later.
+
+**In code**, a scene with prefab instances needs a `PrefabLibrary` — a map from id to parsed
+document. `App::load_scene` builds one for you out of the resident asset bytes, so a game just calls
+that. `instantiate_with(&document, &registry, &prefabs, &mut world)` is the layer underneath, and it
+does not touch the filesystem, because resolving an id to a file is asset work and `amadeo-scene`
+sits below `amadeo-assets` (I6).
+
+**One sharp edge, unfixed:** `amadeo import` cannot give a prefab its sidecar, because `import`
+launches the game to find the asset directory and the game will not start while a prefab it needs has
+no sidecar. Write the first one by hand — copy `games/vault/assets/prefabs/sigil_pickup.scene.ama-meta`.
+Filed as Q19.
 
 ### Pattern: the game binary hosts the agent, and the CLI launches it
 

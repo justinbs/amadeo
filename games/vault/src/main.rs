@@ -30,8 +30,9 @@
 //! # Where the level lives
 //!
 //! `scenes/vault.scene` — the player, both wardens with their patrol routes, the six sigils, the
-//! floor, and the score readout. The wall grid is the one exception and `level.rs` explains why: it
-//! is forty-four near-identical tiles, which is what prefabs are for, and prefabs are blocked on Q7.
+//! floor, and the score readout. The sigils and traps are instances of the prefabs in
+//! `assets/prefabs/`. The wall grid is the one exception and `level.rs` explains why: forty-four
+//! tiles is a grid, and a grid wants a tilemap rather than forty-four prefab instances.
 
 use std::sync::Arc;
 use std::time::Instant;

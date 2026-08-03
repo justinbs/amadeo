@@ -36,21 +36,21 @@
 //! `amadeo fmt` usable on any file.
 //!
 //! **Schema** — binding those values to real component types, checking fields against the registry,
-//! and narrowing numbers to their declared widths. That is `amadeo check` and scene loading, and it
-//! is not built yet.
+//! and narrowing numbers to their declared widths. That is [`validate`] (`amadeo check`) and
+//! [`instantiate`] (scene loading).
 //!
 //! Keeping them apart means a syntax error and a schema error are different things with different
 //! messages, rather than one confusing pile.
 //!
 //! # What is deliberately not here
 //!
-//! **Prefab override *semantics*** (open question Q7) — nesting, propagation, and what happens when
-//! a prefab changes under an instance that overrode some of its fields. This crate records overrides
-//! faithfully and visibly, which is the requirement from `docs/04-subsystems.md` §9; deciding what
-//! they *mean* is a separate and harder design problem.
+//! **Resolving a prefab id to a file.** [`instantiate_with`] takes an already-parsed
+//! [`PrefabLibrary`]; finding the files and reading them is the caller's job, because that is asset
+//! work and `amadeo-assets` sits above this crate.
 //!
-//! **Instantiating into a `World`.** That needs to construct components by name from the registry,
-//! which is type-erased work that belongs above `amadeo-ecs`, not here.
+//! Override *semantics* used to be listed here as undecided. They are settled — ADR 0029: an
+//! override is a top-level patch on the instance **root**, and no syntax can name anything inside a
+//! prefab. That is what makes nesting safe rather than merely careful.
 
 mod document;
 mod instantiate;
@@ -59,7 +59,9 @@ mod validate;
 mod write;
 
 pub use document::{SceneDocument, SceneEntity};
-pub use instantiate::{InstantiateError, Instantiated, instantiate};
+pub use instantiate::{
+    InstantiateError, Instantiated, PrefabLibrary, instantiate, instantiate_with,
+};
 pub use parse::{INDENT, ParseError, ParseErrorKind, parse};
 pub use validate::{Diagnostic, validate};
 pub use write::to_text;

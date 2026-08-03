@@ -75,9 +75,10 @@ of a milestone.
   hand-written candidates in `spikes/q2-scene-format/`): parser with line-numbered errors, canonical
   byte-stable writer, and the round-trip test that satisfies exit gate 3. Layer 2 lands too —
   `ComponentRegistry` in `amadeo-ecs` builds components by name, and `instantiate` turns a document
-  into entities atomically. **Still to do:** materialising hierarchy as components (blocked on where
-  `Parent` lives — see below), prefab instancing (needs `amadeo-assets`), and prefab override
-  *semantics* (Q7).
+  into entities atomically. **Prefab instancing landed in session 8** — ADR 0029 settles both halves
+  of Q7: `from` holds an asset id, and an override is a top-level patch on the instance root that
+  cannot reach inside. **Still to do:** materialising hierarchy as components (blocked on where
+  `Parent` lives — see below).
 - ✅ **`amadeo-transform`** (ADR 0015) — `Transform` moved out of `amadeo-render`, plus `Parent`.
   Settles where hierarchy lives; scenes now load their tree as real components. `GlobalTransform`
   and propagation landed in session 6 once ADR 0018 settled what a transform is.

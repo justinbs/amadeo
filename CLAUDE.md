@@ -103,8 +103,10 @@ crates/
                      world hashes identically and then spawns different handles.
 🟡 amadeo-scene       the .scene text format (ADR 0014): parser, canonical writer, instantiate into
                      a World, and the `assets` block a scene declares its requirements in (ADR 0021).
-                     Prefab instancing still pending, and blocked on Q7's sub-question — ADR 0014 and
-                     ADR 0020 disagree about whether `from` holds a path or an asset id.
+                     Prefab instancing landed with ADR 0029: `from` holds an **asset id** (superseding
+                     ADR 0014's path grammar), and an override is a top-level *patch* that reaches the
+                     instance root and nothing inside it. That is what makes nesting structurally
+                     safe. A dangling override refuses to load; a cycle is reported with its chain.
 ✖ amadeo-script      NOT BUILT. ADR 0011: game logic is plain Rust in the game crate.
 🟡 amadeo-agent       the protocol: JSON reader and writer, JSON-RPC envelope, and the methods that
                      need only a world + registry (describe, world.query/entity/list/resources).

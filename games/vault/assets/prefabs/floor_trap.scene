@@ -1,0 +1,20 @@
+scene floor_trap
+version 1
+
+assets
+  trap
+
+entity root "Trap"
+  SortOrder
+    order 5
+  Sprite
+    color 1.0 1.0 1.0 1.0
+    region 0.0 0.0 1.0 1.0
+    size 1.0 1.0
+    texture "trap"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+  Trap
+    armed true

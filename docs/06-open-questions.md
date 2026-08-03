@@ -221,7 +221,30 @@ Decide before M4.
 
 ---
 
-## Q7 · P2 · Prefab override semantics
+## ~~Q7~~ · **Resolved — ADR 0029.** Prefabs are assets; an override reaches only the instance root
+
+**Resolved in session 8**, after `games/vault` ran straight into it — forty-four wall tiles would be
+four hundred lines of near-identical scene text.
+
+- **`from` holds an asset id**, superseding ADR 0014's path grammar. A prefab is an asset, so the
+  whole asset toolchain applies to it for nothing.
+- **An override is a patch on the instance root, and reaches nothing inside.**
+- **A dangling override refuses to load**, naming the entity, the component, and the prefab.
+
+**The research is what decided the middle one.** Unity's overrides evaporate with nesting because an
+override names something *inside* a prefab and has to track it across every future edit of that
+prefab; Godot's editable children can write back to the source scene. Both failures come from
+overrides reaching inward — so here they do not, which makes nesting **structurally** safe rather
+than merely carefully handled.
+
+Proof: the Vault's scene went from 223 lines to 142, and `collect-three.replay` matched all four
+checkpoints **unchanged** — the same world, authored differently. Full reasoning in `docs/adr/0029`,
+including what it deliberately does *not* fix (the wall grid, which wants a tilemap rather than
+prefabs).
+
+<details><summary>Q7 as filed</summary>
+
+### Prefab override semantics
 
 The hardest problem in the scene subsystem. Instance-level field overrides, nested prefabs, and
 propagation of prefab changes to non-overridden fields on instances.
@@ -252,6 +275,32 @@ load barrier, and `amadeo check` would validate it against the catalogue.
 Nothing is broken today because prefab instancing is refused outright (`PrefabNotSupported`), and
 `SceneDocument::required_assets` deliberately covers only the declared `assets` block and says why.
 **Decide this before building prefab instancing**, and supersede whichever ADR loses.
+
+</details>
+
+---
+
+## Q19 · P2 · `amadeo import` cannot import a prefab
+
+**Found in session 8, by hitting it.** A bootstrapping deadlock created by ADR 0029 making prefabs
+assets:
+
+1. a prefab needs a `.ama-meta` sidecar before anything can reference it;
+2. `amadeo import` writes sidecars;
+3. but `import` launches the game (ADR 0016) to ask where its asset directory is;
+4. and the game refuses to start while a prefab its scene names has no sidecar.
+
+So the first prefab in a project has to have its sidecar written by hand, which is what the Vault's
+two have. The error message is good — it says exactly what is missing — but the tool that fixes it
+cannot run.
+
+**The likely fix is that `import` should not need the game at all.** Importing is a filesystem
+operation over a directory; the only thing the game supplies is the directory's name, and
+`amadeo.toml` could carry that instead. That would also make `amadeo import` work on a project that
+does not currently compile, which is a good property for a repair tool.
+
+Worth checking whether the same deadlock reaches `amadeo check` and `amadeo assets`, which launch the
+game for the same reason.
 
 ---
 

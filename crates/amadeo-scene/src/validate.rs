@@ -73,7 +73,10 @@ fn check_assets(
     catalogue: &AssetCatalogue,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    for id in &document.assets {
+    // `required_assets` rather than the declared block, so a `from` line is checked too: under
+    // ADR 0029 a prefab is an asset, and a typo in a prefab id deserves the same "did you mean" a
+    // typo in a texture id gets.
+    for id in &document.required_assets() {
         if catalogue.contains(id) {
             continue;
         }
@@ -114,21 +117,33 @@ fn check_entity(
         });
     }
 
-    if let Some(prefab) = &source.prefab {
-        diagnostics.push(Diagnostic {
-            entity: source.id.clone(),
-            component: None,
-            message: format!(
-                "instances the prefab `{prefab}`, which cannot be loaded yet: resolving a prefab \
-                 path needs the asset layer (`amadeo-assets`, M1). The scene is otherwise valid"
-            ),
-        });
+    // A `from` line needs no check here: the prefab id is validated against the catalogue by
+    // `check_assets`, because `required_assets` now includes it (ADR 0029). Whether the prefab
+    // actually supplies what the overrides expect is `instantiate`'s job — this function is handed
+    // text and never resolves an asset.
+
+    // A component block has to build a whole component, so it is checked in full.
+    for (name, value) in &source.components {
+        if let Err(error) = registry.validate(name, value) {
+            diagnostics.push(Diagnostic {
+                entity: source.id.clone(),
+                component: Some(name.clone()),
+                message: error.to_string(),
+            });
+        }
     }
 
-    // Overrides are checked the same way as components -- they are values for the same types, and a
-    // typo in an override block is exactly as wrong as one anywhere else.
-    for (name, value) in source.components.iter().chain(source.overrides.iter()) {
-        if let Err(error) = registry.validate(name, value) {
+    // An override is a **patch** (ADR 0029), so it is checked differently: the component name and
+    // every field name must resolve, but a field left out means "leave that one alone" rather than
+    // "incomplete". Checking these in full was the first thing `amadeo check` got wrong when the
+    // Vault started using prefabs — it reported a missing `rotation` on every instance that only
+    // moved.
+    //
+    // What this deliberately cannot check is whether the *prefab* actually has the component, since
+    // `scene.check` is handed text and never resolves assets. `instantiate` catches that, with
+    // `DanglingOverride`.
+    for (name, value) in &source.overrides {
+        if let Err(error) = registry.validate_patch(name, value) {
             diagnostics.push(Diagnostic {
                 entity: source.id.clone(),
                 component: Some(name.clone()),
@@ -313,10 +328,63 @@ mod tests {
     }
 
     #[test]
-    fn a_prefab_says_what_is_missing_rather_than_failing_obscurely() {
-        let diagnostics =
-            check("scene demo\nversion 1\n\nentity a1 \"Door\" from prefabs/door\n  Player\n");
-        assert_eq!(diagnostics.len(), 1);
-        assert!(diagnostics[0].message.contains("amadeo-assets"));
+    fn a_prefab_instance_is_not_a_problem_by_itself() {
+        // It used to be: prefabs were unsupported, so every `from` line produced a diagnostic.
+        // ADR 0029 made them work, and a scene that instances one is simply valid.
+        let diagnostics = check_without_assets(
+            "scene demo\nversion 1\n\nentity a1 \"Door\" from door_metal\n  Player\n",
+        );
+        assert!(diagnostics.is_empty(), "got {diagnostics:?}");
+    }
+
+    #[test]
+    fn an_override_may_name_a_subset_of_a_components_fields() {
+        // An override is a patch, so leaving `y` out means "leave it alone" rather than
+        // "incomplete". Checking these in full is what `amadeo check` got wrong the first time the
+        // Vault used a prefab — it reported a missing field on every instance that only moved.
+        let diagnostics = check_without_assets(
+            "scene demo\nversion 1\n\nentity a1 \"Thing\" from some_prefab\n  override Position\n    x 1.0\n",
+        );
+        assert!(diagnostics.is_empty(), "got {diagnostics:?}");
+    }
+
+    #[test]
+    fn an_override_naming_a_field_that_does_not_exist_is_still_caught() {
+        // The half of the check that survives: a patch may be partial, but every field it *does*
+        // name has to be real. This is where the typos live.
+        let diagnostics = check_without_assets(
+            "scene demo\nversion 1\n\nentity a1 \"Thing\" from some_prefab\n  override Position\n    z 1.0\n",
+        );
+        assert_eq!(diagnostics.len(), 1, "got {diagnostics:?}");
+        let message = &diagnostics[0].message;
+        assert!(message.contains('z'), "{message}");
+        assert!(message.contains("x, y"), "{message}");
+    }
+
+    #[test]
+    fn a_prefab_id_is_checked_against_the_catalogue() {
+        // ADR 0029 makes a prefab an asset, so a typo in a `from` line gets the same "did you mean"
+        // a typo in a texture id gets -- without the scene having to repeat it in `assets`.
+        let mut catalogue = AssetCatalogue::new();
+        catalogue
+            .insert(
+                amadeo_assets::Sidecar::new("door_metal"),
+                std::path::Path::new("prefabs/door_metal.scene"),
+            )
+            .expect("distinct");
+
+        // `door` rather than a letter-swap, because `similar_to` matches on a shared prefix or a
+        // substring rather than edit distance — deliberately simple, and the common agent mistake is
+        // guessing the stem of a longer id.
+        let document =
+            parse("scene demo\nversion 1\n\nentity a1 \"Door\" from door\n").expect("parses");
+        let diagnostics = validate(&document, &registry(), Some(&catalogue));
+
+        assert_eq!(diagnostics.len(), 1, "got {diagnostics:?}");
+        assert!(
+            diagnostics[0].message.contains("Did you mean door_metal?"),
+            "{}",
+            diagnostics[0].message
+        );
     }
 }

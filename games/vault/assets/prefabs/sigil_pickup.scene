@@ -1,0 +1,19 @@
+scene sigil_pickup
+version 1
+
+assets
+  sigil
+
+entity root "Sigil"
+  Sigil
+  SortOrder
+    order 10
+  Sprite
+    color 1.0 1.0 1.0 1.0
+    region 0.0 0.0 1.0 1.0
+    size 0.8 0.8
+    texture "sigil"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0

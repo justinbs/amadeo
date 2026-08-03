@@ -4,8 +4,6 @@ version 1
 assets
   digits
   player
-  sigil
-  trap
   wall
   warden
 
@@ -23,13 +21,13 @@ entity floor "Floor"
 
 entity player "Player"
   Player
+  SortOrder
+    order 20
   Sprite
     color 1.0 1.0 1.0 1.0
     region 0.0 0.0 1.0 1.0
     size 0.9 0.9
     texture "player"
-  SortOrder
-    order 20
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -43,13 +41,13 @@ entity warden_left "Warden West"
       - -1.0 2.0
       - -1.0 -2.0
       - -5.0 -2.0
+  SortOrder
+    order 15
   Sprite
     color 1.0 1.0 1.0 1.0
     region 0.0 0.0 1.0 1.0
     size 0.9 0.9
     texture "warden"
-  SortOrder
-    order 15
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -65,13 +63,13 @@ entity warden_right "Warden East"
       - 1.0 -2.0
       - 1.0 2.0
       - 5.0 2.0
+  SortOrder
+    order 15
   Sprite
     color 1.0 1.0 1.0 1.0
     region 0.0 0.0 1.0 1.0
     size 0.9 0.9
     texture "warden"
-  SortOrder
-    order 15
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -79,100 +77,40 @@ entity warden_right "Warden East"
   Warden
     speed 2.2
 
-entity sigil_nw "Sigil NW"
-  Sigil
-  Sprite
-    color 1.0 1.0 1.0 1.0
-    region 0.0 0.0 1.0 1.0
-    size 0.8 0.8
-    texture "sigil"
-  SortOrder
-    order 10
-  Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
+entity sigil_nw "Sigil NW" from sigil_pickup
+  override Transform
     translation -4.0 2.0 0.0
 
-entity sigil_ne "Sigil NE"
-  Sigil
-  Sprite
-    color 1.0 1.0 1.0 1.0
-    region 0.0 0.0 1.0 1.0
-    size 0.8 0.8
-    texture "sigil"
-  SortOrder
-    order 10
-  Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
+entity sigil_ne "Sigil NE" from sigil_pickup
+  override Transform
     translation 4.0 2.0 0.0
 
-entity sigil_w "Sigil West"
-  Sigil
-  Sprite
-    color 1.0 1.0 1.0 1.0
-    region 0.0 0.0 1.0 1.0
-    size 0.8 0.8
-    texture "sigil"
-  SortOrder
-    order 10
-  Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
+entity sigil_w "Sigil West" from sigil_pickup
+  override Transform
     translation -4.0 0.0 0.0
 
-entity sigil_e "Sigil East"
-  Sigil
-  Sprite
-    color 1.0 1.0 1.0 1.0
-    region 0.0 0.0 1.0 1.0
-    size 0.8 0.8
-    texture "sigil"
-  SortOrder
-    order 10
-  Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
+entity sigil_e "Sigil East" from sigil_pickup
+  override Transform
     translation 4.0 0.0 0.0
 
-entity sigil_sw "Sigil SW"
-  Sigil
-  Sprite
-    color 1.0 1.0 1.0 1.0
-    region 0.0 0.0 1.0 1.0
-    size 0.8 0.8
-    texture "sigil"
-  SortOrder
-    order 10
-  Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
+entity sigil_sw "Sigil SW" from sigil_pickup
+  override Transform
     translation -4.0 -2.0 0.0
 
-entity sigil_se "Sigil SE"
-  Sigil
-  Sprite
-    color 1.0 1.0 1.0 1.0
-    region 0.0 0.0 1.0 1.0
-    size 0.8 0.8
-    texture "sigil"
-  SortOrder
-    order 10
-  Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
+entity sigil_se "Sigil SE" from sigil_pickup
+  override Transform
     translation 4.0 -2.0 0.0
 
 entity score_tens "Score Tens"
   ScoreDigit
     place 0
+  SortOrder
+    order 50
   Sprite
     color 1.0 1.0 1.0 1.0
     region 0.0 0.0 1.0 0.1
     size 0.6 0.6
     texture "digits"
-  SortOrder
-    order 50
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -181,44 +119,22 @@ entity score_tens "Score Tens"
 entity score_units "Score Units"
   ScoreDigit
     place 1
+  SortOrder
+    order 50
   Sprite
     color 1.0 1.0 1.0 1.0
     region 0.0 0.0 1.0 0.1
     size 0.6 0.6
     texture "digits"
-  SortOrder
-    order 50
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation -5.7 3.9 0.0
 
-entity trap_west "Trap West"
-  Sprite
-    color 1.0 1.0 1.0 1.0
-    region 0.0 0.0 1.0 1.0
-    size 1.0 1.0
-    texture "trap"
-  SortOrder
-    order 5
-  Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
+entity trap_west "Trap West" from floor_trap
+  override Transform
     translation -3.0 0.0 0.0
-  Trap
-    armed true
 
-entity trap_east "Trap East"
-  Sprite
-    color 1.0 1.0 1.0 1.0
-    region 0.0 0.0 1.0 1.0
-    size 1.0 1.0
-    texture "trap"
-  SortOrder
-    order 5
-  Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
+entity trap_east "Trap East" from floor_trap
+  override Transform
     translation 3.0 0.0 0.0
-  Trap
-    armed true

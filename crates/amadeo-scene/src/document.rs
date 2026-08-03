@@ -113,23 +113,27 @@ impl SceneDocument {
 
     /// Every asset id this scene needs resident before the first tick.
     ///
-    /// Today that is exactly the declared [`SceneDocument::assets`] block.
+    /// The declared [`SceneDocument::assets`] block, **plus every prefab any entity instances**.
     ///
-    /// # Why `from` is not included, yet
+    /// # Why `from` counts
     ///
-    /// A prefab reference *should* be an asset reference — under ADR 0020 a prefab is a file with a
-    /// declared id like any other, so `from door_metal` would name one. But **ADR 0014 and ADR 0020
-    /// disagree about what `from` holds**: 0014's grammar and worked example say a path
-    /// (`from prefabs/door_metal`), 0020's says an id (`from wall_concrete`), and a path is not even
-    /// a usable id because of the `/`.
+    /// ADR 0029 settled what `from` holds: an asset id, superseding ADR 0014's path grammar. A
+    /// prefab is therefore an asset like any other, and ADR 0021's barrier applies to it without
+    /// anything special — a prefab is resident before the first tick, so instantiating a scene never
+    /// waits on a file.
     ///
-    /// That conflict is unresolved and it overlaps Q7 (prefab override semantics), so this
-    /// deliberately does not pick a side. Prefab instancing is refused outright today —
-    /// `instantiate` returns `PrefabNotSupported` — so nothing is lost by waiting, and validating
-    /// `from` against the catalogue now would invent errors for scenes written to the older ADR.
+    /// It also means a prefab does **not** have to be repeated in the `assets` block: writing
+    /// `from wall_tile` is already a declaration that the scene needs `wall_tile`. Requiring it in
+    /// both places would be a rule to remember with nothing to gain.
     #[must_use]
     pub fn required_assets(&self) -> BTreeSet<String> {
-        self.assets.clone()
+        let mut required = self.assets.clone();
+        for entity in self.walk() {
+            if let Some(prefab) = &entity.prefab {
+                required.insert(prefab.clone());
+            }
+        }
+        required
     }
 
     /// Every entity in the document, depth first.

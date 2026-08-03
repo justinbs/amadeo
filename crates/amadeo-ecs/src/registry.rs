@@ -229,6 +229,57 @@ impl ComponentRegistry {
         })
     }
 
+    /// Answers "would this be a valid *patch* for that component?".
+    ///
+    /// The override form of [`ComponentRegistry::validate`]. An override lays named fields over what
+    /// a prefab supplied (ADR 0029), so a missing field is not an error — it means "leave that one
+    /// alone". What *is* still an error is a component name that does not resolve, or a field name
+    /// the component does not have, which is where the typos live.
+    ///
+    /// # Why this cannot just call `validate`
+    ///
+    /// `validate` asks whether a whole component could be built, so it rejects any patch that does
+    /// not restate every field — which is every useful override. `amadeo check` reported exactly
+    /// that on the Vault the first time a prefab was used.
+    ///
+    /// # Errors
+    ///
+    /// [`RegistryError::UnknownComponent`] if the name does not resolve, or
+    /// [`RegistryError::BadValue`] if a named field is not one the component has.
+    pub fn validate_patch(&self, name: &str, value: &Value) -> Result<(), RegistryError> {
+        let Some(info) = self.info(name) else {
+            return Err(RegistryError::UnknownComponent {
+                name: name.to_string(),
+                known: self.names().collect::<Vec<_>>().join(", "),
+            });
+        };
+
+        let Value::Struct(patch) = value else {
+            // Not a struct, so there are no named fields to check individually. Fall back to the
+            // whole-value check, which is the right answer for a component that reflects as a scalar.
+            return self.validate(name, value);
+        };
+
+        let amadeo_reflect::TypeKind::Struct { fields } = &info.kind else {
+            return self.validate(name, value);
+        };
+
+        for field in patch.keys() {
+            if !fields.iter().any(|known| &known.name == field) {
+                let known: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
+                return Err(RegistryError::BadValue {
+                    name: name.to_string(),
+                    source: amadeo_reflect::ReflectError::UnknownField {
+                        type_name: name.to_string(),
+                        field: field.clone(),
+                        known: known.join(", "),
+                    },
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// Reads one component off an entity as a [`Value`], by name.
     ///
     /// Returns `None` if the entity does not have that component — including when the name is not

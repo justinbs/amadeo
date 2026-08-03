@@ -105,9 +105,27 @@ jobs:
       # The scene file is the level (invariant I1), so a typo in it is a broken game rather than a
       # broken test. `check` validates it against the game's *real* component schema, which is the
       # thing a standalone linter could never do (ADR 0016).
-      - name: Validate the Vault's scene against its real schema
+      #
+      # The prefabs are checked too, and separately: an instance only names its prefab by id, so a
+      # scene can be entirely valid while the prefab behind it is not.
+      - name: Validate the Vault's scenes against its real schema
         shell: bash
-        run: ./target/debug/amadeo.exe check games/vault/scenes/vault.scene --package vault
+        run: |
+          ./target/debug/amadeo.exe check games/vault/scenes/vault.scene --package vault
+          ./target/debug/amadeo.exe check games/vault/assets/prefabs/sigil_pickup.scene --package vault
+          ./target/debug/amadeo.exe check games/vault/assets/prefabs/floor_trap.scene --package vault
+
+      # Invariant I2 applies to hand-written scene files exactly as `cargo fmt` applies to code, and
+      # nothing was enforcing it -- all three of these files were found non-canonical in session 8,
+      # with components out of sorted order. `fmt` is standalone (ADR 0016) so this needs no game.
+      - name: Scene files are canonically formatted
+        shell: bash
+        run: |
+          ./target/debug/amadeo.exe fmt --check \
+            games/vault/scenes/vault.scene \
+            games/vault/assets/prefabs/sigil_pickup.scene \
+            games/vault/assets/prefabs/floor_trap.scene \
+            games/quad-demo/scenes/markers.scene
 
   docs:
     name: docs build without warnings

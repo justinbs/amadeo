@@ -8,6 +8,7 @@ use amadeo_events::{Event, WorldEvents};
 use amadeo_reflect::{
     FieldInfo, Reflect, ReflectError, RegistryError, Replication, TypeInfo, TypeKind, Value,
 };
+use amadeo_scene::PrefabLibrary;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -374,10 +375,64 @@ impl App {
     ) -> Result<amadeo_scene::Instantiated, amadeo_scene::InstantiateError> {
         self.load_scene_assets(document);
 
+        // Built after loading, from the same ids the barrier just made resident. A prefab that
+        // failed to load simply is not here, and `instantiate_with` says which one by name — which
+        // is a better message than anything this layer could produce, because it also knows which
+        // entity asked for it.
+        let prefabs = self.prefab_library(document);
+
         let registry = self.take_registry();
-        let result = amadeo_scene::instantiate(document, &registry, &mut self.world);
+        let result = amadeo_scene::instantiate_with(document, &registry, &prefabs, &mut self.world);
         self.put_registry(registry);
         result
+    }
+
+    /// Parses every prefab a scene instances, from the bytes the load barrier made resident.
+    ///
+    /// Prefabs are scene files, so this is the same parser. A prefab that will not parse is skipped
+    /// rather than reported here: `instantiate_with` will say `UnknownPrefab` naming the entity that
+    /// wanted it, which is the more useful half of the message.
+    ///
+    /// Recursive: a prefab may instance another, so anything a prefab itself requires is pulled in
+    /// too — with a visited set, because a prefab cycle is refused at instantiation and should not
+    /// hang here first.
+    fn prefab_library(&mut self, document: &amadeo_scene::SceneDocument) -> PrefabLibrary {
+        let mut library = PrefabLibrary::new();
+        let mut wanted: Vec<String> = document
+            .walk()
+            .into_iter()
+            .filter_map(|entity| entity.prefab.clone())
+            .collect();
+
+        while let Some(id) = wanted.pop() {
+            if library.get(&id).is_some() {
+                continue;
+            }
+            let Some(assets) = self.assets() else {
+                continue;
+            };
+            let Some(loaded) = assets.store.get(&id) else {
+                continue;
+            };
+            let Ok(text) = std::str::from_utf8(&loaded.bytes) else {
+                continue;
+            };
+            let Ok(parsed) = amadeo_scene::parse(text) else {
+                continue;
+            };
+
+            // A prefab's own requirements, which the outer scene never mentioned.
+            for nested in parsed.walk() {
+                if let Some(inner) = &nested.prefab {
+                    wanted.push(inner.clone());
+                }
+            }
+            let nested_assets = parsed.required_assets();
+            library.insert(id, parsed);
+            self.load_assets(nested_assets.iter().map(String::as_str));
+        }
+
+        library
     }
 
     /// The current simulation tick.
