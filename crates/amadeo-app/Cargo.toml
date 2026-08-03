@@ -17,6 +17,8 @@ amadeo-events.workspace = true
 amadeo-input.workspace = true
 amadeo-reflect.workspace = true
 amadeo-scene.workspace = true
+# `--snapshot` restores before the first tick, and `snapshot.take` captures.
+amadeo-snapshot.workspace = true
 thiserror.workspace = true
 
 [lints]

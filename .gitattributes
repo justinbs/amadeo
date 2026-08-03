@@ -18,8 +18,10 @@
 
 # The formats this project defines, named explicitly so the intent survives an edit to the line
 # above. These are hand-authored and hand-diffed; CRLF in them is corruption, not a variant.
-*.replay text eol=lf
-*.scene  text eol=lf
+*.replay   text eol=lf
+*.scene    text eol=lf
+*.snapshot text eol=lf
+*.ama-meta text eol=lf
 *.toml   text eol=lf
 *.rs     text eol=lf
 *.md     text eol=lf

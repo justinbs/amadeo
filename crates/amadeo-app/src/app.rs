@@ -231,6 +231,24 @@ impl App {
         &self.registry
     }
 
+    /// Takes the registry out, leaving an empty one behind.
+    ///
+    /// Only for the handful of operations that need the world **mutably** and the registry
+    /// **shared** at the same time — restoring a snapshot is the one caller today. `App` owns both,
+    /// so the borrow checker refuses the obvious spelling; this is the same take-and-put-back shape
+    /// `World::with_service_taken` uses, and it must always be paired with [`App::put_registry`].
+    ///
+    /// Deliberately not public API for games: nothing a game does needs it, and an unpaired call
+    /// would leave the app unable to describe its own components.
+    pub(crate) fn take_registry(&mut self) -> ComponentRegistry {
+        std::mem::take(&mut self.registry)
+    }
+
+    /// Puts a registry taken by [`App::take_registry`] back.
+    pub(crate) fn put_registry(&mut self, registry: ComponentRegistry) {
+        self.registry = registry;
+    }
+
     /// Registers a system into a stage.
     pub fn add_system(&mut self, stage: Stage, config: SystemConfig) -> &mut Self {
         self.schedules

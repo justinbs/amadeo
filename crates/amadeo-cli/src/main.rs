@@ -53,6 +53,8 @@ enum Command {
     Assets,
     /// Write a sidecar for every asset file that has none.
     Import { check: bool },
+    /// Capture the world to a `.snapshot` file.
+    Snapshot { path: PathBuf },
 }
 
 /// Options that apply to any command that launches the game.
@@ -62,8 +64,33 @@ struct Options {
     package: Option<String>,
     /// How far to simulate before answering.
     ticks: u64,
+    /// A `.snapshot` file to restore before anything runs.
+    ///
+    /// Composes with `ticks`: restore to the recorded moment, then run that many more. Replacing
+    /// re-simulation with a file read is the whole point (ADR 0028).
+    from: Option<String>,
     /// Print compact JSON rather than indented.
     compact: bool,
+}
+
+impl Options {
+    /// The launch arguments these options imply, after `--amadeo-agent`.
+    ///
+    /// Both are *launch* arguments rather than methods, and for the same reason: they decide what
+    /// the world is before the first question can be asked (ADR 0016).
+    fn launch_args(&self) -> Vec<String> {
+        let mut args = vec!["--ticks".to_string(), self.ticks.to_string()];
+        if let Some(path) = &self.from {
+            args.push("--snapshot".to_string());
+            // Made absolute here so there is no question which directory it resolves against: the
+            // game is launched with its working directory set to the project root, which is not
+            // necessarily where the user typed the command.
+            let absolute = std::path::absolute(path)
+                .map_or_else(|_| path.clone(), |p| p.display().to_string());
+            args.push(absolute);
+        }
+        args
+    }
 }
 
 fn main() -> Result<()> {
@@ -100,6 +127,10 @@ fn run(command: Command, options: &Options) -> Result<()> {
 
     if let Command::Import { check } = command {
         return import_assets(check, options);
+    }
+
+    if let Command::Snapshot { path } = command {
+        return take_snapshot(&path, options);
     }
 
     let (method, params) = match &command {
@@ -141,7 +172,8 @@ fn run(command: Command, options: &Options) -> Result<()> {
         | Command::Check { .. }
         | Command::Replay { .. }
         | Command::Assets
-        | Command::Import { .. } => {
+        | Command::Import { .. }
+        | Command::Snapshot { .. } => {
             unreachable!("handled above")
         }
     };
@@ -153,7 +185,7 @@ fn run(command: Command, options: &Options) -> Result<()> {
     let result = ask_once(
         &project.root,
         &package,
-        options.ticks,
+        &options.launch_args(),
         request(method, params, 1),
     )?;
 
@@ -313,7 +345,7 @@ fn check_scenes(paths: &[PathBuf], options: &Options) -> Result<()> {
         sources.push(text);
     }
 
-    let mut session = launch::Session::start(&project.root, &package, options.ticks)?;
+    let mut session = launch::Session::start(&project.root, &package, &options.launch_args())?;
     let replies = session.ask(&requests)?;
 
     let mut bad_files = 0;
@@ -625,9 +657,56 @@ fn ask_game(method: &str, params: Json, options: &Options) -> Result<Json> {
     ask_once(
         &project.root,
         &package,
-        options.ticks,
+        &options.launch_args(),
         request(method, params, 1),
     )
+}
+
+/// Captures the world and writes it to a file.
+///
+/// The game produces the text and the CLI writes it — the same division `amadeo check` and
+/// `amadeo import` use, and the reason `snapshot.take` returns a string rather than a path
+/// (ADR 0016: the game knows what the world is, the CLI is the side that touches the filesystem).
+fn take_snapshot(path: &Path, options: &Options) -> Result<()> {
+    let here = std::env::current_dir().context("could not read the current directory")?;
+    let project = Project::discover(&here)?;
+    let package = options.package.clone().unwrap_or(project.game);
+
+    let result = ask_once(
+        &project.root,
+        &package,
+        &options.launch_args(),
+        request("snapshot.take", Json::object([] as [(&str, Json); 0]), 1),
+    )?;
+
+    let text = string_field(&result, "text")
+        .context("the game's reply had no snapshot text in it, which is an engine bug")?;
+
+    std::fs::write(path, text)
+        .with_context(|| format!("could not write the snapshot to {}", path.display()))?;
+
+    let entities = number_field(&result, "entities").unwrap_or(0);
+    let resources = number_field(&result, "resources").unwrap_or(0);
+    let tick = number_field(&result, "tick").unwrap_or(0);
+    let hash = string_field(&result, "state_hash").unwrap_or("?");
+
+    println!(
+        "wrote {} — tick {tick}, {entities} entities, {resources} resources, state {hash}",
+        path.display()
+    );
+    println!("Restore it with: amadeo status --from {}", path.display());
+    Ok(())
+}
+
+/// An integer field out of a JSON object, or `None` if it is missing or not a number.
+fn number_field(value: &Json, name: &str) -> Option<i64> {
+    let Json::Object(members) = value else {
+        return None;
+    };
+    match members.get(name) {
+        Some(Json::Int(number)) => Some(*number),
+        _ => None,
+    }
 }
 
 /// A string field out of a JSON object, or `None` if it is missing or not a string.
@@ -667,6 +746,7 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
     let mut options = Options {
         package: None,
         ticks: 0,
+        from: None,
         compact: false,
     };
 
@@ -700,6 +780,10 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
                 options.ticks = raw.parse().with_context(|| {
                     format!("`{raw}` is not a tick count; --ticks takes a whole number (60 per simulated second)")
                 })?;
+                index += 2;
+            }
+            "--from" => {
+                options.from = Some(value_after("--from")?);
                 index += 2;
             }
             "--type" => {
@@ -784,6 +868,17 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
         },
         "assets" => Command::Assets,
         "import" => Command::Import { check },
+        "snapshot" => {
+            let Some(path) = rest.first() else {
+                bail!(
+                    "snapshot needs a file to write to, such as `amadeo snapshot --ticks 600 \
+                     mid-fight.snapshot`"
+                );
+            };
+            Command::Snapshot {
+                path: PathBuf::from(path),
+            }
+        }
         "replay" => Command::Replay {
             path: rest
                 .first()
@@ -819,12 +914,14 @@ RUNS IN THE GAME (launches it, asks, exits)
     replay <file>            replay a recording and verify its checkpoint hashes
     schedule [stage]         systems in resolved execution order
     status                   tick, state hash, and what is registered
+    snapshot <file>          capture the world to a .snapshot file
     call <method>            any protocol method
         --params <json>      its arguments, as a JSON object
 
 OPTIONS
     -p, --package <name>     override the game named in amadeo.toml
         --ticks <n>          simulate n ticks before answering (60 = 1 second)
+        --from <file>        restore a .snapshot first, then run --ticks more
         --compact            one line of JSON instead of indented
     -h, --help               this
 
@@ -977,6 +1074,54 @@ mod tests {
     fn assets_takes_no_arguments() {
         let (command, _) = parse_args(&["assets"]).expect("parses");
         assert!(matches!(command, Command::Assets), "got {command:?}");
+    }
+
+    #[test]
+    fn snapshot_takes_a_destination_file() {
+        let (command, _) = parse_args(&["snapshot", "mid-fight.snapshot"]).expect("parses");
+        match command {
+            Command::Snapshot { path } => assert_eq!(path, PathBuf::from("mid-fight.snapshot")),
+            other => panic!("got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn snapshot_without_a_file_says_what_to_type() {
+        let error = parse_args(&["snapshot"]).expect_err("no destination");
+        let message = error.to_string();
+        assert!(message.contains("amadeo snapshot"), "{message}");
+        assert!(message.contains(".snapshot"), "{message}");
+    }
+
+    #[test]
+    fn from_becomes_a_launch_argument_beside_ticks() {
+        // Both are launch arguments rather than methods, and for the same reason: they decide what
+        // the world *is* before the first question can be asked (ADR 0016).
+        let (_, options) =
+            parse_args(&["status", "--from", "saved.snapshot", "--ticks", "30"]).expect("parses");
+
+        let args = options.launch_args();
+        assert_eq!(args[0], "--ticks");
+        assert_eq!(args[1], "30");
+        assert_eq!(args[2], "--snapshot");
+        // Made absolute, because the game runs with its working directory at the project root.
+        assert!(
+            args[3].ends_with("saved.snapshot") && args[3].len() > "saved.snapshot".len(),
+            "expected an absolute path, got {}",
+            args[3]
+        );
+    }
+
+    #[test]
+    fn without_from_the_launch_arguments_are_just_ticks() {
+        let (_, options) = parse_args(&["status"]).expect("parses");
+        assert_eq!(options.launch_args(), vec!["--ticks", "0"]);
+    }
+
+    #[test]
+    fn usage_mentions_snapshotting() {
+        assert!(USAGE.contains("snapshot <file>"));
+        assert!(USAGE.contains("--from <file>"));
     }
 
     #[test]

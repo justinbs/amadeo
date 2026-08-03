@@ -1,11 +1,11 @@
 # Amadeo — Current Status
 
 **Last updated:** 2026-08-03 (end of session 8)
-**Current phase:** **M0 complete. M1 nearly done** — reflection, the scene format, the agent's read
-layer, the agent protocol and a working `amadeo` CLI, the whole asset layer, the sprite batcher,
-**textured sprites on the GPU**, and **invariant I8 fully closed** have all landed. What remains in
-M1 is **snapshots** and the small game that closes the exit gate. Q3, Q4, Q13, Q14, Q16 and Q17 are
-all closed, so nothing is blocked.
+**Current phase:** **M0 complete. M1's engine work is done** — reflection, the scene format, the
+agent's read layer, the agent protocol and a working `amadeo` CLI, the whole asset layer, the sprite
+batcher, **textured sprites on the GPU**, **invariant I8 fully closed**, and **snapshots** have all
+landed. What remains in M1 is **the small game that closes the exit gate**, which needs no further
+subsystems. Q3, Q4, Q13, Q14, Q16 and Q17 are all closed, so nothing is blocked.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
 
 > ### ⚠️ Two working rules that changed in session 7 — read before doing anything
@@ -28,10 +28,11 @@ cost down through two layers of the ECS. **Session 8 put sprites on the screen**
 texture cache, and the wgpu texture path — **and then closed invariant I8**, making `Reflect` a
 compiler-enforced bound on resources and events and shipping `world.resources`. ADRs 0022–0027.
 
-**Fourteen crates plus one game**, all tested: `amadeo-derive`, `amadeo-image`, `amadeo-core`,
+**Fifteen crates plus one game**, all tested: `amadeo-derive`, `amadeo-image`, `amadeo-core`,
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
-`amadeo-render`, `amadeo-scene`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, and `games/quad-demo`.
-**698 tests passing**; fmt, clippy
+`amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, and
+`games/quad-demo`.
+**747 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Ten things work end to end today:
@@ -70,6 +71,11 @@ Ten things work end to end today:
 - **The engine describes its whole state, not just half of it.** `amadeo call world.resources`
   reports `Camera2d`, `InputState` and `SimRng` with live values from a running game. Entities carry
   components and everything else is a resource; before ADR 0027 the second half was invisible.
+- **A moment can be saved and returned to.** `amadeo snapshot --ticks 600 mid.snapshot` captures a
+  whole world to a readable text file; `amadeo status --from mid.snapshot` gets back to tick 600 by
+  *reading the file* rather than simulating 600 ticks. Verified across separate processes, hashes
+  matching exactly. This is the answer ADR 0011 named to the one problem its spike actually found —
+  re-simulation, not compilation, is what degrades the agent's loop.
 
 **M0 exit gate: 4 of 4, nothing carried.** Gate item 2's "separate process" half — open since M0
 because it needed `amadeo-cli` — closed in session 6: `amadeo replay` plays
@@ -89,22 +95,24 @@ of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**`snapshot.take` / `snapshot.restore`.** ADR 0011's spike found that what degrades the agent's
-iteration loop is **re-simulation, not compilation** — 382 ms to reach five simulated minutes,
-growing linearly with session length. Snapshots are the answer it named, and they are now unblocked:
-ADR 0027 made every resource reflectable, and `snapshot.restore` is precisely
-`from_value(to_value(x))` with a file in the middle.
+**A complete small 2D game — M1 exit gate 1.** It no longer needs any engine work. Sprites reach the
+screen, assets load by name, scenes build worlds, replays verify behaviour, and snapshots make
+iteration cheap. What is missing is a *game*, not a subsystem, and building one is also the fastest
+way to find what the engine is still awkward at.
 
-The round trip is already asserted for every resource in
-`crates/amadeo-app/tests/resource_reflection.rs`, including the sharp case — that a restored `SimRng`
-draws the *same next numbers*, which equality alone does not prove. So the pieces exist; what is
-missing is capturing entities and components the same way, choosing a file format, and the two
-protocol methods.
+Gate 4 is worth doing at the same time and is nearly free: "`describe` output is sufficient to write
+a new component without reading engine source" is testable by actually doing it while building the
+game.
 
-**Design questions to settle first**, none of them large: whether a snapshot is one file or a
-directory, whether it stores the full world or a diff against a base, and whether restoring into a
-*different* build is allowed (it should probably refuse, loudly, on a schema mismatch — the same
-argument `.replay` makes about tick rate).
+### Then, in rough order
+
+- **`render.capture`** — headless render-target readback. Worth flagging that **the GPU path has no
+  automated coverage at all**: the wgpu backend is exercised only by running the demo and looking at
+  it. `render.capture` is what would fix that, and ADR 0021 already names it as the agent's eyes.
+- **Q7 — prefab semantics**, which needs the `from` conflict settled first. The hardest design
+  problem left in the scene subsystem.
+- **`snapshot.diff`** — comparing two snapshots. The format is text and diffable already, so this is
+  polish rather than capability.
 
 **The sprite path has been confirmed on screen** — Justin ran `cargo run -p quad-demo` at the end of
 session 8 and the screenshot checks out against the world coordinates: nine floor tiles alternating
@@ -119,17 +127,9 @@ in the `.ppm` (so the sRGB texture format and sRGB surface agree rather than dou
 — so a flipped image would look identical. **The first time a real photograph or a tall sprite sheet
 goes in, check it is not upside down**, and if it is, that one line is the suspect.
 
-### Then, in rough order
-
-- **A complete small 2D game** — M1 exit gate 1, which no longer needs any engine work.
-- **Q7 — prefab semantics**, which needs the `from` conflict settled first.
-- **`render.capture`** — headless render-target readback. Worth flagging that **the GPU path has no
-  automated coverage at all**: the wgpu backend is exercised only by running the demo and looking at
-  it. `render.capture` is the thing that would fix that, and ADR 0021 already names it as the agent's
-  eyes.
-- **The import pipeline**, when a target game wants compressed textures or mip levels. ADR 0026 sets
-  out exactly what changes and what does not; the short version is that nothing above `TextureCache`
-  is affected.
+**One more thing waiting on a trigger rather than on a decision:** the **import pipeline**, for when
+a target game wants compressed textures or mip levels. ADR 0026 sets out exactly what changes and
+what does not; the short version is that nothing above `TextureCache` is affected.
 
 ### Also worth knowing
 
@@ -805,7 +805,7 @@ If you are starting cold, this is the shortest path to being useful:
    **CI**. Those three are the whole handoff; everything else here is background.
 3. `docs/07-working-with-the-code.md` — the Rust patterns this engine uses and why, the everyday
    `amadeo` commands, and the golden-replay mechanism. Skip if you already know the codebase.
-4. `docs/adr/` — 27 of them now, so read by need rather than in order:
+4. `docs/adr/` — 28 of them now, so read by need rather than in order:
    - **0023** and **0026** before touching the renderer, **0024** and **0025** before touching
      `amadeo-ecs`. 0026 in particular if you are about to add an asset kind or wonder why the engine
      has a dependency that is not `thiserror`.
@@ -820,6 +820,10 @@ If you are starting cold, this is the shortest path to being useful:
    - **0011** before proposing a scripting language or hot reload — decided by *measurement*, so
      reopening it needs numbers, not arguments.
    - **0016** plus `docs/protocol/v1.md` before touching the CLI, the agent, or process boundaries.
+   - **0028** before touching snapshots — and before assuming a state-hash comparison proves a
+     restore is correct, because it does not.
+   - **0028** before touching snapshots — and before assuming a state-hash comparison proves a
+     restore is correct, because it does not.
    - **0017** before moving or renaming a component (moving is free now; renaming is not).
    - **0018** before touching transforms or draw order; **0020** and **0021** before assets.
 5. `docs/06-open-questions.md` — before assuming anything undecided. Ten remain, none blocking.
@@ -1120,3 +1124,28 @@ on purpose — several record a diagnosis that took a while to reach.
   recommendation deliberately withheld until a second instance shows what the general shape should be.
 
   698 tests, all four verification commands green, both replays regenerated and passing.
+
+  **Then snapshots — ADR 0028 — which ADR 0027 had just unblocked.** Two parts of this were forced
+  by earlier decisions rather than chosen, and neither was obvious until traced back. A snapshot must
+  be a **file**, because ADR 0016 makes every CLI invocation a fresh process that exits, so an
+  in-memory one would die with the process that took it. And a snapshot must capture the **entity
+  allocator**, because `state_hash` excludes the free list — so a snapshot of only the live entities
+  would restore a world that hashed identically and then handed out different entity handles on the
+  next `spawn`. That second one is the whole subject of the ADR: it means **hash equality after a
+  restore is necessary and not sufficient**, so correctness is tested by running the world *on*
+  afterwards. Delete `free_slots` from the format and exactly one test fails.
+
+  **Justin chose text over binary, and a separate crate over a module.** The speed objection to text
+  does not survive the numbers already in STATUS — re-simulation is ~21 µs/tick and writing a few
+  dozen entities is well under a millisecond. Reusing the `.scene` format was rejected outright as
+  trap 4. The consequence of the separate crate was handled rather than accepted: `amadeo-snapshot`
+  *borrows* `amadeo-scene`'s scalar encoding, because `format_float` is subtle in three different
+  ways and two copies would drift.
+
+  **Running it against the real game found a defect no unit test had.** `InputState` is two maps, and
+  the format had no nesting — so its value fell out in `Display` form, which no parser reads back.
+  Since `InputState` is a resource in *every* game, a snapshot of anything real would capture and
+  then refuse to restore: broken in the way that looks like it worked until you need it. The format
+  gained proper nesting, which it should have had from the start.
+
+  747 tests, all four verification commands green, `wander.replay` unchanged.

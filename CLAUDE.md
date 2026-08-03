@@ -96,6 +96,11 @@ crates/
 — amadeo-physics     rapier integration behind engine traits
 — amadeo-anim        sprite anim, skeletal, state machines, tweens
 — amadeo-ui          retained-mode game UI: layout, theming, focus navigation
+✅ amadeo-snapshot    the .snapshot text format (ADR 0028): capture a whole world to a file and put
+                     it back. Sits above amadeo-scene because it borrows that crate's scalar
+                     encoding — format_float is subtle and two copies would drift. **It captures the
+                     entity allocator's free list**, which state_hash excludes: without it a restored
+                     world hashes identically and then spawns different handles.
 🟡 amadeo-scene       the .scene text format (ADR 0014): parser, canonical writer, instantiate into
                      a World, and the `assets` block a scene declares its requirements in (ADR 0021).
                      Prefab instancing still pending, and blocked on Q7's sub-question — ADR 0014 and
@@ -110,7 +115,8 @@ crates/
                      than in amadeo-agent because it needs App and I6 forbids reaching down.
 — amadeo-editor      graphical editor. A CLIENT of amadeo-agent. No privileged access.
 🟡 amadeo-cli         the `amadeo` binary. Built: describe/query/entity/schedule/status/call/check/
-                     replay/fmt/assets/import.
+                     replay/fmt/assets/import/snapshot, plus `--from <file>` on any of them to
+                     restore a snapshot before answering.
                      Pending: new/run/test/build/export. ADR 0016: `fmt` is standalone;
                      everything else spawns the game binary in agent mode and talks to it over stdio,
                      because only that process knows the game's components.

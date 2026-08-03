@@ -56,12 +56,16 @@ pub const REPLAY_FLAG: &str = "--replay";
 /// See [`requested_seed`] for why a game reads this *before* building.
 pub const SEED_FLAG: &str = "--seed";
 
+/// The flag naming a `.snapshot` file to restore before anything runs.
+pub const SNAPSHOT_FLAG: &str = "--snapshot";
+
 /// The methods this host answers itself, on top of [`WORLD_METHODS`].
 pub const APP_METHODS: &[&str] = &[
     "replay.status",
     "scene.check",
     "schedule.list",
     "sim.status",
+    "snapshot.take",
 ];
 
 /// Something went wrong hosting the agent.
@@ -79,6 +83,19 @@ pub enum AgentError {
         /// The schedule error underneath.
         #[source]
         source: crate::ScheduleError,
+    },
+
+    /// The snapshot file could not be read, parsed, or restored.
+    ///
+    /// Fatal on purpose, unlike most things in this engine. A snapshot says what the world *is*, so
+    /// a failed restore leaves the process holding a world that is neither the recorded one nor a
+    /// clean start — and every answer it then gave would be about the wrong moment.
+    #[error("could not restore the snapshot `{path}`: {message}")]
+    BadSnapshot {
+        /// The file that was asked for.
+        path: String,
+        /// What was wrong with it.
+        message: String,
     },
 
     /// The replay file could not be read or parsed.
@@ -132,6 +149,18 @@ pub struct AgentOptions {
 
     /// The seed the app should have been built with. See [`requested_seed`].
     pub seed: Option<u64>,
+
+    /// A `.snapshot` file to restore before anything runs.
+    ///
+    /// A **launch argument, not a method**, for exactly the reason [`AgentOptions::replay`] is: a
+    /// snapshot says what the world *is*, so it has to be installed before the first tick. By the
+    /// time a method could be called, the pre-roll has already run and the moment it was meant to
+    /// replace is gone.
+    ///
+    /// Restoring happens **before** [`AgentOptions::ticks`], so the two compose: restore to tick
+    /// 900, then run 30 more. That composition is the whole point — it is what turns "get back to
+    /// the interesting moment" from 382 ms of re-simulation into a file read.
+    pub snapshot: Option<std::path::PathBuf>,
 }
 
 /// The seed this process was asked to build its world with, if any.
@@ -219,6 +248,15 @@ pub fn agent_options_from(arguments: &[String]) -> Result<Option<AgentOptions>, 
                 options.replay = Some(std::path::PathBuf::from(value));
                 index += 2;
             }
+            SNAPSHOT_FLAG => {
+                let Some(value) = arguments.get(index + 1) else {
+                    return Err(AgentError::BadArguments(format!(
+                        "{SNAPSHOT_FLAG} needs a path to a .snapshot file"
+                    )));
+                };
+                options.snapshot = Some(std::path::PathBuf::from(value));
+                index += 2;
+            }
             SEED_FLAG => {
                 let Some(value) = arguments.get(index + 1) else {
                     return Err(AgentError::BadArguments(format!(
@@ -272,6 +310,12 @@ pub fn serve(
     input: impl BufRead,
     mut output: impl Write,
 ) -> Result<(), AgentError> {
+    // Restoring comes first, so a snapshot and `--ticks` compose: land on tick 900 from a file, then
+    // run 30 more. That composition is the point — it is what replaces re-simulating from zero.
+    if let Some(path) = &options.snapshot {
+        restore_snapshot(app, path)?;
+    }
+
     // The whole pre-roll happens before the first reply, so every answer describes the same world.
     let replay = match &options.replay {
         Some(path) => Some(play_replay(app, path)?),
@@ -328,6 +372,34 @@ impl ReplayOutcome {
 
 /// Plays a recording against the app, checking every checkpoint on the way.
 ///
+/// Restores a `.snapshot` file into the app, before anything runs.
+///
+/// Every failure is fatal, which is unusual for this engine — most things here are survivable and
+/// reported. A snapshot is different: it says what the world *is*, so a half-applied one leaves a
+/// process holding neither the recorded world nor a clean start, and every answer it gave after that
+/// would be about a moment that never existed.
+///
+/// The game's own setup has already run by this point, which is what makes resources restorable:
+/// `World::insert_resource` records how to rebuild each type as it goes, so the defaults the game
+/// inserted are what the snapshot then overwrites.
+fn restore_snapshot(app: &mut App, path: &std::path::Path) -> Result<(), AgentError> {
+    let fail = |message: String| AgentError::BadSnapshot {
+        path: path.display().to_string(),
+        message,
+    };
+
+    let text = std::fs::read_to_string(path).map_err(|error| fail(error.to_string()))?;
+    let document = amadeo_snapshot::parse(&text).map_err(|error| fail(error.to_string()))?;
+
+    // The registry is taken out and put back, because `restore` needs the world mutably and the
+    // registry shared, and `App` owns both — the same shape `World::with_service_taken` uses.
+    let registry = app.take_registry();
+    let result = amadeo_snapshot::restore(&mut app.world, &registry, &document);
+    app.put_registry(registry);
+
+    result.map_err(|error| fail(error.to_string()))
+}
+
 /// This is the separate-process half of the golden-replay mechanism. The in-process test in
 /// `tests/golden_replay.rs` proves a recording survives a rebuild; this proves it survives a fresh
 /// process, which is the stronger claim and the one M0's exit gate actually asked for.
@@ -442,6 +514,27 @@ fn dispatch(
                 Json::Array(app.components().names().map(Json::string).collect()),
             ),
         ])),
+
+        // Returns the snapshot's **text**, not a file. The game process produces it and the CLI
+        // writes it, which is the same division `amadeo check` and `amadeo import` use: the game
+        // knows what the world is, the CLI is the side that touches the filesystem (ADR 0016).
+        //
+        // There is no `snapshot.restore` method to match, deliberately. Restoring has to happen
+        // before the first tick, so it is the `--snapshot` launch flag instead — the same shape,
+        // and for the same reason, as `--replay`.
+        "snapshot.take" => {
+            let snapshot = amadeo_snapshot::capture(&app.world, app.components());
+            Ok(Json::object([
+                ("tick", Json::Int(app.tick().0 as i64)),
+                (
+                    "state_hash",
+                    Json::string(format!("{:016x}", snapshot.state_hash)),
+                ),
+                ("entities", Json::Int(snapshot.entities.len() as i64)),
+                ("resources", Json::Int(snapshot.resources.len() as i64)),
+                ("text", Json::string(amadeo_snapshot::to_text(&snapshot))),
+            ]))
+        }
 
         "replay.status" => {
             let Some(outcome) = replay else {

@@ -296,19 +296,50 @@ fn parse_named_values(
             });
         }
 
-        let name = line.text.clone();
+        // The same split a field line gets, so a resource that reflects as a scalar (`Countdown 9`)
+        // and one that reflects as a struct (`Camera2d` plus indented fields) are read by one rule
+        // rather than two. A named block *is* a field; only its position differs.
+        let (name, rest) = split_once(&line.text);
         *cursor += 1;
-        found.insert(name, parse_fields(lines, cursor, level + 1)?);
+        let value = finish_value(lines, cursor, level, rest, &name, line.number)?;
+        found.insert(name, value);
     }
 
     Ok(found)
 }
 
-/// Reads the indented `field value` lines making up one struct.
+/// Reads the indented lines making up one struct, list, or nested value.
 ///
-/// A single field named `=` means the value is not a struct at all — that is how a scalar resource
-/// round-trips.
+/// Mirrors `write_field` exactly, and reads the same four signals:
+///
+/// - a name with something after it is a scalar or a flat list, on one line;
+/// - `name ()` is a unit value, spelled out so it cannot be confused with an empty struct;
+/// - a name whose children are `- ` items is a list;
+/// - anything else with children is a struct — which is also how a **map** comes back, since the two
+///   are written identically and `Reflect for BTreeMap` accepts either (ADR 0027).
 fn parse_fields(lines: &[Line], cursor: &mut usize, level: usize) -> Result<Value, ParseError> {
+    // A list and a struct are told apart by their first child, so the children are collected once
+    // and classified rather than guessed at from the parent's name.
+    let is_list = lines
+        .get(*cursor)
+        .is_some_and(|line| line.level == level && line.text == "-" || line.text.starts_with("- "));
+
+    if is_list {
+        let mut items = Vec::new();
+        while let Some(line) = lines.get(*cursor) {
+            if line.level != level {
+                break;
+            }
+            let (marker, rest) = split_once(&line.text);
+            if marker != "-" {
+                break;
+            }
+            *cursor += 1;
+            items.push(finish_value(lines, cursor, level, rest, "-", line.number)?);
+        }
+        return Ok(Value::List(items));
+    }
+
     let mut fields: BTreeMap<String, Value> = BTreeMap::new();
 
     while let Some(line) = lines.get(*cursor) {
@@ -326,16 +357,37 @@ fn parse_fields(lines: &[Line], cursor: &mut usize, level: usize) -> Result<Valu
         }
 
         let (name, rest) = split_once(&line.text);
-        let value = parse_value(rest, &name, line.number)?;
-        if name == "=" {
-            *cursor += 1;
-            return Ok(value);
-        }
-        fields.insert(name, value);
         *cursor += 1;
+        let value = finish_value(lines, cursor, level, rest, &name, line.number)?;
+        fields.insert(name, value);
     }
 
     Ok(Value::Struct(fields))
+}
+
+/// Turns the text after a name into a value, descending into indented children when there is none.
+///
+/// The cursor is already past the name's own line when this is called.
+fn finish_value(
+    lines: &[Line],
+    cursor: &mut usize,
+    level: usize,
+    rest: &str,
+    field: &str,
+    line: usize,
+) -> Result<Value, ParseError> {
+    if !rest.is_empty() {
+        return parse_value(rest, field, line);
+    }
+
+    // Nothing on the line, so the value is whatever is indented beneath it. No children at all means
+    // an empty struct — a unit value is written `()` precisely so the two do not collide.
+    let has_children = lines.get(*cursor).is_some_and(|next| next.level > level);
+    if has_children {
+        parse_fields(lines, cursor, level + 1)
+    } else {
+        Ok(Value::Struct(BTreeMap::new()))
+    }
 }
 
 /// Reads the `entities` block.
@@ -430,6 +482,11 @@ fn split_once(text: &str) -> (String, &str) {
 /// cannot produce one that round-trips — see [`ParseErrorKind::UnreadableValue`].
 fn parse_value(text: &str, field: &str, line: usize) -> Result<Value, ParseError> {
     if text.is_empty() {
+        return Ok(Value::Unit);
+    }
+    // Spelled out by the writer so it cannot be confused with an empty struct, which is written as a
+    // bare name with nothing beneath it.
+    if text == "()" {
         return Ok(Value::Unit);
     }
 
@@ -719,8 +776,7 @@ mod tests {
             "state-hash 0000000000000000\n",
             "\n",
             "resources\n",
-            "  Countdown\n",
-            "    = 9\n",
+            "  Countdown 9\n",
         );
         let parsed = parse(text).expect("valid");
         // `I64` rather than `U64`: the parser is untyped, like the scene parser, so the punctuation

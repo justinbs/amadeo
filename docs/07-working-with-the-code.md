@@ -780,6 +780,49 @@ Two worked examples from session 8, both of which changed the answer from "proba
 If the hashes do *not* come back, the change is bigger than you thought, and that is exactly what you
 wanted to find out before committing.
 
+### Snapshots: getting back to a moment without re-simulating
+
+The loop this exists to fix: you want to look at what happens at minute five, and getting there costs
+382 ms of simulation every single time you look (ADR 0011 measured it). Instead:
+
+```bash
+amadeo snapshot --ticks 18000 five-minutes.snapshot
+```
+
+Then every question afterwards starts from the file:
+
+```bash
+amadeo status --from five-minutes.snapshot
+```
+
+`--from` works on any game command, and composes with `--ticks` — restore to the recorded moment,
+then run that many more:
+
+```bash
+amadeo query Transform --from five-minutes.snapshot --ticks 30
+```
+
+**A snapshot is text, and reading one is a supported thing to do.** So is editing one: change a value,
+restore it, and see what happens. The file is `docs/adr/0028`'s format.
+
+**Two things it does not capture**, both deliberately:
+
+- **Services** — asset caches, the GPU device, the renderer. Those are machinery, not simulation
+  state (ADR 0009). A restore puts the *simulation* back; the process around it carries on as it was.
+- **Anything from a different build.** Rename a component and old snapshots stop loading, with an
+  error saying so. A snapshot captures one moment of one run; there is no migration path and one
+  would be the wrong thing to build.
+
+**Why restoring is a launch flag rather than a method.** A snapshot says what the world *is*, so it
+has to be installed before the first tick — by the time an RPC method could run, the pre-roll has
+already happened. Same shape and same reason as `--replay`.
+
+**The non-obvious part, if you ever touch the format.** A snapshot records the entity allocator's
+*free list*, and `World::state_hash` deliberately does not. That means a snapshot missing the free
+list would restore a world that hashes identically and then hands out different entity handles on the
+next `spawn`. So comparing hashes after a restore cannot prove a restore is correct — the tests run
+the world *on* afterwards instead, which is the only check that can see it.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

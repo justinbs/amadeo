@@ -67,6 +67,7 @@ dependencies = [
  "amadeo-input",
  "amadeo-reflect",
  "amadeo-scene",
+ "amadeo-snapshot",
  "thiserror 2.0.19",
 ]
 

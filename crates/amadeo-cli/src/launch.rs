@@ -38,8 +38,8 @@ impl Session {
     /// # Errors
     ///
     /// If cargo cannot be started, or the build fails.
-    pub(crate) fn start(root: &Path, package: &str, ticks: u64) -> Result<Session> {
-        Session::start_with(root, package, &["--ticks".to_string(), ticks.to_string()])
+    pub(crate) fn start(root: &Path, package: &str, launch: &[String]) -> Result<Session> {
+        Session::start_with(root, package, launch)
     }
 
     /// Launches with arbitrary extra arguments after `--amadeo-agent`.
@@ -161,8 +161,13 @@ impl Session {
 /// If the launch fails, or the game answers with a JSON-RPC error — which is turned into a plain
 /// error message here, so a failing `amadeo` command looks like a failing command rather than like
 /// a successful command that printed an error object.
-pub(crate) fn ask_once(root: &Path, package: &str, ticks: u64, request: Json) -> Result<Json> {
-    let mut session = Session::start(root, package, ticks)?;
+pub(crate) fn ask_once(
+    root: &Path,
+    package: &str,
+    launch: &[String],
+    request: Json,
+) -> Result<Json> {
+    let mut session = Session::start(root, package, launch)?;
     let replies = session.ask(&[request])?;
 
     let reply = replies

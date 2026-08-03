@@ -110,38 +110,63 @@ fn pad(level: usize) -> String {
     " ".repeat(level * INDENT)
 }
 
-/// Writes a named block — a resource or a component — and its fields.
+/// Writes a named block — a resource or a component — and everything under it.
 ///
-/// A struct's fields go one per line beneath it. Anything else is written inline after the name,
-/// which covers the resources that reflect as a scalar rather than a struct.
+/// The same shape as any other field, which is why it just delegates: a resource that reflects as a
+/// struct gets an indented block, and one that reflects as a scalar gets its value on the same line.
 fn write_named_value(out: &mut String, level: usize, name: &str, value: &Value) {
-    let _ = writeln!(out, "{}{name}", pad(level));
+    write_field(out, level, name, value);
+}
+
+/// Writes one field, nesting when the value has parts.
+///
+/// Four shapes, and the parser tells them apart by exactly the same signals:
+///
+/// | Value | Written as |
+/// |---|---|
+/// | a scalar, or a flat list | `name 1.0 2.0` — on one line |
+/// | `Unit` | `name ()` — explicit, so it cannot be confused with an empty struct |
+/// | a struct or a map | `name`, then its fields indented one level |
+/// | a list that will not inline | `name`, then one `- ` item per line |
+///
+/// # Why maps need this, and it is not hypothetical
+///
+/// `InputState` is two maps and is a resource in every game. Without nesting, its value would fall
+/// out in `Display` form — `{8831028638596390904 => {value: 0}}` — which no parser here reads back.
+/// A snapshot of any real game would capture and then fail to restore, which is the worst kind of
+/// broken: it looks like it worked until you need it.
+///
+/// A **struct and a map are written identically**, deliberately. `Reflect for BTreeMap` accepts
+/// either (ADR 0027), for the same reason a text parser has no schema and cannot know which it is
+/// looking at — so the round trip is `Map -> text -> Struct -> Map`, and it is byte-stable.
+fn write_field(out: &mut String, level: usize, name: &str, value: &Value) {
+    if let Some(inline) = inline_value(value) {
+        let _ = writeln!(out, "{}{name} {inline}", pad(level));
+        return;
+    }
 
     match value {
+        // Explicit rather than a bare name, so an empty struct and a unit value stay distinct.
+        Value::Unit => {
+            let _ = writeln!(out, "{}{name} ()", pad(level));
+        }
         Value::Struct(fields) | Value::Map(fields) => {
+            let _ = writeln!(out, "{}{name}", pad(level));
             for (field, inner) in fields {
                 write_field(out, level + 1, field, inner);
             }
         }
-        // Not a struct, so there are no fields to indent. Written as a single `value` line, which
-        // the parser recognises by the name being the reserved word.
-        other => write_field(out, level + 1, "=", other),
-    }
-}
-
-/// Writes one field line.
-///
-/// A value that cannot be written inline — a nested struct, a map, a list of lists — is written in
-/// its `Display` form so **nothing is silently dropped**, and the parser refuses it with a real
-/// message. That is the same choice `amadeo-scene`'s writer makes, and for the same reason: a round
-/// trip that loses data quietly is far worse than one that fails loudly.
-fn write_field(out: &mut String, level: usize, name: &str, value: &Value) {
-    match inline_value(value) {
-        Some(inline) => {
-            let _ = writeln!(out, "{}{name} {inline}", pad(level));
+        Value::List(items) => {
+            let _ = writeln!(out, "{}{name}", pad(level));
+            for item in items {
+                write_field(out, level + 1, "-", item);
+            }
         }
-        None => {
-            let _ = writeln!(out, "{}{name} {value}", pad(level));
+        // Nothing reaches here: `inline_value` handles every scalar, and the arms above cover the
+        // rest. Written in `Display` form rather than skipped so that if a new `Value` variant ever
+        // appears, the data survives to be seen in the file instead of vanishing.
+        other => {
+            let _ = writeln!(out, "{}{name} {other}", pad(level));
         }
     }
 }
@@ -289,7 +314,59 @@ mod tests {
             resources,
             ..empty()
         });
-        assert!(text.contains("  Countdown\n    = 9\n"), "{text}");
+        assert!(text.contains("  Countdown 9\n"), "{text}");
+    }
+
+    #[test]
+    fn a_map_nests_rather_than_falling_out_as_debug_text() {
+        // Found by running this against the real game rather than by reasoning about it.
+        // `InputState` is two maps and is a resource in every game, so without nesting a snapshot
+        // of anything real would capture and then refuse to restore.
+        let mut axes = std::collections::BTreeMap::new();
+        axes.insert(
+            "8831028638596390904".to_string(),
+            Value::structure([("previous", Value::F32(0.0)), ("value", Value::F32(0.5))]),
+        );
+
+        let mut resources = BTreeMap::new();
+        resources.insert(
+            "InputState".to_string(),
+            Value::structure([("axes", Value::Map(axes))]),
+        );
+
+        let text = to_text(&Snapshot {
+            resources,
+            ..empty()
+        });
+
+        assert!(
+            text.contains(
+                "  InputState\n    axes\n      8831028638596390904\n        previous 0.0\n        value 0.5\n"
+            ),
+            "{text}"
+        );
+        // And nothing fell out in `Display` form.
+        assert!(!text.contains("=>"), "{text}");
+    }
+
+    #[test]
+    fn an_empty_map_and_a_unit_are_written_differently() {
+        // They would otherwise both be a bare name, and the parser could not tell them apart.
+        let mut resources = BTreeMap::new();
+        resources.insert(
+            "Both".to_string(),
+            Value::structure([
+                ("empty", Value::Map(std::collections::BTreeMap::new())),
+                ("nothing", Value::Unit),
+            ]),
+        );
+
+        let text = to_text(&Snapshot {
+            resources,
+            ..empty()
+        });
+        assert!(text.contains("    empty\n"), "{text}");
+        assert!(text.contains("    nothing ()\n"), "{text}");
     }
 
     #[test]
