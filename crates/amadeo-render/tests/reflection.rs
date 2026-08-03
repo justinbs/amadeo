@@ -16,10 +16,20 @@ fn the_engines_components_register_and_are_discoverable_by_name() {
     registry.register::<Quad>().expect("registers");
     registry.register::<Camera2d>().expect("registers");
 
-    // Sorted, so anything generated from this listing is diffable.
+    // Sorted, so anything generated from this listing is diffable. The vector and scalar types come
+    // along because registering a type registers everything it names (ADR 0030) — which is what lets
+    // a reader resolve `"type": "array<f32, 3>"` instead of having to parse the string.
     assert_eq!(
         registry.names().collect::<Vec<_>>(),
-        vec!["Camera2d", "Quad", "Transform"]
+        vec![
+            "Camera2d",
+            "Quad",
+            "Transform",
+            "array<f32, 2>",
+            "array<f32, 3>",
+            "array<f32, 4>",
+            "f32",
+        ]
     );
 }
 

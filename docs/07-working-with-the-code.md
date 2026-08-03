@@ -831,6 +831,53 @@ There are two answers, and which one applies depends on whether the state is pub
 - **Private state** — expose it, then reflect one layer up. `Rng::state()` and `Rng::from_state()`
   exist for exactly this, and `SimRng` in `amadeo-app` hand-writes the impl on top of them.
 
+**Registering one type registers everything it names.** `registry.register::<Run>()` also puts
+`Phase`, `u32` and anything *those* name into the registry (ADR 0030). So `registry.names()` is
+longer than the list you registered, and `f32` and `array<f32, 3>` are in there. That is deliberate:
+without it the schema could say a field is a `Phase` with nowhere to look `Phase` up. If you
+hand-write a `Reflect` impl for a type with fields, write `register_dependencies` too — the derive
+does it for you.
+
+### Asking the engine what it knows: `describe`
+
+`amadeo describe` returns four things, and it is worth knowing which is which:
+
+| Key | What it is |
+|---|---|
+| `components` | what you can put on an entity — the list you pick from |
+| `resources` | what the world holds exactly one of |
+| `types` | every type the two above *name*, transitively — a lookup table, not a menu |
+| `manual` | a path to this file, for the things `describe` deliberately does not carry |
+
+`describe <Type>` resolves against all of them, so `amadeo describe Phase` works on a nested enum
+that is neither a component nor a resource.
+
+**`describe <Type> --example` is the one to reach for when you are writing a scene file by hand.** It
+emits a minimal valid instance in two spellings — the scene block and the JSON — generated from one
+value, so they cannot disagree:
+
+```bash
+amadeo describe Run --package vault --example
+```
+
+```text
+  Run
+    collected 0
+    phase Playing
+    total 0
+```
+
+That output is teaching you something no schema could: `phase` takes a **bare word**. Writing
+`phase "Playing"` parses fine and then fails to load, because bare-versus-quoted is scene-format
+grammar rather than type information. Numbers come back as zero, or a declared range's minimum where
+zero would be outside it, so the example is minimal rather than realistic — it teaches spelling, not
+values.
+
+**What `describe` does not tell you** is how to *write* code against the engine: the derives a
+component needs, `impl Component`, the registration call, a system's signature, `world.query`. That
+is what this file is for, and it is a deliberate boundary rather than an omission — the reasoning is
+in ADR 0030 and `docs/09-gate-4-describe-is-not-enough.md`.
+
 ### Maps in a reflected type
 
 `BTreeMap<K, V>` reflects, as long as `K` implements `ReflectKey` — `String` and the fixed-width

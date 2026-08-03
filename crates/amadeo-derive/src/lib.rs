@@ -286,6 +286,8 @@ fn expand(input: DeriveInput) -> syn::Result<TokenStream2> {
         }
     };
 
+    let dependencies = dependency_types(&input.data)?;
+
     Ok(quote! {
         impl ::amadeo_reflect::Reflect for #ident {
             // The same string `type_name` returns, as a constant. This is what lets `ComponentId`
@@ -315,8 +317,53 @@ fn expand(input: DeriveInput) -> syn::Result<TokenStream2> {
             ) -> ::std::result::Result<Self, ::amadeo_reflect::ReflectError> {
                 #from_value
             }
+
+            // One line per field type, so registering this type also registers everything it
+            // names. Without it the schema could report `"type": "Phase"` with no way to look
+            // `Phase` up — see `Reflect::register_dependencies` and ADR 0030.
+            fn register_dependencies(
+                registry: &mut ::amadeo_reflect::TypeRegistry,
+            ) -> ::std::result::Result<(), ::amadeo_reflect::RegistryError> {
+                #( registry.register::<#dependencies>()?; )*
+                ::std::result::Result::Ok(())
+            }
         }
     })
+}
+
+/// Every type this one names in its schema, so `register_dependencies` can register them.
+///
+/// Duplicates are fine and expected — three `f32` fields produce three calls, and the second and
+/// third are no-ops. Deduplicating here would mean comparing `syn::Type` values for equality, which
+/// is more machinery than the saving is worth.
+///
+/// A `#[reflect(skip)]` field is omitted, because a skipped field produces no `FieldInfo` and so
+/// nothing in the schema names its type.
+fn dependency_types(data: &Data) -> syn::Result<Vec<syn::Type>> {
+    let mut types = Vec::new();
+
+    let mut collect = |fields: &Fields| -> syn::Result<()> {
+        for field in fields {
+            if parse_field_options(&field.attrs)?.skip {
+                continue;
+            }
+            types.push(field.ty.clone());
+        }
+        Ok(())
+    };
+
+    match data {
+        Data::Struct(data) => collect(&data.fields)?,
+        Data::Enum(data) => {
+            for variant in &data.variants {
+                collect(&variant.fields)?;
+            }
+        }
+        // Rejected earlier with a better message; nothing to collect either way.
+        Data::Union(_) => {}
+    }
+
+    Ok(types)
 }
 
 /// Builds the `TypeKind`, `to_value` body, and `from_value` body for a struct.

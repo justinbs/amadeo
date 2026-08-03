@@ -6,37 +6,94 @@
 //! written rather than after a confusing debug session.
 
 use crate::json::Json;
-use amadeo_ecs::ComponentRegistry;
-use amadeo_reflect::{FieldInfo, Interpolation, ScalarKind, SyncPolicy, TypeInfo, TypeKind};
+use amadeo_ecs::{ComponentRegistry, World};
+use amadeo_reflect::{
+    FieldInfo, Interpolation, RegistryError, ScalarKind, SyncPolicy, TypeInfo, TypeKind,
+    TypeRegistry,
+};
 
 /// The version of the description document's own shape.
 ///
 /// Bumped when the *layout below* changes incompatibly, so a tool reading an old dump can tell
 /// "written by an older engine" from "corrupt". Separate from any component's own version.
-pub const DESCRIBE_FORMAT_VERSION: u32 = 1;
+///
+/// **2** — added `resources`, `types` and `manual`, and a `length` on list kinds (ADR 0030).
+pub const DESCRIBE_FORMAT_VERSION: u32 = 2;
 
-/// Describes every registered component.
+/// Where the things this document deliberately does *not* carry are written down.
+///
+/// M1 exit gate 4 asked `describe` to be sufficient to write a new component and system without
+/// reading engine source, and it is not: it is a schema, and how you *declare* a component, register
+/// one, write a system or query the world is API rather than data. ADR 0030 decided that stays in
+/// the repo's documentation, and that `describe` should say so rather than leave a reader guessing
+/// that the absence means "impossible".
+///
+/// A pointer rather than the prose itself, on purpose: prose copied into a protocol reply is
+/// documentation that nothing recompiles, so it drifts. A path cannot. Anything speaking this
+/// protocol has the repo checked out, because ADR 0016 has the CLI build and launch the game.
+pub const MANUAL_PATH: &str = "docs/07-working-with-the-code.md";
+
+/// Describes everything the engine knows about itself.
 ///
 /// ```text
 /// {
-///   "components": { "Transform": { ... } },
-///   "format_version": 1
+///   "components": { "Transform": { ... } },   // things you can put on an entity
+///   "resources":  { "Run": { ... } },         // things the world holds exactly one of
+///   "types":      { "Phase": { ... } },       // every type the two above name, transitively
+///   "manual": "docs/07-working-with-the-code.md",
+///   "format_version": 2
 /// }
 /// ```
-#[must_use]
-pub fn describe(registry: &ComponentRegistry) -> Json {
-    let components = registry
-        .types()
+///
+/// # Why `types` is separate from `components`
+///
+/// They answer different questions. `components` is "what can I put on an entity" — a closed list an
+/// agent picks from. `types` is "what does this field's type mean" — a lookup table. `Phase` belongs
+/// in the second and would be a lie in the first: you cannot spawn an entity holding a `Phase`.
+///
+/// # Errors
+///
+/// [`RegistryError`] if a resource and a component share a canonical name with different shapes.
+/// There is no honest document to emit in that case, because one name would have to mean two things.
+pub fn describe(world: &World, registry: &ComponentRegistry) -> Result<Json, RegistryError> {
+    // Start from the component registry — which already holds every type the components name — and
+    // fold the resources in on top. Cloned rather than mutated in place because `describe` answers a
+    // question and must not change what it is describing.
+    let mut types: TypeRegistry = registry.types().clone();
+    world.register_resource_schemas(&mut types)?;
+
+    // `registry.names()` is the components specifically, not everything in the type registry: since
+    // ADR 0030 the latter also holds field types, and `f32` is not a component.
+    let components = registry.names().filter_map(|name| {
+        types
+            .get(name)
+            .map(|info| (name.to_string(), describe_type(info)))
+    });
+
+    let mut resource_types = TypeRegistry::new();
+    world.register_resource_schemas(&mut resource_types)?;
+    let resources = resource_types
         .iter()
         .map(|info| (info.name.clone(), describe_type(info)));
 
-    Json::object([
+    Ok(Json::object([
         ("components", Json::Object(components.collect())),
+        ("resources", Json::Object(resources.collect())),
+        (
+            "types",
+            Json::Object(
+                types
+                    .iter()
+                    .map(|info| (info.name.clone(), describe_type(info)))
+                    .collect(),
+            ),
+        ),
+        ("manual", Json::string(MANUAL_PATH)),
         (
             "format_version",
             Json::Int(i64::from(DESCRIBE_FORMAT_VERSION)),
         ),
-    ])
+    ]))
 }
 
 /// Describes one type.
@@ -86,9 +143,17 @@ pub fn describe_type(info: &TypeInfo) -> Json {
             members.push(("kind", Json::string("scalar")));
             members.push(("scalar", Json::string(scalar_name(*scalar))));
         }
-        TypeKind::List { element } => {
+        TypeKind::List { element, length } => {
             members.push(("kind", Json::string("list")));
             members.push(("element", Json::string(element)));
+            // Only when the type fixes it. Omitted for a `Vec`, where any count is valid — the same
+            // rule as `unit` and `range`, so `"length" in kind` is a straight answer.
+            if let Some(length) = length {
+                members.push((
+                    "length",
+                    Json::Int(i64::try_from(*length).unwrap_or(i64::MAX)),
+                ));
+            }
         }
         TypeKind::Optional { inner } => {
             members.push(("kind", Json::string("optional")));

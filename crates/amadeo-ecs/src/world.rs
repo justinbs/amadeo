@@ -307,6 +307,31 @@ impl World {
         named
     }
 
+    /// Puts every resource's *schema* into a registry, along with every type those schemas name.
+    ///
+    /// The schema half of [`World::resources`], and the reason `describe` can report a resource at
+    /// all. Registered into a caller-supplied registry rather than returned as a list, because the
+    /// caller wants resources and components in one place — a field of type `Phase` is looked up
+    /// the same way whichever it came from.
+    ///
+    /// Iterates in sorted name order so the registry is built identically every run (I3).
+    ///
+    /// # Errors
+    ///
+    /// [`amadeo_reflect::RegistryError`] if a resource's name is already held by a different type.
+    pub fn register_resource_schemas(
+        &self,
+        registry: &mut amadeo_reflect::TypeRegistry,
+    ) -> Result<(), amadeo_reflect::RegistryError> {
+        let mut slots: Vec<&Box<dyn crate::resource::ResourceSlot>> =
+            self.resources.values().collect();
+        slots.sort_by_key(|slot| slot.type_name_value());
+        for slot in slots {
+            slot.register_schema(registry)?;
+        }
+        Ok(())
+    }
+
     /// Removes a resource and returns it.
     pub fn remove_resource<T: Resource>(&mut self) -> Option<T> {
         let slot = self.resources.remove(&ResourceId::of::<T>())?;

@@ -33,6 +33,8 @@ use std::path::{Path, PathBuf};
 enum Command {
     /// The schema — everything, or one type.
     Describe { type_name: Option<String> },
+    /// A worked example of one type: the scene spelling and the JSON spelling.
+    DescribeExample { type_name: String },
     /// Entities carrying all of the named components.
     Query { components: Vec<String> },
     /// One entity's components, by slot index.
@@ -140,6 +142,10 @@ fn run(command: Command, options: &Options) -> Result<()> {
                 Some(name) => Json::object([("type", Json::string(name))]),
                 None => Json::object([] as [(&str, Json); 0]),
             },
+        ),
+        Command::DescribeExample { type_name } => (
+            "describe.example",
+            Json::object([("type", Json::string(type_name))]),
         ),
         Command::Query { components } => (
             "world.query",
@@ -757,6 +763,7 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
     let mut stage: Option<String> = None;
     let mut params: Option<String> = None;
     let mut check = false;
+    let mut example = false;
 
     let mut index = 0;
     while index < arguments.len() {
@@ -806,6 +813,10 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
                 check = true;
                 index += 1;
             }
+            "--example" => {
+                example = true;
+                index += 1;
+            }
             other if other.starts_with('-') => {
                 bail!("unknown option `{other}`. Run `amadeo --help` for what there is")
             }
@@ -821,11 +832,21 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
         .context("expected a command. Run `amadeo --help` for what there is")?;
 
     let command = match name.as_str() {
-        "describe" => Command::Describe {
+        "describe" => {
             // Both `amadeo describe Quad` and `amadeo describe --type Quad` work; the first is
             // what anyone types.
-            type_name: type_name.or_else(|| rest.first().cloned()),
-        },
+            let named = type_name.or_else(|| rest.first().cloned());
+            if example {
+                Command::DescribeExample {
+                    type_name: named.context(
+                        "`--example` needs a type, as in `amadeo describe Transform --example`. \
+                         There is no example of the whole schema",
+                    )?,
+                }
+            } else {
+                Command::Describe { type_name: named }
+            }
+        }
         "query" => {
             if rest.is_empty() {
                 bail!(
@@ -906,7 +927,8 @@ RUNS HERE (no game needed)
 RUNS IN THE GAME (launches it, asks, exits)
     assets                   every asset id and the file behind it
     check <file>...          validate scene files against the real component schema
-    describe [type]          the component schema — everything, or one type
+    describe [type]          the schema — components, resources, and every type they name
+        --example            a minimal valid instance of one type, ready to paste
     import                   write a sidecar for each asset file that has none
         --check              report them instead of writing
     query <component>...     entities carrying all of the named components

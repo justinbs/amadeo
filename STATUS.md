@@ -1,13 +1,15 @@
 # Amadeo — Current Status
 
 **Last updated:** 2026-08-03 (end of session 8)
-**Current phase:** **M0 complete. M1 done — all five exit gates tested.** Gates 1, 2, 3 and 5 pass;
-gate 4 was tested and **found false**, which is a result rather than an omission (see below). Reflection,
-the scene format, the agent's read layer, the agent protocol and a working `amadeo` CLI, the whole
-asset layer, the sprite batcher, textured sprites on the GPU, invariant I8, snapshots, and
-**`games/vault` — a complete small 2D game** have all landed. **Gate 4 is tested and its claim does not hold** —
-`docs/09-gate-4-describe-is-not-enough.md`. **Prefabs are built** (ADR 0029, closing Q7). Q3, Q4, Q7,
-Q13, Q14, Q16 and Q17 are all closed; nothing is blocked.
+**Current phase:** **M0 complete. M1 closed — all five exit gates tested, four met and one refuted.**
+Reflection, the scene format, the agent's read layer, the agent protocol and a working `amadeo` CLI,
+the whole asset layer, the sprite batcher, textured sprites on the GPU, invariant I8, snapshots,
+prefabs, and **`games/vault` — a complete small 2D game** have all landed.
+
+**Gate 4 was tested and found false** — `describe` is a schema, not a manual — which is a result
+rather than an omission. **ADR 0030 settles what the protocol is for** and fixes the three parts of
+that finding that were genuine holes; the API half stays in `docs/07` by invariant I5. **ADR 0029
+closes Q7** with prefabs. Q3, Q4, Q7, Q13, Q14, Q16 and Q17 are all closed; nothing is blocked.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
 
 > ### ⚠️ Two working rules that changed in session 7 — read before doing anything
@@ -35,10 +37,10 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
 `games/vault`.
-**817 tests passing**; fmt, clippy
+**827 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
-Fifteen things work end to end today:
+Seventeen things work end to end today:
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -74,6 +76,16 @@ Fifteen things work end to end today:
 - **The engine describes its whole state, not just half of it.** `amadeo call world.resources`
   reports `Camera2d`, `InputState` and `SimRng` with live values from a running game. Entities carry
   components and everything else is a resource; before ADR 0027 the second half was invisible.
+- **And its whole schema, with nothing dangling.** `amadeo describe` has four sections —
+  `components`, `resources`, `types`, and a `manual` pointer. `types` is the transitive closure, so a
+  field reported as a `Phase` can actually be looked up and its variants read. Before ADR 0030 the
+  schema named types it could not describe, and resources were absent entirely.
+- **The engine shows you how to spell something.** `amadeo describe Run --package vault --example`
+  emits a minimal valid instance in both the scene and JSON spellings, generated from one value so
+  they cannot disagree. It teaches that `phase` takes a **bare word** — `phase "Playing"` parses and
+  then fails to load, and no schema could ever have said so, because bare-versus-quoted is grammar
+  rather than type information. Tested by pasting the output into a scene and loading it, for every
+  component in the engine.
 - **A moment can be saved and returned to.** `amadeo snapshot --ticks 600 mid.snapshot` captures a
   whole world to a readable text file; `amadeo status --from mid.snapshot` gets back to tick 600 by
   *reading the file* rather than simulating 600 ticks. Verified across separate processes, hashes
@@ -109,28 +121,12 @@ of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**A decision, not a task: what `describe` is *for*.** M1 exit gate 4 has been tested and **the claim
-in it is false** — `docs/09-gate-4-describe-is-not-enough.md` is the write-up, and it is short.
+**M2, and its first item is an ADR on 2D/3D coexistence *before* any code** — `docs/04-subsystems.md`
+§4 has the three options. Nothing is blocked, and every question M1 raised has been answered.
 
-The gate said `describe` output should be enough to write a new component and system without reading
-engine source. Tested by writing one (`Trap` and `spring_traps`, shipped in the Vault). The result:
-`describe` is **sufficient to author content** — every field carries its type, unit, range, and
-meaning, which is what made `vault.scene` writable — and it says nothing about how to *declare* a
-component, register one, write a system, or query the world. **And it omits resources entirely**, so
-`Run`, the resource `spring_traps` exists to change, does not appear anywhere in it.
+### M2
 
-The gate conflated "describes the data model" (true, and well done) with "describes the API" (false,
-and never designed for). Three options for closing it are in that document, from "leave it and say
-so" to "extend the protocol to cover resources and emit a compilable skeleton". **Justin's call** —
-it decides whether the protocol is a schema or a manual, which is the sort of thing that is expensive
-to change direction on later.
-
-Everything else in M1 is done: gates 1, 2, 3 and 5 are closed.
-
-### Then, M2
-
-The next milestone is 3D, and its first item is an ADR on 2D/3D coexistence *before* any code —
-`docs/04-subsystems.md` §4 has the three options. Two things to carry in:
+The next milestone is 3D. Two things to carry in:
 
 - **`render.capture`** — headless render-target readback. The GPU path still has **no automated
   coverage at all**: `render.describe` checks what *should* be drawn, and nothing checks what the
@@ -140,15 +136,37 @@ The next milestone is 3D, and its first item is an ADR on 2D/3D coexistence *bef
   has no sidecar, so the tool that fixes the problem cannot run. The likely fix is that `import`
   should not need the game at all.
 
-### Gate 4's result, in one paragraph
+### Gate 4's result, and what closed it — ADR 0030
 
-`describe` is a **schema, not a manual**, and the gate asked it to be both. It carries every field's
-type, unit, range and meaning — which is exactly enough to author a scene file, and is what made
-`vault.scene` writable. It says nothing about the derives a component needs, `impl Component`, the
-registration call, a system's signature, or how to query; and **resources are absent from it
-entirely**. The write-up is `docs/09-gate-4-describe-is-not-enough.md`, including an honest caveat
-about the confound — the experiment was run by an agent that had already read the engine source, so
-the gaps are ones it *noticed* rather than ones it was stopped by.
+`describe` is a **schema, not a manual**, and the gate asked it to be both. Justin was given three
+options and chose the most complete one. The decision splits along a line the gate had blurred:
+
+**The API half stays out of the protocol, and `describe` says where it lives.** How to declare a
+component, register one, write a system, query the world — that is API knowledge, and **invariant I5
+is what settles it**: anything the editor can do, the CLI and RPC can do, and the editor will *never*
+declare a new Rust component type, because that means editing the game crate and recompiling. So the
+gate was asking the protocol for something the project's own invariants do not ask of it. `describe`
+now carries a `manual` key naming `docs/07-working-with-the-code.md` — a pointer rather than the
+prose, because prose copied into a protocol reply is documentation nothing recompiles.
+
+**The schema half was a genuine hole, and fixing it properly found two more.** Resources were
+missing — `Run`, which holds the Vault's entire outcome, appeared nowhere. Beyond that: the schema
+was **not closed** (`Run.phase` reported `"type": "Phase"` and nothing could look `Phase` up, so
+nothing could know the legal values were `Playing`, `Won`, `Lost`), and a fixed array's **length
+existed only inside its name**, so anything needing the count had to parse `"array<f32, 2>"` apart.
+Both are editor blockers that would not otherwise have surfaced until M4.
+
+**And `describe <Type> --example` now emits something that loads** — a minimal valid instance in the
+scene spelling and the JSON spelling, generated from one value so they cannot disagree. The clearest
+justification for it: `phase Playing` is a **bare word**, and `phase "Playing"` parses and then fails
+to load. Bare-versus-quoted is scene-format grammar rather than type information, so no amount of
+schema would ever have said so.
+
+`games/vault/tests/gate_four.rs` pins all of it, in the game that found the gap. The write-up
+`docs/09-gate-4-describe-is-not-enough.md` keeps its honest caveat: the experiment was run by an
+agent that had already read the engine source, so the gaps are ones it *noticed* rather than ones it
+was stopped by, and the stronger test — hand the JSON to a reader with no prior exposure — has still
+not been run.
 
 ### What building a real game found
 
@@ -1301,3 +1319,43 @@ on purpose — several record a diagnosis that took a while to reach.
 
   817 tests, all four verification commands green, `amadeo check` passing on the scene and on both
   prefabs.
+
+  **Then gate 4's decision, which had been left for Justin — ADR 0030.** Three options were put to
+  him, from "leave it failed and say so" to extending the protocol; he took the most complete one.
+  The reframe that made it tractable: the five gaps gate 4 found are **two different kinds of
+  thing**, and treating them as one question is what made it look hard.
+
+  **Four of them are API knowledge and stay out of the protocol.** The argument is **I5**: anything
+  the editor can do, the CLI and RPC can do — and the editor will never declare a new Rust component
+  type, since that means editing the game crate and recompiling. So the gate was asking the protocol
+  for something the project's own invariants do not ask of it. `describe` gained a `manual` key
+  naming the file instead. Rejected outright: putting the recipe *in* the reply, because prose inside
+  a protocol reply is documentation nothing recompiles. MCP has exactly that field — servers may
+  return an `instructions` string at handshake — and the spec calls it a hint, and most servers do
+  not set it.
+
+  **The fifth was a real hole, and looking at it properly found two more the gate had missed.**
+  Resources were absent from `describe` entirely. The schema was also **not closed** — `Run.phase`
+  reported `"type": "Phase"` and nothing could look `Phase` up, so nothing could know its legal
+  values. And a fixed array's **length lived only inside its name**, so anything needing the count
+  had to parse `"array<f32, 2>"` back apart. Both of those are editor blockers that would not have
+  surfaced until M4.
+
+  Bevy's remote protocol is the closest analogue and it went the same way twice: resources were added
+  to BRP after the fact, and a third-party crate added `discover_format` because the schema alone
+  "doesn't show the actual JSON format needed" — leaving people reverse-engineering shapes out of
+  error messages. That is what `describe.example` is, built in rather than bolted on.
+
+  **`describe <Type> --example` emits a minimal valid instance** in both the scene and JSON
+  spellings, from one value so they cannot disagree. Its clearest justification is a single line:
+  `phase Playing` is a bare word, and `phase "Playing"` parses and *then* fails to load — grammar
+  rather than type information, so no schema would ever have said it. The testable property is that
+  the emitted example **loads**, and that is the test, for every component the engine has.
+
+  Two things went in underneath to make it possible, both defensible on their own: `Reflect` gained a
+  derive-generated `register_dependencies`, so registering a type registers everything it names
+  (inserted before recursing, so a self-referential type terminates — that is a test, not a hope);
+  and `TypeKind::List` gained a `length`.
+
+  827 tests, all four verification commands green, both replays matching all eight checkpoints
+  unchanged.

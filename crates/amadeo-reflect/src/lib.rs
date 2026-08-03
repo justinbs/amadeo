@@ -248,4 +248,38 @@ pub trait Reflect: Sized + 'static {
     ///
     /// Returns a [`ReflectError`] naming the type, the problem, and what would have been valid.
     fn from_value(value: &Value) -> Result<Self, ReflectError>;
+
+    /// Registers every type this one *names*, so the schema is closed.
+    ///
+    /// `#[derive(Reflect)]` writes this for you — one [`TypeRegistry::register`] call per field
+    /// type, per variant field type, per element type. You should never need to write or call it by
+    /// hand: [`TypeRegistry::register`] calls it for you.
+    ///
+    /// # What "closed" means, and why it was worth a trait method
+    ///
+    /// Before this, registering `Run` put `Run` in the registry and nothing else. `Run` has a field
+    /// `phase: Phase`, so `describe` reported `"type": "Phase"` — and there was **nowhere to look
+    /// `Phase` up**. It is neither a component nor a resource, so nothing registered it, so nothing
+    /// could say that its legal values are `Playing`, `Won` and `Lost`. The schema named a type it
+    /// could not describe.
+    ///
+    /// That is a hole for an agent (it cannot know the variants) and for the editor (it cannot draw
+    /// the dropdown), and it is the reason `describe --example` could not exist: synthesising a
+    /// valid `Run` requires knowing what a valid `Phase` is.
+    ///
+    /// Found by M1 exit gate 4 — ADR 0030. Bevy solves it the same way, with
+    /// `register_type_dependencies`.
+    ///
+    /// The default is a no-op, which is correct for every scalar: `f32` names nothing.
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`RegistryError`] from any nested [`TypeRegistry::register`], so a name collision
+    /// two levels down is reported rather than swallowed.
+    fn register_dependencies(registry: &mut TypeRegistry) -> Result<(), RegistryError> {
+        // Named so the parameter is not dead in the default body. A scalar has no dependencies,
+        // which is exactly why this default exists.
+        let _ = registry;
+        Ok(())
+    }
 }

@@ -18,6 +18,10 @@ amadeo-reflect.workspace = true
 # verification channel. `amadeo-render` sits below this crate, and without the `gpu` feature it
 # brings nothing heavy.
 amadeo-render.workspace = true
+# `describe.example` renders a component the way a scene file spells it. Borrowed rather than
+# reimplemented: two copies of the canonical form would drift, and I2 needs exactly one. Same
+# reasoning that had amadeo-snapshot borrow `format_float`. amadeo-scene sits below this crate.
+amadeo-scene.workspace = true
 thiserror.workspace = true
 
 [lints]

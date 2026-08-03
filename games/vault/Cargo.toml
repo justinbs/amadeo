@@ -38,6 +38,10 @@ winit = "0.30"
 # rather than the engine's.
 png = "0.18"
 
+[dev-dependencies]
+# Gate 4 is about what `describe` carries, so the test that closes it talks to the real thing.
+amadeo-agent.workspace = true
+
 [lints]
 workspace = true
 

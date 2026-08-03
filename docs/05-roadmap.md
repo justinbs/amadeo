@@ -135,14 +135,21 @@ of a milestone.
    byte-identical to the formatter's output — so the spec cannot drift from the implementation.
 4. ⚠️ `amadeo describe` output is sufficient to write a new component and system without reading engine
    source. Tested by actually doing it.
-   **Tested, and the claim is false — see `docs/09-gate-4-describe-is-not-enough.md`.** The test was
-   a real component and system (`Trap` and `spring_traps`, shipped in the Vault). `describe` is
-   sufficient to author *content* — it carries every field's type, unit, range and meaning — and it
-   says nothing about how to *declare* a component, register one, write a system, or query the
-   world, and **it omits resources entirely**, so the resource this system exists to change is
-   invisible in it. The gate conflated "describes the data model" with "describes the API". Three
-   options for closing it are set out in that document; none is chosen, because it is a question
-   about what the protocol is *for*.
+   **Tested, the claim is false, and superseded by ADR 0030 rather than met.** Left worded as
+   originally written, because the gate being wrong is the result. The test was a real component and
+   system (`Trap` and `spring_traps`, shipped in the Vault). `describe` is sufficient to author
+   *content* — it carries every field's type, unit, range and meaning — and it says nothing about how
+   to *declare* a component, register one, write a system, or query the world. Write-up in
+   `docs/09-gate-4-describe-is-not-enough.md`.
+
+   **What ADR 0030 decided**, from three options Justin was given: `describe` is a **schema, not a
+   manual**. The API half stays in `docs/07-working-with-the-code.md`, because **invariant I5** does
+   not ask the protocol to carry something the editor cannot do either — the editor will never
+   declare a Rust type — and the reply now names the file rather than leaving a reader guessing.
+   The *schema* half was a genuine hole and is fixed: resources are first-class, the schema is closed
+   over every type a field names, a fixed array reports its length, and `describe <Type> --example`
+   emits a minimal valid instance in both the scene and JSON spellings. Pinned by
+   `games/vault/tests/gate_four.rs` — the game that found the gap.
 5. ✅ Golden replays from M0 still pass.
    And the Vault added its own: `replays/collect-two.replay`, asserted in a separate process by CI.
    A much stronger determinism check than `quad-demo`'s — patrolling wardens, collision against

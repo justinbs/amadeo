@@ -115,6 +115,16 @@ jobs:
           ./target/debug/amadeo.exe check games/vault/assets/prefabs/sigil_pickup.scene --package vault
           ./target/debug/amadeo.exe check games/vault/assets/prefabs/floor_trap.scene --package vault
 
+      # ADR 0030: the point of `--example` is that what it emits actually loads. The unit tests cover
+      # every engine component; this covers the whole path end to end, through a real game binary
+      # over JSON-RPC, on a type whose enum field is the thing no schema could have taught.
+      - name: A generated example loads
+        shell: bash
+        run: |
+          ./target/debug/amadeo.exe describe Run --package vault --example > example.json
+          grep -q 'phase Playing' example.json
+          rm example.json
+
       # Invariant I2 applies to hand-written scene files exactly as `cargo fmt` applies to code, and
       # nothing was enforcing it -- all three of these files were found non-canonical in session 8,
       # with components out of sorted order. `fmt` is standalone (ADR 0016) so this needs no game.

@@ -34,7 +34,7 @@ stop and raise it instead of working around it.
 | **I5** | **Anything the editor can do, the CLI and RPC can do.** The editor is built strictly on top of the same protocol the agent uses. No editor-only capabilities, ever. | Guarantees the agent never falls behind the human. |
 | **I6** | **Dependencies flow one way.** The crate graph is a strict DAG (see §4). A lower layer never references a higher one. No cyclic crates, no "just this once." | Keeps the engine comprehensible and testable in isolation. |
 | **I7** | **Every subsystem is headless-capable.** Rendering, audio, and input all have null backends. The whole engine must run with no window and no GPU. | Headless is how the agent runs and verifies games, and how CI works. |
-| **I8** | **Reflection is not optional.** Every component, resource, and event registers a machine-readable schema. If it can't be reflected, it can't be serialized, inspected, or edited. **Enforced by trait bound** — ADR 0013 for components, ADR 0027 for the other two. | One registry powers serialization, the editor, and agent introspection. |
+| **I8** | **Reflection is not optional, and the schema is closed.** Every component, resource, and event registers a machine-readable schema, **and so does every type those name** — registering one type registers its field types transitively (ADR 0030), so the schema can never name something it cannot describe. If it can't be reflected, it can't be serialized, inspected, or edited. **Enforced by trait bound** — ADR 0013 for components, ADR 0027 for the other two. | One registry powers serialization, the editor, and agent introspection. |
 
 ## 3. Tech stack (decided)
 
@@ -109,16 +109,20 @@ crates/
                      safe. A dangling override refuses to load; a cycle is reported with its chain.
 ✖ amadeo-script      NOT BUILT. ADR 0011: game logic is plain Rust in the game crate.
 🟡 amadeo-agent       the protocol: JSON reader and writer, JSON-RPC envelope, and the methods that
-                     need only a world + registry (describe, world.query/entity/list/resources).
-                     Read-only. Mutation, snapshots, and capture pending. ADR 0016, spec in
-                     docs/protocol/v1.md.
+                     need only a world + registry (describe, describe.example, render.describe,
+                     world.query/entity/list/resources). Read-only. ADR 0030 settles what `describe`
+                     is *for*: a **schema, not a manual**, covering components, resources, and every
+                     type those name transitively — how to write Rust against the engine stays in
+                     docs/07, which the reply points at. Mutation and render.capture pending.
+                     ADR 0016, spec in docs/protocol/v1.md.
 ✅ amadeo-app         Stage/Schedule, fixed-timestep loop, SimRng, ComponentRegistry, and the agent
                      *host* — serve_if_requested reads stdin and answers. The host lives here rather
                      than in amadeo-agent because it needs App and I6 forbids reaching down.
 — amadeo-editor      graphical editor. A CLIENT of amadeo-agent. No privileged access.
 🟡 amadeo-cli         the `amadeo` binary. Built: describe/query/entity/schedule/status/call/check/
                      replay/fmt/assets/import/snapshot, plus `--from <file>` on any of them to
-                     restore a snapshot before answering.
+                     restore a snapshot before answering, and `describe <Type> --example` for a
+                     minimal valid instance in both the scene and JSON spellings.
                      Pending: new/run/test/build/export. ADR 0016: `fmt` is standalone;
                      everything else spawns the game binary in agent mode and talks to it over stdio,
                      because only that process knows the game's components.
@@ -334,5 +338,5 @@ Things that will quietly destroy the design if allowed:
 | `docs/06-open-questions.md` | Before assuming any undecided thing. |
 | `docs/07-working-with-the-code.md` | Setup, commands, and the Rust patterns this engine uses. **Justin's map into the codebase — keep it current.** |
 | `docs/08-assets.md` | You're adding an asset, or wondering why it isn't showing up. |
-| `docs/09-gate-4-describe-is-not-enough.md` | You are about to rely on `describe` telling you how to *write* something, rather than what data exists. Records what M1 exit gate 4 found. |
+| `docs/09-gate-4-describe-is-not-enough.md` | You are about to rely on `describe` telling you how to *write* something, rather than what data exists. Records what M1 exit gate 4 found, and how ADR 0030 closed it. |
 | `docs/adr/` | You want to know why something is the way it is. |

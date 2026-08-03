@@ -24,6 +24,7 @@
 use crate::inspect::{entity, query};
 use crate::json::Json;
 use amadeo_ecs::{ComponentRegistry, World};
+use amadeo_reflect::TypeRegistry;
 use std::collections::BTreeMap;
 
 /// The protocol version this build speaks.
@@ -87,6 +88,18 @@ pub enum RpcError {
         /// What was wrong, and what was expected.
         message: String,
     },
+
+    /// The engine's own schema does not hold together, so no honest answer exists.
+    ///
+    /// In practice: a resource and a component share a canonical name but have different shapes, so
+    /// `describe` cannot say what that name refers to. An authoring bug in the *game*, not in the
+    /// request — which is why it is reported as an internal error rather than as bad params.
+    #[error("the engine's schema is inconsistent: {source}")]
+    Schema {
+        /// The registry's complaint, which names the contested type and how to fix it.
+        #[source]
+        source: amadeo_reflect::RegistryError,
+    },
 }
 
 impl RpcError {
@@ -98,6 +111,8 @@ impl RpcError {
             RpcError::InvalidRequest { .. } => -32600,
             RpcError::UnknownMethod { .. } => -32601,
             RpcError::BadParams { .. } => -32602,
+            // -32603 is JSON-RPC's "internal error": the request was fine and the server is not.
+            RpcError::Schema { .. } => -32603,
         }
     }
 }
@@ -298,6 +313,7 @@ pub fn failure(id: &Json, error: &RpcError) -> Json {
 pub const WORLD_METHODS: &[&str] = &[
     "assets.list",
     "describe",
+    "describe.example",
     "render.describe",
     "world.entity",
     "world.list",
@@ -325,7 +341,8 @@ pub fn dispatch_world(
             // case once an agent knows what it is looking for, and much less to read.
             match request.optional_string_param("type")? {
                 None => {
-                    let mut document = crate::describe(registry);
+                    let mut document = crate::describe(world, registry)
+                        .map_err(|source| RpcError::Schema { source })?;
                     if let Json::Object(members) = &mut document {
                         members.insert(
                             "protocol_version".to_string(),
@@ -335,12 +352,32 @@ pub fn dispatch_world(
                     Ok(Some(document))
                 }
                 Some(name) => {
-                    let info = registry.info(name).ok_or_else(|| {
-                        request.bad_params(unknown_component_message(name, registry))
+                    // Looked up in the *whole* schema, not just the components. Since ADR 0030 that
+                    // also holds resources and every nested type, so `describe Run` and
+                    // `describe Phase` both answer — before, both were "no such component", which
+                    // was true and useless.
+                    let types = full_schema(world, registry)?;
+                    let info = types.get(name).ok_or_else(|| {
+                        request.bad_params(unknown_type_message(name, &types, registry))
                     })?;
                     Ok(Some(crate::describe_type(info)))
                 }
             }
+        }
+
+        // The gap between "here is the schema" and "here is something that loads". Bevy's users hit
+        // the same wall from the other side and wrote `discover_format` to close it, after
+        // reverse-engineering formats out of error messages; ADR 0030 chose to have the engine
+        // simply say it.
+        "describe.example" => {
+            let name = request.string_param("type")?;
+            let types = full_schema(world, registry)?;
+            let info = types
+                .get(name)
+                .ok_or_else(|| request.bad_params(unknown_type_message(name, &types, registry)))?;
+            crate::example::describe_example(info, &types)
+                .map_err(|message| request.bad_params(message))
+                .map(Some)
         }
 
         // ADR 0020 requires this to exist *before* ids become the reference syntax, so that the
@@ -542,6 +579,60 @@ fn unknown_component_message(name: &str, registry: &ComponentRegistry) -> String
     format!(
         "no component named `{name}` is registered. Registered: {}",
         known.join(", ")
+    )
+}
+
+/// Components, resources, and every type either of them names — one place to look a name up.
+///
+/// Built per call rather than cached: it is a few hundred small clones, it happens only when
+/// something asks a question, and a cache would need invalidating whenever a resource is inserted.
+fn full_schema(world: &World, registry: &ComponentRegistry) -> Result<TypeRegistry, RpcError> {
+    let mut types = registry.types().clone();
+    world
+        .register_resource_schemas(&mut types)
+        .map_err(|source| RpcError::Schema { source })?;
+    Ok(types)
+}
+
+/// "No such type", with the nearest matches, and the components when there are none.
+///
+/// Dumping the whole schema is no longer the right fallback: since ADR 0030 it holds every field
+/// type as well, so `f32` and `list<array<f32, 2>>` are in it and a full list would bury the answer.
+/// Near matches first — they are what a typo needs. Failing that, the **components**, because that is
+/// the list someone reaching for `describe` almost always wanted.
+///
+/// Pillar 5: the reply has to be enough to recover from, because an agent cannot ask a follow-up.
+fn unknown_type_message(name: &str, types: &TypeRegistry, registry: &ComponentRegistry) -> String {
+    let lowered = name.to_lowercase();
+    let near: Vec<&str> = types
+        .names()
+        .filter(|known| {
+            let known = known.to_lowercase();
+            known.contains(&lowered) || lowered.contains(&known)
+        })
+        .take(8)
+        .collect();
+
+    if !near.is_empty() {
+        return format!(
+            "no type named `{name}` is in this game's schema ({} known). Did you mean: {}?",
+            types.len(),
+            near.join(", ")
+        );
+    }
+
+    let components: Vec<&str> = registry.names().collect();
+    if components.is_empty() {
+        return format!(
+            "no type named `{name}` is in this game's schema, and no components are registered \
+             at all. The game registers its components with `App::register_component`"
+        );
+    }
+    format!(
+        "no type named `{name}` is in this game's schema ({} known). Registered: {}. \
+         `describe` with no argument also lists resources and every field type",
+        types.len(),
+        components.join(", ")
     )
 }
 

@@ -18,12 +18,14 @@
 //! registry.register::<Transform>().expect("registers");
 //! registry.register::<Parent>().expect("registers");
 //!
+//! let mut world = World::new();
+//!
 //! // "What can I do?" -- generated from the code, so never stale and never a guess.
-//! let schema = describe(&registry).to_pretty();
+//! // The world is here because resources are part of the schema too (ADR 0030).
+//! let schema = describe(&world, &registry).expect("no name collisions").to_pretty();
 //! assert!(schema.contains("\"unit\": \"deg\""));
 //!
 //! // "What did I just do?"
-//! let mut world = World::new();
 //! let entity = world.spawn();
 //! world.insert(entity, Transform::at(1.0, 2.0));
 //!
@@ -59,13 +61,15 @@
 
 mod assets;
 mod describe;
+mod example;
 mod inspect;
 mod json;
 mod parse;
 mod rpc;
 
 pub use assets::list as list_assets;
-pub use describe::{DESCRIBE_FORMAT_VERSION, describe, describe_type};
+pub use describe::{DESCRIBE_FORMAT_VERSION, MANUAL_PATH, describe, describe_type};
+pub use example::describe_example;
 pub use inspect::{entity, query, value_to_json};
 pub use json::Json;
 pub use parse::{JsonError, JsonErrorKind, MAX_DEPTH};

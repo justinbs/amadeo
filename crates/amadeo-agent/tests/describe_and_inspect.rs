@@ -18,11 +18,19 @@ fn registry() -> ComponentRegistry {
     registry
 }
 
+/// `describe` needs a world as well as a registry since ADR 0030, because resources are part of the
+/// schema now. These tests are about components, so an empty world is the honest input.
+fn schema_of(registry: &ComponentRegistry) -> String {
+    describe(&World::new(), registry)
+        .expect("no name collisions")
+        .to_pretty()
+}
+
 // --- "What can I do?" ---
 
 #[test]
 fn describe_carries_everything_needed_to_use_a_component_unseen() {
-    let schema = describe(&registry()).to_pretty();
+    let schema = schema_of(&registry());
 
     // The name you write in a scene file.
     assert!(schema.contains(r#""Transform""#), "{schema}");
@@ -48,19 +56,13 @@ fn describe_carries_everything_needed_to_use_a_component_unseen() {
 fn describe_is_byte_stable_across_runs() {
     // The dump is meant to be committed and diffed. If it reordered between runs, every diff would
     // be noise and nobody would read them.
-    assert_eq!(
-        describe(&registry()).to_pretty(),
-        describe(&registry()).to_pretty()
-    );
+    assert_eq!(schema_of(&registry()), schema_of(&registry()));
 
     // ...including when the registry was built in a different order.
     let mut reversed = ComponentRegistry::new();
     reversed.register::<Parent>().expect("registers");
     reversed.register::<Transform>().expect("registers");
-    assert_eq!(
-        describe(&registry()).to_pretty(),
-        describe(&reversed).to_pretty()
-    );
+    assert_eq!(schema_of(&registry()), schema_of(&reversed));
 }
 
 /// How much damage something can take.
@@ -78,7 +80,7 @@ impl amadeo_ecs::Component for Health {}
 fn a_range_is_reported_so_an_editor_can_draw_a_slider() {
     let mut registry = ComponentRegistry::new();
     registry.register::<Health>().expect("registers");
-    let schema = describe(&registry).to_pretty();
+    let schema = schema_of(&registry);
 
     assert!(schema.contains(r#""min": 0.0"#), "{schema}");
     assert!(schema.contains(r#""max": 100.0"#), "{schema}");
@@ -91,7 +93,11 @@ fn absent_metadata_is_omitted_rather_than_emitted_as_null() {
     // field has bounds should get a straight yes or no, not a document full of nulls to sift.
     let mut registry = ComponentRegistry::new();
     registry.register::<Health>().expect("registers");
-    let schema = describe(&registry).to_pretty();
+    // One type rather than the whole document: since ADR 0030 a component also appears under
+    // `types`, so counting occurrences across the document would count each field twice and this
+    // test is about how one field renders.
+    let schema =
+        amadeo_agent::describe_type(registry.info("Health").expect("registered")).to_pretty();
 
     assert!(!schema.contains("null"), "{schema}");
     // Exactly one field carries a range and a unit -- the other one.
@@ -103,7 +109,7 @@ fn absent_metadata_is_omitted_rather_than_emitted_as_null() {
 
 #[test]
 fn replication_is_reported_only_where_it_says_something() {
-    let schema = describe(&registry()).to_pretty();
+    let schema = schema_of(&registry());
 
     // Transform's fields all replicate, so the annotation is there...
     assert!(schema.contains(r#""sync": "on_change""#), "{schema}");
@@ -116,8 +122,48 @@ fn replication_is_reported_only_where_it_says_something() {
 
 #[test]
 fn the_document_declares_its_own_format_version() {
-    let schema = describe(&registry()).to_pretty();
-    assert!(schema.contains(r#""format_version": 1"#), "{schema}");
+    let schema = schema_of(&registry());
+    assert!(schema.contains(r#""format_version": 2"#), "{schema}");
+}
+
+#[test]
+fn the_document_carries_resources_types_and_a_pointer_to_the_manual() {
+    // The three things M1 exit gate 4 found missing, and the one it found `describe` should not try
+    // to be. ADR 0030.
+    let schema = schema_of(&registry());
+
+    // A resource section exists even when a world has none, so a reader can tell "none" from
+    // "this engine does not report them" — which was the actual failure the gate found.
+    assert!(schema.contains(r#""resources": {}"#), "{schema}");
+    // Every type a component's fields name is looked-up-able, so the schema is closed.
+    assert!(schema.contains(r#""types""#), "{schema}");
+    assert!(schema.contains(r#""array<f32, 3>""#), "{schema}");
+    // And the API knowledge `describe` deliberately does not carry says where it lives.
+    assert!(
+        schema.contains(r#""manual": "docs/07-working-with-the-code.md""#),
+        "{schema}"
+    );
+}
+
+#[test]
+fn a_fixed_length_array_reports_its_length_and_a_vec_does_not() {
+    // The count used to survive only inside the type *name*, so anything needing it had to parse a
+    // string. `Transform::translation` is `[f32; 3]`.
+    let types = registry();
+    let array = types
+        .types()
+        .get("array<f32, 3>")
+        .expect("registered as a dependency of Transform");
+
+    let rendered = amadeo_agent::describe_type(array).to_pretty();
+    assert!(rendered.contains(r#""length": 3"#), "{rendered}");
+    assert!(rendered.contains(r#""element": "f32""#), "{rendered}");
+
+    // A `Vec` has no length in its type, and the key is omitted rather than emitted as null — the
+    // same rule as `unit` and `range`, so `"length" in kind` is a straight answer.
+    let open = <Vec<f32> as amadeo_reflect::Reflect>::type_info();
+    let rendered = amadeo_agent::describe_type(&open).to_pretty();
+    assert!(!rendered.contains(r#""length""#), "{rendered}");
 }
 
 // --- "What did I just do?" ---

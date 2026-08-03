@@ -165,6 +165,21 @@ pub enum TypeKind {
     List {
         /// The element type's name.
         element: String,
+        /// How many elements, when the count is fixed by the type.
+        ///
+        /// `Some(2)` for `[f32; 2]`, `None` for `Vec<f32>`.
+        ///
+        /// # Why this is here rather than read off the name
+        ///
+        /// It used to be absent, and the arity survived only inside the *name* — `"array<f32, 2>"`.
+        /// So anything that needed the count had to parse it back out of a string: the editor
+        /// deciding whether to draw two boxes or an add-and-remove list, and `describe --example`
+        /// deciding how many numbers to emit. Both would have been re-deriving something the type
+        /// already knew and the schema had thrown away.
+        ///
+        /// Found in session 8 while building `--example`, which is the first thing that had to
+        /// *produce* a valid value rather than merely report one.
+        length: Option<usize>,
     },
     /// Author-chosen keys pointing at values of one type.
     ///

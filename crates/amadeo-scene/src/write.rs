@@ -145,6 +145,22 @@ fn write_field(output: &mut String, level: usize, name: &str, value: &Value) {
     }
 }
 
+/// Renders one component block exactly as it would appear inside an entity, indented two levels.
+///
+/// Two levels because that is where a component actually sits — under `entity`, under nothing else —
+/// so what comes back can be pasted into a scene file unchanged.
+///
+/// Exists for `describe.example` (ADR 0030), which has a [`Value`] and a name and needs the scene
+/// spelling of them. Sharing the writer rather than reimplementing it is the same reasoning that had
+/// `amadeo-snapshot` borrow [`format_float`]: two copies of the canonical form would drift, and
+/// invariant I2 depends on there being exactly one.
+#[must_use]
+pub fn component_block(name: &str, value: &Value) -> String {
+    let mut output = String::new();
+    write_component(&mut output, 1, name, value, "");
+    output
+}
+
 /// Appends a component block and its fields.
 fn write_component(output: &mut String, level: usize, name: &str, value: &Value, prefix: &str) {
     let pad = " ".repeat(level * INDENT);

@@ -363,13 +363,56 @@ fn a_registry_of_derived_types_iterates_in_sorted_order() {
     registry.register::<Player>().expect("registers");
     registry.register::<EnemyState>().expect("registers");
 
+    // Four types were registered and eight came back: registering one also registers every type it
+    // *names*, transitively (ADR 0030). Without that, `Health`'s schema would say a field is an
+    // `f32` and nothing could look `f32` up — a schema that names types it cannot describe.
     let names: Vec<&str> = registry.names().collect();
-    assert_eq!(names, vec!["EnemyState", "Health", "Player", "Score"]);
+    assert_eq!(
+        names,
+        vec![
+            "EnemyState",
+            "Health",
+            "Player",
+            "Score",
+            "array<f32, 2>",
+            "bool",
+            "f32",
+            "u32",
+        ]
+    );
+
+    // Still sorted, which is what makes anything generated from the registry diffable.
+    let mut sorted = names.clone();
+    sorted.sort_unstable();
+    assert_eq!(names, sorted);
 
     // And the schema is reachable by the name a scene file would use.
     let health = registry.get("Health").expect("registered");
     assert_eq!(health.version, 3);
     assert_eq!(health.fields().len(), 3);
+}
+
+#[test]
+fn a_type_that_reaches_itself_registers_without_recursing_forever() {
+    // The guard in `TypeRegistry::register`: insert before recursing, so the second visit finds the
+    // entry already there and stops. Worth a test because the failure mode is a stack overflow at
+    // startup rather than a wrong answer.
+    /// A node in a tree, which contains more of itself.
+    #[derive(Debug, PartialEq, amadeo_reflect::Reflect)]
+    struct Node {
+        /// This node's children.
+        children: Vec<Node>,
+        /// How deep it sits.
+        depth: u32,
+    }
+
+    let mut registry = TypeRegistry::new();
+    registry.register::<Node>().expect("registers");
+
+    assert_eq!(
+        registry.names().collect::<Vec<_>>(),
+        vec!["Node", "list<Node>", "u32"]
+    );
 }
 
 #[test]

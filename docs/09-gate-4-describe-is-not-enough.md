@@ -7,7 +7,13 @@
 
 **Result: the claim is false as written, and usefully so.** `describe` is excellent at what it
 actually does and does not do the thing the gate asked for. This records the experiment, the
-finding, and what would close the gap — the last of which is a decision rather than a task.
+finding, and how it was closed.
+
+> **Resolved by ADR 0030**, later the same session. Three of the five gaps below turned out to be
+> holes in the schema and are fixed; two are API knowledge and deliberately live in
+> `docs/07-working-with-the-code.md`, which `describe` now points at. See *What closed it* at the
+> bottom. **The five gaps below are left as written** — they are the finding, and rewriting them
+> would destroy the record of what the experiment actually produced.
 
 ## The experiment
 
@@ -101,23 +107,39 @@ than ones I was stopped by. The gaps are structural — they can be verified by 
 checking whether the fact is present — but a stronger test would give the JSON to a reader with no
 prior exposure and see what they produce. That test has not been run.
 
-## What would close it
+## What closed it — ADR 0030
 
-Three options, in increasing order of ambition. **Not decided** — this is a design question about
-what the protocol is *for*, and it belongs to whoever picks up M2.
+Three options were put to Justin, from "leave it and say so" to extending the protocol. **He chose
+the most complete one**, consistent with his standing preference for a complete engine over a fast
+one. The decision and its reasoning are ADR 0030; the short version:
 
-1. **Leave the gate failed, and say so.** `describe` is a schema; `docs/07-working-with-the-code.md`
-   is the manual. Cheapest, and it accepts that an agent reads repo documentation — which sits
-   awkwardly with `docs/03-ai-native-design.md`'s premise that the engine should be usable through
-   the protocol.
-2. **Add an `authoring` block to `describe`.** A static section stating the recipe once: the derives
-   a component needs, the `Component` bound, the registration call, a system's signature, and the
-   query forms. The engine knows all of it about itself. Small, and it makes the gate true — at the
-   cost of putting documentation inside a protocol reply, where it will drift unless it is generated.
-3. **Extend the protocol to describe resources and the query surface as first-class schema**, so
-   `describe` covers everything the reflection registry knows, and add `describe --example <Type>`
-   emitting a compilable skeleton. Most complete, most work, and the only option that would survive
-   the stronger test described above.
+**Gaps 1–4 are API knowledge and stay in `docs/07-working-with-the-code.md`.** The argument that
+settled it is **invariant I5**: anything the editor can do, the CLI and RPC can do — and the editor
+will never declare a new Rust component type, because that means editing the game crate and
+recompiling. So the protocol is not obliged to carry it, and this gate was asking for something the
+project's own invariants do not ask of it. `describe` gained a **`manual` key naming the file**,
+because a pointer cannot drift the way copied prose does, and because saying nothing would leave a
+reader to conclude that the absence means impossible.
+
+**Gap 5 was a hole rather than a scope decision — and it had company.** Fixing resources properly
+turned up two more of the same kind that this write-up had missed:
+
+- The schema was **not closed**. `Run.phase` reported `"type": "Phase"` and nothing could look
+  `Phase` up, so nothing could know its legal values were `Playing`, `Won`, `Lost`.
+- A fixed array's **length existed only inside its name**, so anything needing the count had to parse
+  `"array<f32, 2>"` back apart.
+
+Both are now fixed, along with resources, and `describe.example` emits a minimal valid instance in
+the scene spelling and the JSON spelling — generated from one value so they cannot disagree, and
+tested by pasting it into a scene file and loading it.
+
+The clearest thing that vindicated the example generator: `Run.phase` has to be written as a **bare
+word** (`phase Playing`), never `phase "Playing"`. Bare-versus-quoted is scene-format grammar rather
+than type information, so no amount of schema would ever have said so, and getting it wrong produces
+a file that parses and then fails to load.
+
+Every gap this document identified is now pinned as a test in the game that found it:
+`games/vault/tests/gate_four.rs`.
 
 ## What was built along the way
 

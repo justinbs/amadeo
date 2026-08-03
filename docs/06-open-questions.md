@@ -336,13 +336,43 @@ introspection hurts most.
 
 ---
 
-## Q10 · P2 · One dimension per project, or both simultaneously?
+## Q10 · **P0** · One dimension per project, or both simultaneously?
+
+**Raised to P0 in session 8: this is M2's first item, and the roadmap says decide it *before* any
+code.** Nothing else in M2 can start without it.
 
 Whether a project selects 2D or 3D at build time (simpler, smaller binaries, cleaner physics choice)
 or can freely mix both (2D UI over a 3D world is common; 2D minigames inside 3D games exist).
 
 Note that 2D UI over 3D is a `amadeo-ui` concern, not necessarily a 2D-renderer concern — so these may
-be less coupled than they look. Decide in M2.
+be less coupled than they look.
+
+Two things that have changed since this was filed and bear on it: **trap 9 is now a target
+requirement rather than a principle** — Terraria, RimWorld and Project Zomboid mean 2D and isometric
+are shipped genres, not a hypothetical — and **ADR 0018 already settled the data half**, with one 3D
+`Transform` whose 2D form is degenerate and an explicit `SortOrder` that dominates depth. So this
+question is now about the *pipeline*, which `RenderBackend` isolates, rather than about the format.
+
+---
+
+## Q20 · P2 · Gate 4's stronger test has never been run
+
+**Left over from ADR 0030**, and stated as a caveat in `docs/09-gate-4-describe-is-not-enough.md`
+rather than hidden.
+
+The gate-4 experiment was run by an agent that had **already read the engine source in the same
+session**. So the five gaps it reported are ones that agent *noticed* while reaching for knowledge
+`describe` did not supply — not ones it was actually stopped by. The gaps are structural and can be
+verified by reading the output, which is why acting on them was safe. But the question the gate was
+really asking is unanswered.
+
+**The honest test:** hand `describe` output to a reader with no prior exposure to this engine and see
+what they produce. That is now more interesting than it was, because ADR 0030 changed the answer —
+resources are visible, the schema is closed, and `describe.example` shows the spellings.
+
+Cheap to run and worth doing once M2 has added enough that the schema is not trivially small. It
+would also be the first real evidence for or against `docs/03-ai-native-design.md`'s central premise,
+which has so far been argued rather than measured.
 
 ---
 

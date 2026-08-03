@@ -53,14 +53,27 @@ impl TypeRegistry {
     /// Silently letting the second win would mean a scene file's `Health` loading as somebody else's
     /// `Health`, which is precisely the kind of failure that surfaces three milestones later
     /// (`CLAUDE.md` section 7, trap 5).
+    ///
+    /// # It registers more than you asked for, on purpose
+    ///
+    /// Registering `Run` also registers `Phase`, `u32`, and anything *those* name, transitively —
+    /// see [`Reflect::register_dependencies`]. Without that the registry could hold a type whose
+    /// fields point at types it has never heard of, and `describe` would name a `Phase` that nothing
+    /// could look up. ADR 0030.
     pub fn register<T: Reflect>(&mut self) -> Result<(), RegistryError> {
         let info = T::type_info();
         match self.types.get(&info.name) {
+            // Already present and identical. Its dependencies came in with it the first time, so
+            // there is nothing left to do — and stopping here is also what terminates the recursion
+            // below for a self-referential type like `struct Node { children: Vec<Node> }`.
             Some(existing) if *existing == info => Ok(()),
             Some(_) => Err(RegistryError::NameCollision { name: info.name }),
             None => {
+                // Inserted BEFORE recursing, not after. A type that reaches itself through one of
+                // its fields would otherwise recurse forever, because the guard above only fires
+                // once the entry exists.
                 self.types.insert(info.name.clone(), info);
-                Ok(())
+                T::register_dependencies(self)
             }
         }
     }

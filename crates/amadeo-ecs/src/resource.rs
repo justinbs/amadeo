@@ -101,6 +101,21 @@ pub(crate) trait ResourceSlot: fmt::Debug + Send + Sync {
     /// This is what makes `world.resources` possible at all, and it is the concrete payoff of
     /// ADR 0027: before the bound, the world could hash a resource but could not *show* one.
     fn to_reflected_value(&self) -> amadeo_reflect::Value;
+
+    /// Puts this resource's *schema* into a registry, along with everything it names.
+    ///
+    /// The counterpart to [`ResourceSlot::to_reflected_value`]: that one reports what a resource
+    /// currently *is*, this one reports what it *could be*. `describe` needs the second — M1 exit
+    /// gate 4 found that a resource holding a game's win condition was invisible to it (ADR 0030).
+    ///
+    /// # Errors
+    ///
+    /// [`amadeo_reflect::RegistryError`] if a different type already holds this name — a component
+    /// and a resource called the same thing with different shapes.
+    fn register_schema(
+        &self,
+        registry: &mut amadeo_reflect::TypeRegistry,
+    ) -> Result<(), amadeo_reflect::RegistryError>;
 }
 
 impl<T: Resource> ResourceSlot for T {
@@ -126,6 +141,15 @@ impl<T: Resource> ResourceSlot for T {
 
     fn to_reflected_value(&self) -> amadeo_reflect::Value {
         Reflect::to_value(self)
+    }
+
+    fn register_schema(
+        &self,
+        registry: &mut amadeo_reflect::TypeRegistry,
+    ) -> Result<(), amadeo_reflect::RegistryError> {
+        // `T` is concrete inside this impl, so the ordinary generic call works and brings the
+        // resource's nested types in with it.
+        registry.register::<T>()
     }
 }
 

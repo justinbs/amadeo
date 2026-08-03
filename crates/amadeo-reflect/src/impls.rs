@@ -172,8 +172,16 @@ impl<T: Reflect> Reflect for Vec<T> {
             version: 1,
             kind: TypeKind::List {
                 element: T::type_name(),
+                // A `Vec` has no length in its type, so the schema says so rather than inventing one.
+                length: None,
             },
         }
+    }
+
+    fn register_dependencies(
+        registry: &mut crate::TypeRegistry,
+    ) -> Result<(), crate::RegistryError> {
+        registry.register::<T>()
     }
 
     fn to_value(&self) -> Value {
@@ -326,6 +334,15 @@ impl<K: ReflectKey, V: Reflect> Reflect for std::collections::BTreeMap<K, V> {
         }
     }
 
+    // Only the value type. A key is not a `Reflect` — `ReflectKey` renders it to a string and back
+    // (ADR 0027) — so there is no schema for it to register, and `TypeKind::Map::key` is a name for
+    // a reader rather than a lookup.
+    fn register_dependencies(
+        registry: &mut crate::TypeRegistry,
+    ) -> Result<(), crate::RegistryError> {
+        registry.register::<V>()
+    }
+
     fn to_value(&self) -> Value {
         let entries: std::collections::BTreeMap<String, Value> = self
             .iter()
@@ -381,6 +398,12 @@ impl<T: Reflect> Reflect for Option<T> {
         }
     }
 
+    fn register_dependencies(
+        registry: &mut crate::TypeRegistry,
+    ) -> Result<(), crate::RegistryError> {
+        registry.register::<T>()
+    }
+
     fn to_value(&self) -> Value {
         match self {
             // Absence is `Unit` rather than a missing field, so "this field is explicitly nothing"
@@ -410,8 +433,17 @@ impl<T: Reflect, const N: usize> Reflect for [T; N] {
             version: 1,
             kind: TypeKind::List {
                 element: T::type_name(),
+                // The whole reason `length` exists: `from_value` below rejects any other count, and
+                // before this the only place that number appeared was inside the name string.
+                length: Some(N),
             },
         }
+    }
+
+    fn register_dependencies(
+        registry: &mut crate::TypeRegistry,
+    ) -> Result<(), crate::RegistryError> {
+        registry.register::<T>()
     }
 
     fn to_value(&self) -> Value {
@@ -586,7 +618,15 @@ mod tests {
         assert_eq!(
             Vec::<f32>::type_info().kind,
             TypeKind::List {
-                element: "f32".to_string()
+                element: "f32".to_string(),
+                length: None,
+            }
+        );
+        assert_eq!(
+            <[f32; 2]>::type_info().kind,
+            TypeKind::List {
+                element: "f32".to_string(),
+                length: Some(2),
             }
         );
     }
