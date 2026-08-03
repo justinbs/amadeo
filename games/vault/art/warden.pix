@@ -1,0 +1,26 @@
+# warden — 16x16, seen from above.
+#
+# Broader and squarer than the player, and cold where the player is warm, so the two never read as
+# the same kind of thing even at a glance. The two pale pixels are its eyes; they are the only high
+# contrast on it, which is what makes a warden's facing legible without an animation system.
+! . = 00000000   transparent
+! k = 101422ff   outline
+! d = 1f4a52ff   plate shadow
+! t = 2e7d8aff   plate, the warden's teal
+! e = a8e6d8ff   eyes
+....kkkkkkkk....
+...kttttttttk...
+..kttttttttttk..
+..kttttttttttk..
+.kdttettttettdk.
+.kdttttttttttdk.
+.kdttttttttttdk.
+kddttttttttttddk
+kddttttttttttddk
+kddttttttttttddk
+.kdttttttttttdk.
+.kdttttttttttdk.
+..kddttttttddk..
+..kkddttttddkk..
+...kkddddddkk...
+....kkkkkkkk....

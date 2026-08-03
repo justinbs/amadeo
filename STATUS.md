@@ -1,11 +1,11 @@
 # Amadeo — Current Status
 
 **Last updated:** 2026-08-03 (end of session 8)
-**Current phase:** **M0 complete. M1's engine work is done** — reflection, the scene format, the
-agent's read layer, the agent protocol and a working `amadeo` CLI, the whole asset layer, the sprite
-batcher, **textured sprites on the GPU**, **invariant I8 fully closed**, and **snapshots** have all
-landed. What remains in M1 is **the small game that closes the exit gate**, which needs no further
-subsystems. Q3, Q4, Q13, Q14, Q16 and Q17 are all closed, so nothing is blocked.
+**Current phase:** **M0 complete. M1 all but done — exit gates 1, 2, 3 and 5 are closed.** Reflection,
+the scene format, the agent's read layer, the agent protocol and a working `amadeo` CLI, the whole
+asset layer, the sprite batcher, textured sprites on the GPU, invariant I8, snapshots, and
+**`games/vault` — a complete small 2D game** have all landed. **Only gate 4 remains**, and it is a
+procedure rather than a feature. Q3, Q4, Q13, Q14, Q16 and Q17 are all closed; nothing is blocked.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
 
 > ### ⚠️ Two working rules that changed in session 7 — read before doing anything
@@ -28,11 +28,11 @@ cost down through two layers of the ECS. **Session 8 put sprites on the screen**
 texture cache, and the wgpu texture path — **and then closed invariant I8**, making `Reflect` a
 compiler-enforced bound on resources and events and shipping `world.resources`. ADRs 0022–0027.
 
-**Fifteen crates plus one game**, all tested: `amadeo-derive`, `amadeo-image`, `amadeo-core`,
+**Fifteen crates plus two games**, all tested: `amadeo-derive`, `amadeo-image`, `amadeo-core`,
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
-`amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, and
-`games/quad-demo`.
-**747 tests passing**; fmt, clippy
+`amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
+`games/vault`.
+**795 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Ten things work end to end today:
@@ -76,6 +76,12 @@ Ten things work end to end today:
   *reading the file* rather than simulating 600 ticks. Verified across separate processes, hashes
   matching exactly. This is the answer ADR 0011 named to the one problem its spike actually found —
   re-simulation, not compilation, is what degrades the agent's loop.
+- **There is a game.** `cargo run -p vault` — collect six sigils in a walled arena without touching
+  a patrolling warden. Player movement, wall collision, enemy patrols, a sprite-digit score, and a
+  win and a lose state. The level is a `.scene` file; the sprites come from hand-written `.pix` text.
+  **It was built and debugged without ever being looked at**, which is the whole point: 22 tests
+  drive it headlessly, and `render.describe` caught a layout bug — the score readout overlapping the
+  top wall — that no simulation test could have seen.
 
 **M0 exit gate: 4 of 4, nothing carried.** Gate item 2's "separate process" half — open since M0
 because it needed `amadeo-cli` — closed in session 6: `amadeo replay` plays
@@ -95,22 +101,54 @@ of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**A complete small 2D game — M1 exit gate 1.** It no longer needs any engine work. Sprites reach the
-screen, assets load by name, scenes build worlds, replays verify behaviour, and snapshots make
-iteration cheap. What is missing is a *game*, not a subsystem, and building one is also the fastest
-way to find what the engine is still awkward at.
+**M1 exit gate 4 — the last one open.** "`amadeo describe` output is sufficient to write a new
+component and system without reading engine source. Tested by actually doing it."
 
-Gate 4 is worth doing at the same time and is nearly free: "`describe` output is sufficient to write
-a new component without reading engine source" is testable by actually doing it while building the
-game.
+It is the only gate item left, and it needs a *procedure* rather than a feature: start a session with
+nothing but `amadeo describe --package vault` output, add a component and a system to the Vault
+using only that, and record honestly where the schema was not enough. The value is entirely in doing
+it strictly — the moment the engine source is opened, the test has been failed and the result is
+worth knowing.
+
+Everything else in M1 is done, including gates 1, 2, 3 and 5.
+
+### Then, M2
+
+The next milestone is 3D, and its first item is an ADR on 2D/3D coexistence *before* any code —
+`docs/04-subsystems.md` §4 has the three options. Two things to carry in:
+
+- **`render.capture`** — headless render-target readback. The GPU path still has **no automated
+  coverage at all**: `render.describe` checks what *should* be drawn, and nothing checks what the
+  wgpu backend actually put on screen. ADR 0021 already names capture as the agent's eyes.
+- **Q7 — prefab semantics**, which the Vault ran straight into. See the findings below.
+
+### What building a real game found
+
+The roadmap's bet was that a game would find what the engine is awkward at faster than reasoning
+would. It did, and these are the findings rather than a list of chores:
+
+- **The scene format is impractical for repeated content, and prefabs are what fix it.** A wall tile
+  costs ten lines of scene text; the Vault's arena has forty-four of them, which is four hundred
+  lines of near-identical text to author and to re-read on every diff. `entity w1 "Wall" from
+  wall_tile` would be one line — and prefab instancing is **blocked on Q7**, where ADR 0014 and
+  ADR 0020 disagree about whether `from` holds a path or an asset id. So the Vault's walls come from
+  a `MAP` constant in code while everything designed is in the scene file. **This is the strongest
+  argument yet for settling Q7**, and it arrived from use rather than from theory.
+- **No game had ever loaded a scene file.** `markers.scene` had existed since session 5 and nothing
+  read it. The reason was a papercut with teeth: `instantiate` needs the world mutably and the
+  registry shared, `App` owns both, and the borrow checker refuses the obvious spelling — so every
+  game would have had to rediscover the workaround. `App::load_scene` fixes it.
+- **A game with two binaries breaks every CLI command against it** unless it sets `default-run`.
+  `amadeo` launches games with `cargo run -p <package>` (ADR 0016), which is ambiguous the moment a
+  package has a tool binary alongside the game. The failure is a cargo error with nothing to do with
+  the engine, which makes it slow to diagnose.
+- **PPM cannot express a sprite.** It has no alpha, so anything drawn over the floor would be an
+  opaque rectangle. The Vault's art is therefore PNG, generated from hand-written `.pix` text files
+  by a small tool in the game's own directory — which is a miniature of the import pipeline ADR 0026
+  defers, with the same shape: hand-authorable input, machine-readable output, one command between.
 
 ### Then, in rough order
 
-- **`render.capture`** — headless render-target readback. Worth flagging that **the GPU path has no
-  automated coverage at all**: the wgpu backend is exercised only by running the demo and looking at
-  it. `render.capture` is what would fix that, and ADR 0021 already names it as the agent's eyes.
-- **Q7 — prefab semantics**, which needs the `from` conflict settled first. The hardest design
-  problem left in the scene subsystem.
 - **`snapshot.diff`** — comparing two snapshots. The format is text and diffable already, so this is
   polish rather than capability.
 
@@ -1149,3 +1187,29 @@ on purpose — several record a diagnosis that took a while to reach.
   gained proper nesting, which it should have had from the start.
 
   747 tests, all four verification commands green, `wander.replay` unchanged.
+
+  **Then M1's exit gate: `games/vault`, a complete small 2D game.** Collect six sigils in a walled
+  arena without touching a patrolling warden. All five things the gate asks for — player moves,
+  enemies patrol, collision, a score, a win state.
+
+  **Three engine gaps had to close first**, and finding them was worth as much as the game. Gate 2
+  names `render.describe` as the verification channel and **it did not exist**. Gate 1 says the game
+  is authored via text files, but **no game had ever loaded a scene file** — `markers.scene` had sat
+  unread since session 5, because `instantiate` needs the world mutably and the registry shared and
+  `App` owns both, so every game would have had to rediscover the workaround. And the roadmap's
+  snapshot acceptance test had never been run: measured at **22× faster than re-simulating** in
+  debug, which is the profile the agent's loop actually uses.
+
+  **The game was built and debugged without ever being looked at.** That is the milestone's whole
+  thesis and it held: the win circuit was authored blind, by reasoning about distances and speeds,
+  and passed first time. `render.describe` then caught a real layout bug — the score readout
+  overlapping the top wall by 0.15 units — which no simulation test could have seen and which was
+  fixed before anyone opened a window.
+
+  **What the game found about the engine is written up above**, and the headline is that **the scene
+  format is impractical for repeated content**: forty-four wall tiles would be four hundred lines of
+  near-identical text. That is what prefabs are for, and prefabs are blocked on Q7. The strongest
+  argument yet for settling it, and it came from use rather than from theory.
+
+  795 tests, all four verification commands green, and a new replay fixture asserted by CI in a
+  separate process.

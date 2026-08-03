@@ -122,6 +122,14 @@ crates/
                      because only that process knows the game's components.
 modules/             optional, genre-flavored. Core NEVER depends on these.
 games/               actual games built with the engine
+  quad-demo          M0's exit gate: a steerable quad, plus the replay fixture CI asserts on.
+  vault              M1's exit gate: a complete small 2D game. The level is scenes/vault.scene;
+                     the sprites are generated from hand-written .pix text by
+                     `cargo run -p vault --bin pix`. Its tests are the milestone's proof —
+                     plays_itself.rs drives the game with scripted input, and
+                     verified_without_eyes.rs checks the screen through render.describe.
+                     NOTE it has two binaries, so it sets `default-run` — without that
+                     `cargo run -p vault` is ambiguous and every CLI command against it fails.
 docs/                design docs and ADRs
 spikes/              separate cargo workspaces holding the evidence behind an ADR. Frozen once
                      written; excluded from the engine workspace. See spikes/README.md.

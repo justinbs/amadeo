@@ -1,0 +1,193 @@
+scene vault
+version 1
+
+assets
+  digits
+  player
+  sigil
+  wall
+  warden
+
+entity floor "Floor"
+  Floor
+  Quad
+    color 0.055 0.062 0.098 1.0
+    size 13.0 7.0
+  SortOrder
+    order -100
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+entity player "Player"
+  Player
+  Sprite
+    color 1.0 1.0 1.0 1.0
+    region 0.0 0.0 1.0 1.0
+    size 0.9 0.9
+    texture "player"
+  SortOrder
+    order 20
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+entity warden_left "Warden West"
+  Patrol
+    next 0
+    points
+      - -5.0 2.0
+      - -1.0 2.0
+      - -1.0 -2.0
+      - -5.0 -2.0
+  Sprite
+    color 1.0 1.0 1.0 1.0
+    region 0.0 0.0 1.0 1.0
+    size 0.9 0.9
+    texture "warden"
+  SortOrder
+    order 15
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -5.0 2.0 0.0
+  Warden
+    speed 2.2
+
+entity warden_right "Warden East"
+  Patrol
+    next 0
+    points
+      - 5.0 -2.0
+      - 1.0 -2.0
+      - 1.0 2.0
+      - 5.0 2.0
+  Sprite
+    color 1.0 1.0 1.0 1.0
+    region 0.0 0.0 1.0 1.0
+    size 0.9 0.9
+    texture "warden"
+  SortOrder
+    order 15
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 5.0 -2.0 0.0
+  Warden
+    speed 2.2
+
+entity sigil_nw "Sigil NW"
+  Sigil
+  Sprite
+    color 1.0 1.0 1.0 1.0
+    region 0.0 0.0 1.0 1.0
+    size 0.8 0.8
+    texture "sigil"
+  SortOrder
+    order 10
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -4.0 2.0 0.0
+
+entity sigil_ne "Sigil NE"
+  Sigil
+  Sprite
+    color 1.0 1.0 1.0 1.0
+    region 0.0 0.0 1.0 1.0
+    size 0.8 0.8
+    texture "sigil"
+  SortOrder
+    order 10
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 4.0 2.0 0.0
+
+entity sigil_w "Sigil West"
+  Sigil
+  Sprite
+    color 1.0 1.0 1.0 1.0
+    region 0.0 0.0 1.0 1.0
+    size 0.8 0.8
+    texture "sigil"
+  SortOrder
+    order 10
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -4.0 0.0 0.0
+
+entity sigil_e "Sigil East"
+  Sigil
+  Sprite
+    color 1.0 1.0 1.0 1.0
+    region 0.0 0.0 1.0 1.0
+    size 0.8 0.8
+    texture "sigil"
+  SortOrder
+    order 10
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 4.0 0.0 0.0
+
+entity sigil_sw "Sigil SW"
+  Sigil
+  Sprite
+    color 1.0 1.0 1.0 1.0
+    region 0.0 0.0 1.0 1.0
+    size 0.8 0.8
+    texture "sigil"
+  SortOrder
+    order 10
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -4.0 -2.0 0.0
+
+entity sigil_se "Sigil SE"
+  Sigil
+  Sprite
+    color 1.0 1.0 1.0 1.0
+    region 0.0 0.0 1.0 1.0
+    size 0.8 0.8
+    texture "sigil"
+  SortOrder
+    order 10
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 4.0 -2.0 0.0
+
+entity score_tens "Score Tens"
+  ScoreDigit
+    place 0
+  Sprite
+    color 1.0 1.0 1.0 1.0
+    region 0.0 0.0 1.0 0.1
+    size 0.6 0.6
+    texture "digits"
+  SortOrder
+    order 50
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -6.4 3.9 0.0
+
+entity score_units "Score Units"
+  ScoreDigit
+    place 1
+  Sprite
+    color 1.0 1.0 1.0 1.0
+    region 0.0 0.0 1.0 0.1
+    size 0.6 0.6
+    texture "digits"
+  SortOrder
+    order 50
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -5.7 3.9 0.0

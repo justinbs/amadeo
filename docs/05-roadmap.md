@@ -116,17 +116,28 @@ of a milestone.
   two, reads one). Four or more is deferred until a real system needs it.
 
 **Exit gate**
-1. **A complete small 2D game — built entirely by Claude with zero editor use and zero human
+1. ✅ **A complete small 2D game — built entirely by Claude with zero editor use and zero human
    intervention.** Something on the order of: player moves, enemies patrol, collision, a score, a
    win state. Authored via text files and RPC only.
-2. Verification of that game done purely through `inspect`, headless runs, and `render.describe` —
+   **`games/vault` — the Vault.** All five: the player moves and is stopped by walls, two wardens
+   patrol authored routes, six sigils are collected for score, and the run ends in a win or a loss.
+   The level is `scenes/vault.scene`, loaded at startup; the sprites are generated from hand-written
+   `.pix` text by `cargo run -p vault --bin pix`. `tests/plays_itself.rs` drives all five claims with
+   scripted input.
+2. ✅ Verification of that game done purely through `inspect`, headless runs, and `render.describe` —
    with screenshots used only for final confirmation.
+   `render.describe` was built for this and `tests/verified_without_eyes.rs` is the proof — it found
+   a real bug (the score readout overlapping the top wall) that no simulation test could see. The
+   game was played, checked, and corrected before anyone looked at it.
 3. ✅ Scene round-trip test in CI: parse → serialize → byte-identical.
    `crates/amadeo-scene/tests/round_trip.rs`, which also asserts ADR 0014's worked example is
    byte-identical to the formatter's output — so the spec cannot drift from the implementation.
 4. `amadeo describe` output is sufficient to write a new component and system without reading engine
    source. Tested by actually doing it.
-5. Golden replays from M0 still pass.
+5. ✅ Golden replays from M0 still pass.
+   And the Vault added its own: `replays/collect-two.replay`, asserted in a separate process by CI.
+   A much stronger determinism check than `quad-demo`'s — patrolling wardens, collision against
+   forty-four walls, entities despawning mid-run, and a resource changing as a result.
 
 **Why this gate:** it's the first real proof of the AI-native thesis. If I can't build a tiny game
 without eyes, the design is wrong and we find out before 3D and the editor pile on top.

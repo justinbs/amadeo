@@ -1,0 +1,46 @@
+[package]
+name = "vault"
+description = "M1 exit gate: a complete small 2D game, built through text files and RPC."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+# The game, not the `pix` tool. Without this `cargo run -p vault` is ambiguous, and the CLI
+# launches games exactly that way (ADR 0016) -- so `amadeo check --package vault` would fail with a
+# cargo error rather than anything about the scene.
+default-run = "vault"
+
+[[bin]]
+name = "vault"
+path = "src/main.rs"
+
+# Turns the hand-written art/*.pix files into PNG sprites. A tool, not part of the game.
+[[bin]]
+name = "pix"
+path = "src/bin/pix.rs"
+
+[dependencies]
+amadeo-app.workspace = true
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-input.workspace = true
+amadeo-reflect.workspace = true
+amadeo-render = { workspace = true, features = ["gpu"] }
+amadeo-scene.workspace = true
+amadeo-transform.workspace = true
+
+anyhow = "1"
+winit = "0.30"
+
+# The `pix` tool writes PNGs. The engine only ever *reads* them, so this is the game's dependency
+# rather than the engine's.
+png = "0.18"
+
+[lints]
+workspace = true
+
+[lib]
+name = "vault"
+path = "src/lib.rs"

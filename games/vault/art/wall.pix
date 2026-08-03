@@ -1,0 +1,25 @@
+# wall — 16x16 vault stone.
+#
+# Two courses of blocks with a recessed mortar line. The highlight sits on the top-left of each
+# block and the shadow on the bottom-right, so the whole grid reads as lit from above-left without
+# any actual lighting — which is the only option in M1.
+! . = 2b2f4aff   mortar, the darkest tone
+! m = 3a3f5eff   block body
+! h = 4a5075ff   block highlight, top and left
+! s = 232741ff   block shadow, bottom and right
+hhhhhhhhh.hhhhhh
+hmmmmmmms.hmmmmm
+hmmmmmmms.hmmmmm
+hmmmmmmms.hmmmmm
+hmmmmmmms.hmmmmm
+hmmmmmmms.hmmmmm
+hmmmmmmms.hmmmmm
+sssssssss.hmmmmm
+..........hmmmmm
+hhhhhh.hhhhhhhhh
+hmmmms.hmmmmmmms
+hmmmms.hmmmmmmms
+hmmmms.hmmmmmmms
+hmmmms.hmmmmmmms
+hmmmms.hmmmmmmms
+ssssss.sssssssss

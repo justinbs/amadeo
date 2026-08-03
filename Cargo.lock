@@ -2015,6 +2015,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
 
 [[package]]
+name = "vault"
+version = "0.1.0"
+dependencies = [
+ "amadeo-app",
+ "amadeo-core",
+ "amadeo-ecs",
+ "amadeo-input",
+ "amadeo-reflect",
+ "amadeo-render",
+ "amadeo-scene",
+ "amadeo-transform",
+ "anyhow",
+ "png",
+ "winit",
+]
+
+[[package]]
 name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,30 @@
+# player — 16x16, seen from above.
+#
+# A hooded figure carrying a lantern, read from directly overhead: the hood is the big shape, the
+# shoulders sit under it, and the lantern is the bright pixel cluster on the right hand. Amber
+# against a cold arena, so the thing you control is never ambiguous.
+#
+# Two pixels of dark outline all round. Without it the figure dissolves into the floor at this size,
+# which is the classic reason pixel art outlines everything.
+! . = 00000000   transparent
+! k = 141726ff   outline
+! c = 6b4a2eff   cloak shadow
+! o = e8964aff   cloak, the player's amber
+! l = f5d9a0ff   lantern glow
+! f = fff3d6ff   lantern core
+......kkkk......
+.....kooook.....
+....koooooook...
+...koooooooook..
+...kooooooooook.
+..koooooooooook.
+..kooccccccooook
+..kooccccccoook.
+..kooccccccook..
+..kooccccccook..
+...kooccccook...
+...kooccccook.lf
+....kooccook..lf
+....kkooookk....
+.....kkkkkk.....
+......kkkk......
