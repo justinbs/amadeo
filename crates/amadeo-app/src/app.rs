@@ -349,6 +349,37 @@ impl App {
         self.load_assets(required.iter().map(String::as_str))
     }
 
+    /// Loads a scene's assets, then instantiates it into the world.
+    ///
+    /// The two halves in the order ADR 0021's barrier requires: everything the scene declares is
+    /// resident *before* any entity referring to it exists, so no tick ever runs against a
+    /// half-loaded world.
+    ///
+    /// # Why a game could not do this itself before
+    ///
+    /// `amadeo_scene::instantiate` needs the world mutably and the registry shared, and `App` owns
+    /// both — so the borrow checker refuses the obvious spelling and every game would have had to
+    /// rediscover the take-and-put-back workaround. Invariant I1 says text files are the source of
+    /// truth; making the *only* path to that awkward was a real gap, and it stood until a game
+    /// actually tried to load a scene rather than build its world in code.
+    ///
+    /// # Errors
+    ///
+    /// [`InstantiateError`](amadeo_scene::InstantiateError) if any entity names a component this
+    /// app has not registered, or gives one a value it cannot hold. **Atomic**: a failure despawns
+    /// everything it created, because a half-loaded scene looks like it worked.
+    pub fn load_scene(
+        &mut self,
+        document: &amadeo_scene::SceneDocument,
+    ) -> Result<amadeo_scene::Instantiated, amadeo_scene::InstantiateError> {
+        self.load_scene_assets(document);
+
+        let registry = self.take_registry();
+        let result = amadeo_scene::instantiate(document, &registry, &mut self.world);
+        self.put_registry(registry);
+        result
+    }
+
     /// The current simulation tick.
     #[must_use]
     pub fn tick(&self) -> Tick {

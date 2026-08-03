@@ -298,6 +298,7 @@ pub fn failure(id: &Json, error: &RpcError) -> Json {
 pub const WORLD_METHODS: &[&str] = &[
     "assets.list",
     "describe",
+    "render.describe",
     "world.entity",
     "world.list",
     "world.query",
@@ -354,6 +355,98 @@ pub fn dispatch_world(
         // An object keyed by name rather than an array of `{name, value}` pairs: a caller almost
         // always wants one specific resource, and `resources.SimRng` beats scanning a list for it.
         // Names are unique by construction — a `ResourceId` is the hash of one — so nothing is lost.
+        // The agent's cheap eyes, and M1's exit gate requires them: verification of that milestone's
+        // game is to be done "purely through `inspect`, headless runs, and `render.describe`, with
+        // screenshots used only for final confirmation".
+        //
+        // Reads the world rather than the last frame, so it costs nothing when nobody asks and works
+        // headlessly — see `amadeo_render::describe_frame` for why a `SpriteInstance` deliberately
+        // has no entity id to read back.
+        "render.describe" => {
+            let description = amadeo_render::describe_frame(world);
+
+            let drawn: Vec<Json> = description
+                .drawn
+                .iter()
+                .map(|entry| {
+                    let bounds = entry.bounds();
+                    let mut members = vec![
+                        ("entity", Json::Int(i64::from(entry.entity.index()))),
+                        (
+                            "generation",
+                            Json::Int(i64::from(entry.entity.generation())),
+                        ),
+                        ("order", Json::Int(i64::from(entry.order))),
+                        ("visible", Json::Bool(entry.visible)),
+                        (
+                            "center",
+                            Json::Array(vec![
+                                Json::Float(f64::from(entry.center[0])),
+                                Json::Float(f64::from(entry.center[1])),
+                            ]),
+                        ),
+                        (
+                            "size",
+                            Json::Array(vec![
+                                Json::Float(f64::from(entry.size[0])),
+                                Json::Float(f64::from(entry.size[1])),
+                            ]),
+                        ),
+                        // `[left, top, right, bottom]`, so a client can answer "do these overlap"
+                        // without redoing the projection.
+                        (
+                            "bounds",
+                            Json::Array(
+                                bounds.iter().map(|v| Json::Float(f64::from(*v))).collect(),
+                            ),
+                        ),
+                    ];
+
+                    match &entry.kind {
+                        amadeo_render::DrawnKind::Quad => {
+                            members.push(("kind", Json::string("quad")));
+                        }
+                        amadeo_render::DrawnKind::Sprite { texture } => {
+                            members.push(("kind", Json::string("sprite")));
+                            members.push(("texture", Json::string(texture)));
+                        }
+                    }
+
+                    Json::object(members)
+                })
+                .collect();
+
+            Ok(Some(Json::object([
+                (
+                    "viewport",
+                    Json::Array(vec![
+                        Json::Int(i64::from(description.viewport[0])),
+                        Json::Int(i64::from(description.viewport[1])),
+                    ]),
+                ),
+                (
+                    "camera",
+                    Json::object([
+                        (
+                            "center",
+                            Json::Array(vec![
+                                Json::Float(f64::from(description.camera.center[0])),
+                                Json::Float(f64::from(description.camera.center[1])),
+                            ]),
+                        ),
+                        ("height", Json::Float(f64::from(description.camera.height))),
+                    ]),
+                ),
+                ("drawn", Json::Int(description.drawn.len() as i64)),
+                ("visible", Json::Int(description.visible_count() as i64)),
+                (
+                    "off_screen",
+                    Json::Int(description.off_screen_count() as i64),
+                ),
+                ("entities", Json::Array(drawn)),
+            ])))
+        }
+
         "world.resources" => {
             let resources: Vec<(String, Json)> = world
                 .resources()

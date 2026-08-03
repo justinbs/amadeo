@@ -14,6 +14,10 @@ amadeo-assets.workspace = true
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 amadeo-reflect.workspace = true
+# `render.describe` answers "what is on screen" from the world -- M1 exit gate 2 requires it as the
+# verification channel. `amadeo-render` sits below this crate, and without the `gpu` feature it
+# brings nothing heavy.
+amadeo-render.workspace = true
 thiserror.workspace = true
 
 [lints]

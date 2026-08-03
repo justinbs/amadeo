@@ -37,6 +37,7 @@
 
 mod backend;
 mod components;
+mod describe;
 #[cfg(feature = "gpu")]
 mod gpu;
 mod sprites;
@@ -46,6 +47,7 @@ pub use backend::{
     FrameData, NullBackend, QuadInstance, RenderBackend, RenderError, SpriteBatch, SpriteInstance,
 };
 pub use components::{Camera2d, Quad, SortOrder, Sprite};
+pub use describe::{DrawnEntity, DrawnKind, FrameDescription, describe_frame};
 #[cfg(feature = "gpu")]
 pub use gpu::WgpuBackend;
 pub use sprites::{COLLECT_SPRITES, collect_sprites};

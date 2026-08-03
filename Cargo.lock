@@ -51,6 +51,7 @@ dependencies = [
  "amadeo-core",
  "amadeo-ecs",
  "amadeo-reflect",
+ "amadeo-render",
  "amadeo-transform",
  "thiserror 2.0.19",
 ]
