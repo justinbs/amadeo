@@ -1,6 +1,7 @@
 //! **The Vault** — M1's exit gate: a complete small 2D game.
 //!
-//! Collect six sigils without touching a warden. Walls stop you; wardens do not stop for anything.
+//! Collect six sigils without touching a warden or standing on a trap. Walls stop you; wardens do
+//! not stop for anything.
 //! The floor turns green when you win and red when you lose, because M1 has no text rendering and
 //! will not until M3's UI system.
 //!
@@ -139,7 +140,7 @@ impl Vault {
 
         match phase {
             Phase::Won => eprintln!("All sigils collected. Escape to quit."),
-            Phase::Lost => eprintln!("A warden caught you. Escape to quit."),
+            Phase::Lost => eprintln!("The run is over. Escape to quit."),
             Phase::Playing => {}
         }
     }
@@ -185,7 +186,7 @@ impl ApplicationHandler for Vault {
         };
 
         eprintln!("Amadeo — the Vault. WASD or arrow keys, Escape to quit.");
-        eprintln!("Collect all six sigils. Do not touch a warden.");
+        eprintln!("Collect all six sigils. Avoid the wardens and the floor traps.");
 
         self.running = Some(Running {
             window,

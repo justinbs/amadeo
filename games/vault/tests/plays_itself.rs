@@ -21,10 +21,31 @@ use amadeo_ecs::World;
 use amadeo_input::{InputDriver, ScriptedSource};
 use amadeo_transform::Transform;
 use vault::build_simulation;
-use vault::game::{MOVE_X, MOVE_Y, Phase, Player, Run, Sigil, Warden};
+use vault::game::{MOVE_X, MOVE_Y, Phase, Player, Run, Sigil, Trap, Warden};
 
-/// Builds the game with a scripted input source installed.
+/// Builds the game with a scripted input source installed, and **the traps disarmed**.
+///
+/// Disarming is the same isolation `despawn_wardens` gives the win test, for the same reason: most
+/// of these tests are about movement, collision, or scoring, and a trap ending the run part-way
+/// through a route would make a failure ambiguous. The traps have their own tests, below, which use
+/// [`scripted_armed`].
 fn scripted(script: impl FnOnce(&mut ScriptedSource)) -> App {
+    let mut app = scripted_armed(script);
+    let traps: Vec<_> = app
+        .world
+        .query::<(&Trap,)>()
+        .map(|(entity, _)| entity)
+        .collect();
+    for entity in traps {
+        if let Some(trap) = app.world.get_mut::<Trap>(entity) {
+            trap.armed = false;
+        }
+    }
+    app
+}
+
+/// The game exactly as it ships, traps live.
+fn scripted_armed(script: impl FnOnce(&mut ScriptedSource)) -> App {
     let mut app = build_simulation().expect("the game builds");
     let mut source = ScriptedSource::new();
     script(&mut source);
@@ -282,6 +303,70 @@ fn the_run_stops_when_it_is_over() {
         frozen,
         "the player should not move after the run is over"
     );
+}
+
+// --- Traps: the component and system written for M1 exit gate 4 ---
+
+#[test]
+fn stepping_on_a_trap_loses() {
+    // The east trap sits at x = 3 on the middle row -- squarely on the apparent express lane between
+    // the two middle sigils, which is the point of it.
+    let mut app = scripted_armed(|source| {
+        source.axis(Tick(0), MOVE_X, 1.0);
+    });
+    despawn_wardens(&mut app);
+
+    for _ in 0..120 {
+        app.run_ticks(1).expect("a tick");
+        if run(&app.world).phase == Phase::Lost {
+            let x = player_at(&app.world)[0];
+            assert!(
+                (2.5..3.5).contains(&x),
+                "the run should have ended at the trap near x = 3, not at x = {x}"
+            );
+            return;
+        }
+    }
+    panic!("two seconds of running east never reached the trap at x = 3");
+}
+
+#[test]
+fn a_sprung_trap_is_marked_rather_than_removed() {
+    // It stays visible so a player can see what caught them, which is information worth keeping and
+    // costs nothing. Despawning would erase the explanation along with the trap.
+    let mut app = scripted_armed(|source| {
+        source.axis(Tick(0), MOVE_X, 1.0);
+    });
+    despawn_wardens(&mut app);
+    app.run_ticks(60).expect("run east into the trap");
+
+    assert_eq!(run(&app.world).phase, Phase::Lost);
+    assert_eq!(
+        app.world.query::<(&Trap,)>().count(),
+        2,
+        "both traps should still exist"
+    );
+    let disarmed = app
+        .world
+        .query::<(&Trap,)>()
+        .filter(|(_, (trap,))| !trap.armed)
+        .count();
+    assert_eq!(disarmed, 1, "exactly the one that was stepped on");
+}
+
+#[test]
+fn a_disarmed_trap_lets_the_player_past() {
+    // Which is what makes `scripted` usable for every other test in this file, so it is worth
+    // asserting rather than assuming.
+    let mut app = scripted(|source| {
+        source.axis(Tick(0), MOVE_X, 1.0);
+    });
+    despawn_wardens(&mut app);
+    app.run_ticks(60)
+        .expect("straight through where the trap is");
+
+    assert_eq!(run(&app.world).phase, Phase::Playing);
+    assert!(player_at(&app.world)[0] > 3.5, "the player got past x = 3");
 }
 
 #[test]

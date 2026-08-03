@@ -1,0 +1,26 @@
+# trap — 16x16, a floor plate with teeth.
+#
+# Reads as *danger, but not alive*: it is square and static where the wardens are rounded and
+# moving, and it uses a rust-red nothing else in the arena touches. Sits flat on the floor, so the
+# plate fills the tile and only the teeth rise out of it.
+! . = 00000000   transparent
+! k = 1a1118ff   outline
+! p = 39222aff   plate
+! r = 6e2b30ff   rust
+! t = c4626aff   tooth
+kkkkkkkkkkkkkkkk
+kppppppppppppppk
+kprrrrrrrrrrrrpk
+kpr.t..t..t..rpk
+kpr.t..t..t..rpk
+kpr..........rpk
+kpr.t..t..t..rpk
+kpr.t..t..t..rpk
+kpr..........rpk
+kpr.t..t..t..rpk
+kpr.t..t..t..rpk
+kpr..........rpk
+kprrrrrrrrrrrrpk
+kppppppppppppppk
+kkkkkkkkkkkkkkkk
+kkkkkkkkkkkkkkkk

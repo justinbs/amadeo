@@ -1,11 +1,12 @@
 # Amadeo — Current Status
 
 **Last updated:** 2026-08-03 (end of session 8)
-**Current phase:** **M0 complete. M1 all but done — exit gates 1, 2, 3 and 5 are closed.** Reflection,
+**Current phase:** **M0 complete. M1 done — all five exit gates tested.** Gates 1, 2, 3 and 5 pass;
+gate 4 was tested and **found false**, which is a result rather than an omission (see below). Reflection,
 the scene format, the agent's read layer, the agent protocol and a working `amadeo` CLI, the whole
 asset layer, the sprite batcher, textured sprites on the GPU, invariant I8, snapshots, and
-**`games/vault` — a complete small 2D game** have all landed. **Only gate 4 remains**, and it is a
-procedure rather than a feature. Q3, Q4, Q13, Q14, Q16 and Q17 are all closed; nothing is blocked.
+**`games/vault` — a complete small 2D game** have all landed. **Gate 4 is tested and its claim does not hold** —
+`docs/09-gate-4-describe-is-not-enough.md`. Q3, Q4, Q13, Q14, Q16 and Q17 are all closed; nothing is blocked.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
 
 > ### ⚠️ Two working rules that changed in session 7 — read before doing anything
@@ -32,7 +33,7 @@ compiler-enforced bound on resources and events and shipping `world.resources`. 
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
 `games/vault`.
-**795 tests passing**; fmt, clippy
+**798 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Ten things work end to end today:
@@ -101,16 +102,23 @@ of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**M1 exit gate 4 — the last one open.** "`amadeo describe` output is sufficient to write a new
-component and system without reading engine source. Tested by actually doing it."
+**A decision, not a task: what `describe` is *for*.** M1 exit gate 4 has been tested and **the claim
+in it is false** — `docs/09-gate-4-describe-is-not-enough.md` is the write-up, and it is short.
 
-It is the only gate item left, and it needs a *procedure* rather than a feature: start a session with
-nothing but `amadeo describe --package vault` output, add a component and a system to the Vault
-using only that, and record honestly where the schema was not enough. The value is entirely in doing
-it strictly — the moment the engine source is opened, the test has been failed and the result is
-worth knowing.
+The gate said `describe` output should be enough to write a new component and system without reading
+engine source. Tested by writing one (`Trap` and `spring_traps`, shipped in the Vault). The result:
+`describe` is **sufficient to author content** — every field carries its type, unit, range, and
+meaning, which is what made `vault.scene` writable — and it says nothing about how to *declare* a
+component, register one, write a system, or query the world. **And it omits resources entirely**, so
+`Run`, the resource `spring_traps` exists to change, does not appear anywhere in it.
 
-Everything else in M1 is done, including gates 1, 2, 3 and 5.
+The gate conflated "describes the data model" (true, and well done) with "describes the API" (false,
+and never designed for). Three options for closing it are in that document, from "leave it and say
+so" to "extend the protocol to cover resources and emit a compilable skeleton". **Justin's call** —
+it decides whether the protocol is a schema or a manual, which is the sort of thing that is expensive
+to change direction on later.
+
+Everything else in M1 is done: gates 1, 2, 3 and 5 are closed.
 
 ### Then, M2
 
@@ -121,6 +129,16 @@ The next milestone is 3D, and its first item is an ADR on 2D/3D coexistence *bef
   coverage at all**: `render.describe` checks what *should* be drawn, and nothing checks what the
   wgpu backend actually put on screen. ADR 0021 already names capture as the agent's eyes.
 - **Q7 — prefab semantics**, which the Vault ran straight into. See the findings below.
+
+### Gate 4's result, in one paragraph
+
+`describe` is a **schema, not a manual**, and the gate asked it to be both. It carries every field's
+type, unit, range and meaning — which is exactly enough to author a scene file, and is what made
+`vault.scene` writable. It says nothing about the derives a component needs, `impl Component`, the
+registration call, a system's signature, or how to query; and **resources are absent from it
+entirely**. The write-up is `docs/09-gate-4-describe-is-not-enough.md`, including an honest caveat
+about the confound — the experiment was run by an agent that had already read the engine source, so
+the gaps are ones it *noticed* rather than ones it was stopped by.
 
 ### What building a real game found
 

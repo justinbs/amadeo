@@ -7,15 +7,15 @@
 //! # The rules
 //!
 //! You are the amber figure. Six sigils are scattered through a walled vault; collect all of them to
-//! win. Two wardens patrol fixed routes; touch one and you lose. Walls stop you, and stop nothing
-//! else — the wardens' routes are authored to stay clear of them, which is a deliberate simplicity
+//! win. Two wardens patrol fixed routes and two floor traps sit in the middle corridors; touch
+//! either and you lose. Walls stop you, and stop nothing else — the wardens' routes are authored to stay clear of them, which is a deliberate simplicity
 //! rather than an oversight (see [`patrol_wardens`]).
 //!
 //! # Everything here is deterministic
 //!
 //! No wall-clock, no randomness, no iteration over anything unordered. Movement integrates against
 //! `FIXED_DT` rather than a measured frame time, so the same inputs produce the same game on any
-//! machine at any frame rate (invariant I3). That is what lets `replays/clear-run.replay` assert
+//! machine at any frame rate (invariant I3). That is what lets `replays/collect-three.replay` assert
 //! this game's exact state four times over.
 
 use amadeo_core::{FIXED_DT, StableHash};
@@ -104,6 +104,28 @@ impl Component for ScoreDigit {}
 pub struct Floor;
 impl Component for Floor {}
 
+/// A floor plate that ends the run when stepped on.
+///
+/// # This component is M1 exit gate 4
+///
+/// The gate asks whether `amadeo describe` output is "sufficient to write a new component and system
+/// without reading engine source", tested by doing it. `Trap` and [`spring_traps`] are that test, and
+/// `docs/09-gate-4-describe-is-not-enough.md` records what it found.
+///
+/// The short version: `describe` told me exactly what a component's *data* looks like — field names,
+/// types, units, ranges, and what each one means — and nothing about how to declare one. The derive
+/// list on the line above, the `impl Component` below it, and the registration call in `lib.rs` are
+/// all things no `describe` output mentions.
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+pub struct Trap {
+    /// Whether it will still fire. A sprung trap stays visible but is spent.
+    ///
+    /// Authored `true`; there is no way back to armed within a run, which is what makes a trap a
+    /// mistake you make once rather than a hazard you learn to time.
+    pub armed: bool,
+}
+impl Component for Trap {}
+
 // --- Resources ---
 
 /// How the run is going.
@@ -159,6 +181,8 @@ pub mod labels {
     pub const PATROL_WARDENS: &str = "patrol_wardens";
     /// Picks up sigils the player is standing on.
     pub const COLLECT_SIGILS: &str = "collect_sigils";
+    /// Springs a trap the player stepped on.
+    pub const SPRING_TRAPS: &str = "spring_traps";
     /// Decides whether the run has ended.
     pub const RESOLVE_OUTCOME: &str = "resolve_outcome";
     /// Points the score digits at the right glyphs.
@@ -289,6 +313,47 @@ pub fn collect_sigils(world: &mut World) {
         run.collected += taken.len() as u32;
     }
 }
+
+/// Springs any armed trap the player is standing on, and ends the run.
+///
+/// Runs before [`resolve_outcome`], so a trap and the last sigil on the same tick is still a loss —
+/// the same reading as walking into a warden, and for the same reason: you did not get away with it.
+///
+/// A sprung trap is marked rather than despawned, so the arena still shows where it was. That is
+/// information a player wants after a loss and costs nothing to keep.
+pub fn spring_traps(world: &mut World) {
+    if !matches!(phase(world), Phase::Playing) {
+        return;
+    }
+    let Some((_, position)) = player_position(world) else {
+        return;
+    };
+
+    let sprung: Vec<Entity> = world
+        .query::<(&Transform, &Trap)>()
+        .filter(|(_, (transform, trap))| trap.armed && within(position, transform, TRAP_RANGE))
+        .map(|(entity, _)| entity)
+        .collect();
+
+    if sprung.is_empty() {
+        return;
+    }
+
+    for entity in sprung {
+        if let Some(trap) = world.get_mut::<Trap>(entity) {
+            trap.armed = false;
+        }
+    }
+    if let Some(run) = world.resource_mut::<Run>() {
+        run.phase = Phase::Lost;
+    }
+}
+
+/// How close the player's centre has to be to a trap's centre to spring it.
+///
+/// Tighter than a warden's reach: a trap is a tile you stand *on*, so clipping its corner should not
+/// count. Wider than nothing, so the plate does not feel like a pixel hunt.
+const TRAP_RANGE: f32 = 0.45;
 
 /// Ends the run when every sigil is collected, or when a warden makes contact.
 ///

@@ -5,6 +5,7 @@ assets
   digits
   player
   sigil
+  trap
   wall
   warden
 
@@ -191,3 +192,33 @@ entity score_units "Score Units"
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation -5.7 3.9 0.0
+
+entity trap_west "Trap West"
+  Sprite
+    color 1.0 1.0 1.0 1.0
+    region 0.0 0.0 1.0 1.0
+    size 1.0 1.0
+    texture "trap"
+  SortOrder
+    order 5
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -3.0 0.0 0.0
+  Trap
+    armed true
+
+entity trap_east "Trap East"
+  Sprite
+    color 1.0 1.0 1.0 1.0
+    region 0.0 0.0 1.0 1.0
+    size 1.0 1.0
+    texture "trap"
+  SortOrder
+    order 5
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 3.0 0.0 0.0
+  Trap
+    armed true

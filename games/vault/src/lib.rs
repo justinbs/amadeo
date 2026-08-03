@@ -27,7 +27,7 @@ use amadeo_app::{App, Stage, system};
 use amadeo_input::{InputDriver, NullSource, SAMPLE_INPUT, sample_input};
 use amadeo_render::{Camera2d, Quad, SortOrder, Sprite, TextureCache};
 use amadeo_transform::{GlobalTransform, PROPAGATE_TRANSFORMS, Transform, propagate_transforms};
-use game::{Floor, Patrol, Player, Run, ScoreDigit, Sigil, Wall, Warden, labels};
+use game::{Floor, Patrol, Player, Run, ScoreDigit, Sigil, Trap, Wall, Warden, labels};
 
 /// The seed this game runs at unless told otherwise.
 ///
@@ -76,6 +76,7 @@ pub fn build_simulation() -> anyhow::Result<App> {
     app.register_component::<Wall>()?;
     app.register_component::<ScoreDigit>()?;
     app.register_component::<Floor>()?;
+    app.register_component::<Trap>()?;
 
     app.scan_assets(ASSET_DIRECTORY)?;
     app.insert_service(TextureCache::new());
@@ -118,7 +119,12 @@ pub fn build_simulation() -> anyhow::Result<App> {
     );
     app.add_system(
         Stage::PostSimulation,
-        system(labels::RESOLVE_OUTCOME, game::resolve_outcome).after(labels::COLLECT_SIGILS),
+        system(labels::SPRING_TRAPS, game::spring_traps).after(labels::COLLECT_SIGILS),
+    );
+    // After the trap, so stepping on one and taking the last sigil on the same tick is a loss.
+    app.add_system(
+        Stage::PostSimulation,
+        system(labels::RESOLVE_OUTCOME, game::resolve_outcome).after(labels::SPRING_TRAPS),
     );
     app.add_system(
         Stage::PostSimulation,

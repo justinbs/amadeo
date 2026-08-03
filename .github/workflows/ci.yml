@@ -100,7 +100,7 @@ jobs:
           # The Vault is M1's exit-gate game, and a much stronger determinism check than quad-demo:
           # patrolling wardens, collision against forty-four walls, entities despawning mid-run, and
           # a resource changing as a result. Every one of those is a place nondeterminism could hide.
-          ./target/debug/amadeo.exe replay games/vault/replays/collect-two.replay --package vault
+          ./target/debug/amadeo.exe replay games/vault/replays/collect-three.replay --package vault
 
       # The scene file is the level (invariant I1), so a typo in it is a broken game rather than a
       # broken test. `check` validates it against the game's *real* component schema, which is the

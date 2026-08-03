@@ -132,8 +132,16 @@ of a milestone.
 3. ✅ Scene round-trip test in CI: parse → serialize → byte-identical.
    `crates/amadeo-scene/tests/round_trip.rs`, which also asserts ADR 0014's worked example is
    byte-identical to the formatter's output — so the spec cannot drift from the implementation.
-4. `amadeo describe` output is sufficient to write a new component and system without reading engine
+4. ⚠️ `amadeo describe` output is sufficient to write a new component and system without reading engine
    source. Tested by actually doing it.
+   **Tested, and the claim is false — see `docs/09-gate-4-describe-is-not-enough.md`.** The test was
+   a real component and system (`Trap` and `spring_traps`, shipped in the Vault). `describe` is
+   sufficient to author *content* — it carries every field's type, unit, range and meaning — and it
+   says nothing about how to *declare* a component, register one, write a system, or query the
+   world, and **it omits resources entirely**, so the resource this system exists to change is
+   invisible in it. The gate conflated "describes the data model" with "describes the API". Three
+   options for closing it are set out in that document; none is chosen, because it is a question
+   about what the protocol is *for*.
 5. ✅ Golden replays from M0 still pass.
    And the Vault added its own: `replays/collect-two.replay`, asserted in a separate process by CI.
    A much stronger determinism check than `quad-demo`'s — patrolling wardens, collision against

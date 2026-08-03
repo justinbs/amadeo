@@ -332,4 +332,5 @@ Things that will quietly destroy the design if allowed:
 | `docs/06-open-questions.md` | Before assuming any undecided thing. |
 | `docs/07-working-with-the-code.md` | Setup, commands, and the Rust patterns this engine uses. **Justin's map into the codebase — keep it current.** |
 | `docs/08-assets.md` | You're adding an asset, or wondering why it isn't showing up. |
+| `docs/09-gate-4-describe-is-not-enough.md` | You are about to rely on `describe` telling you how to *write* something, rather than what data exists. Records what M1 exit gate 4 found. |
 | `docs/adr/` | You want to know why something is the way it is. |
