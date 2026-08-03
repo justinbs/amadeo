@@ -464,14 +464,27 @@ pub fn dispatch_world(
                 (
                     "camera",
                     Json::object([
+                        // Named `center` rather than `eye` because that is what it means to a
+                        // reader of a 2D description — the world point in the middle of the view.
+                        // It now comes from the camera entity's `Transform` rather than from the
+                        // camera itself (ADR 0031), which is an internal move a client should not
+                        // have to care about.
                         (
                             "center",
                             Json::Array(vec![
-                                Json::Float(f64::from(description.camera.center[0])),
-                                Json::Float(f64::from(description.camera.center[1])),
+                                Json::Float(f64::from(description.eye[0])),
+                                Json::Float(f64::from(description.eye[1])),
                             ]),
                         ),
                         ("height", Json::Float(f64::from(description.camera.height))),
+                        (
+                            "projection",
+                            Json::string(match description.camera.projection {
+                                amadeo_render::Projection::Orthographic => "orthographic",
+                                amadeo_render::Projection::Perspective => "perspective",
+                            }),
+                        ),
+                        ("order", Json::Int(i64::from(description.camera.order))),
                     ]),
                 ),
                 ("drawn", Json::Int(description.drawn.len() as i64)),

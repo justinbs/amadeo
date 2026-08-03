@@ -1,6 +1,6 @@
 //! The rendering backend abstraction, and the null backend every build must have.
 
-use crate::components::Camera2d;
+use crate::components::Camera;
 use amadeo_image::TextureData;
 use std::fmt;
 
@@ -126,6 +126,26 @@ pub struct SpriteBatch {
     pub instances: Vec<SpriteInstance>,
 }
 
+/// What one camera contributes to a frame.
+///
+/// A frame is a list of these since ADR 0031, because a world may hold any number of cameras. A view
+/// is one camera's settings, resolved position, and the drawables it saw — everything a backend needs
+/// to draw that camera's pass without going back to the world.
+#[derive(Debug, Clone, PartialEq)]
+pub struct View {
+    /// The camera's settings, copied off its entity.
+    pub camera: Camera,
+    /// The camera's world position, taken from the `Transform` on the same entity.
+    ///
+    /// Separate from [`View::camera`] because a `Camera` deliberately holds no position: ADR 0018
+    /// keeps that on the transform, so that parenting a camera to a character is a follow camera.
+    pub eye: [f32; 2],
+    /// Quads to draw, already sorted by [`SortOrder`](crate::SortOrder).
+    pub quads: Vec<QuadInstance>,
+    /// Textured sprites, grouped into draw calls and ordered by [`SpriteBatch::order`].
+    pub batches: Vec<SpriteBatch>,
+}
+
 /// Everything needed to draw one frame.
 ///
 /// Built by reading the world, then handed to a backend. Nothing in here borrows the world, which is
@@ -134,27 +154,56 @@ pub struct SpriteBatch {
 pub struct FrameData {
     /// Background colour, linear RGBA.
     pub clear_color: [f32; 4],
-    /// The camera to draw through.
-    pub camera: Camera2d,
-    /// Quads to draw, already sorted by layer.
-    pub quads: Vec<QuadInstance>,
-    /// Textured sprites, grouped into draw calls and ordered by [`SpriteBatch::order`].
-    pub batches: Vec<SpriteBatch>,
+    /// One per active camera, **already in `Camera::order`**, low to high.
+    ///
+    /// Empty when a world has no camera, which draws a cleared screen rather than failing. That is
+    /// deliberate: a world under construction has no camera yet, and a hard error there would make
+    /// the first frame of every new game a crash.
+    pub views: Vec<View>,
 }
 
 impl FrameData {
-    /// How many sprites are in the frame, across every batch.
+    /// The first view, if there is one.
+    ///
+    /// A convenience for the common single-camera case and for tests, so they do not all have to
+    /// write `frame.views.first()`. Named rather than indexed because "the camera" stopped being a
+    /// meaningful phrase once there could be several — this is *a* view, the one drawn first.
+    #[must_use]
+    pub fn primary(&self) -> Option<&View> {
+        self.views.first()
+    }
+
+    /// Every quad across every view.
+    ///
+    /// Two cameras looking at one quad report it twice, which is correct: it is drawn twice.
+    pub fn quads(&self) -> impl Iterator<Item = &QuadInstance> {
+        self.views.iter().flat_map(|view| view.quads.iter())
+    }
+
+    /// Every sprite batch across every view.
+    pub fn batches(&self) -> impl Iterator<Item = &SpriteBatch> {
+        self.views.iter().flat_map(|view| view.batches.iter())
+    }
+
+    /// How many quads are in the frame, across every view.
+    #[must_use]
+    pub fn quad_count(&self) -> usize {
+        self.views.iter().map(|view| view.quads.len()).sum()
+    }
+
+    /// How many sprites are in the frame, across every batch of every view.
     #[must_use]
     pub fn sprite_count(&self) -> usize {
-        self.batches.iter().map(|batch| batch.instances.len()).sum()
+        self.batches().map(|batch| batch.instances.len()).sum()
     }
 
     /// How many draw calls the sprite batches will cost.
     ///
-    /// The number worth watching: sprites are cheap and state changes are not.
+    /// The number worth watching: sprites are cheap and state changes are not. Counted across views,
+    /// because two cameras drawing the same world cost two sets of draw calls.
     #[must_use]
     pub fn batch_count(&self) -> usize {
-        self.batches.len()
+        self.batches().count()
     }
 }
 
@@ -164,9 +213,7 @@ impl Default for FrameData {
             // A dark neutral that is clearly not black, so "nothing rendered" and "cleared but empty"
             // are distinguishable at a glance.
             clear_color: [0.06, 0.07, 0.09, 1.0],
-            camera: Camera2d::default(),
-            quads: Vec::new(),
-            batches: Vec::new(),
+            views: Vec::new(),
         }
     }
 }
@@ -271,12 +318,10 @@ impl NullBackend {
         self.last_frame.as_ref()
     }
 
-    /// How many quads the most recent frame contained.
+    /// How many quads the most recent frame contained, across every view.
     #[must_use]
     pub fn last_quad_count(&self) -> usize {
-        self.last_frame
-            .as_ref()
-            .map_or(0, |frame| frame.quads.len())
+        self.last_frame.as_ref().map_or(0, FrameData::quad_count)
     }
 
     /// The pixels uploaded under an id, if any.
@@ -333,11 +378,16 @@ mod tests {
 
     fn sample_frame() -> FrameData {
         FrameData {
-            quads: vec![QuadInstance {
-                center: [1.0, 2.0],
-                size: [1.0, 1.0],
-                rotation: 0.0,
-                color: [1.0, 0.0, 0.0, 1.0],
+            views: vec![View {
+                camera: Camera::default(),
+                eye: [0.0, 0.0],
+                quads: vec![QuadInstance {
+                    center: [1.0, 2.0],
+                    size: [1.0, 1.0],
+                    rotation: 0.0,
+                    color: [1.0, 0.0, 0.0, 1.0],
+                }],
+                batches: Vec::new(),
             }],
             ..FrameData::default()
         }
@@ -356,7 +406,13 @@ mod tests {
         assert_eq!(backend.frames_rendered(), 1);
         assert_eq!(backend.last_quad_count(), 1);
         assert_eq!(
-            backend.last_frame().expect("rendered").quads[0].center,
+            backend
+                .last_frame()
+                .expect("rendered")
+                .primary()
+                .expect("one view")
+                .quads[0]
+                .center,
             [1.0, 2.0]
         );
     }
@@ -373,7 +429,8 @@ mod tests {
     fn frame_defaults_are_visibly_not_black() {
         // So an empty-but-cleared frame is distinguishable from nothing having rendered at all.
         let frame = FrameData::default();
-        assert!(frame.quads.is_empty());
+        assert!(frame.views.is_empty(), "a default frame has no camera");
+        assert_eq!(frame.quad_count(), 0);
         assert!(frame.clear_color[0] > 0.0);
         assert_eq!(frame.clear_color[3], 1.0, "background must be opaque");
     }

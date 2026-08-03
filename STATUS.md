@@ -1,7 +1,7 @@
 # Amadeo — Current Status
 
 **Last updated:** 2026-08-03 (end of session 8)
-**Current phase:** **M0 complete. M1 closed, M2 started.** M2 opens with its ADR done and no code yet written against it: **ADR 0031** settles 2D/3D coexistence and makes the camera an entity.
+**Current phase:** **M0 complete. M1 closed, M2 started.** **ADR 0031** settles 2D/3D coexistence and makes the camera an entity — decided before code, then built: a world can hold any number of cameras, each with a projection, a target, a viewport rectangle and an order.
 
 **M1 closed — all five exit gates tested, four met and one refuted.**
 Reflection, the scene format, the agent's read layer, the agent protocol and a working `amadeo` CLI,
@@ -41,10 +41,10 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
 `games/vault`.
-**827 tests passing**; fmt, clippy
+**839 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
-Seventeen things work end to end today:
+Eighteen things work end to end today:
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -69,6 +69,10 @@ Seventeen things work end to end today:
   structurally rather than by convention.
 - **Sprites batch into draw calls.** 20,000 fully interleaved sprites collapse to 32 batches in
   2.58 ms (15.5% of a 60 Hz frame); 50,000 tiles on one sheet are a single draw call.
+- **The view is part of the level.** `entity eye "Camera"` in a scene file decides what is drawn and
+  from where. A world may hold any number (ADR 0031) -- each with a projection, a target that is the
+  window or a texture, a viewport rectangle, and an order -- and a camera parented to a character
+  *is* a follow camera, with no special case.
 - **Sprites are on the screen.** `cargo run -p quad-demo` shows a strip of textured floor tiles, each
   reading a different cell of one 2×2 texture through its `region` — one texture, one draw call — plus
   one sprite deliberately asking for an id that does not exist, which draws the magenta placeholder.
@@ -125,40 +129,21 @@ of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**Migrate the camera from a resource to a component — ADR 0031**, which is decided and written but
-not yet built. M2's first item was an ADR on 2D/3D coexistence *before* any code; that is done, and
-this is the code it calls for.
+**The render graph proper, running once per camera** — M2's next build item, and ADR 0031 has just
+settled its shape. Declared passes, resource dependencies, transient targets. Then 3D: meshes, PBR,
+lights, shadows, culling, glTF.
 
-The work, in order:
-
-1. A `Camera` component in `amadeo-render`, replacing the `Camera2d` resource. Flat fields — see the
-   Q21 caveat below.
-2. `FrameData` stops being one view. `RenderBackend::render` takes a list, and the wgpu and null
-   backends both follow.
-3. `render.describe` picks a camera — lowest `order` drawing to the window by default, with an
-   optional one to ask about instead.
-4. quad-demo and the Vault each author a camera in their scene files, which is the point: the view
-   becomes part of the level rather than something code sets up (I1).
-5. **Both golden replays regenerate.** Resources are in the state hash, so removing `Camera2d` moves
-   it. Do this under the `docs/07` procedure — isolate the cause, confirm the committed hashes return
-   when the change is reverted, and only then regenerate. This is the change that file warns hardest
-   about.
-
-**One thing found while designing it, and it is worth knowing before writing components:** a scene
-file cannot express a nested struct, an enum with a payload, or `Option::None` — a payload enum emits
-a Rust `Debug` form that nothing parses, and `None` fails to parse outright. Never hit before, because
-every component so far is scalars and flat lists. It is why ADR 0031's camera is flat when
-`Projection::Orthographic { height }` is the obvious design. Filed as **Q21 at P1**, and it should be
-settled before M2's material model, where the same problem arrives at a type nobody would want to
-flatten.
+**Settle Q21 before the material model.** A scene file cannot express a nested struct, an enum with a
+payload, or `Option::None` — the first two emit a Rust `Debug` form nothing parses, and `None` fails
+to parse outright. Never hit before, because every component in the engine is scalars and flat lists.
+It is already why ADR 0031's camera is flat when `Projection::Orthographic { height }` is the obvious
+and better design, and a material is exactly the type nobody would want to flatten.
 
 ### The rest of M2
 
-- **The render graph proper**, running once per camera, which is the shape ADR 0031 settles. Then 3D:
-  meshes, PBR, lights, shadows, culling, glTF.
-- **Q21 — the scene format's missing shapes** (nested struct, payload enum, `None`). At P1 because
-  M2's material model runs into it, and deciding a material against a format that cannot hold it
-  would produce a second flattened type.
+- **Q22 — a resource's identity in the state hash is its Rust path**, where a component's is its
+  canonical name (ADR 0017). Opposite rules, so moving a resource between crates silently invalidates
+  every golden replay. Found by building ADR 0031's control experiment and having it not work.
 - **`render.capture`** — headless render-target readback. The GPU path still has **no automated
   coverage at all**: `render.describe` checks what *should* be drawn, and nothing checks what the
   wgpu backend actually put on screen. ADR 0021 already names capture as the agent's eyes. It becomes
@@ -1435,3 +1420,32 @@ on purpose — several record a diagnosis that took a while to reach.
   same problem arrives at a type nobody would want to flatten.
 
   **No code yet.** The ADR is committed on its own, which is what "decided before code" means.
+
+  **Then ADR 0031, built.** A `Camera` component replaces the `Camera2d` resource; `FrameData`
+  becomes a list of `View`s, one per active camera, already in draw order; the wgpu backend runs one
+  pass per view with a dynamic-offset uniform buffer, only the first clearing, so a HUD camera
+  composes over a world camera rather than erasing it; and `render.describe` answers for the camera
+  that draws first to the window, with `describe_frame_through` for any other. **Both games now
+  author their camera in their scene file**, which is invariant I1 reaching a subsystem it had not
+  reached — the view is part of the level.
+
+  **A world with no camera draws nothing**, where it used to fall back to a default. That was the
+  right answer when there could only ever be one camera and is the wrong one now: inventing a view
+  nobody authored would draw a picture nobody asked for. The screen is still cleared, so "no camera"
+  looks empty rather than frozen.
+
+  **Both replays moved, and the isolation was unusually clean.** `docs/07` says find out why before
+  regenerating, and the answer here is a three-row table: HEAD reproduces; HEAD with *only* the
+  camera's data placement changed gives `950455d547a4adf9` at tick 300; the whole refactor with that
+  same change gives **the identical value**. So the entire render restructuring contributes nothing
+  to simulation state, and every bit of the movement is the deliberate data move. Regenerated on that
+  basis.
+
+  **Building the control turned up Q22.** The stand-in resource had the same canonical name and the
+  same fields and hashed *differently* — because `ResourceId` hashes the **Rust path** while
+  `ComponentId` hashes the canonical name (ADR 0017). Opposite rules for the two, which means moving
+  a resource between crates silently invalidates every golden replay. Nothing is broken today; the
+  crate graph is still moving, so it is worth deciding.
+
+  839 tests, all four verification commands green, both replays passing on their new hashes, and
+  `amadeo check` and `amadeo fmt --check` clean on all four scene files.

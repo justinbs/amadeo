@@ -7,12 +7,17 @@
 //!
 //! ```
 //! use amadeo_ecs::World;
-//! use amadeo_render::{Camera2d, NullBackend, Quad, Renderer, render_quads};
+//! use amadeo_render::{Camera, NullBackend, Quad, Renderer, render_quads};
 //! use amadeo_transform::Transform;
 //!
 //! let mut world = World::new();
-//! world.insert_resource(Camera2d::default());
 //! world.insert_service(Renderer::new(Box::new(NullBackend::new(800, 600))));
+//!
+//! // A camera is an entity (ADR 0031). Nothing draws without one, deliberately: inventing a
+//! // default view would be drawing something nobody authored.
+//! let eye = world.spawn();
+//! world.insert(eye, Transform::at(0.0, 0.0));
+//! world.insert(eye, Camera::orthographic(10.0));
 //!
 //! let entity = world.spawn();
 //! world.insert(entity, Transform::at(1.0, 0.0));
@@ -45,9 +50,12 @@ mod textures;
 
 pub use backend::{
     FrameData, NullBackend, QuadInstance, RenderBackend, RenderError, SpriteBatch, SpriteInstance,
+    View,
 };
-pub use components::{Camera2d, Quad, SortOrder, Sprite};
-pub use describe::{DrawnEntity, DrawnKind, FrameDescription, describe_frame};
+pub use components::{Camera, Projection, Quad, SortOrder, Sprite};
+pub use describe::{
+    DrawnEntity, DrawnKind, FrameDescription, describe_frame, describe_frame_through,
+};
 #[cfg(feature = "gpu")]
 pub use gpu::WgpuBackend;
 pub use sprites::{COLLECT_SPRITES, collect_sprites};
@@ -161,7 +169,9 @@ impl Renderer {
     /// Failures are recorded, not propagated: a texture that will not fit in video memory should
     /// leave the game running and visibly wrong, not stop it.
     fn upload_frame_textures(&mut self, frame: &FrameData, cache: &TextureCache) {
-        for batch in &frame.batches {
+        // Across every view. Two cameras seeing one texture upload it once, because the check below
+        // is against what the backend already holds rather than against what this frame asked for.
+        for batch in frame.batches() {
             let id = batch.texture.as_str();
             let decoded_for_real = cache.is_decoded(id);
             let needs_upload = !self.backend.has_texture(id)
@@ -194,6 +204,73 @@ impl Renderer {
     }
 }
 
+/// Every camera that should draw this frame, with its world position, in draw order.
+///
+/// Since ADR 0031 a camera is an entity, so this is a query rather than a resource lookup. Three
+/// rules, all of them things a reader should be able to check against the code:
+///
+/// - **Inactive cameras are skipped**, so `active false` in a scene file means what it says.
+/// - **A perspective camera is skipped too**, because nothing draws through one yet — the mesh pass
+///   arrives later in M2 and guessing at a projection would be worse than drawing nothing.
+/// - **Sorted by `Camera::order`, then by entity**, so the order is total and reproducible. Two
+///   cameras at the same order would otherwise draw in whichever sequence iteration happened to
+///   produce, and I3 wants reproducible-*and*-meaningful rather than merely reproducible.
+///
+/// The position comes from `GlobalTransform` when it is there, so a camera parented to a character
+/// follows it — which is what ADR 0031 means by "parenting a camera to a character *is* a follow
+/// camera". It falls back to the local `Transform` for an unparented camera, or one in a game that
+/// has not run propagation.
+/// One camera entity's world position, from `GlobalTransform` if propagation has run.
+///
+/// `[0, 0]` for an entity with no transform at all, which is a camera nobody finished setting up.
+#[must_use]
+pub fn camera_eye(world: &World, entity: amadeo_ecs::Entity) -> [f32; 2] {
+    let matrix = match world.get::<GlobalTransform>(entity) {
+        Some(global) => global.to_mat4(),
+        None => match world.get::<Transform>(entity) {
+            Some(transform) => local_matrix(transform),
+            None => return [0.0, 0.0],
+        },
+    };
+    let at = matrix.translation();
+    [at[0], at[1]]
+}
+
+/// The camera that draws first to the window, with its world position.
+///
+/// What `render.describe` answers for by default, and the nearest thing to "the camera" now that a
+/// world may hold several. `None` when a world has none — a state worth distinguishing from a
+/// default camera, which is why this returns an `Option` rather than falling back here.
+#[must_use]
+pub fn primary_camera(world: &World) -> Option<(Camera, [f32; 2])> {
+    active_cameras(world)
+        .into_iter()
+        .find(|(camera, _)| camera.target.is_empty())
+}
+
+fn active_cameras(world: &World) -> Vec<(Camera, [f32; 2])> {
+    let mut found: Vec<(i32, amadeo_ecs::Entity, Camera, [f32; 2])> = world
+        .query::<(&Camera, &Transform, Option<&GlobalTransform>)>()
+        .filter(|(_, (camera, _, _))| {
+            camera.active && matches!(camera.projection, Projection::Orthographic)
+        })
+        .map(|(entity, (camera, transform, global))| {
+            let matrix = match global {
+                Some(global) => global.to_mat4(),
+                None => local_matrix(transform),
+            };
+            let at = matrix.translation();
+            (camera.order, entity, camera.clone(), [at[0], at[1]])
+        })
+        .collect();
+
+    found.sort_by_key(|(order, entity, _, _)| (*order, entity.index(), entity.generation()));
+    found
+        .into_iter()
+        .map(|(_, _, camera, eye)| (camera, eye))
+        .collect()
+}
+
 /// Collects every drawable entity and hands the frame to the backend.
 ///
 /// Registered in the app layer's `Render` stage, outside the deterministic zone. Does nothing if no
@@ -207,7 +284,6 @@ pub fn render_quads(world: &mut World) {
         return;
     }
 
-    let camera = world.resource::<Camera2d>().copied().unwrap_or_default();
     let clear_color = world
         .service::<Renderer>()
         .map_or(FrameData::default().clear_color, |r| r.clear_color);
@@ -266,15 +342,26 @@ pub fn render_quads(world: &mut World) {
         .collect();
 
     collected.sort_by_key(|(order, _)| *order);
+    let quads: Vec<QuadInstance> = collected.into_iter().map(|(_, quad)| quad).collect();
+    // Sprites are collected in the same pass rather than a separate system, so one frame is one
+    // consistent read of the world. Two passes could see different worlds if anything ran between
+    // them, and "the sprites are one frame behind the quads" is a miserable bug to find.
+    let batches = collect_sprites(world);
 
+    // The drawables are gathered once and then handed to each camera, rather than re-queried per
+    // camera: what is in the world does not depend on who is looking at it, and re-collecting would
+    // both cost more and open the door to two cameras disagreeing about one frame.
     let frame = FrameData {
         clear_color,
-        camera,
-        quads: collected.into_iter().map(|(_, quad)| quad).collect(),
-        // Sprites are collected in the same pass rather than a separate system, so one frame is one
-        // consistent read of the world. Two passes could see different worlds if anything ran
-        // between them, and "the sprites are one frame behind the quads" is a miserable bug to find.
-        batches: collect_sprites(world),
+        views: active_cameras(world)
+            .into_iter()
+            .map(|(camera, eye)| View {
+                camera,
+                eye,
+                quads: quads.clone(),
+                batches: batches.clone(),
+            })
+            .collect(),
     };
 
     // Turn every texture id this frame names into pixels, before anything tries to draw with one.
@@ -296,11 +383,22 @@ pub fn render_quads(world: &mut World) {
 mod tests {
     use super::*;
 
+    /// A world with a renderer and one camera entity.
+    ///
+    /// The camera is spawned rather than inserted as a resource since ADR 0031 -- which is exactly
+    /// the migration these tests are here to keep honest.
     fn world_with_renderer() -> World {
         let mut world = World::new();
-        world.insert_resource(Camera2d::default());
         world.insert_service(Renderer::new(Box::new(NullBackend::new(800, 600))));
+        add_camera(&mut world, Camera::default(), [0.0, 0.0]);
         world
+    }
+
+    fn add_camera(world: &mut World, camera: Camera, at: [f32; 2]) -> amadeo_ecs::Entity {
+        let entity = world.spawn();
+        world.insert(entity, Transform::at(at[0], at[1]));
+        world.insert(entity, camera);
+        entity
     }
 
     fn add_quad(world: &mut World, x: f32, order: i32) -> amadeo_ecs::Entity {
@@ -329,7 +427,14 @@ mod tests {
         add_quad(&mut world, 2.0, 0);
 
         render_quads(&mut world);
-        assert_eq!(last_frame(&world).quads.len(), 2);
+        assert_eq!(
+            last_frame(&world)
+                .primary()
+                .expect("one camera")
+                .quads
+                .len(),
+            2
+        );
     }
 
     #[test]
@@ -344,7 +449,14 @@ mod tests {
         world.insert(no_transform, Quad::default());
 
         render_quads(&mut world);
-        assert_eq!(last_frame(&world).quads.len(), 1);
+        assert_eq!(
+            last_frame(&world)
+                .primary()
+                .expect("one camera")
+                .quads
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -369,7 +481,7 @@ mod tests {
         propagate_transforms(&mut world);
         render_quads(&mut world);
 
-        let drawn = last_frame(&world).quads[0];
+        let drawn = last_frame(&world).primary().expect("one camera").quads[0];
         assert!(
             (drawn.center[0] - 0.0).abs() < 1e-5,
             "got {:?}",
@@ -405,7 +517,7 @@ mod tests {
         propagate_transforms(&mut world);
         render_quads(&mut world);
 
-        let drawn = last_frame(&world).quads[0];
+        let drawn = last_frame(&world).primary().expect("one camera").quads[0];
         assert!((drawn.size[0] - 6.0).abs() < 1e-5, "got {:?}", drawn.size);
     }
 
@@ -420,7 +532,10 @@ mod tests {
 
         render_quads(&mut world);
 
-        assert_eq!(last_frame(&world).quads[0].center, [4.0, -1.0]);
+        assert_eq!(
+            last_frame(&world).primary().expect("one camera").quads[0].center,
+            [4.0, -1.0]
+        );
     }
 
     #[test]
@@ -438,7 +553,7 @@ mod tests {
         world.insert(entity, Quad::new(1.0, 1.0, [1.0, 1.0, 1.0, 1.0]));
 
         render_quads(&mut world);
-        let quad = last_frame(&world).quads[0];
+        let quad = last_frame(&world).primary().expect("one camera").quads[0];
         assert_eq!(quad.size, [2.0, 3.0]);
         // Authored in degrees (ADR 0018), handed to the backend in radians. The conversion happening
         // exactly once, here, is the thing this pins.
@@ -459,8 +574,7 @@ mod tests {
 
         render_quads(&mut world);
         let centers: Vec<f32> = last_frame(&world)
-            .quads
-            .iter()
+            .quads()
             .map(|quad| quad.center[0])
             .collect();
         assert_eq!(centers, vec![2.0, 3.0, 1.0]);
@@ -474,18 +588,10 @@ mod tests {
         }
 
         render_quads(&mut world);
-        let first: Vec<f32> = last_frame(&world)
-            .quads
-            .iter()
-            .map(|q| q.center[0])
-            .collect();
+        let first: Vec<f32> = last_frame(&world).quads().map(|q| q.center[0]).collect();
 
         render_quads(&mut world);
-        let second: Vec<f32> = last_frame(&world)
-            .quads
-            .iter()
-            .map(|q| q.center[0])
-            .collect();
+        let second: Vec<f32> = last_frame(&world).quads().map(|q| q.center[0]).collect();
 
         assert_eq!(first, second, "draw order must be reproducible");
         assert_eq!(first, vec![0.0, 1.0, 2.0, 3.0, 4.0]);
@@ -519,13 +625,17 @@ mod tests {
     }
 
     #[test]
-    fn uses_a_default_camera_when_none_is_present() {
+    fn a_world_with_no_camera_draws_nothing_rather_than_guessing() {
+        // Before ADR 0031 this fell back to a default camera, which was the only sensible answer
+        // when there could only ever be one. With cameras as entities, inventing one would draw a
+        // view nobody authored -- so the frame is empty and the screen is merely cleared.
         let mut world = World::new();
         world.insert_service(Renderer::new(Box::new(NullBackend::new(640, 480))));
         add_quad(&mut world, 0.0, 0);
 
         render_quads(&mut world);
-        assert_eq!(last_frame(&world).camera, Camera2d::default());
+        assert!(last_frame(&world).views.is_empty());
+        assert_eq!(last_frame(&world).quad_count(), 0);
     }
 
     #[test]
@@ -543,7 +653,12 @@ mod tests {
         render_quads(&mut world);
 
         let frame = last_frame(&world);
-        assert!(frame.quads.is_empty());
+        assert_eq!(frame.quad_count(), 0);
+        assert_eq!(
+            frame.views.len(),
+            1,
+            "the camera is still there with nothing to see"
+        );
         assert_eq!(
             world
                 .service::<Renderer>()

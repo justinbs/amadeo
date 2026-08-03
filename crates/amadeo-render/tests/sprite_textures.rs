@@ -13,7 +13,7 @@
 use amadeo_assets::{AssetCatalogue, Assets, Sidecar};
 use amadeo_ecs::World;
 use amadeo_render::{
-    Camera2d, NullBackend, PLACEHOLDER_TEXTURE_ID, Renderer, Sprite, TextureCache, render_quads,
+    Camera, NullBackend, PLACEHOLDER_TEXTURE_ID, Renderer, Sprite, TextureCache, render_quads,
 };
 use amadeo_transform::Transform;
 use std::path::{Path, PathBuf};
@@ -78,8 +78,12 @@ impl Project {
     /// under a test that loads them a second time.
     fn world(&mut self) -> World {
         let mut world = World::new();
-        world.insert_resource(Camera2d::default());
         world.insert_service(Renderer::new(Box::new(NullBackend::new(800, 600))));
+        // A camera is an entity since ADR 0031, so a world without one draws nothing at all --
+        // which would make every assertion in this file pass vacuously.
+        let eye = world.spawn();
+        world.insert(eye, amadeo_transform::Transform::at(0.0, 0.0));
+        world.insert(eye, Camera::default());
         world.insert_service(TextureCache::new());
         world.insert_service(std::mem::take(&mut self.assets));
         world
@@ -97,6 +101,14 @@ fn add_sprite(world: &mut World, texture: &str) {
     let entity = world.spawn();
     world.insert(entity, Transform::at(0.0, 0.0));
     world.insert(entity, Sprite::new(texture, 1.0, 1.0));
+}
+
+/// A world needs a camera to draw anything at all since ADR 0031, so tests that build one by hand
+/// need this. Without it every assertion about what was drawn would pass vacuously.
+fn add_camera(world: &mut World) {
+    let entity = world.spawn();
+    world.insert(entity, Transform::at(0.0, 0.0));
+    world.insert(entity, Camera::default());
 }
 
 /// The pixels the backend holds under an id, if any.
@@ -294,6 +306,7 @@ fn a_world_with_no_asset_system_still_draws_placeholders() {
     let mut world = World::new();
     world.insert_service(Renderer::new(Box::new(NullBackend::new(320, 240))));
     world.insert_service(TextureCache::new());
+    add_camera(&mut world);
     add_sprite(&mut world, "whatever");
 
     render_quads(&mut world);
@@ -308,6 +321,7 @@ fn a_world_with_no_texture_cache_renders_without_textures() {
     // draw its quads and simply not draw sprites, rather than failing.
     let mut world = World::new();
     world.insert_service(Renderer::new(Box::new(NullBackend::new(320, 240))));
+    add_camera(&mut world);
     add_sprite(&mut world, "whatever");
 
     render_quads(&mut world);

@@ -235,3 +235,34 @@ fn describing_the_game_twice_gives_the_same_answer() {
     let app = build_simulation().expect("builds");
     assert_eq!(describe_frame(&app.world), describe_frame(&app.world));
 }
+
+#[test]
+fn the_scene_camera_matches_the_declared_view_height() {
+    // `VIEW_HEIGHT` is what the tests in this file reason about; the camera in `vault.scene` is what
+    // actually draws. They are two places holding one number since ADR 0031 moved the camera into
+    // the scene file, so this is what makes a disagreement a failing test rather than a layout
+    // mystery found by looking at a window.
+    let app = build_simulation().expect("the game builds");
+    let (camera, eye) = amadeo_render::primary_camera(&app.world).expect("the scene authors one");
+
+    assert_eq!(camera.height, vault::VIEW_HEIGHT);
+    assert_eq!(
+        camera.projection,
+        amadeo_render::Projection::Orthographic,
+        "a 2D game wants a parallel projection"
+    );
+    // The nudge upward that keeps the score readout clear of the top wall — found by
+    // `render.describe` rather than by looking, and now authored in the level rather than in code.
+    assert!(eye[1] > 0.0, "the view is nudged up, got {eye:?}");
+}
+
+#[test]
+fn the_camera_is_authored_in_the_scene_file_not_in_code() {
+    // Invariant I1 reaching the renderer: the view is part of the level. If someone moves it back
+    // into `build_simulation`, editing `vault.scene` would stop changing what you see, and this
+    // fails rather than the change going unnoticed.
+    assert!(
+        vault::SCENE.contains("Camera"),
+        "vault.scene must author the camera"
+    );
+}

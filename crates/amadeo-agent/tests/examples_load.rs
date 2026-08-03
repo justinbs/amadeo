@@ -10,7 +10,7 @@
 
 use amadeo_agent::describe_example;
 use amadeo_ecs::{ComponentRegistry, World};
-use amadeo_render::{Camera2d, Quad, SortOrder, Sprite};
+use amadeo_render::{Camera, Quad, SortOrder, Sprite};
 use amadeo_transform::{GlobalTransform, Parent, Transform};
 
 /// Every component in the engine that a scene can carry, in one registry.
@@ -22,6 +22,7 @@ fn engine_registry() -> ComponentRegistry {
     registry.register::<Quad>().expect("registers");
     registry.register::<Sprite>().expect("registers");
     registry.register::<SortOrder>().expect("registers");
+    registry.register::<Camera>().expect("registers");
     registry
 }
 
@@ -30,10 +31,9 @@ fn full_schema() -> amadeo_reflect::TypeRegistry {
     let registry = engine_registry();
     let mut types = registry.types().clone();
 
-    // `Camera2d` is a *resource*, not a component — which is the point. Before ADR 0030 nothing
-    // could describe it, and an agent could not have known a camera existed.
-    let mut world = World::new();
-    world.insert_resource(Camera2d::default());
+    // A world with a resource in it, so the resource half of the schema is exercised. `Camera` is a
+    // *component* since ADR 0031, so it comes in through the registry below instead.
+    let world = World::new();
     world
         .register_resource_schemas(&mut types)
         .expect("no name collisions");
@@ -87,10 +87,10 @@ fn every_component_example_parses_and_instantiates() {
 
 #[test]
 fn an_example_respects_a_declared_range() {
-    // `Camera2d::height` is annotated `min = 0.1`, and a zero-height camera is exactly the
+    // `Camera::height` is annotated `min = 0.1`, and a zero-height camera is exactly the
     // plausible-but-wrong value an unbounded example would have suggested.
     let types = full_schema();
-    let info = types.get("Camera2d").expect("registered");
+    let info = types.get("Camera").expect("registered");
 
     let example = describe_example(info, &types).expect("an example exists");
     let amadeo_agent::Json::Object(members) = &example else {
@@ -102,7 +102,7 @@ fn an_example_respects_a_declared_range() {
 
     let field = info
         .field("height")
-        .expect("Camera2d has a height")
+        .expect("Camera has a height")
         .range
         .expect("and it is range-annotated, which is what this test is about");
 

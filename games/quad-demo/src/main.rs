@@ -28,8 +28,8 @@ use amadeo_input::{
 };
 use amadeo_reflect::Reflect;
 use amadeo_render::{
-    Camera2d, PLACEHOLDER_TEXTURE_ID, Quad, RENDER_QUADS, Renderer, SortOrder, Sprite,
-    TextureCache, WgpuBackend, render_quads,
+    Camera, PLACEHOLDER_TEXTURE_ID, Quad, RENDER_QUADS, Renderer, SortOrder, Sprite, TextureCache,
+    WgpuBackend, render_quads,
 };
 use amadeo_transform::{GlobalTransform, PROPAGATE_TRANSFORMS, Transform, propagate_transforms};
 use winit::application::ApplicationHandler;
@@ -161,10 +161,9 @@ fn build_simulation() -> anyhow::Result<App> {
     // I7). It is a `Service`, so it cannot reach the state hash either way (ADR 0009).
     app.insert_service(TextureCache::new());
 
-    app.insert_resource(Camera2d {
-        center: [0.0, 0.0],
-        height: 10.0,
-    });
+    // The camera is an entity now (ADR 0031) and `markers.scene` authors it, so the view is part of
+    // the level rather than something this function sets up.
+    app.register_component::<Camera>()?;
 
     app.add_system(Stage::PreSimulation, system(SAMPLE_INPUT, sample_input));
     app.add_system(Stage::Simulation, system("apply_input", apply_input));

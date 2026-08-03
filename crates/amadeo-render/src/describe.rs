@@ -31,7 +31,7 @@
 //! position subtly wrong in a way that looks plausible, which is why
 //! `a_sprite_below_the_camera_reports_a_larger_screen_y` pins it.
 
-use crate::components::{Camera2d, Quad, SortOrder, Sprite};
+use crate::components::{Camera, Quad, SortOrder, Sprite};
 use crate::{Renderer, local_matrix};
 use amadeo_ecs::{Entity, World};
 use amadeo_transform::{GlobalTransform, Transform};
@@ -100,7 +100,13 @@ pub struct FrameDescription {
     /// Drawable size in physical pixels.
     pub viewport: [u32; 2],
     /// The camera the description was computed through.
-    pub camera: Camera2d,
+    ///
+    /// **Which one** matters since ADR 0031 made a camera an entity: this is the active orthographic
+    /// camera with the lowest `order` drawing to the window, or a default when the world has none.
+    /// `describe_frame_through` asks about a different one.
+    pub camera: Camera,
+    /// That camera's world position, which lives on its `Transform` rather than on the camera.
+    pub eye: [f32; 2],
     /// Every drawable entity, **sorted by draw order then entity** — so two descriptions of the
     /// same world are identical, and a diff of two ticks shows what actually moved (invariant I3).
     pub drawn: Vec<DrawnEntity>,
@@ -135,12 +141,34 @@ impl FrameDescription {
 /// an agent asking what is on screen must not change what is on screen.
 #[must_use]
 pub fn describe_frame(world: &World) -> FrameDescription {
-    let camera = world.resource::<Camera2d>().copied().unwrap_or_default();
+    // "What is on screen" stopped having one answer when a world gained the ability to hold several
+    // cameras, so this picks the one that draws first to the window and says which in the reply. A
+    // world with no camera gets a default rather than an empty description: the entities and their
+    // world positions are still real, and refusing to answer would make `render.describe` useless on
+    // exactly the half-built world an agent most wants to look at.
+    let (camera, eye) =
+        crate::primary_camera(world).unwrap_or_else(|| (Camera::default(), [0.0; 2]));
+    describe_frame_with(world, camera, eye)
+}
+
+/// The same description, computed through one specific camera.
+///
+/// For a world with more than one — a minimap, a security monitor, the editor's viewport. `entity`
+/// must carry a [`Camera`]; anything else returns `None`, because silently falling back to a
+/// different camera would answer a question nobody asked.
+#[must_use]
+pub fn describe_frame_through(world: &World, entity: Entity) -> Option<FrameDescription> {
+    let camera = world.get::<Camera>(entity)?.clone();
+    let eye = crate::camera_eye(world, entity);
+    Some(describe_frame_with(world, camera, eye))
+}
+
+fn describe_frame_with(world: &World, camera: Camera, eye: [f32; 2]) -> FrameDescription {
     let viewport = world
         .service::<Renderer>()
         .map_or((1280, 720), Renderer::viewport);
 
-    let projection = Projection::new(camera, viewport);
+    let projection = ScreenProjection::new(&camera, eye, viewport);
     let mut drawn = Vec::new();
 
     for (entity, (transform, quad, order, global)) in world.query::<(
@@ -184,6 +212,7 @@ pub fn describe_frame(world: &World) -> FrameDescription {
     FrameDescription {
         viewport: [viewport.0, viewport.1],
         camera,
+        eye,
         drawn,
     }
 }
@@ -217,20 +246,21 @@ fn placement(
 }
 
 /// World space to screen pixels, matching the shaders exactly.
-struct Projection {
-    camera: Camera2d,
+struct ScreenProjection {
+    /// Where the camera is, from the `Transform` on its entity.
+    eye: [f32; 2],
     half_extents: [f32; 2],
     viewport: (u32, u32),
 }
 
-impl Projection {
-    fn new(camera: Camera2d, viewport: (u32, u32)) -> Projection {
+impl ScreenProjection {
+    fn new(camera: &Camera, eye: [f32; 2], viewport: (u32, u32)) -> ScreenProjection {
         // Width follows the aspect ratio, so resizing shows more world rather than stretching it.
         // Identical to `WgpuBackend::render`; if that changes, this has to change with it.
         let aspect = viewport.0 as f32 / viewport.1.max(1) as f32;
         let half_height = camera.height / 2.0;
-        Projection {
-            camera,
+        ScreenProjection {
+            eye,
             half_extents: [half_height * aspect, half_height],
             viewport,
         }
@@ -272,8 +302,8 @@ impl Projection {
     /// One world point in screen pixels, origin top-left.
     fn to_screen(&self, world: [f32; 2]) -> [f32; 2] {
         let ndc = [
-            (world[0] - self.camera.center[0]) / self.half_extents[0],
-            (world[1] - self.camera.center[1]) / self.half_extents[1],
+            (world[0] - self.eye[0]) / self.half_extents[0],
+            (world[1] - self.eye[1]) / self.half_extents[1],
         ];
         [
             (ndc[0] + 1.0) / 2.0 * self.viewport.0 as f32,
@@ -290,11 +320,10 @@ mod tests {
 
     fn world_with_view(width: u32, height: u32) -> World {
         let mut world = World::new();
-        world.insert_resource(Camera2d {
-            center: [0.0, 0.0],
-            height: 10.0,
-        });
         world.insert_service(Renderer::new(Box::new(NullBackend::new(width, height))));
+        let eye = world.spawn();
+        world.insert(eye, Transform::at(0.0, 0.0));
+        world.insert(eye, Camera::orthographic(10.0));
         world
     }
 

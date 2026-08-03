@@ -113,6 +113,26 @@ The agent's primary verification channel (gate 2) has to keep working, and "what
 having a single answer once there are several cameras. It reports the camera with the lowest `order`
 drawing to the window by default, and takes an optional camera to ask about instead.
 
+## Proof
+
+Both replays moved, as predicted. The `docs/07` procedure says isolate the cause before regenerating,
+and the isolation is unusually clean here:
+
+| Configuration | `collect-three.replay` at tick 300 |
+|---|---|
+| HEAD, before any of this | `f9649880a13413e2` — matches the committed file |
+| HEAD **plus only the camera's data placement changed** | `950455d547a4adf9` |
+| The whole refactor **plus that same change** | `950455d547a4adf9` — *identical* |
+
+So the render restructuring — views, the per-camera pass, the dynamic-offset uniform, the new
+`describe` — contributes **nothing at all** to simulation state. Every bit of the hash movement comes
+from the deliberate data move, which is exactly what a behaviour-preserving refactor should look like.
+
+Building that control also turned up **Q22**: the stand-in resource, with the same canonical name and
+the same fields, hashed differently — because `ResourceId` hashes the **Rust path** while
+`ComponentId` hashes the canonical name (ADR 0017). Opposite rules for the two, which means moving a
+resource between crates silently invalidates every golden replay.
+
 ## Consequences
 
 **Good:**

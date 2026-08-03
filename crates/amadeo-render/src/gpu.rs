@@ -17,7 +17,7 @@
 //! Steps 1–3 happen in [`WgpuBackend::new`]; steps 4–5 happen every frame in
 //! [`WgpuBackend::render`].
 
-use crate::backend::{FrameData, RenderBackend, RenderError};
+use crate::backend::{FrameData, RenderBackend, RenderError, View};
 use amadeo_image::{PixelFormat, TextureData};
 use std::any::Any;
 use std::collections::BTreeMap;
@@ -67,6 +67,34 @@ struct GpuCamera {
 /// How many instances the buffer starts with. Grows as needed; never shrinks.
 const INITIAL_INSTANCE_CAPACITY: usize = 256;
 
+/// How many cameras the uniform buffer starts with room for. Grows as needed.
+///
+/// Four rather than one because the multi-camera cases are small and bounded — a world view, a HUD,
+/// a minimap, an editor viewport — so this covers essentially every real frame without a reallocation.
+const INITIAL_VIEW_CAPACITY: usize = 4;
+
+/// The byte stride between two cameras in the uniform buffer.
+///
+/// A dynamic offset must be a multiple of the device's alignment, which is a hardware limit rather
+/// than something to pick — commonly 256 bytes even though a [`GpuCamera`] is 16.
+fn camera_stride(device: &wgpu::Device) -> u64 {
+    let alignment = u64::from(device.limits().min_uniform_buffer_offset_alignment).max(1);
+    let size = size_of::<GpuCamera>() as u64;
+    size.div_ceil(alignment) * alignment
+}
+
+/// Where one view's data sits inside the frame-wide buffers.
+///
+/// Every view's quads and sprites are packed into two shared buffers, so drawing a view means
+/// drawing its slice of each. Recorded while packing rather than recomputed while encoding: a
+/// running offset maintained in two places is what drifts.
+struct ViewDraws<'a> {
+    /// This view's instances within the shared quad buffer.
+    quads: std::ops::Range<u32>,
+    /// One texture id and its instance range per batch, in draw order.
+    draws: Vec<(&'a str, std::ops::Range<u32>)>,
+}
+
 /// One uploaded texture and the bind group that binds it.
 ///
 /// The bind group is built once at upload and kept, rather than rebuilt per frame: creating one is a
@@ -94,8 +122,15 @@ pub struct WgpuBackend {
     config: wgpu::SurfaceConfiguration,
     pipeline: wgpu::RenderPipeline,
     sprite_pipeline: wgpu::RenderPipeline,
+    /// One aligned slot per camera, addressed by dynamic offset. ADR 0031.
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    /// Bytes between two cameras in that buffer. A device limit, not a choice.
+    camera_stride: u64,
+    /// How many cameras the current buffer can hold.
+    camera_capacity: usize,
+    /// Kept so the buffer can be rebuilt when a frame has more cameras than it has room for.
+    camera_layout: wgpu::BindGroupLayout,
     instance_buffer: wgpu::Buffer,
     /// How many instances the current buffer can hold.
     instance_capacity: usize,
@@ -201,9 +236,17 @@ impl WgpuBackend {
             source: wgpu::ShaderSource::Wgsl(include_str!("quad.wgsl").into()),
         });
 
+        // One slot per camera, addressed by a dynamic offset. ADR 0031 made a world able to hold
+        // several cameras, and each needs its own uniform *while the encoder is still recording* —
+        // writing the buffer once per view instead would just overwrite the previous write, since
+        // every queue write lands before the single submit at the end.
+        //
+        // The alignment is a hardware rule (commonly 256 bytes) rather than a choice, so it is read
+        // off the device rather than assumed.
+        let camera_stride = camera_stride(&device);
         let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("amadeo camera uniform"),
-            size: size_of::<GpuCamera>() as u64,
+            label: Some("amadeo camera uniforms"),
+            size: camera_stride * INITIAL_VIEW_CAPACITY as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -215,8 +258,11 @@ impl WgpuBackend {
                 visibility: wgpu::ShaderStages::VERTEX,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+                    has_dynamic_offset: true,
+                    // Stated so the driver can validate a dynamic offset against it: a bind group
+                    // that binds the whole buffer would otherwise let an out-of-range offset through
+                    // to the GPU.
+                    min_binding_size: wgpu::BufferSize::new(size_of::<GpuCamera>() as u64),
                 },
                 count: None,
             }],
@@ -227,7 +273,11 @@ impl WgpuBackend {
             layout: &camera_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: camera_buffer.as_entire_binding(),
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &camera_buffer,
+                    offset: 0,
+                    size: wgpu::BufferSize::new(size_of::<GpuCamera>() as u64),
+                }),
             }],
         });
 
@@ -423,6 +473,9 @@ impl WgpuBackend {
             sprite_pipeline,
             camera_buffer,
             camera_bind_group,
+            camera_stride,
+            camera_capacity: INITIAL_VIEW_CAPACITY,
+            camera_layout,
             instance_buffer,
             instance_capacity: INITIAL_INSTANCE_CAPACITY,
             sprite_buffer,
@@ -453,6 +506,58 @@ impl WgpuBackend {
             mapped_at_creation: false,
         });
         self.instance_capacity = capacity;
+    }
+
+    /// Grows the camera uniform buffer, and rebuilds the bind group that points at it.
+    ///
+    /// Unlike the instance buffers, the bind group has to be recreated too — it names a specific
+    /// buffer, so a new buffer means a stale binding otherwise. Doubling, for the same reason.
+    fn ensure_camera_capacity(&mut self, needed: usize) {
+        if needed <= self.camera_capacity {
+            return;
+        }
+        let mut capacity = self.camera_capacity.max(1);
+        while capacity < needed {
+            capacity *= 2;
+        }
+
+        self.camera_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("amadeo camera uniforms"),
+            size: self.camera_stride * capacity as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.camera_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("amadeo camera bind group"),
+            layout: &self.camera_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &self.camera_buffer,
+                    offset: 0,
+                    size: wgpu::BufferSize::new(size_of::<GpuCamera>() as u64),
+                }),
+            }],
+        });
+        self.camera_capacity = capacity;
+    }
+
+    /// One view's target rectangle in physical pixels, as an origin.
+    fn viewport_origin(&self, view: &View) -> (f32, f32) {
+        let rect = view.camera.viewport;
+        (
+            rect[0] * self.config.width as f32,
+            rect[1] * self.config.height as f32,
+        )
+    }
+
+    /// One view's target rectangle in physical pixels, as a size.
+    fn viewport_pixels(&self, view: &View) -> (f32, f32) {
+        let rect = view.camera.viewport;
+        (
+            rect[2] * self.config.width as f32,
+            rect[3] * self.config.height as f32,
+        )
     }
 
     /// The same doubling growth for the sprite buffer.
@@ -619,56 +724,78 @@ impl RenderBackend for WgpuBackend {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Camera: the world half-size the view covers. Width follows the aspect ratio so resizing
-        // shows more world rather than stretching what is already visible.
-        let aspect = self.config.width as f32 / self.config.height as f32;
-        let half_height = frame.camera.height / 2.0;
-        let camera = GpuCamera {
-            center: frame.camera.center,
-            half_extents: [half_height * aspect, half_height],
-        };
-        self.queue
-            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&camera));
+        // Everything is packed for the whole frame first, then drawn view by view. Packing per view
+        // inside the encoder would not work: a queue write lands before the single submit at the
+        // end, so the second view's write would overwrite the first's rather than following it.
+        //
+        // Each view's data is concatenated and its own ranges recorded. Today every view holds the
+        // same drawables, so this uploads them once per camera — deliberately, because per-camera
+        // culling is coming and a shortcut that assumed the views agreed would have to be unpicked.
+        let mut cameras: Vec<u8> = vec![0; self.camera_stride as usize * frame.views.len()];
+        let mut instances: Vec<GpuInstance> = Vec::with_capacity(frame.quad_count());
+        let mut sprites: Vec<GpuSprite> = Vec::with_capacity(frame.sprite_count());
+        let mut per_view: Vec<ViewDraws> = Vec::with_capacity(frame.views.len());
 
-        let instances: Vec<GpuInstance> = frame
-            .quads
-            .iter()
-            .map(|quad| GpuInstance {
+        for (index, view) in frame.views.iter().enumerate() {
+            // The world half-size this camera covers. Width follows the target rectangle's aspect
+            // ratio, so a half-width viewport shows half the world rather than a squashed whole.
+            let (px_width, px_height) = self.viewport_pixels(view);
+            let aspect = px_width / px_height.max(1.0);
+            let half_height = view.camera.height / 2.0;
+            let camera = GpuCamera {
+                center: view.eye,
+                half_extents: [half_height * aspect, half_height],
+            };
+            let at = index * self.camera_stride as usize;
+            cameras[at..at + size_of::<GpuCamera>()].copy_from_slice(bytemuck::bytes_of(&camera));
+
+            let quads_from = instances.len() as u32;
+            instances.extend(view.quads.iter().map(|quad| GpuInstance {
                 center_size: [quad.center[0], quad.center[1], quad.size[0], quad.size[1]],
                 rotation: [quad.rotation, 0.0, 0.0, 0.0],
                 color: quad.color,
-            })
-            .collect();
+            }));
+
+            // Every batch's sprites go into **one** buffer, laid out back to back in batch order,
+            // and each batch then draws its own slice of it. So the number of buffer writes per
+            // frame is one regardless of how many batches there are -- the batches only decide how
+            // many times the texture bind group changes, which is the cost ADR 0023 is about.
+            //
+            // `first` is recorded alongside each batch here rather than recomputed in the pass,
+            // because a running offset maintained in two places is exactly what drifts.
+            let mut draws: Vec<(&str, std::ops::Range<u32>)> =
+                Vec::with_capacity(view.batches.len());
+            for batch in &view.batches {
+                let first = sprites.len() as u32;
+                sprites.extend(batch.instances.iter().map(|sprite| GpuSprite {
+                    center_axis_x: [
+                        sprite.center[0],
+                        sprite.center[1],
+                        sprite.axes[0][0],
+                        sprite.axes[0][1],
+                    ],
+                    axis_y: [sprite.axes[1][0], sprite.axes[1][1], 0.0, 0.0],
+                    color: sprite.color,
+                    region: sprite.region,
+                }));
+                draws.push((batch.texture.as_str(), first..sprites.len() as u32));
+            }
+
+            per_view.push(ViewDraws {
+                quads: quads_from..instances.len() as u32,
+                draws,
+            });
+        }
+
+        self.ensure_camera_capacity(frame.views.len());
+        if !cameras.is_empty() {
+            self.queue.write_buffer(&self.camera_buffer, 0, &cameras);
+        }
 
         self.ensure_instance_capacity(instances.len());
         if !instances.is_empty() {
             self.queue
                 .write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&instances));
-        }
-
-        // Every batch's sprites go into **one** buffer, laid out back to back in batch order, and
-        // each batch then draws its own slice of it. So the number of buffer writes per frame is
-        // one regardless of how many batches there are -- the batches only decide how many times
-        // the texture bind group changes, which is the cost ADR 0023 is actually about.
-        //
-        // `first` is recorded alongside each batch here rather than recomputed in the pass, because
-        // a running offset maintained in two places is exactly the sort of thing that drifts.
-        let mut sprites: Vec<GpuSprite> = Vec::with_capacity(frame.sprite_count());
-        let mut draws: Vec<(&str, std::ops::Range<u32>)> = Vec::with_capacity(frame.batches.len());
-        for batch in &frame.batches {
-            let first = sprites.len() as u32;
-            sprites.extend(batch.instances.iter().map(|sprite| GpuSprite {
-                center_axis_x: [
-                    sprite.center[0],
-                    sprite.center[1],
-                    sprite.axes[0][0],
-                    sprite.axes[0][1],
-                ],
-                axis_y: [sprite.axes[1][0], sprite.axes[1][1], 0.0, 0.0],
-                color: sprite.color,
-                region: sprite.region,
-            }));
-            draws.push((batch.texture.as_str(), first..sprites.len() as u32));
         }
 
         self.ensure_sprite_capacity(sprites.len());
@@ -683,20 +810,52 @@ impl RenderBackend for WgpuBackend {
                 label: Some("amadeo frame encoder"),
             });
 
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("amadeo quad pass"),
+        let clear = wgpu::LoadOp::Clear(wgpu::Color {
+            r: f64::from(frame.clear_color[0]),
+            g: f64::from(frame.clear_color[1]),
+            b: f64::from(frame.clear_color[2]),
+            a: f64::from(frame.clear_color[3]),
+        });
+
+        // A world with no camera still gets one clearing pass. Without it the previous frame's image
+        // would persist, so "no camera" would look like "frozen" rather than like "empty" — and a
+        // world under construction genuinely has no camera yet.
+        if frame.views.is_empty() {
+            let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("amadeo clear pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: f64::from(frame.clear_color[0]),
-                            g: f64::from(frame.clear_color[1]),
-                            b: f64::from(frame.clear_color[2]),
-                            a: f64::from(frame.clear_color[3]),
-                        }),
+                        load: clear,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                multiview_mask: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
+
+        for (index, (view_data, draws)) in frame.views.iter().zip(&per_view).enumerate() {
+            // Only the first camera clears. Later ones load what is already there, which is what
+            // makes a HUD camera compose over a world camera rather than erase it.
+            let load = if index == 0 {
+                clear
+            } else {
+                wgpu::LoadOp::Load
+            };
+
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("amadeo view pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load,
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -706,26 +865,35 @@ impl RenderBackend for WgpuBackend {
                 occlusion_query_set: None,
             });
 
-            // The pass still runs with zero instances: clearing the screen is the point, otherwise
-            // the previous frame's image would persist.
-            if !instances.is_empty() {
+            let (px_x, px_y) = self.viewport_origin(view_data);
+            let (px_width, px_height) = self.viewport_pixels(view_data);
+            // A zero-sized viewport is a validation error rather than a no-op, so a camera with a
+            // degenerate rectangle is skipped instead of taking the whole frame down with it.
+            if px_width < 1.0 || px_height < 1.0 {
+                continue;
+            }
+            pass.set_viewport(px_x, px_y, px_width, px_height, 0.0, 1.0);
+
+            let camera_offset = index as u32 * self.camera_stride as u32;
+
+            if !draws.quads.is_empty() {
                 pass.set_pipeline(&self.pipeline);
-                pass.set_bind_group(0, &self.camera_bind_group, &[]);
+                pass.set_bind_group(0, &self.camera_bind_group, &[camera_offset]);
                 pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
-                // Four vertices (one strip), once per instance. One draw call for the whole frame.
-                pass.draw(0..4, 0..instances.len() as u32);
+                // Four vertices (one strip), once per instance. One draw call for this view's quads.
+                pass.draw(0..4, draws.quads.clone());
             }
 
             // Sprites draw after quads, so a textured sprite sits over an untextured rectangle at
             // the same position. `SortOrder` governs order *within* each of the two, and the two
             // passes do not interleave -- worth knowing, and the reason a background drawn as a
             // `Quad` behind sprites works without any sort order at all.
-            if !sprites.is_empty() {
+            if !draws.draws.is_empty() {
                 pass.set_pipeline(&self.sprite_pipeline);
-                pass.set_bind_group(0, &self.camera_bind_group, &[]);
+                pass.set_bind_group(0, &self.camera_bind_group, &[camera_offset]);
                 pass.set_vertex_buffer(0, self.sprite_buffer.slice(..));
 
-                for (texture_id, range) in &draws {
+                for (texture_id, range) in &draws.draws {
                     // A batch naming a texture that was never uploaded is skipped rather than
                     // drawn untextured. It should not happen -- `Renderer::upload_frame_textures`
                     // uploads at least a placeholder for every batch before this runs -- and

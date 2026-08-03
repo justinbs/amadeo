@@ -25,7 +25,7 @@ pub mod level;
 
 use amadeo_app::{App, Stage, system};
 use amadeo_input::{InputDriver, NullSource, SAMPLE_INPUT, sample_input};
-use amadeo_render::{Camera2d, Quad, SortOrder, Sprite, TextureCache};
+use amadeo_render::{Camera, Quad, SortOrder, Sprite, TextureCache};
 use amadeo_transform::{GlobalTransform, PROPAGATE_TRANSFORMS, Transform, propagate_transforms};
 use game::{Floor, Patrol, Player, Run, ScoreDigit, Sigil, Trap, Wall, Warden, labels};
 
@@ -46,6 +46,10 @@ pub const SCENE: &str = include_str!("../scenes/vault.scene");
 ///
 /// Eight, so the seven-row arena fits with a row of margin above for the score readout. Width
 /// follows the window's aspect ratio, which is why the arena is wider than it is tall.
+///
+/// **The camera in `vault.scene` is the authority**; this is here for the tests that reason about
+/// what fits on screen. They must agree, and `the_scene_camera_matches_the_declared_view_height`
+/// is what makes a disagreement a failing test rather than a mystery.
 pub const VIEW_HEIGHT: f32 = 8.0;
 
 /// Builds the world: the level from its scene file, plus the walls around it.
@@ -80,12 +84,10 @@ pub fn build_simulation() -> anyhow::Result<App> {
 
     app.scan_assets(ASSET_DIRECTORY)?;
     app.insert_service(TextureCache::new());
-    // Nudged up, so the score readout fits above the arena without either overlapping the top wall
-    // or being clipped by the top of the view. Found by `render.describe`, not by looking.
-    app.insert_resource(Camera2d {
-        center: [0.0, 0.35],
-        height: VIEW_HEIGHT,
-    });
+    // The camera is an entity now (ADR 0031), and it is authored in `vault.scene` rather than here.
+    // Its position is the nudge that keeps the score readout above the arena without overlapping the
+    // top wall -- found by `render.describe` rather than by looking.
+    app.register_component::<Camera>()?;
     app.insert_resource(Run::default());
 
     // Compiled in rather than read at runtime, so the binary carries its own level and a replay

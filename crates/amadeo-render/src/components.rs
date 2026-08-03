@@ -1,7 +1,7 @@
 //! What the renderer reads off entities.
 
 use amadeo_core::StableHash;
-use amadeo_ecs::{Component, Resource};
+use amadeo_ecs::Component;
 use amadeo_reflect::Reflect;
 
 /// A flat coloured rectangle.
@@ -159,39 +159,133 @@ impl SortOrder {
 
 impl Component for SortOrder {}
 
-/// An orthographic 2D camera.
+/// How a camera flattens the world onto the screen.
 ///
-/// A [`Resource`] rather than a component for M0: one camera, and it is simulation state because
-/// gameplay moves it. Multiple cameras and render targets become components in M2, when the render
-/// graph can express more than one pass.
-#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
-pub struct Camera2d {
-    /// World-space point at the centre of the view.
-    #[reflect(unit = "world units")]
-    pub center: [f32; 2],
-    /// How many world units tall the view is. Width follows from the viewport's aspect ratio, so
-    /// resizing the window widens the view rather than stretching it.
-    #[reflect(min = 0.1, max = 1000.0, unit = "world units")]
-    pub height: f32,
+/// A fieldless enum with the parameters as sibling fields on [`Camera`], rather than
+/// `Orthographic { height }` carrying exactly what it needs. That is the worse type and it is
+/// deliberate: **the scene format cannot express an enum with a payload** (Q21), and a camera has to
+/// be authorable in a `.scene` file for invariant I1 to hold here. ADR 0031 records the trade.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub enum Projection {
+    /// Parallel: no perspective, so size does not change with distance.
+    ///
+    /// Reads [`Camera::height`] and ignores [`Camera::fov`]. This is 2D, and it is also isometric —
+    /// which is why the projection belongs to the camera rather than to a pipeline (ADR 0031).
+    #[default]
+    Orthographic,
+    /// A view frustum: things further away are smaller.
+    ///
+    /// Reads [`Camera::fov`] and ignores [`Camera::height`]. **Nothing draws through one yet** — the
+    /// mesh pass arrives later in M2, and the sprite and quad passes skip a perspective camera
+    /// rather than guessing at a projection. `renders_nothing_through_a_perspective_camera_yet`
+    /// pins that, so it stays a known state rather than a mystery.
+    Perspective,
 }
 
-impl Default for Camera2d {
+/// A camera: what is drawn, from where, and onto what.
+///
+/// **An entity, not a resource** — ADR 0031. A world may hold any number, and each one is an
+/// ordinary member of the hierarchy, so parenting a camera to a character *is* a follow camera with
+/// no special case anywhere.
+///
+/// Position and orientation are **not here**. They come from the [`Transform`](amadeo_transform::Transform)
+/// on the same entity, per ADR 0018's one-transform rule.
+///
+/// ```
+/// # use amadeo_render::{Camera, Projection};
+/// # use amadeo_transform::Transform;
+/// # use amadeo_ecs::World;
+/// let mut world = World::new();
+/// let eye = world.spawn();
+/// world.insert(eye, Transform::at(0.0, 0.0));
+/// world.insert(eye, Camera::orthographic(10.0));
+/// ```
+#[derive(Debug, Clone, PartialEq, StableHash, Reflect)]
+pub struct Camera {
+    /// Which projection to use. The other fields say which ones this one reads.
+    pub projection: Projection,
+    /// Orthographic only: how many world units tall the view is.
+    ///
+    /// Width follows from the target's aspect ratio, so resizing the window widens the view rather
+    /// than stretching it.
+    #[reflect(min = 0.1, max = 1000.0, unit = "world units")]
+    pub height: f32,
+    /// Perspective only: the vertical field of view.
+    #[reflect(min = 1.0, max = 179.0, unit = "deg")]
+    pub fov: f32,
+    /// Nearest distance drawn. Perspective only.
+    #[reflect(min = 0.001, max = 1000.0, unit = "world units")]
+    pub near: f32,
+    /// Furthest distance drawn. Perspective only.
+    #[reflect(min = 0.1, max = 100000.0, unit = "world units")]
+    pub far: f32,
+    /// Where this camera draws. **Empty means the window**; anything else is a texture asset id.
+    ///
+    /// A plain string rather than an `Option` or an enum, for the same reason [`Projection`] is
+    /// flat — see Q21. It matches [`Sprite::texture`], which is already an asset id in a string.
+    pub target: String,
+    /// The sub-rectangle of the target to draw into, as `[x, y, width, height]` in `0.0..=1.0`.
+    ///
+    /// `[0.0, 0.0, 1.0, 1.0]` is the whole target. A left half is `[0.0, 0.0, 0.5, 1.0]`.
+    #[reflect(min = 0.0, max = 1.0)]
+    pub viewport: [f32; 4],
+    /// Draw order between cameras, low to high. A HUD camera sits above a world camera.
+    pub order: i32,
+    /// Whether this camera draws at all. A cheap way to keep one configured but idle.
+    pub active: bool,
+}
+
+impl Default for Camera {
     fn default() -> Self {
         Self {
-            center: [0.0, 0.0],
+            projection: Projection::Orthographic,
             height: 10.0,
+            // Never read while `projection` is orthographic, but a sane number rather than zero so
+            // that flipping the projection in a scene file gives something visible rather than a
+            // degenerate frustum. That is the cost of the flat layout, paid where it is cheapest.
+            fov: 60.0,
+            near: 0.1,
+            far: 1000.0,
+            target: String::new(),
+            viewport: [0.0, 0.0, 1.0, 1.0],
+            order: 0,
+            active: true,
         }
     }
 }
 
-impl Resource for Camera2d {}
+impl Component for Camera {}
 
-impl Camera2d {
-    /// Converts a world position to normalised device coordinates for a given viewport.
-    ///
-    /// Returns x and y in `-1.0..=1.0`, with y pointing up — the convention wgpu uses.
+impl Camera {
+    /// An orthographic camera showing `height` world units vertically, filling the window.
     #[must_use]
-    pub fn world_to_ndc(&self, world: [f32; 2], viewport: (u32, u32)) -> [f32; 2] {
+    pub fn orthographic(height: f32) -> Self {
+        Self {
+            projection: Projection::Orthographic,
+            height,
+            ..Self::default()
+        }
+    }
+
+    /// A perspective camera with a vertical field of view in degrees, filling the window.
+    #[must_use]
+    pub fn perspective(fov: f32) -> Self {
+        Self {
+            projection: Projection::Perspective,
+            fov,
+            ..Self::default()
+        }
+    }
+
+    /// Converts a world position to normalised device coordinates, seen from `eye`.
+    ///
+    /// Returns x and y in `-1.0..=1.0`, with y pointing up — the convention wgpu uses. `eye` is the
+    /// camera entity's world position, which lives on its `Transform` rather than here.
+    ///
+    /// Orthographic only. A perspective camera needs a depth to divide by, which a 2D point has not
+    /// got — the mesh pass will carry its own projection rather than widening this.
+    #[must_use]
+    pub fn world_to_ndc(&self, eye: [f32; 2], world: [f32; 2], viewport: (u32, u32)) -> [f32; 2] {
         let (width, height) = viewport;
         // A zero-sized viewport happens legitimately when a window is minimised. Falling back to a
         // square avoids a division by zero producing NaN coordinates.
@@ -204,8 +298,8 @@ impl Camera2d {
         let half_width = half_height * aspect;
 
         [
-            (world[0] - self.center[0]) / half_width,
-            (world[1] - self.center[1]) / half_height,
+            (world[0] - eye[0]) / half_width,
+            (world[1] - eye[1]) / half_height,
         ]
     }
 }
@@ -243,31 +337,36 @@ mod tests {
     }
 
     #[test]
-    fn camera_maps_its_centre_to_the_origin() {
-        let camera = Camera2d {
-            center: [5.0, 5.0],
-            height: 10.0,
-        };
-        assert_eq!(camera.world_to_ndc([5.0, 5.0], (800, 600)), [0.0, 0.0]);
+    fn camera_maps_its_eye_to_the_origin() {
+        // The eye is a separate argument since ADR 0031: a camera holds no position, because that
+        // lives on the `Transform` of the entity carrying it.
+        let camera = Camera::orthographic(10.0);
+        assert_eq!(
+            camera.world_to_ndc([5.0, 5.0], [5.0, 5.0], (800, 600)),
+            [0.0, 0.0]
+        );
     }
 
     #[test]
     fn camera_maps_vertical_extents_to_the_edges() {
-        let camera = Camera2d {
-            center: [0.0, 0.0],
-            height: 10.0,
-        };
-        // Half the height above centre is the top of the screen.
-        assert_eq!(camera.world_to_ndc([0.0, 5.0], (800, 600))[1], 1.0);
-        assert_eq!(camera.world_to_ndc([0.0, -5.0], (800, 600))[1], -1.0);
+        let camera = Camera::orthographic(10.0);
+        // Half the height above the eye is the top of the screen.
+        assert_eq!(
+            camera.world_to_ndc([0.0; 2], [0.0, 5.0], (800, 600))[1],
+            1.0
+        );
+        assert_eq!(
+            camera.world_to_ndc([0.0; 2], [0.0, -5.0], (800, 600))[1],
+            -1.0
+        );
     }
 
     #[test]
     fn camera_widens_rather_than_stretching() {
         // A wider viewport must show more world, not distort what is already visible.
-        let camera = Camera2d::default();
-        let square = camera.world_to_ndc([5.0, 0.0], (600, 600))[0];
-        let wide = camera.world_to_ndc([5.0, 0.0], (1200, 600))[0];
+        let camera = Camera::default();
+        let square = camera.world_to_ndc([0.0; 2], [5.0, 0.0], (600, 600))[0];
+        let wide = camera.world_to_ndc([0.0; 2], [5.0, 0.0], (1200, 600))[0];
 
         assert_eq!(square, 1.0, "at a 1:1 aspect, x=5 is the right edge");
         assert!(
@@ -279,8 +378,8 @@ mod tests {
     #[test]
     fn zero_sized_viewport_does_not_produce_nan() {
         // Minimising a window legitimately reports a zero-sized surface.
-        let camera = Camera2d::default();
-        let ndc = camera.world_to_ndc([1.0, 1.0], (0, 0));
+        let camera = Camera::default();
+        let ndc = camera.world_to_ndc([0.0; 2], [1.0, 1.0], (0, 0));
         assert!(ndc[0].is_finite() && ndc[1].is_finite(), "{ndc:?}");
     }
 }

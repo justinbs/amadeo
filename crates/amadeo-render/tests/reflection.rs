@@ -6,7 +6,7 @@
 //! exactly this data once `amadeo-cli` exists.
 
 use amadeo_reflect::{Reflect, SyncPolicy, TypeRegistry, Value};
-use amadeo_render::{Camera2d, Quad};
+use amadeo_render::{Camera, Quad};
 use amadeo_transform::Transform;
 
 #[test]
@@ -14,21 +14,30 @@ fn the_engines_components_register_and_are_discoverable_by_name() {
     let mut registry = TypeRegistry::new();
     registry.register::<Transform>().expect("registers");
     registry.register::<Quad>().expect("registers");
-    registry.register::<Camera2d>().expect("registers");
+    registry.register::<Camera>().expect("registers");
 
     // Sorted, so anything generated from this listing is diffable. The vector and scalar types come
     // along because registering a type registers everything it names (ADR 0030) — which is what lets
     // a reader resolve `"type": "array<f32, 3>"` instead of having to parse the string.
+    //
+    // `Projection` is here for the same reason and is the case that matters: it is neither a
+    // component nor a resource, so before ADR 0030 a client reading `Camera`'s schema would have been
+    // told a field is a `Projection` with nowhere to find out that means `Orthographic` or
+    // `Perspective`.
     assert_eq!(
         registry.names().collect::<Vec<_>>(),
         vec![
-            "Camera2d",
+            "Camera",
+            "Projection",
             "Quad",
             "Transform",
             "array<f32, 2>",
             "array<f32, 3>",
             "array<f32, 4>",
+            "bool",
             "f32",
+            "i32",
+            "string",
         ]
     );
 }
@@ -79,12 +88,11 @@ fn real_components_round_trip_through_the_value_tree() {
         quad
     );
 
-    let camera = Camera2d {
-        center: [4.0, 5.0],
-        height: 12.0,
-    };
+    // A camera no longer carries its position (ADR 0031): that is on the `Transform` of the entity
+    // holding it, so what round-trips here is the projection and the target rather than a centre.
+    let camera = Camera::orthographic(12.0);
     assert_eq!(
-        Camera2d::from_value(&camera.to_value()).expect("round trip"),
+        Camera::from_value(&camera.to_value()).expect("round trip"),
         camera
     );
 }

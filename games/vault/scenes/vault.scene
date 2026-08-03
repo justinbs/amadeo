@@ -138,3 +138,19 @@ entity trap_west "Trap West" from floor_trap
 entity trap_east "Trap East" from floor_trap
   override Transform
     translation 3.0 0.0 0.0
+
+entity eye "Camera"
+  Camera
+    active true
+    far 1000.0
+    fov 60.0
+    height 8.0
+    near 0.1
+    order 0
+    projection Orthographic
+    target ""
+    viewport 0.0 0.0 1.0 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.35 0.0

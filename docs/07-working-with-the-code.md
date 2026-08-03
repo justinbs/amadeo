@@ -594,6 +594,53 @@ has a `translation` field, against the reflection registry — that is `validate
 `amadeo check` runs) and `instantiate`. A syntax error and a schema error are different things with
 different messages rather than one confusing pile.
 
+### Cameras: a camera is an entity, and nothing draws without one
+
+New in session 8 (ADR 0031). A camera is a `Camera` component beside a `Transform`, and a world may
+hold any number. **A world with no camera draws nothing** — the screen is cleared and that is all.
+That trips people once: if you build a world by hand in a test and assert on what was drawn, spawn a
+camera or every assertion passes vacuously.
+
+```text
+entity eye "Camera"
+  Camera
+    active true
+    far 1000.0
+    fov 60.0
+    height 8.0
+    near 0.1
+    order 0
+    projection Orthographic
+    target ""
+    viewport 0.0 0.0 1.0 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.35 0.0
+```
+
+**The position is on the `Transform`, not on the `Camera`.** That is ADR 0018's one-transform rule,
+and it pays off immediately: parenting a camera to a character *is* a follow camera, with no special
+case and no code.
+
+| Field | |
+|---|---|
+| `projection` | `Orthographic` reads `height`; `Perspective` reads `fov`. Nothing draws through a perspective camera yet — the mesh pass is later in M2. |
+| `target` | **empty means the window.** Anything else is a texture asset id. |
+| `viewport` | `[x, y, width, height]` in `0..1` of the target. A left half is `0.0 0.0 0.5 1.0`. |
+| `order` | low draws first. Only the first camera clears, so a higher-order camera composes *over* a lower one rather than erasing it. |
+| `active` | `false` keeps a camera configured but idle. |
+
+**Why the fields are flat** when `Projection::Orthographic { height }` is the obvious design: the
+scene format cannot express an enum with a payload (Q21), and a camera has to be authorable for I1 to
+hold. So a perspective camera carries a `height` that means nothing. That is a real wart, recorded
+rather than hidden.
+
+**Asking what is on screen.** `render.describe` answers for the active orthographic camera with the
+lowest `order` drawing to the window. For any other — a minimap, a security monitor, the editor's
+viewport — use `describe_frame_through(&world, camera_entity)`, which returns `None` if that entity
+is not a camera rather than quietly answering about a different one.
+
 ### Prefabs: write the thing once, place it many times
 
 New in session 8 (ADR 0029). A prefab is **a scene file with exactly one root entity**, used as a

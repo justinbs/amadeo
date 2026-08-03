@@ -266,7 +266,7 @@ fn built_in_placeholder() -> TextureData {
 /// Does nothing if either service is absent — a headless test that never installed an asset system
 /// still renders, drawing placeholders.
 pub fn decode_frame_textures(world: &mut amadeo_ecs::World, frame: &FrameData) {
-    if frame.batches.is_empty() || !world.has_service::<TextureCache>() {
+    if frame.batch_count() == 0 || !world.has_service::<TextureCache>() {
         return;
     }
 
@@ -274,7 +274,7 @@ pub fn decode_frame_textures(world: &mut amadeo_ecs::World, frame: &FrameData) {
         let Some(assets) = world.service::<Assets>() else {
             return;
         };
-        for batch in &frame.batches {
+        for batch in frame.batches() {
             cache.ensure(&batch.texture, assets);
         }
         // The game's own placeholder is decoded alongside, so step 2 of `get`'s fallback is
