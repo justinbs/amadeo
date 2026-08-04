@@ -1,0 +1,6 @@
+scene wall_panel
+version 1
+
+entity mesh "Wall panel"
+  BoxMesh
+    size 1.0 2.5 0.2

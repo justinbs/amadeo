@@ -8,7 +8,10 @@ use amadeo_events::{Event, WorldEvents};
 use amadeo_reflect::{
     FieldInfo, Reflect, ReflectError, RegistryError, Replication, TypeInfo, TypeKind, Value,
 };
-use amadeo_render::{Camera, Environment, EnvironmentCache};
+use amadeo_render::{
+    BoxMesh, Camera, Environment, EnvironmentCache, Material, MaterialCache, Mesh, MeshCache,
+    MeshData, PlaneMesh,
+};
 use amadeo_scene::PrefabLibrary;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -386,11 +389,147 @@ impl App {
         let result = amadeo_scene::instantiate_with(document, &registry, &prefabs, &mut self.world);
         self.put_registry(registry);
 
-        // After instantiation, because the ids come off the `Camera` components the scene just
-        // created. A scene that authors no camera, or whose cameras name no environment, does
-        // nothing here.
+        // After instantiation, because the ids come off the components the scene just created. A
+        // scene that authors none of these does no work here.
         self.load_environments();
+        self.load_meshes();
+        self.load_materials();
         result
+    }
+
+    /// Every non-empty asset id named by a component of type `C`, across the whole world.
+    ///
+    /// `pick` hands back the ids one component names — an array rather than a single value because
+    /// a `Mesh` names two (its geometry and its material) and a `Camera` names one. Empty ids are
+    /// dropped, since "empty" is how every one of these fields spells "none".
+    fn ids_named_by<C: Component, const N: usize>(
+        &self,
+        pick: impl Fn(&C) -> [String; N],
+    ) -> BTreeSet<String> {
+        self.world
+            .entities()
+            .into_iter()
+            .filter_map(|entity| self.world.get::<C>(entity))
+            .flat_map(pick)
+            .filter(|id| !id.is_empty())
+            .collect()
+    }
+
+    /// Reads assets whose file is a scene document with a single root carrying one `T`.
+    ///
+    /// The shape every render asset shares — an `Environment` (ADR 0034), a `Material` (ADR 0033),
+    /// and a mesh's procedural shape (ADR 0035). Written once with a type parameter rather than
+    /// three times, because three copies of the same thirty lines is where they start to drift.
+    ///
+    /// # Nothing here is fatal
+    ///
+    /// An id that does not resolve, will not parse, or holds no `T` is skipped and simply does not
+    /// appear in the result. ADR 0021 requires a missing asset to be visible and survivable rather
+    /// than a crash, and each caller's cache decides what "absent" looks like — a default material,
+    /// or a mesh that draws nothing.
+    ///
+    /// Ids that name a *different* kind are skipped for the same reason, which is what lets a mesh
+    /// asset be read as "a `BoxMesh`, or failing that a `PlaneMesh`" without either attempt being an
+    /// error.
+    fn read_component_assets<T: Component>(
+        &mut self,
+        wanted: &BTreeSet<String>,
+    ) -> Vec<(String, T)> {
+        if wanted.is_empty() {
+            return Vec::new();
+        }
+
+        // The load barrier (ADR 0021): the bytes have to be resident before anything reads them. A
+        // scene that declared the id in its `assets` block has already loaded it and this is a
+        // no-op; one that forgot gets it loaded here rather than silently rendering without it.
+        self.load_assets(wanted.iter().map(String::as_str));
+
+        let mut found = Vec::new();
+        for id in wanted {
+            let Some(assets) = self.assets() else {
+                break;
+            };
+            let Some(loaded) = assets.store.get(id) else {
+                continue;
+            };
+            let Ok(text) = std::str::from_utf8(&loaded.bytes) else {
+                continue;
+            };
+            let Ok(document) = amadeo_scene::parse(text) else {
+                continue;
+            };
+            // `walk` rather than indexing the first entity, so a file that wraps the root in a
+            // parent still works.
+            let Some(value) = document
+                .walk()
+                .into_iter()
+                .find_map(|entity| entity.components.get(T::STATIC_NAME))
+            else {
+                continue;
+            };
+            let Ok(built) = T::from_value(value) else {
+                continue;
+            };
+            found.push((id.clone(), built));
+        }
+        found
+    }
+
+    /// Turns every mesh id a [`Mesh`] names into geometry — ADR 0035.
+    ///
+    /// A mesh asset carries **either** a procedural shape or vertex data, and both end up as one
+    /// [`MeshData`]. Only the procedural kinds exist so far; the glTF importer is a third producer
+    /// that changes nothing here except adding a branch, which is the property ADR 0035 was written
+    /// to buy.
+    ///
+    /// Tessellation happens **here, once**, rather than per frame — the same place ADR 0026 puts
+    /// image decoding, and for the same reason.
+    pub fn load_meshes(&mut self) -> &mut Self {
+        let wanted = self.ids_named_by(|mesh: &Mesh| [mesh.mesh.clone()]);
+        if wanted.is_empty() {
+            return self;
+        }
+
+        // Each shape kind is asked for the same ids; a file holding one is skipped by the others,
+        // which is exactly what `read_component_assets` promises about a mismatched kind.
+        let mut built: Vec<(String, MeshData)> = Vec::new();
+        for (id, shape) in self.read_component_assets::<BoxMesh>(&wanted) {
+            built.push((id, shape.tessellate()));
+        }
+        for (id, shape) in self.read_component_assets::<PlaneMesh>(&wanted) {
+            built.push((id, shape.tessellate()));
+        }
+
+        if built.is_empty() {
+            return self;
+        }
+        if !self.world.has_service::<MeshCache>() {
+            self.world.insert_service(MeshCache::new());
+        }
+        if let Some(cache) = self.world.service_mut::<MeshCache>() {
+            for (id, data) in built {
+                cache.insert(id, data);
+            }
+        }
+        self
+    }
+
+    /// Turns every material id a [`Mesh`] names into the material behind it — ADR 0033.
+    pub fn load_materials(&mut self) -> &mut Self {
+        let wanted = self.ids_named_by(|mesh: &Mesh| [mesh.material.clone()]);
+        let found: Vec<(String, Material)> = self.read_component_assets(&wanted);
+        if found.is_empty() {
+            return self;
+        }
+        if !self.world.has_service::<MaterialCache>() {
+            self.world.insert_service(MaterialCache::new());
+        }
+        if let Some(cache) = self.world.service_mut::<MaterialCache>() {
+            for (id, material) in found {
+                cache.insert(id, material);
+            }
+        }
+        self
     }
 
     /// Turns every environment id a camera names into the look behind it — ADR 0034.
@@ -414,54 +553,8 @@ impl App {
     /// crash, and `EnvironmentCache::is_loaded` is what tells "asked for nothing" apart from "asked
     /// for something that is not there".
     pub fn load_environments(&mut self) -> &mut Self {
-        let wanted: BTreeSet<String> = self
-            .world
-            .entities()
-            .into_iter()
-            .filter_map(|entity| self.world.get::<Camera>(entity))
-            .map(|camera| camera.environment.clone())
-            .filter(|id| !id.is_empty())
-            .collect();
-
-        if wanted.is_empty() {
-            return self;
-        }
-
-        // The load barrier (ADR 0021): the bytes have to be resident before anything reads them. A
-        // scene that declared the id in its `assets` block has already loaded it and this is a
-        // no-op; one that forgot gets it loaded here rather than silently rendering flat.
-        self.load_assets(wanted.iter().map(String::as_str));
-
-        let mut found: Vec<(String, Environment)> = Vec::new();
-        for id in &wanted {
-            let Some(assets) = self.assets() else {
-                break;
-            };
-            let Some(loaded) = assets.store.get(id) else {
-                continue;
-            };
-            let Ok(text) = std::str::from_utf8(&loaded.bytes) else {
-                continue;
-            };
-            let Ok(document) = amadeo_scene::parse(text) else {
-                continue;
-            };
-            // A scene document with a single root carrying one `Environment`, exactly as a prefab is
-            // a document with a single root. `walk` rather than indexing the first entity, so a file
-            // that wraps it in a parent still works.
-            let Some(value) = document
-                .walk()
-                .into_iter()
-                .find_map(|entity| entity.components.get(Environment::STATIC_NAME))
-            else {
-                continue;
-            };
-            let Ok(environment) = Environment::from_value(value) else {
-                continue;
-            };
-            found.push((id.clone(), environment));
-        }
-
+        let wanted = self.ids_named_by(|camera: &Camera| [camera.environment.clone()]);
+        let found: Vec<(String, Environment)> = self.read_component_assets(&wanted);
         if found.is_empty() {
             return self;
         }

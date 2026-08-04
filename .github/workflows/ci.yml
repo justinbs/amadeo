@@ -114,6 +114,11 @@ jobs:
           ./target/debug/amadeo.exe check games/vault/scenes/vault.scene --package vault
           ./target/debug/amadeo.exe check games/vault/assets/prefabs/sigil_pickup.scene --package vault
           ./target/debug/amadeo.exe check games/vault/assets/prefabs/floor_trap.scene --package vault
+          # A material, an environment and a mesh are all scene files with one root (ADRs 0033-0035),
+          # so `check` validates them against the real schema exactly as it does a level. That claim
+          # was false until the Vault registered the types it ships assets for -- found by running it.
+          ./target/debug/amadeo.exe check games/vault/assets/looks/corridor_dark.environment --package vault
+          ./target/debug/amadeo.exe check games/vault/assets/meshes/wall_panel.mesh --package vault
 
       # The first automated coverage the GPU path has ever had. `render.describe` checks what *should*
       # be drawn; this renders offscreen and asserts on the pixels that came back.
@@ -157,7 +162,8 @@ jobs:
             games/vault/assets/prefabs/sigil_pickup.scene \
             games/vault/assets/prefabs/floor_trap.scene \
             games/quad-demo/scenes/markers.scene \
-            games/vault/assets/looks/corridor_dark.environment
+            games/vault/assets/looks/corridor_dark.environment \
+            games/vault/assets/meshes/wall_panel.mesh
 
   docs:
     name: docs build without warnings

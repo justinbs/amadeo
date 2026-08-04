@@ -47,6 +47,7 @@ mod environment;
 #[cfg(feature = "gpu")]
 mod gpu;
 mod graph;
+mod mesh;
 mod sprites;
 mod textures;
 
@@ -61,6 +62,7 @@ pub use describe::{
 pub use environment::{Bloom, Environment, EnvironmentCache, Grade, Tonemap, Vignette};
 #[cfg(feature = "gpu")]
 pub use gpu::WgpuBackend;
+pub use mesh::{BoxMesh, Material, MaterialCache, Mesh, MeshCache, MeshData, PlaneMesh, Vertex};
 pub use sprites::{COLLECT_SPRITES, collect_sprites};
 pub use textures::{PLACEHOLDER_TEXTURE_ID, TextureCache, TextureFailure, decode_frame_textures};
 // Re-exported because a caller holding a `TextureCache` needs to talk about what is in it, and

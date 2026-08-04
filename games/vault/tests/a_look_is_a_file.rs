@@ -18,7 +18,7 @@
 //! a purely cosmetic reason. It is here as a worked example and as this test's fixture — the same
 //! role quad-demo's deliberately-missing sprite plays for the placeholder path.
 
-use amadeo_render::{Camera, EnvironmentCache, Tonemap};
+use amadeo_render::{Camera, EnvironmentCache, Mesh, MeshCache, Tonemap};
 use vault::build_simulation;
 
 /// The Vault, with its camera pointed at the shipped look.
@@ -73,6 +73,58 @@ fn a_look_travels_from_a_file_into_the_renderers_cache() {
     assert!((look.grade.saturation - 0.7).abs() < 1e-6);
     assert!((look.vignette.intensity - 0.55).abs() < 1e-6);
     assert!(look.changes_the_picture());
+}
+
+#[test]
+fn a_shape_written_as_three_numbers_becomes_geometry() {
+    // ADR 0035's whole claim, against a real file: `assets/meshes/wall_panel.mesh` is six lines of
+    // text describing a box, and it comes out the other end as tessellated geometry with no
+    // toolchain, no binary and no import step. That is invariant I1 reaching 3D.
+    //
+    // The Vault is a 2D game and does not draw this. It ships as a worked example and this
+    // fixture, exactly as `corridor_dark.environment` does.
+    let mut app = build_simulation().expect("the game builds");
+
+    let entity = app.world.spawn();
+    app.world.insert(entity, Mesh::new("wall_panel", ""));
+    app.load_meshes();
+
+    let cache = app
+        .world
+        .service::<MeshCache>()
+        .expect("load_meshes installs it on first use");
+    let data = cache.get("wall_panel").expect("the file tessellated");
+
+    assert_eq!(data.triangle_count(), 12, "a box is six faces of two");
+    assert!(data.is_well_formed());
+
+    // The declared size, having been through a sidecar, the catalogue, the load barrier, the scene
+    // parser, reflection and tessellation.
+    let height = |axis: usize| {
+        let values: Vec<f32> = data.vertices.iter().map(|v| v.position[axis]).collect();
+        values.iter().copied().fold(f32::NEG_INFINITY, f32::max)
+            - values.iter().copied().fold(f32::INFINITY, f32::min)
+    };
+    assert!((height(0) - 1.0).abs() < 1e-5);
+    assert!((height(1) - 2.5).abs() < 1e-5);
+    assert!((height(2) - 0.2).abs() < 1e-5);
+}
+
+#[test]
+fn a_mesh_id_that_never_loaded_is_absent_rather_than_substituted() {
+    // Deliberately unlike a texture, which always has a stand-in. A substitute cube would be a shape
+    // nobody authored sitting in the world, which is worse than a gap you can see through.
+    let mut app = build_simulation().expect("the game builds");
+    let entity = app.world.spawn();
+    app.world.insert(entity, Mesh::new("no_such_mesh", ""));
+    app.load_meshes();
+
+    // Either no cache at all or a cache without it — both are "absent", and neither is an error.
+    let missing = app
+        .world
+        .service::<MeshCache>()
+        .is_none_or(|cache| cache.get("no_such_mesh").is_none());
+    assert!(missing, "an unresolved mesh id must not be substituted");
 }
 
 #[test]
