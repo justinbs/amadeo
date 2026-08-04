@@ -95,8 +95,13 @@ realistic component mix before committing to the storage strategy.
 
 **Job:** get pixels on screen for both 2D and 3D from one coherent architecture.
 
-✅ wgpu backend. Render graph architecture (declared passes with resource dependencies) rather than a
-hardcoded pipeline — this is what makes unified 2D/3D and later additions tractable.
+✅ wgpu backend. ⚠️ **Render graph architecture** (declared passes with resource dependencies) rather
+than a hardcoded pipeline — this is what makes unified 2D/3D and later additions tractable. The ✅
+here was wrong: the wgpu backend runs a hardcoded per-view loop, and the graph is M2's next build
+item. **ADR 0034 decides its visibility: it is internal.** Built in full — declared passes, resource
+dependencies, transient targets, once per camera — but its types are not a public extension surface,
+because that is what keeps `RenderBackend` the total isolation boundary that made ADR 0018, 0023 and
+0031 cheap.
 ✅ Rendering reads simulation state, never writes it.
 ✅ Must be fully disableable (null backend) for headless runs.
 
@@ -135,6 +140,18 @@ across the scene format, the schema, the state hash, and a new GUI at once.
 The camera's fields are **flat** — a fieldless `projection` enum beside plain `height`, `fov`, `near`
 and `far` — because the scene format cannot express an enum with a payload. That is a worse type than
 it should be and it is recorded as **Q21** rather than hidden.
+✅ **Post-process and atmosphere model — ADR 0034.** The engine owns the effects; content configures
+them. That configuration is an **`Environment` asset** named by an id, its file a scene file with one
+root exactly as a material's is (ADR 0033), held by the camera the way a render target already is. It
+carries **named effect blocks in an engine-defined order** — `fog`, `bloom`, `tonemap`, `grade` — not
+a user-ordered list, because the order is a property of the maths rather than a preference. What an
+`Environment` *holds* arrives with the effects, as a material's field list arrives with meshes.
+
+**The deciding argument is I5 and I7 rather than rendering.** Configuration made of data is
+authorable, describable, checkable and visible headless for nothing; a pass supplied as code is none
+of those. A Rust extension trait is reserved as the escape hatch and named in ADR 0034 §5, triggered
+by an effect that genuinely is not parameters on an engine effect. A text format declaring passes is
+rejected outright.
 ✅ **`render.describe` support.** Built, and it earned its place immediately — it caught a layout bug
 in the Vault (a score readout overlapping a wall) that no simulation test could have seen. Screen-space
 bounds come from the world rather than from the last frame, so it costs nothing when nobody asks and

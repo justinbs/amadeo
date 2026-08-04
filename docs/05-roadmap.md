@@ -168,12 +168,19 @@ without eyes, the design is wrong and we find out before 3D and the editor pile 
   resource**, which turned out to be the expensive half and the one the framing had missed. Closes
   Q3's last third and Q10.
 - Render graph proper: declared passes, resource dependencies, transient targets. Runs **once per
-  camera**, per ADR 0031.
+  camera**, per ADR 0031. ✅ **ADR 0034 settles whether it is a public API — it is not.** Built in
+  full, but internal, so `RenderBackend` stays the isolation boundary that made three earlier
+  renderer decisions cheap.
 - 3D: mesh rendering, PBR materials, directional + point lights, shadow maps, frustum culling.
 - **Configurable post-process stack and atmosphere** — the eight target games span stylised-realistic
   outdoors, low-poly, dark atmospheric interiors, voxel, and pixel-art sprite work, so the renderer
   must not bake in a look (`00-vision.md` § Divergent). Fog/volumetrics and strong dynamic point
   lighting are requirements here, not polish — M3's horror slice depends on them.
+  ✅ **ADR 0034 decides the shape:** *configurable* here means tunable, not extensible. The engine
+  owns the effects and content configures them through an **`Environment` asset** held by the camera,
+  carrying named effect blocks in an engine-defined order. This is what Godot, Unity and Unreal all
+  ship as their primary answer, and it satisfies I5 and I7 for nothing where a code-supplied pass
+  satisfies neither.
 - Culling architecture must not preclude later world streaming (see non-goals table).
 - glTF import — meshes, materials, scene hierarchy, skins.
 - ✅ **ADR 0033 on the material and shader model** — decided before the second shader family, as
