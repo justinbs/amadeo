@@ -280,27 +280,40 @@ Nothing is broken today because prefab instancing is refused outright (`PrefabNo
 
 ---
 
-## Q19 · P2 · `amadeo import` cannot import a prefab
+## ~~Q19~~ · **Resolved — `amadeo import --assets <dir>`**
 
-**Found in session 8, by hitting it.** A bootstrapping deadlock created by ADR 0029 making prefabs
-assets:
+**Found in session 8 by hitting it, fixed the same session.** A bootstrapping deadlock created by
+ADR 0029 making prefabs assets:
 
 1. a prefab needs a `.ama-meta` sidecar before anything can reference it;
 2. `amadeo import` writes sidecars;
-3. but `import` launches the game (ADR 0016) to ask where its asset directory is;
+3. but `import` launched the game (ADR 0016) to ask where its asset directory is;
 4. and the game refuses to start while a prefab its scene names has no sidecar.
 
-So the first prefab in a project has to have its sidecar written by hand, which is what the Vault's
-two have. The error message is good — it says exactly what is missing — but the tool that fixes it
-cannot run.
+So the tool that fixes the problem could not run, and the Vault's two sidecars were written by hand.
 
-**The likely fix is that `import` should not need the game at all.** Importing is a filesystem
-operation over a directory; the only thing the game supplies is the directory's name, and
-`amadeo.toml` could carry that instead. That would also make `amadeo import` work on a project that
-does not currently compile, which is a good property for a repair tool.
+**`--assets <dir>` names the directory directly**, which breaks the cycle and makes `import` work on
+a project that does not compile at all — the right property for a repair tool. Asking the game stays
+the default, because it is authoritative: the path is a constant in the game's own source, so nothing
+can disagree with it.
 
-Worth checking whether the same deadlock reaches `amadeo check` and `amadeo assets`, which launch the
-game for the same reason.
+**Verified by reproducing the deadlock**: the two sidecars were deleted, `amadeo import --package
+vault` failed exactly as before, `amadeo import --assets games/vault/assets` wrote them without
+launching anything, and the files came back **byte-identical** to the hand-written ones.
+
+### Why not a manifest key
+
+The first attempt put `assets = "..."` in `amadeo.toml`, and it was wrong: a manifest is per-*project*
+and an asset directory is per-*game*, so in this repo — which has two games — the key could only ever
+describe one of them. The Vault, which is the case that motivated the question, runs under
+`--package vault` and would have fallen straight back to launching the game. A flag has no such
+blind spot, and it avoids growing the hand-written TOML subset toward tables.
+
+### The rest of the question, checked
+
+`amadeo check` and `amadeo assets` launch the game for the same reason and are **not** deadlocked by
+it, because neither is the tool that repairs the problem — they report it. `check` in particular gives
+the error that sends you to `import`, which now works.
 
 ---
 

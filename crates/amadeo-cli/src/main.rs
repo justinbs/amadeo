@@ -54,7 +54,10 @@ enum Command {
     /// List every asset id, the file behind it, and anything not yet importable.
     Assets,
     /// Write a sidecar for every asset file that has none.
-    Import { check: bool },
+    ///
+    /// `assets` names the directory directly, so a project whose game will not start can still be
+    /// repaired (Q19). Without it the game is asked, which is authoritative.
+    Import { check: bool, assets: Option<String> },
     /// Capture the world to a `.snapshot` file.
     Snapshot { path: PathBuf },
 }
@@ -127,8 +130,8 @@ fn run(command: Command, options: &Options) -> Result<()> {
         return list_assets(options);
     }
 
-    if let Command::Import { check } = command {
-        return import_assets(check, options);
+    if let Command::Import { check, assets } = command {
+        return import_assets(check, assets.as_deref(), options);
     }
 
     if let Command::Snapshot { path } = command {
@@ -601,7 +604,32 @@ fn list_assets(options: &Options) -> Result<()> {
 /// The root comes from the game, via `assets.list`, but the *writing* happens here. That is the same
 /// division `scene.check` uses: the game knows things the CLI cannot, and the CLI touches the
 /// filesystem the game has no business touching.
-fn import_assets(check: bool, options: &Options) -> Result<()> {
+/// Where the game keeps its assets, **without launching it when the caller says where**.
+///
+/// # Why this exists — Q19
+///
+/// `amadeo import` writes the `.ama-meta` sidecar an asset needs before anything can name it. It
+/// learned the asset directory by launching the game and calling `assets.list`, which became a
+/// deadlock the moment prefabs became assets (ADR 0029): the game refuses to start while an asset its
+/// scene names has no sidecar, so **the tool that fixes the problem could not run**. The Vault's two
+/// prefab sidecars had to be written by hand.
+///
+/// Importing is a filesystem operation over a directory, and the only thing the game supplied was the
+/// directory's name. `--assets <dir>` supplies it directly, which breaks the cycle and makes `import`
+/// work on a project that does not currently compile — a good property for a repair tool.
+///
+/// Asking the game stays the default, because it is authoritative: the path is a constant in the
+/// game's own source, so nothing can disagree with it. The flag is the escape hatch for exactly the
+/// case where the game will not start.
+fn asset_directory(explicit: Option<&str>, options: &Options) -> Result<PathBuf> {
+    if let Some(directory) = explicit {
+        let path = PathBuf::from(directory);
+        if !path.is_dir() {
+            bail!("--assets {directory}: not a directory");
+        }
+        return Ok(path);
+    }
+
     let reply = ask_game(
         "assets.list",
         Json::object([] as [(&str, Json); 0]),
@@ -619,7 +647,12 @@ fn import_assets(check: bool, options: &Options) -> Result<()> {
         );
     };
 
-    let plan = ImportPlan::prepare(Path::new(root))?;
+    Ok(PathBuf::from(root))
+}
+
+fn import_assets(check: bool, assets: Option<&str>, options: &Options) -> Result<()> {
+    let root = asset_directory(assets, options)?;
+    let plan = ImportPlan::prepare(&root)?;
 
     if plan.is_empty() {
         println!(
@@ -764,6 +797,7 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
     let mut params: Option<String> = None;
     let mut check = false;
     let mut example = false;
+    let mut assets_dir: Option<String> = None;
 
     let mut index = 0;
     while index < arguments.len() {
@@ -816,6 +850,10 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
             "--example" => {
                 example = true;
                 index += 1;
+            }
+            "--assets" => {
+                assets_dir = Some(value_after("--assets")?);
+                index += 2;
             }
             other if other.starts_with('-') => {
                 bail!("unknown option `{other}`. Run `amadeo --help` for what there is")
@@ -888,7 +926,10 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
             paths: rest.iter().map(PathBuf::from).collect(),
         },
         "assets" => Command::Assets,
-        "import" => Command::Import { check },
+        "import" => Command::Import {
+            check,
+            assets: assets_dir,
+        },
         "snapshot" => {
             let Some(path) = rest.first() else {
                 bail!(
@@ -931,6 +972,8 @@ RUNS IN THE GAME (launches it, asks, exits)
         --example            a minimal valid instance of one type, ready to paste
     import                   write a sidecar for each asset file that has none
         --check              report them instead of writing
+        --assets <dir>       import into this directory without launching the game,
+                             for when the game will not start until the sidecars exist
     query <component>...     entities carrying all of the named components
     entity <index>           one entity's components
     replay <file>            replay a recording and verify its checkpoint hashes
@@ -1147,18 +1190,52 @@ mod tests {
     }
 
     #[test]
+    fn import_takes_an_asset_directory_so_it_need_not_launch_the_game() {
+        // Q19: the sidecars `import` writes are what a game needs to *start*, so learning the asset
+        // directory by launching the game was a deadlock. `--assets` is the way out, and it is the
+        // only argument that makes `import` work on a project that does not compile.
+        let (command, _) =
+            parse_args(&["import", "--assets", "games/vault/assets"]).expect("parses");
+        match command {
+            Command::Import { check, assets } => {
+                assert!(!check);
+                assert_eq!(assets.as_deref(), Some("games/vault/assets"));
+            }
+            other => panic!("expected import, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn usage_mentions_the_asset_directory_escape_hatch() {
+        // It is only discoverable from `--help`, and it is the answer to a confusing failure.
+        assert!(USAGE.contains("--assets <dir>"));
+    }
+
+    #[test]
     fn import_carries_the_check_flag() {
         // `--check` means the same thing here as it does for `fmt`: report, do not write, and fail
         // so it can gate a commit.
         let (plain, _) = parse_args(&["import"]).expect("parses");
         assert!(
-            matches!(plain, Command::Import { check: false }),
+            matches!(
+                plain,
+                Command::Import {
+                    check: false,
+                    assets: None
+                }
+            ),
             "got {plain:?}"
         );
 
         let (checked, _) = parse_args(&["import", "--check"]).expect("parses");
         assert!(
-            matches!(checked, Command::Import { check: true }),
+            matches!(
+                checked,
+                Command::Import {
+                    check: true,
+                    assets: None
+                }
+            ),
             "got {checked:?}"
         );
     }

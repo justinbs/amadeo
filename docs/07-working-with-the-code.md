@@ -725,10 +725,16 @@ that. `instantiate_with(&document, &registry, &prefabs, &mut world)` is the laye
 does not touch the filesystem, because resolving an id to a file is asset work and `amadeo-scene`
 sits below `amadeo-assets` (I6).
 
-**One sharp edge, unfixed:** `amadeo import` cannot give a prefab its sidecar, because `import`
-launches the game to find the asset directory and the game will not start while a prefab it needs has
-no sidecar. Write the first one by hand — copy `games/vault/assets/prefabs/sigil_pickup.scene.ama-meta`.
-Filed as Q19.
+**Adding a new prefab needs `--assets`:**
+
+```bash
+amadeo import --assets games/vault/assets
+```
+
+A prefab is an asset, so it needs a `.ama-meta` sidecar before the game will start — and `amadeo
+import` normally launches the game to find the asset directory, which it cannot do while a sidecar is
+missing. Naming the directory breaks that cycle (Q19). Plain `amadeo import` is still right whenever
+the game *does* start, and is authoritative because the path comes from the game's own source.
 
 ### Pattern: the game binary hosts the agent, and the CLI launches it
 

@@ -12,9 +12,9 @@ prefabs, and **`games/vault` — a complete small 2D game** have all landed.
 rather than an omission. **ADR 0030 settles what the protocol is for** and fixes the three parts of
 that finding that were genuine holes; the API half stays in `docs/07` by invariant I5. **ADR 0029
 closes Q7** with prefabs, and **ADR 0032 closes Q21** by letting a scene file nest values at all.
-Q3, Q4, Q7, Q10, Q13, Q14, Q16, Q17 and Q21 are all closed; nothing is blocked. Two are open:
-**Q19** (`amadeo import` cannot import a prefab) and **Q22** (a resource's identity in the state hash
-is its Rust path, where a component's is its canonical name).
+Q3, Q4, Q7, Q10, Q13, Q14, Q16, Q17, Q19 and Q21 are all closed; nothing is blocked. **Q22** is the
+only one opened this session that is still open: a resource.s identity in the state hash is its Rust
+path, where a component.s is its canonical name.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
 
 > ### ⚠️ Two working rules that changed in session 7 — read before doing anything
@@ -42,7 +42,7 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
 `games/vault`.
-**853 tests passing**; fmt, clippy
+**855 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Nineteen things work end to end today:
@@ -152,10 +152,15 @@ asset id may fit it better than nesting does, and ADR 0029 already built that ma
   coverage at all**: `render.describe` checks what *should* be drawn, and nothing checks what the
   wgpu backend actually put on screen. ADR 0021 already names capture as the agent's eyes. It becomes
   much more natural once a camera can target a texture, which ADR 0031 gives it.
-- **Q19 — `amadeo import` cannot import a prefab.** Small, and a real hole in the tooling: `import`
-  launches the game to find the asset directory, and the game will not start while a prefab it needs
-  has no sidecar, so the tool that fixes the problem cannot run. The likely fix is that `import`
-  should not need the game at all.
+
+  **Scoped, ready to start.** It needs an *offscreen* wgpu backend — `WgpuBackend` currently owns a
+  surface and renders into it, and a surface texture is not readable. So: make the surface optional,
+  render into an owned `RENDER_ATTACHMENT | COPY_SRC` texture when there is none, add
+  `RenderBackend::capture` (defaulting to a "not supported" error, which is the right answer for
+  `NullBackend` — `render.describe` is its answer), and have the agent host create one lazily behind
+  a `gpu` feature on `amadeo-app`. Agent mode is headless, so the offscreen path is the one that
+  matters; the *windowed* backend gets capture when post-processing lands, because that needs the
+  same offscreen target anyway.
 
 ### Gate 4's result, and what closed it — ADR 0030
 
@@ -1497,3 +1502,23 @@ on purpose — several record a diagnosis that took a while to reach.
   projection's payload. Nothing else moved.
 
   853 tests, all four verification commands green.
+
+  **Then Q19, which prefabs had opened.** `amadeo import` writes the `.ama-meta` sidecar an asset
+  needs before a game will start — and it learned the asset directory by *launching the game*, which
+  refuses to start while a sidecar is missing. The tool that fixes the problem could not run.
+
+  `amadeo import --assets <dir>` names the directory instead. Asking the game stays the default,
+  because the path is a constant in the game's own source and so nothing can disagree with it; the
+  flag is the escape hatch for exactly the case where the game will not start.
+
+  **The first attempt was wrong and worth recording.** It put `assets = "..."` in `amadeo.toml`, and
+  a manifest is per-*project* while an asset directory is per-*game* — in this repo, with two games,
+  the key could only describe one. The Vault, the case that motivated the question, runs under
+  `--package vault` and would have fallen straight back to launching the game. Caught by asking
+  whether the fix reached the motivating case, which it did not.
+
+  **Verified by reproducing the deadlock**: deleted both prefab sidecars, watched
+  `amadeo import --package vault` fail exactly as before, then `amadeo import --assets
+  games/vault/assets` wrote them with nothing launched — **byte-identical** to the hand-written ones.
+
+  855 tests, all four verification commands green.

@@ -122,10 +122,10 @@ evidence that the refactor is behaviour-preserving.
 - **A prefab's id shares one namespace with every other asset.** The Vault hit this immediately: a
   prefab named `sigil.scene` collides with the `sigil` texture. Renaming to `sigil_pickup` fixed it,
   but the papercut is inherent to "a prefab is an asset" and will recur.
-- **`amadeo import` cannot import a prefab.** A bootstrapping deadlock, found by hitting it: `import`
-  launches the game (ADR 0016), and the game refuses to start while a prefab it needs has no sidecar.
-  The Vault's two sidecars were written by hand. **This should be fixed** — importing is a filesystem
-  operation and should not need the game — and it is recorded in `docs/06-open-questions.md`.
+- **`amadeo import` could not import a prefab.** A bootstrapping deadlock, found by hitting it:
+  `import` launches the game (ADR 0016), and the game refuses to start while a prefab it needs has no
+  sidecar. The Vault.s two sidecars were written by hand. **Fixed later the same session** by
+  `amadeo import --assets <dir>`, which names the directory instead of asking the game — Q19.
 - **You cannot override a prefab's child.** By design, but it will be asked for, and the answer is a
   variant prefab.
 - **A prefab edit can break every scene using it.** By design, per 4.

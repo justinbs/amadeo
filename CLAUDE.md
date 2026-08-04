@@ -126,7 +126,8 @@ crates/
                      than in amadeo-agent because it needs App and I6 forbids reaching down.
 — amadeo-editor      graphical editor. A CLIENT of amadeo-agent. No privileged access.
 🟡 amadeo-cli         the `amadeo` binary. Built: describe/query/entity/schedule/status/call/check/
-                     replay/fmt/assets/import/snapshot, plus `--from <file>` on any of them to
+                     replay/fmt/assets/import/snapshot (import takes `--assets <dir>` to work on a
+                     project whose game will not start -- Q19), plus `--from <file>` on any of them to
                      restore a snapshot before answering, and `describe <Type> --example` for a
                      minimal valid instance in both the scene and JSON spellings.
                      Pending: new/run/test/build/export. ADR 0016: `fmt` is standalone;
