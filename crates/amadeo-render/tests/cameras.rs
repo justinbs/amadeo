@@ -93,16 +93,32 @@ fn an_inactive_camera_does_not_draw() {
 }
 
 #[test]
-fn renders_nothing_through_a_perspective_camera_yet() {
-    // Named in `Projection::Perspective`'s docs. The mesh pass arrives later in M2; until then a
-    // perspective camera is skipped rather than drawn through a projection nobody wrote. Pinned so
-    // that when it *does* draw, it is because someone made it, not because it always secretly did.
+fn a_perspective_camera_draws_meshes_and_not_quads() {
+    // **This test used to say a perspective camera drew nothing at all**, and it was written asking
+    // that when it *did* draw, it be because someone made it rather than because it always secretly
+    // did. Someone made it: ADR 0035's mesh collection.
+    //
+    // What is pinned now is the rule that replaced it — a camera's projection selects which pass it
+    // feeds. An orthographic camera feeds the quad and sprite passes, a perspective one feeds the
+    // mesh pass, and neither is built on the other (ADR 0031). A single camera drawing both would
+    // mean the quad pass inventing a projection for a 3D view, which is exactly the guess the old
+    // behaviour existed to avoid.
     let mut world = world_with_renderer();
     add_camera(&mut world, Camera::perspective(60.0), [0.0, 0.0]);
     add_quad(&mut world, 0.0);
 
     render_quads(&mut world);
-    assert!(last_frame(&world).views.is_empty());
+    let frame = last_frame(&world);
+
+    assert_eq!(frame.views.len(), 1, "a perspective camera is a view now");
+    let view = frame.primary().expect("one view");
+    assert!(
+        view.quads.is_empty() && view.batches.is_empty(),
+        "a perspective camera must not draw the 2D passes"
+    );
+    // Nothing here has a `Mesh`, so there is nothing for it to draw either — but the *reason* is
+    // now "no meshes in the world" rather than "this camera is skipped".
+    assert!(view.meshes.is_empty());
 }
 
 #[test]

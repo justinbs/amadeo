@@ -769,8 +769,11 @@ mod tests {
                     camera: Camera::default(),
                     environment: crate::Environment::default(),
                     eye: [0.0, 0.0],
+                    eye_matrix: amadeo_transform::Mat4::IDENTITY,
                     quads: Vec::new(),
                     batches: Vec::new(),
+                    meshes: Vec::new(),
+                    lights: Vec::new(),
                 })
                 .collect(),
             ..FrameData::default()

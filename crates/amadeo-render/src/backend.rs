@@ -138,6 +138,42 @@ impl SpriteInstance {
     }
 }
 
+/// One mesh to draw, flattened into what a GPU needs.
+///
+/// Carries the material **by value** rather than by id, unlike [`SpriteBatch::texture`]. The reason
+/// is the difference between the two: a texture's pixels are megabytes and belong on the device once
+/// (see [`RenderBackend::upload_texture`]), while a material is five numbers and a string, and
+/// resolving it once here means the backend never reaches back into the world for it.
+///
+/// The geometry stays an **id**, because that *is* megabytes and follows the texture rule exactly.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MeshInstance {
+    /// The declared asset id of the geometry (ADR 0020).
+    pub mesh: String,
+    /// Where the mesh sits in the world, from its `GlobalTransform`.
+    pub model: amadeo_transform::Mat4,
+    /// What the surface is made of, already resolved from its id (ADR 0033).
+    pub material: crate::Material,
+    /// The sort order this instance belongs to. Absent means zero.
+    pub order: i32,
+}
+
+/// A light with a direction but no position — the sun, or the moon.
+///
+/// **An entity, following ADR 0031's precedent for the camera**: a world may hold any number, a
+/// scene file authors them, and parenting one to something is how it follows.
+///
+/// Direction rather than position is what makes it *directional*: every surface in the world is lit
+/// from the same angle, which is what distant light looks like and is far cheaper than a light that
+/// falls off with distance. Point lights arrive with shadows.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LightData {
+    /// The direction the light **travels**, normalised. `[0, -1, 0]` is straight down.
+    pub direction: [f32; 3],
+    /// Linear RGB, already multiplied by intensity.
+    pub colour: [f32; 3],
+}
+
 /// A run of sprites sharing one texture, drawn in one call.
 ///
 /// A batch is the unit of work a backend turns into a draw call. Binding a texture is the expensive
@@ -175,10 +211,28 @@ pub struct View {
     /// [`Environment::default`](crate::Environment) — which does nothing, so there is no "no look"
     /// case to branch on.
     pub environment: crate::Environment,
+    /// The camera's full world transform.
+    ///
+    /// Needed by the mesh pass, where [`View::eye`]'s two numbers are not enough — a 3D camera has
+    /// an orientation, and its view matrix is the inverse of this
+    /// ([`Mat4::inverse_rigid`](amadeo_transform::Mat4::inverse_rigid)).
+    ///
+    /// The **projection** is deliberately not here. It needs the target's aspect ratio, which only
+    /// the backend knows, and computing it in two places is how the mesh pass and the sprite pass
+    /// would end up disagreeing about what a camera sees.
+    pub eye_matrix: amadeo_transform::Mat4,
     /// Quads to draw, already sorted by [`SortOrder`](crate::SortOrder).
     pub quads: Vec<QuadInstance>,
     /// Textured sprites, grouped into draw calls and ordered by [`SpriteBatch::order`].
     pub batches: Vec<SpriteBatch>,
+    /// Meshes to draw, already sorted by [`SortOrder`](crate::SortOrder).
+    pub meshes: Vec<MeshInstance>,
+    /// Directional lights affecting this view.
+    ///
+    /// On the view rather than the frame because a camera rendering to a texture may one day want
+    /// its own lighting, and because everything else a backend needs to draw one pass already lives
+    /// here — reaching up to the frame for lights would be the one exception.
+    pub lights: Vec<LightData>,
 }
 
 /// Everything needed to draw one frame.
@@ -498,6 +552,9 @@ mod tests {
                 camera: Camera::default(),
                 environment: crate::Environment::default(),
                 eye: [0.0, 0.0],
+                eye_matrix: amadeo_transform::Mat4::IDENTITY,
+                meshes: Vec::new(),
+                lights: Vec::new(),
                 quads: vec![QuadInstance {
                     center: [1.0, 2.0],
                     size: [1.0, 1.0],

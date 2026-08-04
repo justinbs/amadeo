@@ -52,8 +52,8 @@ mod sprites;
 mod textures;
 
 pub use backend::{
-    FrameData, NullBackend, QuadInstance, RenderBackend, RenderError, SpriteBatch, SpriteInstance,
-    View,
+    FrameData, LightData, MeshInstance, NullBackend, QuadInstance, RenderBackend, RenderError,
+    SpriteBatch, SpriteInstance, View,
 };
 pub use components::{Camera, Projection, Quad, SortOrder, Sprite};
 pub use describe::{
@@ -62,7 +62,10 @@ pub use describe::{
 pub use environment::{Bloom, Environment, EnvironmentCache, Grade, Tonemap, Vignette};
 #[cfg(feature = "gpu")]
 pub use gpu::WgpuBackend;
-pub use mesh::{BoxMesh, Material, MaterialCache, Mesh, MeshCache, MeshData, PlaneMesh, Vertex};
+pub use mesh::{
+    BoxMesh, DirectionalLight, Material, MaterialCache, Mesh, MeshCache, MeshData, PlaneMesh,
+    Vertex,
+};
 pub use sprites::{COLLECT_SPRITES, collect_sprites};
 pub use textures::{PLACEHOLDER_TEXTURE_ID, TextureCache, TextureFailure, decode_frame_textures};
 // Re-exported because a caller holding a `TextureCache` needs to talk about what is in it, and
@@ -261,34 +264,129 @@ pub fn camera_eye(world: &World, entity: amadeo_ecs::Entity) -> [f32; 2] {
 /// What `render.describe` answers for by default, and the nearest thing to "the camera" now that a
 /// world may hold several. `None` when a world has none — a state worth distinguishing from a
 /// default camera, which is why this returns an `Option` rather than falling back here.
+/// **Orthographic only**, which is a limitation of `render.describe` rather than of cameras.
+/// `describe` reports screen-space rectangles computed from an orthographic projection; a
+/// perspective camera's answer needs a depth per entity and a different notion of "bounds", so it
+/// reports nothing rather than a number that looks right and is not.
 #[must_use]
 pub fn primary_camera(world: &World) -> Option<(Camera, [f32; 2])> {
     active_cameras(world)
         .into_iter()
-        .find(|(camera, _)| camera.target.is_empty())
+        .find(|(camera, ..)| {
+            camera.target.is_empty() && matches!(camera.projection, Projection::Orthographic { .. })
+        })
+        .map(|(camera, eye, _)| (camera, eye))
 }
 
-fn active_cameras(world: &World) -> Vec<(Camera, [f32; 2])> {
-    let mut found: Vec<(i32, amadeo_ecs::Entity, Camera, [f32; 2])> = world
+fn active_cameras(world: &World) -> Vec<(Camera, [f32; 2], Mat4)> {
+    // **No longer filtered by projection.** Until the mesh pass existed, a perspective camera was
+    // skipped because nothing could draw through one and guessing at a projection would have been
+    // worse than drawing nothing. Now both kinds draw: an orthographic camera feeds the quad and
+    // sprite passes, a perspective one feeds the mesh pass.
+    let mut found: Vec<(i32, amadeo_ecs::Entity, Camera, [f32; 2], Mat4)> = world
         .query::<(&Camera, &Transform, Option<&GlobalTransform>)>()
-        .filter(|(_, (camera, _, _))| {
-            camera.active && matches!(camera.projection, Projection::Orthographic { .. })
-        })
+        .filter(|(_, (camera, _, _))| camera.active)
         .map(|(entity, (camera, transform, global))| {
             let matrix = match global {
                 Some(global) => global.to_mat4(),
                 None => local_matrix(transform),
             };
             let at = matrix.translation();
-            (camera.order, entity, camera.clone(), [at[0], at[1]])
+            (camera.order, entity, camera.clone(), [at[0], at[1]], matrix)
         })
         .collect();
 
-    found.sort_by_key(|(order, entity, _, _)| (*order, entity.index(), entity.generation()));
+    found.sort_by_key(|(order, entity, ..)| (*order, entity.index(), entity.generation()));
     found
         .into_iter()
-        .map(|(_, _, camera, eye)| (camera, eye))
+        .map(|(_, _, camera, eye, matrix)| (camera, eye, matrix))
         .collect()
+}
+
+/// Every directional light in the world, in a reproducible order.
+///
+/// A light's **direction** is its own negative Z axis, the same convention a camera looks along — so
+/// aiming a light is aiming a camera, and a scene file needs no separate vocabulary for it.
+fn active_lights(world: &World) -> Vec<LightData> {
+    let mut found: Vec<(amadeo_ecs::Entity, LightData)> = world
+        .query::<(&DirectionalLight, &Transform, Option<&GlobalTransform>)>()
+        .filter(|(_, (light, _, _))| light.intensity > 0.0)
+        .map(|(entity, (light, transform, global))| {
+            let matrix = match global {
+                Some(global) => global.to_mat4(),
+                None => local_matrix(transform),
+            };
+            // The third column is the entity's Z axis; light travels along its negative.
+            let axis = matrix.columns[2];
+            let length = (axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]).sqrt();
+            // A collapsed axis means a zero scale on Z. Falling back to straight down keeps the
+            // light visible and obviously wrong rather than producing NaN across the whole image.
+            let direction = if length < 1e-6 {
+                [0.0, -1.0, 0.0]
+            } else {
+                [-axis[0] / length, -axis[1] / length, -axis[2] / length]
+            };
+            (
+                entity,
+                LightData {
+                    direction,
+                    colour: [
+                        light.colour[0] * light.intensity,
+                        light.colour[1] * light.intensity,
+                        light.colour[2] * light.intensity,
+                    ],
+                },
+            )
+        })
+        .collect();
+
+    // By entity, so the order is total and reproducible (I3) rather than whatever iteration gave.
+    found.sort_by_key(|(entity, _)| (entity.index(), entity.generation()));
+    found.into_iter().map(|(_, light)| light).collect()
+}
+
+/// Every mesh worth drawing, in draw order.
+///
+/// An entity whose mesh id has not loaded is **skipped and not substituted** — see
+/// [`MeshCache::get`](crate::MeshCache::get) for why a missing mesh has no honest stand-in where a
+/// missing texture does.
+fn collect_meshes(world: &World) -> Vec<MeshInstance> {
+    let materials = world.service::<MaterialCache>();
+    let meshes = world.service::<MeshCache>();
+
+    let mut found: Vec<MeshInstance> = world
+        .query::<(
+            &Mesh,
+            &Transform,
+            Option<&SortOrder>,
+            Option<&GlobalTransform>,
+        )>()
+        .filter(|(_, (mesh, ..))| {
+            // Nothing to draw without geometry. Checked here rather than in the backend so that a
+            // frame carries only what can actually be drawn, and `render.describe` agrees with it.
+            !mesh.mesh.is_empty() && meshes.is_some_and(|cache| cache.get(&mesh.mesh).is_some())
+        })
+        .map(|(_entity, (mesh, transform, order, global))| {
+            let model = match global {
+                Some(global) => global.to_mat4(),
+                None => local_matrix(transform),
+            };
+            MeshInstance {
+                mesh: mesh.mesh.clone(),
+                model,
+                material: match materials {
+                    Some(cache) => cache.get(&mesh.material),
+                    None => Material::default(),
+                },
+                order: order.copied().unwrap_or_default().order,
+            }
+        })
+        .collect();
+
+    // Stable, so entities sharing an order keep their (reproducible) iteration order — the same
+    // rule quads and sprites follow.
+    found.sort_by_key(|instance| instance.order);
+    found
 }
 
 /// Collects every drawable entity and hands the frame to the backend.
@@ -381,16 +479,32 @@ pub fn render_quads(world: &mut World) {
     // The drawables are gathered once and then handed to each camera, rather than re-queried per
     // camera: what is in the world does not depend on who is looking at it, and re-collecting would
     // both cost more and open the door to two cameras disagreeing about one frame.
+    let meshes = collect_meshes(world);
+    let lights = active_lights(world);
+
     let frame = FrameData {
         clear_color,
         views: active_cameras(world)
             .into_iter()
-            .map(|(camera, eye)| View {
-                environment: resolve(&camera),
-                camera,
-                eye,
-                quads: quads.clone(),
-                batches: batches.clone(),
+            .map(|(camera, eye, eye_matrix)| {
+                // **A camera's projection selects which pass it feeds**, which is ADR 0031's "two
+                // passes, neither built on the other" reaching the collection stage. An orthographic
+                // camera feeds the quad and sprite passes; a perspective one feeds the mesh pass.
+                //
+                // So a single camera does not draw both, and that is not a limitation to work
+                // around: 2D over a 3D world is a *second* camera at a higher order, which is the
+                // answer ADR 0031 already gave and the mechanism a HUD already uses.
+                let flat = matches!(camera.projection, Projection::Orthographic { .. });
+                View {
+                    environment: resolve(&camera),
+                    camera,
+                    eye,
+                    eye_matrix,
+                    quads: if flat { quads.clone() } else { Vec::new() },
+                    batches: if flat { batches.clone() } else { Vec::new() },
+                    meshes: if flat { Vec::new() } else { meshes.clone() },
+                    lights: lights.clone(),
+                }
             })
             .collect(),
     };

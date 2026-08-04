@@ -293,6 +293,39 @@ impl Mesh {
     }
 }
 
+/// A light shining from a direction rather than from a place — the sun, or the moon.
+///
+/// **An entity, following ADR 0031's precedent for the camera**: a world holds any number, a scene
+/// file authors them, and parenting one to something is how it follows. Its *direction* comes from
+/// the [`Transform`](amadeo_transform::Transform) on the same entity, exactly as a camera's position
+/// does — a light points along its own **negative Z**, which is the same convention a camera looks
+/// along, so "aim it like a camera" is literally true.
+///
+/// Point lights, which fall off with distance and need a position, arrive with shadows.
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+pub struct DirectionalLight {
+    /// Linear RGB. White is the neutral choice; warm and cool are what sell a time of day.
+    #[reflect(min = 0.0, max = 1.0)]
+    pub colour: [f32; 3],
+    /// How bright, multiplied into the colour.
+    ///
+    /// Not capped at 1.0, because the scene target is high dynamic range since ADR 0034 — a value
+    /// above it is what gives tonemapping something to compress.
+    #[reflect(min = 0.0, max = 100.0)]
+    pub intensity: f32,
+}
+
+impl Default for DirectionalLight {
+    fn default() -> Self {
+        Self {
+            colour: [1.0, 1.0, 1.0],
+            intensity: 1.0,
+        }
+    }
+}
+
+impl Component for DirectionalLight {}
+
 /// Every mesh the game has loaded, by asset id.
 ///
 /// A [`Service`], so it can never move a replay (ADR 0009) — the *parameters* of a procedural shape
