@@ -167,10 +167,11 @@ without eyes, the design is wrong and we find out before 3D and the editor pile 
   one render graph, neither built on the other; **and the camera becomes an entity rather than a
   resource**, which turned out to be the expensive half and the one the framing had missed. Closes
   Q3's last third and Q10.
-- Render graph proper: declared passes, resource dependencies, transient targets. Runs **once per
-  camera**, per ADR 0031. ✅ **ADR 0034 settles whether it is a public API — it is not.** Built in
+- ✅ **Render graph proper: declared passes, resource dependencies, transient targets.** Runs **once
+  per camera**, per ADR 0031. **ADR 0034 settles whether it is a public API — it is not.** Built in
   full, but internal, so `RenderBackend` stays the isolation boundary that made three earlier
-  renderer decisions cheap.
+  renderer decisions cheap. `NullBackend` compiles the same graph, so the pass order is checkable
+  with no GPU; and composing the frame off-screen gave the **windowed** backend `capture`.
 - 3D: mesh rendering, PBR materials, directional + point lights, shadow maps, frustum culling.
 - **Configurable post-process stack and atmosphere** — the eight target games span stylised-realistic
   outdoors, low-poly, dark atmospheric interiors, voxel, and pixel-art sprite work, so the renderer

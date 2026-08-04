@@ -45,6 +45,7 @@ mod components;
 mod describe;
 #[cfg(feature = "gpu")]
 mod gpu;
+mod graph;
 mod sprites;
 mod textures;
 

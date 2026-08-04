@@ -860,6 +860,59 @@ Then: is the id in the scene's `assets` block (nothing loads that is not declare
 whose texture failed still draws — as a magenta check — so a *completely* invisible sprite is a
 transform, camera, or sort-order problem rather than a texture one.
 
+### The render graph: how a frame decides what order to do things in
+
+New in session 9. `crates/amadeo-render/src/graph.rs`, and ADR 0034 decides what it is allowed to be.
+
+**The vocabulary first**, because three words do most of the work:
+
+- A **pass** is one step of drawing a frame: "draw what camera 0 sees", "blur the bright parts",
+  "put the finished picture on the screen".
+- A **resource** is an image a pass reads or writes.
+- A **transient** is a resource that only exists inside one frame. Scratch paper, not a saved file.
+
+A **render graph** is the *declaration* of those passes and what each one touches. It works out the
+order itself: if one pass writes an image another pass reads, the writer has to go first. Before
+this, `WgpuBackend::render` was a long function where that order was spelled out by hand, and moving
+two lines would have silently drawn the wrong picture.
+
+What a frame looks like today:
+
+```
+  transient "scene"  (destination-sized, always RGBA8 sRGB)
+
+  view 0     writes scene      clears first
+  view 1     writes scene      loads what view 0 left    <- so a HUD composes over the world
+  present    reads  scene      writes destination        <- one full-screen triangle
+```
+
+**Five things worth knowing:**
+
+1. **The graph does no drawing and knows nothing about wgpu.** It is a plan. `WgpuBackend` executes
+   it; `NullBackend` compiles it, throws it away, and reports the labels through
+   `NullBackend::last_passes()`. So a pass-ordering bug is catchable on a machine with no GPU, which
+   is what invariant I7 asks of every subsystem.
+2. **Nothing outside the crate can add a pass.** ADR 0034. `RenderBackend` isolating rendering
+   completely is what made three earlier renderer decisions cheap to revisit, and a public graph
+   gives that up permanently — Bevy made theirs public and has rewritten it repeatedly. Games get to
+   configure a *look* through reflected data instead.
+3. **The cameras draw into `scene` rather than straight at the window**, for two reasons. It is where
+   post-processing will be inserted, since a pass cannot read the image it is writing. And it is what
+   lets a **windowed** run capture at all: a window's own image can never be read back, but a
+   transient can.
+4. **`scene` is always RGBA, never the destination's format.** A window surface is frequently BGRA.
+   If the transient copied that, a capture would come back with red and blue swapped on the windowed
+   path only. The present pass is the single place the destination's format is met, and the hardware
+   converts while writing.
+5. **Ties are broken by declaration order, not alphabetically** — the opposite of `Schedule`
+   (see above). A schedule's registration order is accidental, so letting it decide would be a trap;
+   a graph's declaration order is the order the frame is composed in, and two passes writing the same
+   image *depend* on it. Both are deterministic, which is the property that actually matters.
+
+**Adding a pass** means adding a `PassKind` variant, declaring it in `graph::frame_graph`, and
+handling it in `WgpuBackend::render`'s match. The compiler finds the second and third for you once
+you have done the first, which is why `PassKind` is an enum rather than a trait object.
+
 ### Reflection: what a type has to be able to say about itself
 
 Three traits in this engine require `Reflect`, and it is the same argument each time:

@@ -28,6 +28,20 @@ pub enum RenderError {
         reason: String,
     },
 
+    /// The frame plan the renderer built for itself does not hold together.
+    ///
+    /// **Always an engine bug rather than anything content can cause** — ADR 0034 keeps the render
+    /// graph internal, so no game, scene file or asset can declare a pass. It is a typed error
+    /// anyway, because the alternative to reporting it is drawing a wrong picture with nothing to
+    /// read.
+    #[error(
+        "the renderer built an invalid frame plan: {reason}. This is an engine bug — please report it"
+    )]
+    GraphInvalid {
+        /// What the graph objected to.
+        reason: String,
+    },
+
     /// This backend cannot hand back the pixels it drew.
     ///
     /// Not a failure so much as a fact about the backend, which is why it says which one and what to
@@ -291,13 +305,17 @@ pub trait RenderBackend: fmt::Debug + Send + Sync {
     /// `render.describe` cannot do: `describe` reports what *should* be drawn, computed from the
     /// world, and nothing else checks what the GPU actually produced.
     ///
-    /// # The default is an error, and that is the right answer for most backends
+    /// # The default is an error, and that is the right answer for a backend that draws nothing
     ///
     /// A backend that cannot read its own output should say so rather than return a blank image that
-    /// a caller would have to know not to trust. `NullBackend` draws nothing; a windowed wgpu backend
-    /// draws into a swapchain image that is not created with `COPY_SRC`. Only
-    /// [`WgpuBackend::offscreen`](crate::WgpuBackend::offscreen) can answer, and agent mode is
-    /// headless anyway.
+    /// a caller would have to know not to trust. `NullBackend` draws nothing at all, so it refuses
+    /// and names `render.describe` instead.
+    ///
+    /// **Both wgpu backends can answer**, which was not true before the render graph landed. Every
+    /// camera now draws into an off-screen transient and a final pass copies it onward, so a
+    /// *windowed* run has a readable image of the finished frame even though a window's own image
+    /// can never be read back. The two differ by exactly that last copy: an offscreen backend reads
+    /// the destination after it, a windowed one reads the transient before it.
     ///
     /// # Errors
     ///
@@ -326,6 +344,8 @@ pub struct NullBackend {
     /// What was uploaded, by id — the whole texture, so a headless test can assert on the pixels a
     /// GPU would have received. Ordered, so listing it is reproducible (invariant I3).
     textures: std::collections::BTreeMap<String, TextureData>,
+    /// The labels of the passes the last frame's graph resolved to, in execution order.
+    last_passes: Vec<String>,
 }
 
 impl Default for NullBackend {
@@ -343,6 +363,7 @@ impl NullBackend {
             frames_rendered: 0,
             last_frame: None,
             textures: std::collections::BTreeMap::new(),
+            last_passes: Vec::new(),
         }
     }
 
@@ -377,6 +398,22 @@ impl NullBackend {
     pub fn texture_ids(&self) -> impl Iterator<Item = &str> {
         self.textures.keys().map(String::as_str)
     }
+
+    /// The passes the last frame resolved to, by label, in the order they would have run.
+    ///
+    /// # Why a backend that draws nothing still builds a plan
+    ///
+    /// The render graph (ADR 0034) is a plan, and building one is arithmetic rather than drawing —
+    /// so a wrong plan is a bug catchable with no GPU, which is what invariant I7 asks of every
+    /// subsystem. This is how a headless test sees the frame's structure: three cameras and a
+    /// present pass, or a clear pass because nobody authored a camera at all.
+    ///
+    /// Labels only, deliberately. Reporting the plan is introspection, which this project wants
+    /// everywhere; handing out the graph's *types* would make it an extension surface, which ADR
+    /// 0034 decided against.
+    pub fn last_passes(&self) -> &[String] {
+        &self.last_passes
+    }
 }
 
 impl RenderBackend for NullBackend {
@@ -406,6 +443,19 @@ impl RenderBackend for NullBackend {
     }
 
     fn render(&mut self, frame: &FrameData) -> Result<(), RenderError> {
+        // The same graph the GPU backend builds, compiled and then thrown away. It draws nothing,
+        // but a graph that does not hold together is a bug this catches on a machine with no GPU.
+        let (width, height) = self.viewport;
+        let graph = crate::graph::frame_graph(frame, width, height);
+        let plan = graph.compile().map_err(|error| RenderError::GraphInvalid {
+            reason: error.to_string(),
+        })?;
+
+        self.last_passes = plan
+            .order()
+            .iter()
+            .map(|&index| graph.passes()[index].label.clone())
+            .collect();
         self.frames_rendered += 1;
         self.last_frame = Some(frame.clone());
         Ok(())
@@ -455,6 +505,21 @@ mod tests {
                 .center,
             [1.0, 2.0]
         );
+    }
+
+    #[test]
+    fn a_headless_frame_still_resolves_a_pass_order() {
+        // ADR 0034's graph is a plan rather than drawing, so it is checkable with no GPU — which is
+        // the whole reason it does not live inside the wgpu backend.
+        let mut backend = NullBackend::new(64, 64);
+        backend.render(&sample_frame()).expect("null never fails");
+        assert_eq!(backend.last_passes(), ["view 0", "present"]);
+
+        // And a world nobody gave a camera clears rather than freezing.
+        backend
+            .render(&FrameData::default())
+            .expect("null never fails");
+        assert_eq!(backend.last_passes(), ["clear", "present"]);
     }
 
     #[test]

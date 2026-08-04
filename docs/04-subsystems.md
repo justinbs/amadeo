@@ -95,13 +95,18 @@ realistic component mix before committing to the storage strategy.
 
 **Job:** get pixels on screen for both 2D and 3D from one coherent architecture.
 
-✅ wgpu backend. ⚠️ **Render graph architecture** (declared passes with resource dependencies) rather
+✅ wgpu backend. ✅ **Render graph architecture** (declared passes with resource dependencies) rather
 than a hardcoded pipeline — this is what makes unified 2D/3D and later additions tractable. The ✅
-here was wrong: the wgpu backend runs a hardcoded per-view loop, and the graph is M2's next build
-item. **ADR 0034 decides its visibility: it is internal.** Built in full — declared passes, resource
-dependencies, transient targets, once per camera — but its types are not a public extension surface,
-because that is what keeps `RenderBackend` the total isolation boundary that made ADR 0018, 0023 and
-0031 cheap.
+here was premature until session 9: it described an intention, while the wgpu backend ran a hardcoded
+per-view loop. **Built now, and ADR 0034 decides its visibility: internal.** Declared passes with
+reads and writes, order derived from the dependencies, transient targets pooled across frames, one
+pass per camera — but its types are not a public extension surface, because that is what keeps
+`RenderBackend` the total isolation boundary that made ADR 0018, 0023 and 0031 cheap.
+
+The graph knows nothing about wgpu, so `NullBackend` compiles it too and reports the resolved pass
+order — a pass-ordering bug is catchable with no GPU, which is what I7 asks. And because every camera
+now draws into a transient that a present pass copies onward, **the windowed backend can capture**,
+which `STATUS.md` had listed as waiting on post-processing.
 ✅ Rendering reads simulation state, never writes it.
 ✅ Must be fully disableable (null backend) for headless runs.
 

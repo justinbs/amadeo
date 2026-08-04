@@ -97,8 +97,16 @@ crates/
                      texture, one draw call per batch. WgpuBackend::offscreen renders into a texture
                      it owns instead of a window, and RenderBackend::capture reads it back -- which
                      is what `render.capture` uses and what gave the GPU path its first tests
-                     (tests/capture.rs). Still to come: post-processing, which the windowed backend
-                     needs before it can capture too, and render targets on a camera.
+                     (tests/capture.rs).
+                     **The render graph (ADR 0034) is internal and stays that way**: declared passes
+                     with reads and writes, order derived from the dependencies, transient targets
+                     pooled across frames, one pass per camera. It knows nothing about wgpu, so
+                     NullBackend compiles it too and a pass-ordering bug is catchable with no GPU.
+                     Every camera draws into a transient and a present pass copies it onward, which
+                     is what gives the **windowed** backend capture -- it reads the transient, where
+                     an offscreen one reads its destination after the present pass. Still to come:
+                     the post-process effects themselves and ADR 0034's `Environment` asset, and
+                     render targets on a camera.
 — amadeo-audio       mixer, buses, spatialization (null backend required)
 — amadeo-physics     rapier integration behind engine traits
 — amadeo-anim        sprite anim, skeletal, state machines, tweens

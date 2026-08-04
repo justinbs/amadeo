@@ -155,6 +155,41 @@ fn the_camera_decides_what_is_on_screen() {
 }
 
 #[test]
+fn the_present_pass_does_not_turn_the_screen_upside_down() {
+    // Since the render graph landed, every camera draws into an off-screen image and a full-screen
+    // triangle copies it onto the destination. That triangle maps texture space (v = 0 on the top
+    // row) onto clip space (y = +1 at the top), so it flips y — and getting that backwards inverts
+    // the entire screen while every existing test still passes, because a centred quad, a clear
+    // colour and a symmetrical view all look identical either way.
+    //
+    // STATUS.md carries the same warning about `sprite.wgsl`'s vertical flip, which is still
+    // unexercised. This is the equivalent check for the pass that now runs on every frame.
+    let mut world = World::new();
+    add_camera(&mut world, 10.0);
+
+    // Two world units above the middle of a ten-unit view, so it sits in the upper half and nowhere
+    // near the centre line.
+    let entity = world.spawn();
+    world.insert(entity, Transform::at(0.0, 2.0));
+    world.insert(entity, Quad::new(2.0, 2.0, [1.0, 0.0, 0.0, 1.0]));
+
+    let Some(image) = capture(&mut world, 64, 64) else {
+        return;
+    };
+
+    let above = pixel_at(&image, 32, 19);
+    let below = pixel_at(&image, 32, 45);
+    assert!(
+        above[0] > 200,
+        "world +Y is up, so the quad belongs in the top half of the image, got {above:?}"
+    );
+    assert!(
+        below[0] < 128,
+        "the bottom half should still be background, got {below:?}"
+    );
+}
+
+#[test]
 fn capture_reports_why_it_cannot_when_it_cannot() {
     // Needs no GPU, so this one always runs. A backend that cannot read its own output must say so
     // rather than return a blank image a caller would have to know not to trust — and the message

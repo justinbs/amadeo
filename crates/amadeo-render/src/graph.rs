@@ -1,0 +1,781 @@
+//! The render graph: the plan for one frame.
+//!
+//! # What a render graph is, and what this one is not
+//!
+//! A **pass** is one step of drawing a frame — "draw what camera 0 sees", "blur the bright parts",
+//! "put the finished picture on the screen". A **resource** is an image a pass reads or writes. A
+//! **transient** is a resource that exists only within one frame: scratch paper, not a saved file.
+//!
+//! A render graph is the *declaration* of those passes and which resources each one touches. From
+//! that it derives the order they must run in — if one pass writes an image another reads, the
+//! writer goes first — rather than that order being spelled out by hand in a long function where
+//! moving two lines silently draws the wrong picture.
+//!
+//! **This graph does no drawing.** It is a plan, and it knows nothing about wgpu. The backend
+//! executes it. That split is why a graph bug is catchable with no GPU at all, which invariant I7
+//! asks of every subsystem, and it is why [`NullBackend`](crate::NullBackend) can report the pass
+//! structure of a frame it never drew.
+//!
+//! # It is deliberately not a public extension surface — ADR 0034
+//!
+//! Nothing outside this crate can name a pass, order one, or add one. That is a decision rather than
+//! an omission: `RenderBackend` isolating rendering completely is what made ADR 0018, ADR 0023 and
+//! ADR 0031 cheap to decide, and ADR 0031 could prove in a three-row table that an entire render
+//! restructuring contributed nothing to simulation state. A public graph gives that up permanently,
+//! and Bevy — the one engine that made its graph public — has rewritten that public API repeatedly.
+//!
+//! Games configure a *look* through reflected data instead (ADR 0034's `Environment`), which the
+//! schema, the scene format, `amadeo check` and the agent protocol all already handle.
+//!
+//! # What it does not do yet
+//!
+//! Frostbite's original frame graph existed largely to insert GPU synchronisation automatically and
+//! to overlap the memory of transients whose lifetimes do not collide. **wgpu already does the
+//! first**, which is one of its main reasons to exist over raw Vulkan or DX12, and its safe API has
+//! no way to overlap two textures' memory — so reuse here means handing the same whole texture to a
+//! later transient with an identical description, which is what [`Plan::lifetimes`] exists to make
+//! safe.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+/// The frame's final destination: a window's surface, or the texture an offscreen backend owns.
+///
+/// Reserved rather than declared — no pass may create it, and exactly one should write it.
+pub(crate) const DESTINATION: &str = "destination";
+
+/// The image every camera draws into, before anything reaches the screen.
+pub(crate) const SCENE: &str = "scene";
+
+/// The pixel format of a transient image.
+///
+/// One variant, deliberately, exactly as [`PixelFormat`](amadeo_image::PixelFormat) shipped with one
+/// under ADR 0026: **the tag is the load-bearing part.** Adding a high-dynamic-range variant when
+/// tonemapping lands is then a new variant plus a new producer, rather than a change to every pass,
+/// every allocation site, and every test that asserts on a target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum TargetFormat {
+    /// Eight bits per channel, red-green-blue-alpha, sRGB encoded.
+    ///
+    /// # A transient does *not* inherit the destination's format, and that is the point
+    ///
+    /// A window's surface is commonly **B**GRA while an offscreen target is RGBA — the surface
+    /// format is whatever the adapter offers, not something the engine picks. If a transient copied
+    /// that, the finished picture would sit in memory with its red and blue channels swapped on one
+    /// path and not the other, and every capture would have to know which. The captured image would
+    /// stop being evidence about the renderer that ships, which is the entire reason capture exists.
+    ///
+    /// So the graph fixes the format it works in, and the present pass is the one place the
+    /// destination's own format is met. The hardware does that conversion while writing.
+    Srgb8,
+}
+
+/// An image that exists only for the duration of one frame.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Transient {
+    /// What passes call it.
+    pub name: String,
+    /// Width in physical pixels.
+    pub width: u32,
+    /// Height in physical pixels.
+    pub height: u32,
+    /// What kind of image it is.
+    pub format: TargetFormat,
+}
+
+/// What work a pass performs.
+///
+/// The graph does none of it — this is what the backend matches on when executing the plan, and it
+/// is the whole of the vocabulary the graph has about *drawing*.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PassKind {
+    /// Draw what one camera sees, selected by its index into [`FrameData::views`](crate::FrameData).
+    View {
+        /// Which view.
+        index: usize,
+        /// Whether this pass clears its target first.
+        ///
+        /// Only the first view clears. Later ones load what is already there, which is what makes a
+        /// HUD camera compose over a world camera rather than erase it (ADR 0031).
+        clears: bool,
+    },
+    /// Fill the target with the clear colour and draw nothing.
+    ///
+    /// What a world with **no camera** produces. Without it the previous frame's image would
+    /// persist, so "no camera" would look like "frozen" rather than "empty" — and a world under
+    /// construction genuinely has no camera yet (ADR 0031).
+    Clear,
+    /// Put a finished image onto the destination.
+    ///
+    /// A full-screen draw rather than a texture copy, because a surface texture is not guaranteed to
+    /// accept a copy — and because this is where tonemapping goes when it arrives, so the pass has
+    /// to be a shader either way.
+    Present,
+}
+
+/// One declared step of a frame.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Pass {
+    /// A unique name, used in diagnostics and in what a backend reports back.
+    pub label: String,
+    /// Resources this pass reads.
+    pub reads: Vec<String>,
+    /// Resources this pass writes.
+    pub writes: Vec<String>,
+    /// What it does.
+    pub kind: PassKind,
+}
+
+/// What can be wrong with a declared graph.
+///
+/// Every one of these is a programming error inside this crate rather than anything content can
+/// cause — the graph is not a public surface (ADR 0034). They are typed and actionable anyway,
+/// because the alternative is a wrong picture with nothing to read.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub(crate) enum GraphError {
+    /// Two passes share a label.
+    #[error(
+        "two passes in the render graph are both labelled `{label}`; labels name a pass in every \
+         diagnostic, so they have to be unique"
+    )]
+    DuplicateLabel {
+        /// The repeated label.
+        label: String,
+    },
+
+    /// A pass named a resource that was never declared.
+    #[error(
+        "render pass `{pass}` names the resource `{resource}`, which is neither a declared \
+         transient nor the frame destination; declare it with `RenderGraph::transient` first"
+    )]
+    UnknownResource {
+        /// The pass that named it.
+        pass: String,
+        /// The name it used.
+        resource: String,
+    },
+
+    /// A pass reads something nothing produces.
+    #[error(
+        "render pass `{pass}` reads `{resource}`, which no pass writes; it would sample an \
+         uninitialised image"
+    )]
+    NeverWritten {
+        /// The reading pass.
+        pass: String,
+        /// What it wanted.
+        resource: String,
+    },
+
+    /// The dependencies form a loop.
+    ///
+    /// Reported with the whole chain rather than one pass, for the same reason ADR 0029 reports a
+    /// prefab cycle that way: one name in a loop tells you nothing about how to break it.
+    #[error("the render graph has a cycle: {chain}")]
+    Cycle {
+        /// The passes in the loop, joined by ` -> `.
+        chain: String,
+    },
+}
+
+/// When a transient is first written and last touched, as positions in the execution order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Lifetime {
+    /// Position of the first pass that writes it.
+    pub first: usize,
+    /// Position of the last pass that reads or writes it.
+    pub last: usize,
+}
+
+impl Lifetime {
+    /// Whether two transients are both live at any point, and so cannot share one texture.
+    #[cfg_attr(
+        not(feature = "gpu"),
+        allow(
+            dead_code,
+            reason = "only the wgpu backend allocates textures; the null backend compiles the \
+                      graph to check it and draws nothing"
+        )
+    )]
+    pub(crate) fn overlaps(&self, other: &Lifetime) -> bool {
+        self.first <= other.last && other.first <= self.last
+    }
+}
+
+/// A validated graph, with an execution order and transient lifetimes worked out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Plan {
+    /// Pass indices, in the order they must run.
+    order: Vec<usize>,
+    /// Per transient name, when it is live.
+    lifetimes: BTreeMap<String, Lifetime>,
+    /// What the pass writing the destination reads, if there is exactly one such read.
+    ///
+    /// This is what `capture` reads back. A window's surface cannot be read, so "the finished image"
+    /// has to be the transient that was about to be copied onto it — and deriving that from the
+    /// graph rather than hardcoding a name means post-processing can be inserted before the present
+    /// pass without capture quietly returning the pre-effect picture.
+    destination_source: Option<String>,
+}
+
+/// Only the wgpu backend allocates or reads back textures, so a build without it uses the plan for
+/// its pass order alone. Kept out of the `gpu` feature deliberately: the *checking* this module does
+/// is what a headless run needs, and gating it would put a whole class of bug beyond CI's reach.
+#[cfg_attr(not(feature = "gpu"), allow(dead_code))]
+impl Plan {
+    /// Pass indices in execution order.
+    pub(crate) fn order(&self) -> &[usize] {
+        &self.order
+    }
+
+    /// When each transient is live, by name.
+    pub(crate) fn lifetimes(&self) -> &BTreeMap<String, Lifetime> {
+        &self.lifetimes
+    }
+
+    /// The transient holding the finished image, which is what a capture reads back.
+    pub(crate) fn destination_source(&self) -> Option<&str> {
+        self.destination_source.as_deref()
+    }
+}
+
+/// The declared passes and transients of one frame.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct RenderGraph {
+    passes: Vec<Pass>,
+    transients: Vec<Transient>,
+}
+
+impl RenderGraph {
+    /// An empty graph.
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    /// Declares an image that lives for this frame only.
+    pub(crate) fn transient(&mut self, name: &str, width: u32, height: u32, format: TargetFormat) {
+        self.transients.push(Transient {
+            name: name.to_string(),
+            width,
+            height,
+            format,
+        });
+    }
+
+    /// Declares a pass and what it touches.
+    pub(crate) fn pass(&mut self, label: &str, kind: PassKind, reads: &[&str], writes: &[&str]) {
+        self.passes.push(Pass {
+            label: label.to_string(),
+            reads: reads.iter().map(|name| (*name).to_string()).collect(),
+            writes: writes.iter().map(|name| (*name).to_string()).collect(),
+            kind,
+        });
+    }
+
+    /// The declared passes, in declaration order.
+    pub(crate) fn passes(&self) -> &[Pass] {
+        &self.passes
+    }
+
+    /// The declared transients.
+    ///
+    /// Only the wgpu backend has anything to allocate for them — see the note on `impl Plan`.
+    #[cfg_attr(not(feature = "gpu"), allow(dead_code))]
+    pub(crate) fn transients(&self) -> &[Transient] {
+        &self.transients
+    }
+
+    /// Checks the graph and works out the order its passes must run in.
+    ///
+    /// # Ordering rules
+    ///
+    /// 1. A pass that **writes** a resource runs before every pass that **reads** it.
+    /// 2. Two passes writing the *same* resource run in **declaration order**. That is what makes
+    ///    the per-camera passes compose: view 1 loads what view 0 left, so their order is meaningful
+    ///    rather than incidental.
+    /// 3. Passes with no relationship keep their declaration order.
+    ///
+    /// Rule 3 is where this differs from `amadeo-app`'s `Schedule`, which breaks ties
+    /// **alphabetically** so that registration order cannot influence a result. That rule is right
+    /// there and wrong here: a schedule's registration order is accidental, while a graph's
+    /// declaration order is the order the frame is composed in, and rule 2 already depends on it.
+    /// Both are deterministic, which is what actually matters — two runs of the same frame produce
+    /// the same picture.
+    ///
+    /// # Errors
+    ///
+    /// [`GraphError`] for a duplicate label, an undeclared resource, a read nothing writes, or a
+    /// cycle.
+    pub(crate) fn compile(&self) -> Result<Plan, GraphError> {
+        let mut labels = BTreeSet::new();
+        for pass in &self.passes {
+            if !labels.insert(pass.label.as_str()) {
+                return Err(GraphError::DuplicateLabel {
+                    label: pass.label.clone(),
+                });
+            }
+        }
+
+        let declared: BTreeSet<&str> = self
+            .transients
+            .iter()
+            .map(|transient| transient.name.as_str())
+            .chain(std::iter::once(DESTINATION))
+            .collect();
+
+        for pass in &self.passes {
+            for resource in pass.reads.iter().chain(pass.writes.iter()) {
+                if !declared.contains(resource.as_str()) {
+                    return Err(GraphError::UnknownResource {
+                        pass: pass.label.clone(),
+                        resource: resource.clone(),
+                    });
+                }
+            }
+        }
+
+        // Who writes what, in declaration order. Used for both edge kinds below.
+        let mut writers: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+        for (index, pass) in self.passes.iter().enumerate() {
+            for resource in &pass.writes {
+                writers.entry(resource.as_str()).or_default().push(index);
+            }
+        }
+
+        for pass in &self.passes {
+            for resource in &pass.reads {
+                if !writers.contains_key(resource.as_str()) {
+                    return Err(GraphError::NeverWritten {
+                        pass: pass.label.clone(),
+                        resource: resource.clone(),
+                    });
+                }
+            }
+        }
+
+        // `edges[a]` holds the passes that must run after `a`. A set rather than a list, so the same
+        // dependency declared two ways is counted once — otherwise the in-degree below never reaches
+        // zero and a perfectly good graph reports a cycle.
+        let mut edges: Vec<BTreeSet<usize>> = vec![BTreeSet::new(); self.passes.len()];
+
+        // Rule 1: every writer of something this pass reads comes first.
+        for (index, pass) in self.passes.iter().enumerate() {
+            for resource in &pass.reads {
+                for &writer in &writers[resource.as_str()] {
+                    if writer != index {
+                        edges[writer].insert(index);
+                    }
+                }
+            }
+        }
+
+        // Rule 2: consecutive writers of one resource keep their declaration order.
+        for indices in writers.values() {
+            for pair in indices.windows(2) {
+                edges[pair[0]].insert(pair[1]);
+            }
+        }
+
+        let mut in_degree = vec![0usize; self.passes.len()];
+        for successors in &edges {
+            for &successor in successors {
+                in_degree[successor] += 1;
+            }
+        }
+
+        // Kahn's algorithm, always taking the *lowest-numbered* pass that is ready. Scanning for it
+        // rather than keeping a heap is what gives rule 3 — among passes nothing orders, the one
+        // declared first goes first.
+        let mut order = Vec::with_capacity(self.passes.len());
+        let mut done = vec![false; self.passes.len()];
+        for _ in 0..self.passes.len() {
+            let Some(next) =
+                (0..self.passes.len()).find(|&index| !done[index] && in_degree[index] == 0)
+            else {
+                break;
+            };
+            done[next] = true;
+            order.push(next);
+            for &successor in &edges[next] {
+                in_degree[successor] -= 1;
+            }
+        }
+
+        if order.len() != self.passes.len() {
+            return Err(GraphError::Cycle {
+                chain: self.describe_cycle(&edges, &done),
+            });
+        }
+
+        // A transient's lifetime runs from the first pass that writes it to the last that touches
+        // it, measured in positions along the execution order rather than declaration order —
+        // because reuse is about what is live *while the frame runs*.
+        let mut lifetimes: BTreeMap<String, Lifetime> = BTreeMap::new();
+        for (position, &index) in order.iter().enumerate() {
+            let pass = &self.passes[index];
+            for resource in &pass.writes {
+                if resource == DESTINATION {
+                    continue;
+                }
+                lifetimes
+                    .entry(resource.clone())
+                    .and_modify(|life| life.last = life.last.max(position))
+                    .or_insert(Lifetime {
+                        first: position,
+                        last: position,
+                    });
+            }
+            for resource in &pass.reads {
+                if let Some(life) = lifetimes.get_mut(resource) {
+                    life.last = life.last.max(position);
+                }
+            }
+        }
+
+        // What the present pass is about to put on screen — see `Plan::destination_source`. Exactly
+        // one read, because "the finished image" is not a meaningful phrase otherwise.
+        let destination_source = self
+            .passes
+            .iter()
+            .find(|pass| pass.writes.iter().any(|name| name == DESTINATION))
+            .filter(|pass| pass.reads.len() == 1)
+            .map(|pass| pass.reads[0].clone());
+
+        Ok(Plan {
+            order,
+            lifetimes,
+            destination_source,
+        })
+    }
+
+    /// Walks the unfinished part of the graph until a pass repeats, and names the loop.
+    fn describe_cycle(&self, edges: &[BTreeSet<usize>], done: &[bool]) -> String {
+        let Some(start) = (0..self.passes.len()).find(|&index| !done[index]) else {
+            return "<empty>".to_string();
+        };
+
+        let mut walk = vec![start];
+        let mut seen = BTreeSet::new();
+        seen.insert(start);
+        let mut current = start;
+
+        // Every step follows an edge into the unfinished part, and that part is finite, so this
+        // terminates: either a pass repeats or the walk runs out of successors.
+        while let Some(&next) = edges[current].iter().find(|&&candidate| !done[candidate]) {
+            walk.push(next);
+            // The second sighting closes the loop, and is where the chain stops growing.
+            if !seen.insert(next) {
+                break;
+            }
+            current = next;
+        }
+
+        walk.into_iter()
+            .map(|index| self.passes[index].label.as_str())
+            .collect::<Vec<_>>()
+            .join(" -> ")
+    }
+}
+
+/// The graph one frame needs, derived from what the world produced.
+///
+/// # Why the cameras draw into a transient rather than straight at the destination
+///
+/// Two reasons, and the second one is the concrete payoff of this whole module.
+///
+/// It is **where post-processing goes**. A pass that blurs the bright parts of the picture has to
+/// read the picture, and a pass cannot read the image it is writing. Composing effects means an
+/// off-screen image to hand between them, so it has to exist before the first effect does.
+///
+/// And it is **what gives a windowed run `capture`**. A window's surface image cannot be read back —
+/// it is not created with `COPY_SRC` and wgpu does not let you ask for one — which is why capture
+/// used to need [`WgpuBackend::offscreen`](crate::WgpuBackend::offscreen) and a windowed backend
+/// could only refuse. A transient *can* be read back, so the finished picture is now readable with
+/// or without a window; the two paths differ by the final copy alone, and `RenderBackend::capture`
+/// says which side of it each one reads.
+pub(crate) fn frame_graph(frame: &crate::FrameData, width: u32, height: u32) -> RenderGraph {
+    let mut graph = RenderGraph::new();
+    graph.transient(SCENE, width, height, TargetFormat::Srgb8);
+
+    if frame.views.is_empty() {
+        graph.pass("clear", PassKind::Clear, &[], &[SCENE]);
+    } else {
+        for index in 0..frame.views.len() {
+            graph.pass(
+                &format!("view {index}"),
+                PassKind::View {
+                    index,
+                    // Only the first camera clears; later ones load what is already there, which is
+                    // what makes a HUD camera compose over a world camera rather than erase it.
+                    clears: index == 0,
+                },
+                &[],
+                &[SCENE],
+            );
+        }
+    }
+
+    graph.pass("present", PassKind::Present, &[SCENE], &[DESTINATION]);
+    graph
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Camera, FrameData, View};
+
+    /// A graph shaped like a real frame: two cameras into one image, then present.
+    fn two_views() -> RenderGraph {
+        let mut graph = RenderGraph::new();
+        graph.transient("scene", 64, 64, TargetFormat::Srgb8);
+        graph.pass(
+            "view 0",
+            PassKind::View {
+                index: 0,
+                clears: true,
+            },
+            &[],
+            &["scene"],
+        );
+        graph.pass(
+            "view 1",
+            PassKind::View {
+                index: 1,
+                clears: false,
+            },
+            &[],
+            &["scene"],
+        );
+        graph.pass("present", PassKind::Present, &["scene"], &[DESTINATION]);
+        graph
+    }
+
+    fn labels(graph: &RenderGraph, plan: &Plan) -> Vec<String> {
+        plan.order()
+            .iter()
+            .map(|&index| graph.passes()[index].label.clone())
+            .collect()
+    }
+
+    #[test]
+    fn a_reader_runs_after_its_writer() {
+        // Declared backwards on purpose: the order has to come from the dependency, not the order
+        // the passes were added in.
+        let mut graph = RenderGraph::new();
+        graph.transient("scene", 8, 8, TargetFormat::Srgb8);
+        graph.pass("present", PassKind::Present, &["scene"], &[DESTINATION]);
+        graph.pass(
+            "view 0",
+            PassKind::View {
+                index: 0,
+                clears: true,
+            },
+            &[],
+            &["scene"],
+        );
+
+        let plan = graph.compile().expect("a valid graph");
+        assert_eq!(labels(&graph, &plan), ["view 0", "present"]);
+    }
+
+    #[test]
+    fn two_writers_of_one_image_keep_their_declaration_order() {
+        // The rule that makes a HUD camera compose over a world camera rather than race it.
+        let graph = two_views();
+        let plan = graph.compile().expect("a valid graph");
+        assert_eq!(labels(&graph, &plan), ["view 0", "view 1", "present"]);
+    }
+
+    #[test]
+    fn compiling_the_same_graph_twice_gives_the_same_order() {
+        let graph = two_views();
+        let first = graph.compile().expect("valid");
+        let second = graph.compile().expect("valid");
+        assert_eq!(first.order(), second.order());
+    }
+
+    #[test]
+    fn an_undeclared_resource_is_named_in_the_error() {
+        let mut graph = RenderGraph::new();
+        graph.pass("present", PassKind::Present, &["blooom"], &[DESTINATION]);
+
+        let error = graph.compile().expect_err("`blooom` was never declared");
+        let message = error.to_string();
+        assert!(message.contains("present"), "{message}");
+        assert!(message.contains("blooom"), "{message}");
+        // Says what to do about it, per the project's error-message standard.
+        assert!(message.contains("RenderGraph::transient"), "{message}");
+    }
+
+    #[test]
+    fn reading_an_image_nothing_writes_is_refused() {
+        // Declared, so it exists — but nothing fills it, so sampling it reads whatever was in that
+        // memory. Silent garbage is the worst available outcome, so this is an error.
+        let mut graph = RenderGraph::new();
+        graph.transient("scene", 8, 8, TargetFormat::Srgb8);
+        graph.pass("present", PassKind::Present, &["scene"], &[DESTINATION]);
+
+        let error = graph.compile().expect_err("nothing writes `scene`");
+        assert!(matches!(error, GraphError::NeverWritten { .. }), "{error}");
+        assert!(error.to_string().contains("uninitialised"), "{error}");
+    }
+
+    #[test]
+    fn a_cycle_is_reported_with_its_whole_chain() {
+        // One name in a loop tells you nothing about how to break it — ADR 0029 reports prefab
+        // cycles the same way, for the same reason.
+        let mut graph = RenderGraph::new();
+        graph.transient("a", 8, 8, TargetFormat::Srgb8);
+        graph.transient("b", 8, 8, TargetFormat::Srgb8);
+        graph.pass("first", PassKind::Present, &["b"], &["a"]);
+        graph.pass("second", PassKind::Present, &["a"], &["b"]);
+
+        let error = graph
+            .compile()
+            .expect_err("first and second need each other");
+        let message = error.to_string();
+        assert!(message.contains("first"), "{message}");
+        assert!(message.contains("second"), "{message}");
+        assert!(
+            message.contains("->"),
+            "the chain should be shown: {message}"
+        );
+    }
+
+    #[test]
+    fn duplicate_labels_are_refused() {
+        let mut graph = RenderGraph::new();
+        graph.transient("scene", 8, 8, TargetFormat::Srgb8);
+        graph.pass(
+            "view",
+            PassKind::View {
+                index: 0,
+                clears: true,
+            },
+            &[],
+            &["scene"],
+        );
+        graph.pass(
+            "view",
+            PassKind::View {
+                index: 1,
+                clears: false,
+            },
+            &[],
+            &["scene"],
+        );
+
+        let error = graph.compile().expect_err("two passes named `view`");
+        assert!(
+            matches!(error, GraphError::DuplicateLabel { .. }),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_transients_lifetime_spans_its_writer_and_its_last_reader() {
+        let graph = two_views();
+        let plan = graph.compile().expect("valid");
+        let life = plan.lifetimes()["scene"];
+        // Written at position 0, still read by `present` at position 2.
+        assert_eq!(life.first, 0);
+        assert_eq!(life.last, 2);
+        // The destination is not a transient, so it has no lifetime to track.
+        assert!(!plan.lifetimes().contains_key(DESTINATION));
+    }
+
+    #[test]
+    fn transients_that_do_not_overlap_could_share_one_texture() {
+        // The property a future reuse step depends on. Asserted now because getting it wrong later
+        // means two passes writing the same memory and a picture nobody can explain.
+        let mut graph = RenderGraph::new();
+        graph.transient("first", 8, 8, TargetFormat::Srgb8);
+        graph.transient("second", 8, 8, TargetFormat::Srgb8);
+        graph.pass(
+            "draw",
+            PassKind::View {
+                index: 0,
+                clears: true,
+            },
+            &[],
+            &["first"],
+        );
+        graph.pass("copy", PassKind::Present, &["first"], &["second"]);
+        graph.pass("present", PassKind::Present, &["second"], &[DESTINATION]);
+
+        let plan = graph.compile().expect("valid");
+        let first = plan.lifetimes()["first"];
+        let second = plan.lifetimes()["second"];
+        // `first` is live over passes 0..=1 and `second` over 1..=2, so they *do* overlap and must
+        // stay separate. The interesting assertion is that the graph knows it.
+        assert!(first.overlaps(&second));
+
+        let disjoint = Lifetime { first: 3, last: 4 };
+        assert!(!first.overlaps(&disjoint));
+    }
+
+    #[test]
+    fn the_plan_knows_what_capture_should_read() {
+        let graph = two_views();
+        let plan = graph.compile().expect("valid");
+        // Not hardcoded anywhere: it is whatever the present pass was about to put on screen, so
+        // inserting post-processing before it moves this automatically.
+        assert_eq!(plan.destination_source(), Some("scene"));
+    }
+
+    fn frame_with_views(count: usize) -> FrameData {
+        FrameData {
+            views: (0..count)
+                .map(|_| View {
+                    camera: Camera::default(),
+                    eye: [0.0, 0.0],
+                    quads: Vec::new(),
+                    batches: Vec::new(),
+                })
+                .collect(),
+            ..FrameData::default()
+        }
+    }
+
+    #[test]
+    fn every_camera_gets_a_pass_and_only_the_first_clears() {
+        let frame = frame_with_views(3);
+        let graph = frame_graph(&frame, 320, 200);
+        let plan = graph.compile().expect("a frame graph is always valid");
+
+        assert_eq!(
+            labels(&graph, &plan),
+            ["view 0", "view 1", "view 2", "present"]
+        );
+
+        let clears: Vec<bool> = graph
+            .passes()
+            .iter()
+            .filter_map(|pass| match pass.kind {
+                PassKind::View { clears, .. } => Some(clears),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(clears, [true, false, false]);
+    }
+
+    #[test]
+    fn a_world_with_no_camera_still_gets_a_clearing_pass() {
+        // Otherwise the previous frame would persist and "no camera" would look like "frozen".
+        let frame = frame_with_views(0);
+        let graph = frame_graph(&frame, 320, 200);
+        let plan = graph.compile().expect("a frame graph is always valid");
+
+        assert_eq!(labels(&graph, &plan), ["clear", "present"]);
+    }
+
+    #[test]
+    fn the_scene_transient_matches_the_destination_size() {
+        // A viewport rectangle is a fraction of the target, so a transient that did not match the
+        // destination would put every camera in the wrong place by a scale factor.
+        let frame = frame_with_views(1);
+        let graph = frame_graph(&frame, 320, 200);
+        let scene = &graph.transients()[0];
+        assert_eq!((scene.width, scene.height), (320, 200));
+        assert_eq!(scene.format, TargetFormat::Srgb8);
+    }
+}

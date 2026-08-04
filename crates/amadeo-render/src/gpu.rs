@@ -16,8 +16,16 @@
 //!
 //! Steps 1–3 happen in [`WgpuBackend::new`]; steps 4–5 happen every frame in
 //! [`WgpuBackend::render`].
+//!
+//! # What decides the order of those passes
+//!
+//! Not this file. [`crate::graph`] builds a plan for the frame — which passes exist, what each one
+//! reads and writes — and derives the order from the dependencies. This backend *executes* that
+//! plan and does nothing else about ordering. The split is what makes a pass-ordering bug catchable
+//! with no GPU, and ADR 0034 is why the plan's types stay inside this crate.
 
 use crate::backend::{FrameData, RenderBackend, RenderError, View};
+use crate::graph::{self, DESTINATION, PassKind, Plan, RenderGraph, TargetFormat};
 use amadeo_image::{PixelFormat, TextureData};
 use std::any::Any;
 use std::collections::BTreeMap;
@@ -95,6 +103,39 @@ struct ViewDraws<'a> {
     draws: Vec<(&'a str, std::ops::Range<u32>)>,
 }
 
+/// The format every graph transient uses, and therefore the format everything is *drawn* in.
+///
+/// Deliberately not the destination's format — see [`TargetFormat`] for why, and it matters more
+/// than it sounds: a window surface is commonly BGRA, so a capture that inherited the destination
+/// format would come back with red and blue swapped on the windowed path only.
+const SCENE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+
+/// Turns the graph's format into wgpu's.
+///
+/// A `match` on a one-variant enum rather than a constant, so that adding a high-dynamic-range
+/// variant to [`TargetFormat`] fails to compile here instead of silently allocating the wrong thing.
+fn wgpu_format(format: TargetFormat) -> wgpu::TextureFormat {
+    match format {
+        TargetFormat::Srgb8 => SCENE_FORMAT,
+    }
+}
+
+/// One physical texture backing a graph transient.
+///
+/// Kept across frames rather than allocated per frame: a full-screen image is several megabytes, and
+/// creating one sixty times a second would be the most expensive thing the renderer did.
+#[derive(Debug)]
+struct PooledTexture {
+    width: u32,
+    height: u32,
+    format: TargetFormat,
+    texture: wgpu::Texture,
+    view: wgpu::TextureView,
+    /// Built once at creation so a later pass can sample it, for the same reason an uploaded
+    /// texture's bind group is: creating one is a driver-side allocation.
+    bind_group: wgpu::BindGroup,
+}
+
 /// Creates the colour target an offscreen backend draws into.
 ///
 /// `COPY_SRC` is the whole point: it is what allows the finished frame to be copied into a buffer
@@ -153,9 +194,10 @@ enum Target {
     },
     /// A texture this backend owns. Frames stay in memory and **can** be read back.
     ///
-    /// This is what `render.capture` needs and what agent mode uses, since ADR 0016 launches a game
-    /// with no window. Reading a *surface* texture back is not possible — a swapchain image is not
-    /// created with `COPY_SRC` and wgpu does not let you ask for one.
+    /// What agent mode uses, since ADR 0016 launches a game with no window. Reading a *surface*
+    /// texture back is not possible — a swapchain image is not created with `COPY_SRC` and wgpu does
+    /// not let you ask for one — so this is the only target a capture can read *after* the present
+    /// pass, which is why it is the path whose tests cover the whole pipeline.
     Offscreen { texture: wgpu::Texture },
 }
 
@@ -170,10 +212,23 @@ pub struct WgpuBackend {
     width: u32,
     /// Drawable size in physical pixels.
     height: u32,
-    /// The colour format everything is drawn in.
+    /// The colour format the **destination** uses — a window's surface format, or the offscreen
+    /// texture's. Everything is *drawn* in [`SCENE_FORMAT`]; this is only what the present pass
+    /// writes into.
     format: wgpu::TextureFormat,
     pipeline: wgpu::RenderPipeline,
     sprite_pipeline: wgpu::RenderPipeline,
+    /// Copies a finished transient onto the destination. See `present.wgsl`.
+    present_pipeline: wgpu::RenderPipeline,
+    /// Physical textures backing the graph's transients, reused within a frame and across frames.
+    transients: Vec<PooledTexture>,
+    /// Which pooled texture holds the last frame's finished picture.
+    ///
+    /// Only the **windowed** backend reads it, since an offscreen one can read its destination
+    /// directly and gets the present pass's output that way. An index rather than the texture,
+    /// because that keeps the pool the single owner — a second handle would have to be kept valid
+    /// across a resize that throws the pool away.
+    capture_source: Option<usize>,
     /// One aligned slot per camera, addressed by dynamic offset. ADR 0031.
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
@@ -446,7 +501,9 @@ impl WgpuBackend {
                 entry_point: Some("fs_main"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format,
+                    // The transient, not the destination: every camera draws into the graph's
+                    // scene image and the present pass puts it on screen.
+                    format: SCENE_FORMAT,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -565,7 +622,8 @@ impl WgpuBackend {
                 entry_point: Some("fs_main"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format,
+                    // The transient, as with the quad pipeline above.
+                    format: SCENE_FORMAT,
                     // Alpha blending, because a sprite sheet's transparent margins are the normal
                     // case rather than an effect.
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -596,6 +654,63 @@ impl WgpuBackend {
             mapped_at_creation: false,
         });
 
+        // --- The present pipeline. ---
+        //
+        // Reads a finished transient and writes the destination, so it is the one pipeline whose
+        // target format is `format` rather than `SCENE_FORMAT`. It reuses `texture_layout`, since
+        // sampling the scene image needs exactly what sampling a sprite's texture needs: one texture
+        // and one non-filtering sampler.
+        let present_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("amadeo present shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("present.wgsl").into()),
+        });
+
+        let present_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("amadeo present pipeline layout"),
+                // No camera: a full-screen pass has no view to be seen from.
+                bind_group_layouts: &[Some(&texture_layout)],
+                immediate_size: 0,
+            });
+
+        let present_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("amadeo present pipeline"),
+            layout: Some(&present_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &present_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                // No vertex buffer at all: the three corners come from the vertex index.
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &present_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    // Replace rather than blend. The scene image already has everything composited
+                    // into it, and blending it again would mix it with whatever the destination
+                    // happened to contain.
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
         Ok(Self {
             target,
             device,
@@ -605,6 +720,9 @@ impl WgpuBackend {
             format,
             pipeline,
             sprite_pipeline,
+            present_pipeline,
+            transients: Vec::new(),
+            capture_source: None,
             camera_buffer,
             camera_bind_group,
             camera_stride,
@@ -706,6 +824,112 @@ impl WgpuBackend {
         });
         self.sprite_capacity = capacity;
     }
+
+    /// Creates one physical texture a graph transient can be drawn into and then sampled from.
+    ///
+    /// The three usages are each load-bearing: `RENDER_ATTACHMENT` to draw into it,
+    /// `TEXTURE_BINDING` so the present pass can sample it, and `COPY_SRC` so `capture` can read it
+    /// back — which is the usage a window's own image can never have, and therefore the reason a
+    /// windowed run can capture at all.
+    fn create_transient(&self, width: u32, height: u32, format: TargetFormat) -> PooledTexture {
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("amadeo transient target"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu_format(format),
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("amadeo transient bind group"),
+            layout: &self.texture_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+
+        PooledTexture {
+            width,
+            height,
+            format,
+            texture,
+            view,
+            bind_group,
+        }
+    }
+
+    /// Gives every transient in the plan a physical texture, by name.
+    ///
+    /// Two transients share one texture when their descriptions match **and their lifetimes do not
+    /// overlap** — the graph works out when each one is live, and handing the same memory to two
+    /// images that are live at once is how a frame ends up with a picture nobody can explain.
+    ///
+    /// Textures also survive between frames, which is the saving that actually matters: a
+    /// full-screen image is several megabytes, and allocating one per frame would cost more than
+    /// everything else this backend does.
+    fn assign_transients(&mut self, graph: &RenderGraph, plan: &Plan) -> BTreeMap<String, usize> {
+        // Which pooled texture each transient took, and when that transient is live.
+        let mut claimed: Vec<(usize, graph::Lifetime)> = Vec::new();
+        let mut assigned = BTreeMap::new();
+
+        for transient in graph.transients() {
+            // Declared but never written. `compile` already refused anything that *reads* such a
+            // resource, so there is nothing to allocate and nothing that can observe the gap.
+            let Some(&life) = plan.lifetimes().get(&transient.name) else {
+                continue;
+            };
+
+            // A pooled texture of the right description that is not already serving a transient
+            // live at the same time.
+            let mut reusable = None;
+            for (index, pooled) in self.transients.iter().enumerate() {
+                if pooled.width != transient.width
+                    || pooled.height != transient.height
+                    || pooled.format != transient.format
+                {
+                    continue;
+                }
+                let busy = claimed
+                    .iter()
+                    .any(|(taken, taken_life)| *taken == index && taken_life.overlaps(&life));
+                if !busy {
+                    reusable = Some(index);
+                    break;
+                }
+            }
+
+            let index = match reusable {
+                Some(index) => index,
+                None => {
+                    let pooled =
+                        self.create_transient(transient.width, transient.height, transient.format);
+                    self.transients.push(pooled);
+                    self.transients.len() - 1
+                }
+            };
+
+            claimed.push((index, life));
+            assigned.insert(transient.name.clone(), index);
+        }
+
+        assigned
+    }
 }
 
 impl RenderBackend for WgpuBackend {
@@ -729,6 +953,12 @@ impl RenderBackend for WgpuBackend {
         }
         self.width = width;
         self.height = height;
+        // Every transient is destination-sized, so none of the pooled textures can serve the new
+        // size. Dropping them rather than keeping them means a window dragged across three sizes
+        // does not hold three full-screen images it will never use again; the next frame allocates
+        // what it needs.
+        self.transients.clear();
+        self.capture_source = None;
         match &mut self.target {
             Target::Window { surface, config } => {
                 config.width = width;
@@ -869,7 +1099,7 @@ impl RenderBackend for WgpuBackend {
             }
         };
 
-        let view = match (&surface_texture, &self.target) {
+        let destination_view = match (&surface_texture, &self.target) {
             (Some(texture), _) => texture
                 .texture
                 .create_view(&wgpu::TextureViewDescriptor::default()),
@@ -883,6 +1113,14 @@ impl RenderBackend for WgpuBackend {
                 });
             }
         };
+
+        // The plan for this frame: which passes exist, what each touches, and therefore what order
+        // they run in. Built and checked before anything is recorded, so an inconsistent graph is a
+        // clean error rather than half a frame.
+        let graph = graph::frame_graph(frame, self.width, self.height);
+        let plan = graph.compile().map_err(|error| RenderError::GraphInvalid {
+            reason: error.to_string(),
+        })?;
 
         // Everything is packed for the whole frame first, then drawn view by view. Packing per view
         // inside the encoder would not work: a queue write lands before the single submit at the
@@ -964,6 +1202,10 @@ impl RenderBackend for WgpuBackend {
                 .write_buffer(&self.sprite_buffer, 0, bytemuck::cast_slice(&sprites));
         }
 
+        // Every transient the plan needs, backed by a pooled texture. After this the pool is not
+        // touched again this frame, so the loop below can borrow it immutably.
+        let assigned = self.assign_transients(&graph, &plan);
+
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -977,41 +1219,36 @@ impl RenderBackend for WgpuBackend {
             a: f64::from(frame.clear_color[3]),
         });
 
-        // A world with no camera still gets one clearing pass. Without it the previous frame's image
-        // would persist, so "no camera" would look like "frozen" rather than like "empty" — and a
-        // world under construction genuinely has no camera yet.
-        if frame.views.is_empty() {
-            let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("amadeo clear pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: clear,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                multiview_mask: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-        }
+        for &pass_index in plan.order() {
+            let declared = &graph.passes()[pass_index];
 
-        for (index, (view_data, draws)) in frame.views.iter().zip(&per_view).enumerate() {
-            // Only the first camera clears. Later ones load what is already there, which is what
-            // makes a HUD camera compose over a world camera rather than erase it.
-            let load = if index == 0 {
-                clear
+            // Every pass this backend knows how to run writes exactly one image. A pass writing
+            // none has nothing to attach and is skipped rather than being a special case here — the
+            // graph would have to grow a compute pass before that is reachable.
+            let Some(target_name) = declared.writes.first() else {
+                continue;
+            };
+            let target_view = if target_name == DESTINATION {
+                &destination_view
             } else {
-                wgpu::LoadOp::Load
+                let Some(&pooled) = assigned.get(target_name) else {
+                    continue;
+                };
+                &self.transients[pooled].view
+            };
+
+            // Whether this pass starts from the clear colour or from what the previous pass left.
+            // Only the *first* camera clears, which is what makes a HUD camera compose over a world
+            // camera rather than erase it.
+            let load = match declared.kind {
+                PassKind::View { clears: false, .. } => wgpu::LoadOp::Load,
+                PassKind::View { .. } | PassKind::Clear | PassKind::Present => clear,
             };
 
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("amadeo view pass"),
+                label: Some(declared.label.as_str()),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view: target_view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -1025,49 +1262,87 @@ impl RenderBackend for WgpuBackend {
                 occlusion_query_set: None,
             });
 
-            let (px_x, px_y) = self.viewport_origin(view_data);
-            let (px_width, px_height) = self.viewport_pixels(view_data);
-            // A zero-sized viewport is a validation error rather than a no-op, so a camera with a
-            // degenerate rectangle is skipped instead of taking the whole frame down with it.
-            if px_width < 1.0 || px_height < 1.0 {
-                continue;
-            }
-            pass.set_viewport(px_x, px_y, px_width, px_height, 0.0, 1.0);
+            match declared.kind {
+                // Filling the target with the clear colour is the whole job, and beginning the pass
+                // above has already done it.
+                PassKind::Clear => {}
 
-            let camera_offset = index as u32 * self.camera_stride as u32;
-
-            if !draws.quads.is_empty() {
-                pass.set_pipeline(&self.pipeline);
-                pass.set_bind_group(0, &self.camera_bind_group, &[camera_offset]);
-                pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
-                // Four vertices (one strip), once per instance. One draw call for this view's quads.
-                pass.draw(0..4, draws.quads.clone());
-            }
-
-            // Sprites draw after quads, so a textured sprite sits over an untextured rectangle at
-            // the same position. `SortOrder` governs order *within* each of the two, and the two
-            // passes do not interleave -- worth knowing, and the reason a background drawn as a
-            // `Quad` behind sprites works without any sort order at all.
-            if !draws.draws.is_empty() {
-                pass.set_pipeline(&self.sprite_pipeline);
-                pass.set_bind_group(0, &self.camera_bind_group, &[camera_offset]);
-                pass.set_vertex_buffer(0, self.sprite_buffer.slice(..));
-
-                for (texture_id, range) in &draws.draws {
-                    // A batch naming a texture that was never uploaded is skipped rather than
-                    // drawn untextured. It should not happen -- `Renderer::upload_frame_textures`
-                    // uploads at least a placeholder for every batch before this runs -- and
-                    // binding the previous batch's texture instead would draw the wrong picture
-                    // silently, which is worse than a gap.
-                    let Some(texture) = self.textures.get(*texture_id) else {
+                PassKind::View { index, .. } => {
+                    let (Some(view_data), Some(draws)) =
+                        (frame.views.get(index), per_view.get(index))
+                    else {
                         continue;
                     };
-                    pass.set_bind_group(1, &texture.bind_group, &[]);
-                    // The one state change per batch that the whole batcher exists to minimise.
-                    pass.draw(0..4, range.clone());
+
+                    let (px_x, px_y) = self.viewport_origin(view_data);
+                    let (px_width, px_height) = self.viewport_pixels(view_data);
+                    // A zero-sized viewport is a validation error rather than a no-op, so a camera
+                    // with a degenerate rectangle is skipped instead of taking the frame down.
+                    if px_width < 1.0 || px_height < 1.0 {
+                        continue;
+                    }
+                    pass.set_viewport(px_x, px_y, px_width, px_height, 0.0, 1.0);
+
+                    let camera_offset = index as u32 * self.camera_stride as u32;
+
+                    if !draws.quads.is_empty() {
+                        pass.set_pipeline(&self.pipeline);
+                        pass.set_bind_group(0, &self.camera_bind_group, &[camera_offset]);
+                        pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
+                        // Four vertices (one strip), once per instance. One draw call for this
+                        // view's quads.
+                        pass.draw(0..4, draws.quads.clone());
+                    }
+
+                    // Sprites draw after quads, so a textured sprite sits over an untextured
+                    // rectangle at the same position. `SortOrder` governs order *within* each of
+                    // the two, and the two do not interleave -- worth knowing, and the reason a
+                    // background drawn as a `Quad` behind sprites works with no sort order at all.
+                    if !draws.draws.is_empty() {
+                        pass.set_pipeline(&self.sprite_pipeline);
+                        pass.set_bind_group(0, &self.camera_bind_group, &[camera_offset]);
+                        pass.set_vertex_buffer(0, self.sprite_buffer.slice(..));
+
+                        for (texture_id, range) in &draws.draws {
+                            // A batch naming a texture that was never uploaded is skipped rather
+                            // than drawn untextured. It should not happen -- `upload_frame_textures`
+                            // uploads at least a placeholder for every batch before this runs -- and
+                            // binding the previous batch's texture instead would draw the wrong
+                            // picture silently, which is worse than a gap.
+                            let Some(texture) = self.textures.get(*texture_id) else {
+                                continue;
+                            };
+                            pass.set_bind_group(1, &texture.bind_group, &[]);
+                            // The one state change per batch the whole batcher exists to minimise.
+                            pass.draw(0..4, range.clone());
+                        }
+                    }
+                }
+
+                PassKind::Present => {
+                    let Some(source) = declared
+                        .reads
+                        .first()
+                        .and_then(|name| assigned.get(name))
+                        .copied()
+                    else {
+                        continue;
+                    };
+                    pass.set_pipeline(&self.present_pipeline);
+                    pass.set_bind_group(0, &self.transients[source].bind_group, &[]);
+                    // Three vertices, one instance, no buffers — see `present.wgsl`.
+                    pass.draw(0..3, 0..1);
                 }
             }
         }
+
+        // What `capture` should read back: whatever the present pass was about to put on screen.
+        // Derived from the plan rather than named here, so inserting post-processing before the
+        // present pass moves it automatically instead of quietly capturing the pre-effect picture.
+        self.capture_source = plan
+            .destination_source()
+            .and_then(|name| assigned.get(name))
+            .copied();
 
         self.queue.submit(std::iter::once(encoder.finish()));
         // Presentation moved onto the queue in wgpu 30; it used to be a method on the texture.
@@ -1079,14 +1354,31 @@ impl RenderBackend for WgpuBackend {
     }
 
     fn capture(&mut self) -> Result<TextureData, RenderError> {
-        let Target::Offscreen { texture } = &self.target else {
-            return Err(RenderError::CaptureUnsupported {
-                backend: "wgpu (windowed)",
-                reason: "a window's swapchain image is not created with COPY_SRC, so it cannot be \
-                         read back. Use `WgpuBackend::offscreen` — which is what agent mode does, \
-                         since it has no window"
-                    .to_string(),
-            });
+        // # What gets read, and why the two backends differ by exactly one pass
+        //
+        // **Offscreen: the destination itself**, after the present pass has written it. So a
+        // captured frame is evidence about the *whole* pipeline, the final full-screen copy
+        // included — and since that is the path CI and agent mode both use (ADR 0016 launches a
+        // game with no window), nothing in the renderer escapes being tested.
+        //
+        // **Windowed: the transient the present pass was about to copy onto the window.** A
+        // window's image is not created with `COPY_SRC` and wgpu does not let you ask for one, so
+        // this is as far as a readback can reach. It is everything except that last copy — which
+        // is why a windowed run can capture at all now, where before it could only refuse.
+        let texture = match &self.target {
+            Target::Offscreen { texture } => texture,
+            Target::Window { .. } => {
+                let Some(source) = self.capture_source else {
+                    return Err(RenderError::CaptureUnsupported {
+                        backend: "wgpu (windowed)",
+                        reason: "nothing has been rendered yet, so there is no finished frame to \
+                                 read. Call `render` first; `render.describe` answers what *should* \
+                                 be on screen without drawing anything"
+                            .to_string(),
+                    });
+                };
+                &self.transients[source].texture
+            }
         };
 
         // A copy's row stride must be a multiple of 256 bytes, so the buffer is *wider* than the
