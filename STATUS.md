@@ -1,8 +1,9 @@
 # Amadeo — Current Status
 
 **Last updated:** 2026-08-04 (end of session 9)
-**Current phase:** **M0 complete. M1 closed. M2 under way, with all three of its expensive decisions
-made before their code.** **ADR 0031** settles 2D/3D coexistence and makes the camera an entity —
+**Current phase:** **M0 complete. M1 closed. M2 under way, with all four of its expensive decisions
+made before their code** — ADR 0035 settles what a mesh asset is (a procedural shape or vertex data),
+and its data half is built. **ADR 0031** settles 2D/3D coexistence and makes the camera an entity —
 decided, then built. **ADR 0033** settles the material and shader model — decided, not yet built,
 because the code it calls for needs mesh rendering. **ADR 0034** settles whether the render graph is
 a public API — it is not — decided, then built the same session.
@@ -59,10 +60,10 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
 `games/vault`.
-**900 tests passing** (plus 7 GPU capture tests behind `--features gpu`); fmt, clippy
+**912 tests passing** (plus 7 GPU capture tests behind `--features gpu`); fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
-Twenty-two things work end to end today:
+Twenty-three things work end to end today:
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -100,6 +101,11 @@ Twenty-two things work end to end today:
   `NullBackend` compiles the same graph and reports the resolved order — a pass-ordering bug is
   catchable with no GPU. Composing the frame off-screen is also **what gave the windowed backend
   `capture`**, which this file had listed as waiting on post-processing.
+- **A shape written as three numbers becomes geometry.** `games/vault/assets/meshes/wall_panel.mesh`
+  is six lines of text carrying `BoxMesh { size 1.0 2.5 0.2 }`, and it comes out as a tessellated box
+  of exactly that size — no toolchain, no binary, no import step (ADR 0035). `amadeo check` validates
+  it and `amadeo fmt --check` finds it already canonical. **Nothing draws it yet**; the mesh pass is
+  the next thing to build, and the data it will read is done.
 - **A camera has a look, and the look is a file.** `environment "corridor_dark"` on a camera, and the
   file behind it is a scene document with one `Environment` — exposure, tonemap, grade, vignette, in
   an order the engine fixes because the order is arithmetic rather than taste (ADR 0034). The
@@ -168,16 +174,32 @@ of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**Mesh rendering and PBR** — and with it the `Material` field list ADR 0033 deferred, plus the depth
-buffer that three other things are now waiting on.
+**The mesh pass — the GPU half of 3D.** ADR 0035 is decided and its *data* half is built: `BoxMesh`
+and `PlaneMesh` tessellate into `MeshData`, `Material` carries the metallic-roughness fields,
+`MeshCache` and `MaterialCache` hold them, and `App::load_meshes`/`load_materials` read them off
+disk. `games/vault/assets/meshes/wall_panel.mesh` is six lines of text that becomes a tessellated box
+with the right dimensions, proved end to end.
 
-Post-processing landed in session 9, and what it did *not* build is the clearest statement of what to
-do next:
+**Nothing is on screen in 3D yet**, and that was deliberate — the hard-to-undo half went first.
+What is left is all behind `RenderBackend`, which is exactly the part four ADRs have now found to be
+cheap:
 
-- **Fog and volumetrics need a depth buffer**, which is the mesh pass's to create. `docs/00-vision.md`
-  calls them requirements rather than polish, and M3's exit gate 5 — a dark corridor with a moving
-  flashlight that reads as genuinely atmospheric — is the exam. Fog is the piece it most needs and
-  the piece that cannot be built yet.
+1. **Perspective projection that actually draws.** `Projection::Perspective` exists and
+   `renders_nothing_through_a_perspective_camera_yet` pins that it is skipped. Needs a real
+   view-projection matrix, where the 2D path uses `GpuCamera { center, half_extents }`.
+   `amadeo-transform`'s scalar `Mat4` has compose-and-multiply and will need a perspective and an
+   inverse.
+2. **A depth buffer**, as a graph transient with a depth format — `TargetFormat` needs a third
+   variant, which is the shape it was built for.
+3. **The mesh pass and a PBR shader**, batching by `(sort order, material)` per ADR 0033.
+4. **Lights.** A `DirectionalLight` component, following ADR 0031's precedent that a camera is an
+   entity rather than a resource.
+
+Then fog and volumetrics, which need the depth buffer from (2), and which M3's exit gate 5 depends
+on. Then shadow maps, culling and glTF import — the last of which ADR 0035 made additive.
+
+**Also still open in the renderer, in rough order after the mesh pass:**
+
 - **Bloom's blur passes.** Its fields exist in the schema and are inert (`intensity` defaults to
   zero). This is the first effect needing more than one pass, so it is what will finally give
   `assign_transients` two same-shaped transients to reuse a texture between — `Lifetime::overlaps` is
@@ -185,7 +207,19 @@ do next:
 - **Render targets on a camera**, which ADR 0031 shipped as a field and nothing implements. Q23 says
   per-camera post-processing is the same work, so do them together.
 
-Then the rest of 3D: lights, shadows, culling, glTF.
+### A gap found by running a claim instead of repeating it
+
+ADRs 0033, 0034 and 0035 all say the same thing: a material, an environment and a mesh are scene
+files, so `amadeo check` validates them **for nothing**. Pointed at the environment file the Vault
+already ships, it refused — *no component named `Environment` is registered*.
+
+The loader reads the type directly through `Reflect::from_value` and never consults the
+`ComponentRegistry`, so **loading worked while validation did not**, and the two disagreed about what
+counts as valid. Fixed where it belongs — a game that ships an asset registers the type it holds —
+and both files are now checked in CI, which is what would have caught it.
+
+**Worth generalising**: "the existing toolchain applies for nothing" is a claim about *other* code,
+which makes it exactly the kind that gets written into an ADR and never executed. Run it.
 
 **Nothing is blocked and nothing is undecided.** All three of M2's expensive decisions are made
 before their code — ADR 0031 for 2D/3D coexistence and the camera, ADR 0033 for the material and
