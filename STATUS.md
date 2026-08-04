@@ -205,6 +205,31 @@ Since then the *whole CPU side* has landed too, so what is left is only the wgpu
    only the backend knows the target size. `View` deliberately carries the camera's transform rather
    than a finished view-projection for that reason.
 
+#### One wrinkle already found by reading, before writing any of it
+
+**A depth texture cannot use the transient pool's existing bind group.** `create_transient` builds
+one against `texture_layout`, which declares `TextureSampleType::Float` — correct for every transient
+so far, all of which are colour images that a later pass samples. A depth texture's sample type is
+`Depth`, so creating that bind group against it is a wgpu validation error at *creation*, not at
+draw, which makes it look like an allocation bug rather than a layout one.
+
+Two ways out, and the second is better: give `PooledTexture::bind_group` an `Option` and leave it
+`None` for depth (nothing samples the depth buffer until shadow maps or fog need it), or give depth
+its own layout. **Prefer the `Option`** — it is honest about the fact that nothing reads it yet, and
+the day something does, the compiler asks about every place that assumed it could.
+
+Related: `assign_transients` matches on `(width, height, format)`, so a depth transient will never be
+handed a colour texture by accident. That was luck rather than design, and is worth keeping.
+
+#### And a decision to make when the pass is written
+
+**Where does depth fit into the graph's vocabulary?** A `Pass` currently declares `reads` and
+`writes`, both colour. A depth attachment is neither exactly — it is written, but it is also *state*
+the pass tests against. The simplest honest answer is a `Pass::depth: Option<String>` naming a
+transient, cleared by the first view pass and loaded by later ones, which is the same rule colour
+already follows. Not decided; it is cheap either way, and the graph is internal (ADR 0034) so nothing
+outside the crate can observe the choice.
+
 Then fog and volumetrics, which need the depth buffer from (2), and which M3's exit gate 5 depends
 on. Then shadow maps, culling and glTF import — the last of which ADR 0035 made additive.
 
