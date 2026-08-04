@@ -95,6 +95,32 @@ struct ViewDraws<'a> {
     draws: Vec<(&'a str, std::ops::Range<u32>)>,
 }
 
+/// Creates the colour target an offscreen backend draws into.
+///
+/// `COPY_SRC` is the whole point: it is what allows the finished frame to be copied into a buffer
+/// and read back, and it is exactly what a swapchain image does not have.
+fn offscreen_texture(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("amadeo offscreen target"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    })
+}
+
 /// One uploaded texture and the bind group that binds it.
 ///
 /// The bind group is built once at upload and kept, rather than rebuilt per frame: creating one is a
@@ -113,13 +139,39 @@ struct GpuTexture {
     bind_group: wgpu::BindGroup,
 }
 
-/// A wgpu-backed renderer drawing into a window surface.
+/// Where a finished frame goes.
+///
+/// The windowed and offscreen backends differ in **this and nothing else** — same pipelines, same
+/// buffers, same passes — which is what makes a captured image evidence about the real renderer
+/// rather than about a second one written to be testable.
+#[derive(Debug)]
+enum Target {
+    /// A window's swapchain. Frames are presented and cannot be read back.
+    Window {
+        surface: wgpu::Surface<'static>,
+        config: wgpu::SurfaceConfiguration,
+    },
+    /// A texture this backend owns. Frames stay in memory and **can** be read back.
+    ///
+    /// This is what `render.capture` needs and what agent mode uses, since ADR 0016 launches a game
+    /// with no window. Reading a *surface* texture back is not possible — a swapchain image is not
+    /// created with `COPY_SRC` and wgpu does not let you ask for one.
+    Offscreen { texture: wgpu::Texture },
+}
+
+/// A wgpu-backed renderer drawing into a window surface or an offscreen texture.
 #[derive(Debug)]
 pub struct WgpuBackend {
-    surface: wgpu::Surface<'static>,
+    /// Where finished frames go, and the only thing that differs between the two constructors.
+    target: Target,
     device: wgpu::Device,
     queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
+    /// Drawable size in physical pixels.
+    width: u32,
+    /// Drawable size in physical pixels.
+    height: u32,
+    /// The colour format everything is drawn in.
+    format: wgpu::TextureFormat,
     pipeline: wgpu::RenderPipeline,
     sprite_pipeline: wgpu::RenderPipeline,
     /// One aligned slot per camera, addressed by dynamic offset. ADR 0031.
@@ -231,6 +283,86 @@ impl WgpuBackend {
 
         surface.configure(&device, &config);
 
+        Self::build(
+            device,
+            queue,
+            Target::Window { surface, config },
+            width.max(1),
+            height.max(1),
+            format,
+        )
+    }
+
+    /// Creates a backend drawing into a texture it owns, with no window.
+    ///
+    /// **This is the one whose output can be read back** — see [`RenderBackend::capture`]. Agent mode
+    /// has no window (ADR 0016 launches a game headless), so this is the path that gives the agent
+    /// eyes, and ADR 0021 named that as capture's whole purpose.
+    ///
+    /// Everything after the device is identical to [`WgpuBackend::new`]: same shaders, same
+    /// pipelines, same passes. Only where the frame lands differs, which is what makes a captured
+    /// image evidence about the renderer that actually ships.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::InitFailed`] if no adapter or device is available — which is the ordinary case
+    /// on a machine with no GPU at all, and worth handling rather than panicking, since a headless
+    /// CI runner is exactly such a machine.
+    pub fn offscreen(width: u32, height: u32) -> Result<Self, RenderError> {
+        let instance =
+            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+
+        // No `compatible_surface`, which is the only difference in adapter selection — and what
+        // allows a software adapter to answer on a machine with no GPU.
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            ..Default::default()
+        }))
+        .map_err(|error| RenderError::InitFailed {
+            backend: "wgpu",
+            reason: format!(
+                "no GPU adapter found for offscreen rendering: {error}. \
+                 A machine with no GPU and no software fallback cannot capture; \
+                 `render.describe` answers the same questions without one."
+            ),
+        })?;
+
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("amadeo offscreen device"),
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::default(),
+            ..Default::default()
+        }))
+        .map_err(|error| RenderError::InitFailed {
+            backend: "wgpu",
+            reason: format!("the GPU adapter refused a device: {error}"),
+        })?;
+
+        // sRGB to match what a window surface is configured with, so a captured image and a
+        // displayed one agree about colour rather than differing by a gamma curve.
+        let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+        let width = width.max(1);
+        let height = height.max(1);
+        let texture = offscreen_texture(&device, width, height, format);
+
+        Self::build(
+            device,
+            queue,
+            Target::Offscreen { texture },
+            width,
+            height,
+            format,
+        )
+    }
+
+    /// Everything both constructors share: shaders, pipelines, buffers, samplers.
+    fn build(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        target: Target,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+    ) -> Result<Self, RenderError> {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("amadeo quad shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("quad.wgsl").into()),
@@ -465,10 +597,12 @@ impl WgpuBackend {
         });
 
         Ok(Self {
-            surface,
+            target,
             device,
             queue,
-            config,
+            width,
+            height,
+            format,
             pipeline,
             sprite_pipeline,
             camera_buffer,
@@ -545,19 +679,13 @@ impl WgpuBackend {
     /// One view's target rectangle in physical pixels, as an origin.
     fn viewport_origin(&self, view: &View) -> (f32, f32) {
         let rect = view.camera.viewport;
-        (
-            rect[0] * self.config.width as f32,
-            rect[1] * self.config.height as f32,
-        )
+        (rect[0] * self.width as f32, rect[1] * self.height as f32)
     }
 
     /// One view's target rectangle in physical pixels, as a size.
     fn viewport_pixels(&self, view: &View) -> (f32, f32) {
         let rect = view.camera.viewport;
-        (
-            rect[2] * self.config.width as f32,
-            rect[3] * self.config.height as f32,
-        )
+        (rect[2] * self.width as f32, rect[3] * self.height as f32)
     }
 
     /// The same doubling growth for the sprite buffer.
@@ -590,7 +718,7 @@ impl RenderBackend for WgpuBackend {
     }
 
     fn viewport(&self) -> (u32, u32) {
-        (self.config.width, self.config.height)
+        (self.width, self.height)
     }
 
     fn resize(&mut self, width: u32, height: u32) {
@@ -599,9 +727,20 @@ impl RenderBackend for WgpuBackend {
         if width == 0 || height == 0 {
             return;
         }
-        self.config.width = width;
-        self.config.height = height;
-        self.surface.configure(&self.device, &self.config);
+        self.width = width;
+        self.height = height;
+        match &mut self.target {
+            Target::Window { surface, config } => {
+                config.width = width;
+                config.height = height;
+                surface.configure(&self.device, config);
+            }
+            // A texture cannot be resized, so it is replaced. The old one is dropped with the
+            // assignment, and nothing outside this backend holds a view onto it.
+            Target::Offscreen { texture } => {
+                *texture = offscreen_texture(&self.device, width, height, self.format);
+            }
+        }
     }
 
     fn has_texture(&self, id: &str) -> bool {
@@ -688,41 +827,62 @@ impl RenderBackend for WgpuBackend {
     }
 
     fn render(&mut self, frame: &FrameData) -> Result<(), RenderError> {
-        // wgpu reports several non-fatal reasons a frame cannot be drawn right now. Each one means
-        // "skip this frame", not "the renderer is broken": the window is being resized, minimised,
-        // or covered. Treating any of them as fatal would kill a game on an ordinary alt-tab.
-        let surface_texture = match self.surface.get_current_texture() {
-            // Suboptimal still draws correctly — usually the surface wants reconfiguring, which the
-            // next resize event will do anyway.
-            wgpu::CurrentSurfaceTexture::Success(texture)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                // The surface needs rebuilding at its current size before anything can be drawn.
-                self.surface.configure(&self.device, &self.config);
-                return Err(RenderError::SurfaceUnavailable {
-                    reason: "surface outdated or lost; reconfigured for the next frame".to_string(),
-                });
-            }
-            wgpu::CurrentSurfaceTexture::Timeout => {
-                return Err(RenderError::SurfaceUnavailable {
-                    reason: "timed out acquiring the next frame".to_string(),
-                });
-            }
-            wgpu::CurrentSurfaceTexture::Occluded => {
-                return Err(RenderError::SurfaceUnavailable {
-                    reason: "window is occluded".to_string(),
-                });
-            }
-            other => {
-                return Err(RenderError::SurfaceUnavailable {
-                    reason: format!("unexpected surface state: {other:?}"),
-                });
+        // An offscreen target is always available; a window's is not. `surface_texture` is `Some`
+        // only in the windowed case, and is what gets presented at the end.
+        let surface_texture = match &self.target {
+            Target::Offscreen { .. } => None,
+            Target::Window { surface, config } => {
+                // wgpu reports several non-fatal reasons a frame cannot be drawn right now. Each one
+                // means "skip this frame", not "the renderer is broken": the window is being
+                // resized, minimised, or covered. Treating any of them as fatal would kill a game on
+                // an ordinary alt-tab.
+                match surface.get_current_texture() {
+                    // Suboptimal still draws correctly — usually the surface wants reconfiguring,
+                    // which the next resize event will do anyway.
+                    wgpu::CurrentSurfaceTexture::Success(texture)
+                    | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => Some(texture),
+                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                        // The surface needs rebuilding at its current size before anything can be
+                        // drawn.
+                        surface.configure(&self.device, config);
+                        return Err(RenderError::SurfaceUnavailable {
+                            reason: "surface outdated or lost; reconfigured for the next frame"
+                                .to_string(),
+                        });
+                    }
+                    wgpu::CurrentSurfaceTexture::Timeout => {
+                        return Err(RenderError::SurfaceUnavailable {
+                            reason: "timed out acquiring the next frame".to_string(),
+                        });
+                    }
+                    wgpu::CurrentSurfaceTexture::Occluded => {
+                        return Err(RenderError::SurfaceUnavailable {
+                            reason: "window is occluded".to_string(),
+                        });
+                    }
+                    other => {
+                        return Err(RenderError::SurfaceUnavailable {
+                            reason: format!("unexpected surface state: {other:?}"),
+                        });
+                    }
+                }
             }
         };
 
-        let view = surface_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        let view = match (&surface_texture, &self.target) {
+            (Some(texture), _) => texture
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            (None, Target::Offscreen { texture }) => {
+                texture.create_view(&wgpu::TextureViewDescriptor::default())
+            }
+            // Unreachable: a window target always produced a texture above or returned.
+            (None, Target::Window { .. }) => {
+                return Err(RenderError::SurfaceUnavailable {
+                    reason: "no surface texture was acquired".to_string(),
+                });
+            }
+        };
 
         // Everything is packed for the whole frame first, then drawn view by view. Packing per view
         // inside the encoder would not work: a queue write lands before the single submit at the
@@ -911,7 +1071,96 @@ impl RenderBackend for WgpuBackend {
 
         self.queue.submit(std::iter::once(encoder.finish()));
         // Presentation moved onto the queue in wgpu 30; it used to be a method on the texture.
-        self.queue.present(surface_texture);
+        // An offscreen frame is not presented — it stays in its texture, which is the point.
+        if let Some(texture) = surface_texture {
+            self.queue.present(texture);
+        }
         Ok(())
+    }
+
+    fn capture(&mut self) -> Result<TextureData, RenderError> {
+        let Target::Offscreen { texture } = &self.target else {
+            return Err(RenderError::CaptureUnsupported {
+                backend: "wgpu (windowed)",
+                reason: "a window's swapchain image is not created with COPY_SRC, so it cannot be \
+                         read back. Use `WgpuBackend::offscreen` — which is what agent mode does, \
+                         since it has no window"
+                    .to_string(),
+            });
+        };
+
+        // A copy's row stride must be a multiple of 256 bytes, so the buffer is *wider* than the
+        // image whenever the width is not. The padding is stripped again below; forgetting that is
+        // the classic readback bug, and it looks like a picture sheared diagonally.
+        let bytes_per_pixel = PixelFormat::Rgba8UnormSrgb.bytes_per_pixel();
+        let unpadded = self.width * bytes_per_pixel;
+        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let padded = unpadded.div_ceil(align) * align;
+
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("amadeo capture readback"),
+            size: u64::from(padded) * u64::from(self.height),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("amadeo capture encoder"),
+            });
+        encoder.copy_texture_to_buffer(
+            texture.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded),
+                    rows_per_image: Some(self.height),
+                },
+            },
+            wgpu::Extent3d {
+                width: self.width,
+                height: self.height,
+                depth_or_array_layers: 1,
+            },
+        );
+        self.queue.submit(std::iter::once(encoder.finish()));
+
+        // Mapping is asynchronous, and the callback only runs while the device is polled. `Wait`
+        // blocks until the queue is idle, which is exactly what is wanted here: capture is an
+        // introspection call, never a per-frame one.
+        let slice = buffer.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |_| {});
+        self.device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: None,
+            })
+            .map_err(|error| RenderError::CaptureUnsupported {
+                backend: "wgpu",
+                reason: format!("the device did not finish the capture copy: {error}"),
+            })?;
+
+        let mapped = slice
+            .get_mapped_range()
+            .map_err(|error| RenderError::CaptureUnsupported {
+                backend: "wgpu",
+                reason: format!("the readback buffer could not be mapped: {error}"),
+            })?;
+        let mut pixels = Vec::with_capacity((unpadded * self.height) as usize);
+        for row in 0..self.height {
+            let start = (row * padded) as usize;
+            pixels.extend_from_slice(&mapped[start..start + unpadded as usize]);
+        }
+        drop(mapped);
+        buffer.unmap();
+
+        Ok(TextureData {
+            width: self.width,
+            height: self.height,
+            format: PixelFormat::Rgba8UnormSrgb,
+            pixels,
+        })
     }
 }

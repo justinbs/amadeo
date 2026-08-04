@@ -27,6 +27,19 @@ pub enum RenderError {
         /// Why.
         reason: String,
     },
+
+    /// This backend cannot hand back the pixels it drew.
+    ///
+    /// Not a failure so much as a fact about the backend, which is why it says which one and what to
+    /// use instead. `NullBackend` draws nothing at all; a *windowed* wgpu backend draws into a
+    /// swapchain image that is not readable.
+    #[error("{backend} cannot capture: {reason}")]
+    CaptureUnsupported {
+        /// Which backend was asked.
+        backend: &'static str,
+        /// Why not, and what answers the same question instead.
+        reason: String,
+    },
 }
 
 /// One quad, flattened into what a GPU needs.
@@ -271,6 +284,33 @@ pub trait RenderBackend: fmt::Debug + Send + Sync {
 
     /// Draws one frame.
     fn render(&mut self, frame: &FrameData) -> Result<(), RenderError>;
+
+    /// Hands back the pixels of the most recently drawn frame.
+    ///
+    /// **The agent's eyes** — ADR 0021 names capture as exactly that, and it is the one thing
+    /// `render.describe` cannot do: `describe` reports what *should* be drawn, computed from the
+    /// world, and nothing else checks what the GPU actually produced.
+    ///
+    /// # The default is an error, and that is the right answer for most backends
+    ///
+    /// A backend that cannot read its own output should say so rather than return a blank image that
+    /// a caller would have to know not to trust. `NullBackend` draws nothing; a windowed wgpu backend
+    /// draws into a swapchain image that is not created with `COPY_SRC`. Only
+    /// [`WgpuBackend::offscreen`](crate::WgpuBackend::offscreen) can answer, and agent mode is
+    /// headless anyway.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::CaptureUnsupported`] by default, naming the backend and what to use instead.
+    fn capture(&mut self) -> Result<TextureData, RenderError> {
+        Err(RenderError::CaptureUnsupported {
+            backend: self.name(),
+            reason:
+                "this backend does not keep the pixels it drew. `render.describe` answers what \
+                     should be on screen without a GPU; capture needs an offscreen wgpu backend"
+                    .to_string(),
+        })
+    }
 }
 
 /// A backend that draws nothing and records what it was asked to draw.

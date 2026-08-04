@@ -93,7 +93,10 @@ crates/
                      id -> bytes -> pixels, with a three-step placeholder fallback ending in an
                      image built in code so it cannot itself be missing. wgpu behind `gpu` draws
                      **quads and sprites**: texture upload, a nearest sampler, one bind group per
-                     texture, one draw call per batch. Still to come: render targets, `render.capture`.
+                     texture, one draw call per batch. WgpuBackend::offscreen renders into a texture
+                     it owns instead of a window, and RenderBackend::capture reads it back -- the
+                     GPU path is testable, and tests/capture.rs is its first coverage. Still to come:
+                     `render.capture` over the protocol, and render targets on a camera.
 — amadeo-audio       mixer, buses, spatialization (null backend required)
 — amadeo-physics     rapier integration behind engine traits
 — amadeo-anim        sprite anim, skeletal, state machines, tweens

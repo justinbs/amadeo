@@ -41,10 +41,10 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
 `games/vault`.
-**857 tests passing**; fmt, clippy
+**861 tests passing** (plus 4 GPU capture tests behind `--features gpu`); fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
-Nineteen things work end to end today:
+Twenty things work end to end today:
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -76,6 +76,10 @@ Nineteen things work end to end today:
   from where. A world may hold any number (ADR 0031) -- each with a projection, a target that is the
   window or a texture, a viewport rectangle, and an order -- and a camera parented to a character
   *is* a follow camera, with no special case.
+- **The GPU can be checked without eyes.** `WgpuBackend::offscreen` renders into a texture it owns
+  and `capture` reads the pixels back, so a test can assert that a red quad reached the middle of the
+  target and did not fill the corners. The offscreen and windowed backends differ only in where the
+  frame lands, so that is evidence about the renderer that ships.
 - **Sprites are on the screen.** `cargo run -p quad-demo` shows a strip of textured floor tiles, each
   reading a different cell of one 2×2 texture through its `region` — one texture, one draw call — plus
   one sprite deliberately asking for an id that does not exist, which draws the magenta placeholder.
@@ -144,14 +148,13 @@ asset id may fit it better than nesting does, and ADR 0029 already built that ma
 
 ### The rest of M2
 
-- **`render.capture`** — headless render-target readback. The GPU path still has **no automated
-  coverage at all**: `render.describe` checks what *should* be drawn, and nothing checks what the
-  wgpu backend actually put on screen. ADR 0021 already names capture as the agent's eyes. It becomes
-  much more natural once a camera can target a texture, which ADR 0031 gives it.
-
-  **Scoped, ready to start.** It needs an *offscreen* wgpu backend — `WgpuBackend` currently owns a
-  surface and renders into it, and a surface texture is not readable. So: make the surface optional,
-  render into an owned `RENDER_ATTACHMENT | COPY_SRC` texture when there is none, add
+- **`render.capture` as a protocol method.** The *mechanism* is built and tested — an offscreen wgpu
+  backend, `RenderBackend::capture`, and the first four tests the GPU path has ever had. What is left
+  is exposing it over the protocol, and one decision inside that: **what a capture is returned as.**
+  Pixels in JSON would be enormous, so it wants to be a file — and the engine can currently *decode*
+  PNG but not encode one (`amadeo-image` is read-only; the Vault.s `pix` tool writes PNG as a game
+  dependency). So the choice is a PNG encoder in `amadeo-image` behind a feature, or writing PPM,
+  which is trivial and which nothing but this would read. Worth deciding rather than defaulting.| COPY_SRC` texture when there is none, add
   `RenderBackend::capture` (defaulting to a "not supported" error, which is the right answer for
   `NullBackend` — `render.describe` is its answer), and have the agent host create one lazily behind
   a `gpu` feature on `amadeo-app`. Agent mode is headless, so the offscreen path is the one that
@@ -1542,3 +1545,27 @@ on purpose — several record a diagnosis that took a while to reach.
 
   **Every open question this session raised was closed in it** — Q7, Q19, Q21, Q22 — along with Q3,
   Q10 and M1's gate 4. What is left is build work rather than decisions.
+
+  **Then the GPU path got its first automated coverage, ever.** `STATUS.md` carried "no automated
+  coverage at all" as a known gap through three milestones: `render.describe` checks what *should* be
+  drawn, computed from the world, and nothing checked what the GPU actually produced. Every claim
+  about the wgpu backend rested on somebody opening a window and looking.
+
+  `WgpuBackend::offscreen(width, height)` renders into a texture it owns rather than a window's
+  swapchain, and `RenderBackend::capture` reads it back. **The two backends differ in where the frame
+  lands and in nothing else** — same shaders, same pipelines, same passes — which is what makes a
+  captured image evidence about the renderer that ships rather than about a second one written to be
+  testable. It is also the path agent mode needs, since ADR 0016 launches a game with no window.
+
+  Four tests: the clear colour is the dark non-black it is supposed to be, a red `Quad` reaches the
+  middle pixels *and does not fill the corners*, two cameras over one world produce different images,
+  and a backend that cannot capture says so while naming what answers the same question instead.
+  That third one is the interesting one — it catches a projection wired up wrongly, which
+  `render.describe` structurally cannot, because `describe` *computes* the same projection rather
+  than observing it.
+
+  They skip and pass on a machine with no adapter, which is honest rather than convenient: a missing
+  GPU is a fact about the machine. CI runs them as their own step, since `cargo test --workspace`
+  does not enable the `gpu` feature.
+
+  861 tests plus the 4 GPU ones, all four verification commands green.

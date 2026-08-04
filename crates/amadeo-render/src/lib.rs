@@ -144,6 +144,21 @@ impl Renderer {
         self.last_error.as_ref()
     }
 
+    /// The pixels of the most recently drawn frame.
+    ///
+    /// **The agent's eyes** (ADR 0021), and the only thing that checks what the GPU actually
+    /// produced rather than what the world says should be produced. Backed by
+    /// [`RenderBackend::capture`], so what it can answer depends on which backend is installed —
+    /// only an offscreen wgpu one can, which is the one agent mode uses.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::CaptureUnsupported`] when the installed backend cannot read its own output.
+    /// The message names the backend and what answers the same question instead.
+    pub fn capture(&mut self) -> Result<TextureData, RenderError> {
+        self.backend.capture()
+    }
+
     /// The backend as a [`NullBackend`], if that is what it is.
     ///
     /// Lets headless tests and CI assert on what *would* have been drawn without a GPU. Returns
