@@ -1,7 +1,14 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-03 (end of session 8)
-**Current phase:** **M0 complete. M1 closed, M2 started.** **ADR 0031** settles 2D/3D coexistence and makes the camera an entity — decided before code, then built: a world can hold any number of cameras, each with a projection, a target, a viewport rectangle and an order.
+**Last updated:** 2026-08-04 (end of session 8)
+**Current phase:** **M0 complete. M1 closed. M2 under way, with both of its expensive decisions made
+before their code.** **ADR 0031** settles 2D/3D coexistence and makes the camera an entity — decided,
+then built. **ADR 0033** settles the material and shader model — decided, not yet built, because the
+code it calls for needs mesh rendering.
+
+**The agent can see.** `amadeo capture shot.png` launches a game headless, renders it on an offscreen
+GPU and writes a PNG. That closes ADR 0021's "agent's eyes" and gave the GPU path its first automated
+coverage, which `STATUS.md` had carried as a known gap through three milestones.
 
 **M1 closed — all five exit gates tested, four met and one refuted.**
 Reflection, the scene format, the agent's read layer, the agent protocol and a working `amadeo` CLI,
@@ -13,8 +20,13 @@ rather than an omission. **ADR 0030 settles what the protocol is for** and fixes
 that finding that were genuine holes; the API half stays in `docs/07` by invariant I5. **ADR 0029
 closes Q7** with prefabs, and **ADR 0032 closes Q21** by letting a scene file nest values at all.
 Q3, Q4, Q7, Q10, Q13, Q14, Q16, Q17, Q19, Q21 and Q22 are all closed, and **every question this
-session opened has been closed in it**. Nothing is blocked.
+session opened has been closed in it**. Nothing is blocked and nothing is undecided.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
+**Two commits were waiting to be pushed at the end of session 8** — `3ea5794` (`render.capture`) and
+`c017854` (ADR 0033). Check with `git log --oneline origin/main..HEAD` before assuming; Justin
+pushes, and he had been pushing as the session went.
+**Two commits are waiting to be pushed** as of this writing: `3ea5794` (render.capture) and
+`c017854` (ADR 0033). Justin pushes -- see the rules below.
 
 > ### ⚠️ Two working rules that changed in session 7 — read before doing anything
 >
@@ -137,14 +149,26 @@ of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**The render graph proper, running once per camera** — M2's next build item, and ADR 0031 has just
-settled its shape. Declared passes, resource dependencies, transient targets. Then 3D: meshes, PBR,
-lights, shadows, culling, glTF.
+**The render graph proper, running once per camera** — M2's next build item, and ADR 0031 settled its
+shape. Declared passes, resource dependencies, transient targets. Then 3D: meshes, PBR, lights,
+shadows, culling, glTF.
 
-**Nothing is blocked and nothing is undecided.** Every question this session raised was closed in
-it, the agent can now see (`amadeo capture shot.png` renders a game with no window and writes a PNG),
-and **M2's two expensive decisions are both made before their code** — ADR 0031 for 2D/3D coexistence
-and the camera, ADR 0033 for the material and shader model. What is left is build work.
+**Nothing is blocked and nothing is undecided.** Every question session 8 raised was closed in it,
+the agent can now see (`amadeo capture shot.png` renders a game with no window and writes a PNG), and
+**M2's two expensive decisions are both made before their code** — ADR 0031 for 2D/3D coexistence and
+the camera, ADR 0033 for the material and shader model. What is left is build work.
+
+### One decision hides inside the render graph — raise it before building
+
+**Is the graph a public, extensible surface or an internal detail of the wgpu backend?** M2 requires
+a *configurable* post-process stack, which implies games or modules can add passes — and that makes
+the graph an API rather than an implementation, which is expensive to change afterwards.
+
+This was spotted in session 8 and deliberately not decided, because nothing had been built against
+it yet. It follows the same shape as the last three renderer decisions: the *mechanism* is cheap
+(`RenderBackend` isolates it), so ask what **data** an extensible graph implies — is a pass declared
+in a text file, and if so what names its inputs and outputs? Worth putting to Justin with research
+before writing the graph, not after.
 
 ### The rest of M2
 
