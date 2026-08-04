@@ -60,7 +60,7 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
 `games/vault`.
-**932 tests passing** (plus 9 GPU capture tests behind `--features gpu`); fmt, clippy
+**936 tests passing** (plus 12 GPU capture tests behind `--features gpu`); fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Twenty-three things work end to end today:
@@ -180,14 +180,25 @@ of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**The mesh pass — the GPU half of 3D.** ADR 0035 is decided and its *data* half is built: `BoxMesh`
-and `PlaneMesh` tessellate into `MeshData`, `Material` carries the metallic-roughness fields,
-`MeshCache` and `MaterialCache` hold them, and `App::load_meshes`/`load_materials` read them off
-disk. `games/vault/assets/meshes/wall_panel.mesh` is six lines of text that becomes a tessellated box
-with the right dimensions, proved end to end.
+**M2's exit gate, which is now within reach for the first time.** Gate 1 wants "an imported glTF
+level, dynamic lighting, shadows, and a physics-driven character controller you can walk around
+with". Three of those four are now partly or wholly built; the fourth has not started.
 
-**Nothing is on screen in 3D yet**, and that was deliberate — the hard-to-undo half went first.
-Since then the *whole CPU side* has landed too, so what is left is only the wgpu work:
+**The honest ordering, and it is not the renderer:**
+
+1. **`amadeo-physics`, which does not exist** — and **Q24 must be settled before it does**. Two of
+   M2's four gates depend on it, and rapier's `enhanced-determinism` is mutually exclusive with
+   `parallel` and `simd-*`, so the answer changes what the layer *is* rather than how fast it runs.
+   This is the largest remaining piece of M2 by a wide margin.
+2. **Shadow maps**, which gate 1 names and which are the first thing that will *read* the depth
+   buffer rather than only write it.
+3. **glTF import.** ADR 0035 deliberately made this a new *producer* of `MeshData` rather than a
+   precondition, so it changes nothing above the loader — which is why it can wait this long.
+4. **PBR, and the rest of the renderer's polish** — see the list below. All cheap, all isolated.
+
+### The renderer: what landed, and what is left
+
+ADR 0035's data half, the whole CPU side, and the mesh pass are all built. 3D renders.
 
 - ✅ **The maths.** `Mat4::perspective` (WebGPU's 0..1 depth range, not OpenGL's −1..1),
   `Mat4::inverse_rigid` — which is what a view matrix is — and `project_point`, which refuses a point
