@@ -113,16 +113,17 @@ completely that no file and no hash can observe it. The expensive decision was t
 see below.
 ⚠️ **Sorting and layering.** 2D needs painter's-order layers; 3D needs depth plus separate transparent
 sorting. A unified scheme that serves both without surprising either.
-⚠️ **Material and shader model. This is the next expensive decision here**, and it is now the one to
-watch: hand-written WGSL, a material graph, or a preprocessor with includes and variants? Shader
-variant explosion is a classic engine tarpit. Decide the strategy before writing the second shader
-*family*, not the twentieth — there are two shaders today (`quad.wgsl`, `sprite.wgsl`) and PBR is
-what makes it a family.
+✅ **Material and shader model — ADR 0033.** A material is an **asset** named by an id, not inline
+component data: it is shared by construction, an id keeps ADR 0023's batching rule cheap, and the
+whole asset toolchain applies to it for nothing. Its file *is* a scene file with one root, exactly as
+a prefab is. Shaders are hand-written WGSL with `#include`, `#ifdef` and a pipeline cache keyed by the
+defines — Bevy's shape. **No material graph**; that is an editor-sized project, and if ever wanted it
+is additive, since a graph emits WGSL rather than replacing it.
 
-**Settle Q21 first.** A material is reflected data in a scene file, and the natural shape
-(`Material { base_colour, metallic, texture }` nested under a mesh) is exactly what the scene format
-cannot currently express. Deciding the material model against a format that cannot hold it would
-produce another flattened type like ADR 0031's camera.
+**And this section asked about the cheap half again** — the third time, after ADR 0018 and ADR 0031.
+`RenderBackend` isolates the shader strategy; the expensive decision was where the material's *data*
+lives. Worth internalising: in this subsystem, ask what data a rendering choice implies before asking
+about the pipeline.
 ✅ **Camera model — ADR 0031, and this was the expensive decision of the subsystem.** A camera is an
 **entity** carrying a `Camera` beside a `Transform`, not a resource. A world holds any number, each
 with a projection, a target (the window or a texture), a viewport rectangle, and an order. Position

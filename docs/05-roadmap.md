@@ -176,7 +176,10 @@ without eyes, the design is wrong and we find out before 3D and the editor pile 
   lighting are requirements here, not polish — M3's horror slice depends on them.
 - Culling architecture must not preclude later world streaming (see non-goals table).
 - glTF import — meshes, materials, scene hierarchy, skins.
-- Shader/material strategy per its ADR; WGSL organization and variant handling.
+- ✅ **ADR 0033 on the material and shader model** — decided before the second shader family, as
+  `docs/04-subsystems.md` §4 required. A material is an **asset** with an id, its file a scene file
+  with one root; shaders are hand-written WGSL with `#include`, `#ifdef` and a pipeline cache keyed
+  by the defines. No material graph. What a `Material` *holds* arrives with meshes.
 - `amadeo-physics` — rapier 2D and 3D behind engine traits. Rigid bodies, colliders, joints,
   raycasts, collision events into `amadeo-events`.
 - Verified deterministic physics: cross-run reproducibility test, in CI.

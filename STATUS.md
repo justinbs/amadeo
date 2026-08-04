@@ -142,8 +142,9 @@ settled its shape. Declared passes, resource dependencies, transient targets. Th
 lights, shadows, culling, glTF.
 
 **Nothing is blocked and nothing is undecided.** Every question this session raised was closed in
-it, and the agent can now see: `amadeo capture shot.png` renders a game with no window and writes a
-PNG. What is left in M2 is build work.
+it, the agent can now see (`amadeo capture shot.png` renders a game with no window and writes a PNG),
+and **M2's two expensive decisions are both made before their code** — ADR 0031 for 2D/3D coexistence
+and the camera, ADR 0033 for the material and shader model. What is left is build work.
 
 ### The rest of M2
 
@@ -151,10 +152,10 @@ PNG. What is left in M2 is build work.
   configurable post-process stack, and that needs the same offscreen target `WgpuBackend::offscreen`
   already has — render into a texture, then composite to the surface. Doing it gives the windowed
   backend `capture` for free, so the two belong together.
-- **The material and shader model** — `docs/04-subsystems.md` §4 calls it the next expensive decision
-  here, and it is now a free choice rather than a forced one, since ADR 0032 means a nested type is
-  expressible. Worth carrying in: a material is *shared*, so Godot's answer of an asset id may fit it
-  better than nesting does, and ADR 0029 already built that machinery.
+- **Mesh rendering, and with it the `Material` field list.** ADR 0033 settled *where* a material
+  lives — an asset with an id, its file a scene file with one root — and deliberately left what it
+  *holds* to arrive with PBR, since adding a field to a reflected type is the cheap change the schema
+  exists for.
 
 ### Gate 4's result, and what closed it — ADR 0030
 
@@ -1592,3 +1593,30 @@ on purpose — several record a diagnosis that took a while to reach.
   CI now runs both halves: the unit tests, and the whole path end to end through a real game binary.
 
   864 tests plus the 4 GPU ones, all four verification commands green.
+
+  **Then ADR 0033, the material and shader model — decided before its code, like ADR 0031.** And
+  `docs/04` §4 had the emphasis wrong for the **third** time: it asks about shaders, which
+  `RenderBackend` isolates completely, while the hard-to-reverse decision was where a material's
+  *data* lives. That is now a pattern worth naming rather than three coincidences.
+
+  **A material is an asset with an id**, Justin's call, on three arguments. It is shared by
+  construction — the Vault's forty-four walls use one, so inline data would be forty-four copies in
+  every state hash and every snapshot. ADR 0023's batching rule extends to `(sort order, material)`
+  and comparing an id is a string compare where comparing a struct is a deep one, on the path the
+  batcher exists to keep cheap. And the whole ADR 0020/0029 toolchain — validation, "did you mean",
+  the load barrier, `amadeo assets`, `amadeo import` — applies for nothing.
+
+  Its file *is* a scene file with a single root, exactly as a prefab is, so the parser, the canonical
+  writer, `amadeo fmt` and ADR 0032's nested values all work on it the day it exists.
+
+  **This was blocked until earlier the same session.** The inline alternative was unrepresentable
+  before ADR 0032 gave the format nested values, and deciding against a format that could not hold
+  the alternative would have prejudged the answer.
+
+  Shaders: hand-written WGSL with `#include`, `#ifdef` and a pipeline cache keyed by the defines —
+  Bevy's shape, reached after they hit the variant problem for real. **No material graph**: that is
+  an editor-sized project before the first triangle, and if ever wanted it is additive, since a graph
+  emits WGSL rather than replacing it. Decided alone and flagged, since `RenderBackend` isolates it.
+
+  What a `Material` *holds* is deliberately not decided — that depends on the PBR model and arrives
+  with meshes, because adding a field to a reflected type is the cheap change the schema exists for.
