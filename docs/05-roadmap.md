@@ -173,6 +173,10 @@ without eyes, the design is wrong and we find out before 3D and the editor pile 
   renderer decisions cheap. `NullBackend` compiles the same graph, so the pass order is checkable
   with no GPU; and composing the frame off-screen gave the **windowed** backend `capture`.
 - 3D: mesh rendering, PBR materials, directional + point lights, shadow maps, frustum culling.
+  ✅ **ADR 0035 decides what a mesh asset is, before the code** — a scene file with one root carrying
+  either a **procedural shape** (`BoxMesh { size }`) or vertex data, both producing one `MeshData`.
+  So a 3D level is authorable in text from day one and the glTF importer becomes a new *producer*
+  rather than a precondition. Vertex layout is fixed at position/normal/UV.
 - **Configurable post-process stack and atmosphere** — the eight target games span stylised-realistic
   outdoors, low-poly, dark atmospheric interiors, voxel, and pixel-art sprite work, so the renderer
   must not bake in a look (`00-vision.md` § Divergent). Fog/volumetrics and strong dynamic point

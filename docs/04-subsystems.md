@@ -123,6 +123,15 @@ completely that no file and no hash can observe it. The expensive decision was t
 see below.
 ⚠️ **Sorting and layering.** 2D needs painter's-order layers; 3D needs depth plus separate transparent
 sorting. A unified scheme that serves both without surprising either.
+✅ **What a mesh asset is — ADR 0035.** A scene file with one root carrying either a **procedural
+shape** (`BoxMesh { size }`, tessellated once at load) or vertex data. Both produce one `MeshData`, so
+nothing above the loader can tell them apart and the glTF importer is a new *producer* rather than a
+precondition for rendering anything. The vertex layout is **fixed** at position/normal/UV; tangents
+are generated at load when normal mapping needs them.
+
+The deciding argument was I1: a box described as three numbers is hand-writable text and a `.glb` is
+opaque, so without procedural shapes the first thing M2's exit gate needs would be the one thing a
+scene file cannot express. Godot splits meshes the same way (`PrimitiveMesh` vs `ArrayMesh`).
 ✅ **Material and shader model — ADR 0033.** A material is an **asset** named by an id, not inline
 component data: it is shared by construction, an id keeps ADR 0023's batching rule cheap, and the
 whole asset toolchain applies to it for nothing. Its file *is* a scene file with one root, exactly as
