@@ -60,7 +60,7 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
 `games/vault`.
-**912 tests passing** (plus 7 GPU capture tests behind `--features gpu`); fmt, clippy
+**926 tests passing** (plus 7 GPU capture tests behind `--features gpu`); fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Twenty-three things work end to end today:
@@ -181,19 +181,29 @@ disk. `games/vault/assets/meshes/wall_panel.mesh` is six lines of text that beco
 with the right dimensions, proved end to end.
 
 **Nothing is on screen in 3D yet**, and that was deliberate — the hard-to-undo half went first.
-What is left is all behind `RenderBackend`, which is exactly the part four ADRs have now found to be
-cheap:
+Since then the *whole CPU side* has landed too, so what is left is only the wgpu work:
 
-1. **Perspective projection that actually draws.** `Projection::Perspective` exists and
-   `renders_nothing_through_a_perspective_camera_yet` pins that it is skipped. Needs a real
-   view-projection matrix, where the 2D path uses `GpuCamera { center, half_extents }`.
-   `amadeo-transform`'s scalar `Mat4` has compose-and-multiply and will need a perspective and an
-   inverse.
-2. **A depth buffer**, as a graph transient with a depth format — `TargetFormat` needs a third
-   variant, which is the shape it was built for.
-3. **The mesh pass and a PBR shader**, batching by `(sort order, material)` per ADR 0033.
-4. **Lights.** A `DirectionalLight` component, following ADR 0031's precedent that a camera is an
-   entity rather than a resource.
+- ✅ **The maths.** `Mat4::perspective` (WebGPU's 0..1 depth range, not OpenGL's −1..1),
+  `Mat4::inverse_rigid` — which is what a view matrix is — and `project_point`, which refuses a point
+  behind the camera rather than folding it back onto the screen mirrored.
+- ✅ **Collection.** A `Mesh` with loaded geometry becomes a `MeshInstance` carrying its model matrix
+  and its **resolved** material; a `DirectionalLight` becomes a direction and a pre-multiplied
+  colour. `View` carries both, plus `eye_matrix`.
+- ✅ **A perspective camera is no longer skipped**, and a camera's projection now selects which pass
+  it feeds — orthographic gets quads and sprites, perspective gets meshes, neither built on the
+  other (ADR 0031).
+
+**What remains, all behind `RenderBackend`:**
+
+1. **A depth buffer**, as a graph transient with a depth format — `TargetFormat` needs a third
+   variant, which is exactly the shape it was built for.
+2. **The mesh pipeline**: vertex and index buffers, which this backend has never had — every pass so
+   far generates its geometry from the vertex index alone.
+3. **A shader.** Start with diffuse `N·L` against the material's base colour to prove the path, then
+   PBR — which is a shader change and therefore cheap, per four ADRs.
+4. **The projection**, built in the backend from `eye_matrix` and the target's aspect ratio, because
+   only the backend knows the target size. `View` deliberately carries the camera's transform rather
+   than a finished view-projection for that reason.
 
 Then fog and volumetrics, which need the depth buffer from (2), and which M3's exit gate 5 depends
 on. Then shadow maps, culling and glTF import — the last of which ADR 0035 made additive.
