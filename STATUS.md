@@ -41,7 +41,7 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
 `games/vault`.
-**861 tests passing** (plus 4 GPU capture tests behind `--features gpu`); fmt, clippy
+**864 tests passing** (plus 4 GPU capture tests behind `--features gpu`); fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Twenty things work end to end today:
@@ -76,10 +76,11 @@ Twenty things work end to end today:
   from where. A world may hold any number (ADR 0031) -- each with a projection, a target that is the
   window or a texture, a viewport rectangle, and an order -- and a camera parented to a character
   *is* a follow camera, with no special case.
-- **The GPU can be checked without eyes.** `WgpuBackend::offscreen` renders into a texture it owns
-  and `capture` reads the pixels back, so a test can assert that a red quad reached the middle of the
-  target and did not fill the corners. The offscreen and windowed backends differ only in where the
-  frame lands, so that is evidence about the renderer that ships.
+- **The agent can see.** `amadeo capture --package vault --ticks 200 shot.png` launches the game with
+  no window, renders it offscreen on the GPU, and writes a PNG — walls, sigils, wardens, the player,
+  the score readout. ADR 0021 called capture the agent.s eyes; this is them. `WgpuBackend::offscreen`
+  is the mechanism, and it also gives the GPU path its first automated tests: a red quad reaches the
+  middle of the target and does *not* fill the corners.
 - **Sprites are on the screen.** `cargo run -p quad-demo` shows a strip of textured floor tiles, each
   reading a different cell of one 2×2 texture through its `region` — one texture, one draw call — plus
   one sprite deliberately asking for an id that does not exist, which draws the magenta placeholder.
@@ -140,26 +141,20 @@ of them except Q4 built the same session it was decided.
 settled its shape. Declared passes, resource dependencies, transient targets. Then 3D: meshes, PBR,
 lights, shadows, culling, glTF.
 
-**Q21 is closed, which is what unblocks it.** ADR 0032 extended the scene grammar: an indented block
-is a list if its lines start with `- ` and named fields otherwise, so nested structs, maps and enum
-payloads all write now. **A material can be designed on its merits** rather than around a format
-limitation — and worth knowing before that decision: a material is *shared*, so Godot's answer of an
-asset id may fit it better than nesting does, and ADR 0029 already built that machinery.
+**Nothing is blocked and nothing is undecided.** Every question this session raised was closed in
+it, and the agent can now see: `amadeo capture shot.png` renders a game with no window and writes a
+PNG. What is left in M2 is build work.
 
 ### The rest of M2
 
-- **`render.capture` as a protocol method.** The *mechanism* is built and tested — an offscreen wgpu
-  backend, `RenderBackend::capture`, and the first four tests the GPU path has ever had. What is left
-  is exposing it over the protocol, and one decision inside that: **what a capture is returned as.**
-  Pixels in JSON would be enormous, so it wants to be a file — and the engine can currently *decode*
-  PNG but not encode one (`amadeo-image` is read-only; the Vault.s `pix` tool writes PNG as a game
-  dependency). So the choice is a PNG encoder in `amadeo-image` behind a feature, or writing PPM,
-  which is trivial and which nothing but this would read. Worth deciding rather than defaulting.| COPY_SRC` texture when there is none, add
-  `RenderBackend::capture` (defaulting to a "not supported" error, which is the right answer for
-  `NullBackend` — `render.describe` is its answer), and have the agent host create one lazily behind
-  a `gpu` feature on `amadeo-app`. Agent mode is headless, so the offscreen path is the one that
-  matters; the *windowed* backend gets capture when post-processing lands, because that needs the
-  same offscreen target anyway.
+- **Post-processing, which the *windowed* backend needs before it can capture.** M2 requires a
+  configurable post-process stack, and that needs the same offscreen target `WgpuBackend::offscreen`
+  already has — render into a texture, then composite to the surface. Doing it gives the windowed
+  backend `capture` for free, so the two belong together.
+- **The material and shader model** — `docs/04-subsystems.md` §4 calls it the next expensive decision
+  here, and it is now a free choice rather than a forced one, since ADR 0032 means a nested type is
+  expressible. Worth carrying in: a material is *shared*, so Godot's answer of an asset id may fit it
+  better than nesting does, and ADR 0029 already built that machinery.
 
 ### Gate 4's result, and what closed it — ADR 0030
 
@@ -1569,3 +1564,31 @@ on purpose — several record a diagnosis that took a while to reach.
   does not enable the `gpu` feature.
 
   861 tests plus the 4 GPU ones, all four verification commands green.
+
+  **Then `render.capture` over the protocol — the agent has eyes.** `amadeo capture shot.png`
+  launches a game headless, opens an offscreen GPU, renders the world, encodes a PNG and writes it.
+  Run against the Vault it produces the arena: walls, six sigils, two wardens, two traps, the player,
+  and the score readout — and captured at two different ticks the wardens have moved along their
+  patrol routes, so it is live simulation state rather than a static picture.
+
+  **Justin chose PNG** over the PPM this engine already reads. The deciding argument is that the
+  point of a capture is that a *human opens it*, and nothing opens a PPM — not a file browser, not a
+  chat client, not a pull request. The `png` crate was already a dependency for decoding, so encoding
+  cost no new one, and the same reasoning that kept DEFLATE out of the hand-rolled column applies
+  identically to writing it.
+
+  **The image goes to a file rather than into the reply**, and the *game* writes it: a screenshot is
+  hundreds of kilobytes, and base64 in a JSON-RPC line would make a transcript unreadable for no
+  gain. The reply carries the path, the size, the tick, and the number of drawable entities — that
+  last one because "the file is small and the world is empty" and "the file is small and something is
+  wrong" look identical otherwise.
+
+  Capture creates an offscreen device, uses it, and drops it. That costs a device creation per call,
+  which is the right trade for an introspection method nobody calls in a loop — the alternative is
+  holding a GPU open for every headless run, including the thousands that never capture anything. It
+  is behind a `gpu` feature on `amadeo-app`, off by default, so a dedicated server does not link a
+  graphics stack it will never use (I7). Without it the refusal names `render.describe`.
+
+  CI now runs both halves: the unit tests, and the whole path end to end through a real game binary.
+
+  864 tests plus the 4 GPU ones, all four verification commands green.

@@ -125,6 +125,17 @@ jobs:
         shell: bash
         run: cargo test -p amadeo-render --features gpu --test capture -- --nocapture
 
+      # The same thing end to end, through a real game binary over JSON-RPC: the CLI launches the
+      # Vault headless, the game opens an offscreen GPU, renders, encodes a PNG, and writes it.
+      # A runner with no adapter fails this rather than skipping, which is the right way round —
+      # unlike the unit tests above, reaching here means the whole path was expected to work.
+      - name: A game captures itself with no window
+        shell: bash
+        run: |
+          ./target/debug/amadeo.exe capture --package vault --ticks 60 --width 320 --height 180 ci-shot.png
+          test -s ci-shot.png
+          rm ci-shot.png
+
       # ADR 0030: the point of `--example` is that what it emits actually loads. The unit tests cover
       # every engine component; this covers the whole path end to end, through a real game binary
       # over JSON-RPC, on a type whose enum field is the thing no schema could have taught.

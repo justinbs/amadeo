@@ -62,7 +62,8 @@ Crates are listed in dependency order. **A crate may only depend on crates above
 crates/
 ✅ amadeo-derive      proc macros: #[derive(Reflect)], #[derive(StableHash)]. No engine deps, so it
                      sits below even amadeo-core. Re-exported next to each trait; never used directly.
-✅ amadeo-image       decodes PNG (via the `png` crate) and PPM (hand-written) into TextureData —
+✅ amadeo-image       decodes PNG (via the `png` crate) and PPM (hand-written) into TextureData, and
+                     encodes PNG for `render.capture` --
                      width, height, an explicit PixelFormat, and flat pixels. Also no engine deps.
                      ADR 0026: decoding happens at load time *for now*, and the format tag is what
                      makes the eventual import pipeline an addition rather than a rewrite. Holds the
@@ -94,9 +95,10 @@ crates/
                      image built in code so it cannot itself be missing. wgpu behind `gpu` draws
                      **quads and sprites**: texture upload, a nearest sampler, one bind group per
                      texture, one draw call per batch. WgpuBackend::offscreen renders into a texture
-                     it owns instead of a window, and RenderBackend::capture reads it back -- the
-                     GPU path is testable, and tests/capture.rs is its first coverage. Still to come:
-                     `render.capture` over the protocol, and render targets on a camera.
+                     it owns instead of a window, and RenderBackend::capture reads it back -- which
+                     is what `render.capture` uses and what gave the GPU path its first tests
+                     (tests/capture.rs). Still to come: post-processing, which the windowed backend
+                     needs before it can capture too, and render targets on a camera.
 — amadeo-audio       mixer, buses, spatialization (null backend required)
 — amadeo-physics     rapier integration behind engine traits
 — amadeo-anim        sprite anim, skeletal, state machines, tweens
@@ -122,14 +124,15 @@ crates/
                      world.query/entity/list/resources). Read-only. ADR 0030 settles what `describe`
                      is *for*: a **schema, not a manual**, covering components, resources, and every
                      type those name transitively — how to write Rust against the engine stays in
-                     docs/07, which the reply points at. Mutation and render.capture pending.
+                     docs/07, which the reply points at. `render.capture` is served by the *host* in amadeo-app, since it needs an App.
+                     Mutation pending.
                      ADR 0016, spec in docs/protocol/v1.md.
 ✅ amadeo-app         Stage/Schedule, fixed-timestep loop, SimRng, ComponentRegistry, and the agent
                      *host* — serve_if_requested reads stdin and answers. The host lives here rather
                      than in amadeo-agent because it needs App and I6 forbids reaching down.
 — amadeo-editor      graphical editor. A CLIENT of amadeo-agent. No privileged access.
 🟡 amadeo-cli         the `amadeo` binary. Built: describe/query/entity/schedule/status/call/check/
-                     replay/fmt/assets/import/snapshot (import takes `--assets <dir>` to work on a
+                     replay/fmt/assets/import/snapshot/capture (import takes `--assets <dir>` to work on a
                      project whose game will not start -- Q19), plus `--from <file>` on any of them to
                      restore a snapshot before answering, and `describe <Type> --example` for a
                      minimal valid instance in both the scene and JSON spellings.

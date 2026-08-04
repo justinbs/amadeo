@@ -45,7 +45,7 @@
 mod png_format;
 mod ppm;
 
-pub use png_format::decode_png;
+pub use png_format::{EncodeError, decode_png, encode_png};
 pub use ppm::decode_ppm;
 
 /// How the bytes in a [`TextureData`] are laid out.

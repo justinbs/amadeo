@@ -63,7 +63,7 @@ pub use textures::{PLACEHOLDER_TEXTURE_ID, TextureCache, TextureFailure, decode_
 // Re-exported because a caller holding a `TextureCache` needs to talk about what is in it, and
 // making them add `amadeo-image` to their own manifest for a type this crate hands them would be a
 // dependency they did not choose.
-pub use amadeo_image::{PixelFormat, TextureData};
+pub use amadeo_image::{EncodeError, PixelFormat, TextureData, encode_png};
 
 use amadeo_ecs::{Service, World};
 use std::collections::BTreeSet;

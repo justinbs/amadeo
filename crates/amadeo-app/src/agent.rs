@@ -61,6 +61,7 @@ pub const SNAPSHOT_FLAG: &str = "--snapshot";
 
 /// The methods this host answers itself, on top of [`WORLD_METHODS`].
 pub const APP_METHODS: &[&str] = &[
+    "render.capture",
     "replay.status",
     "scene.check",
     "schedule.list",
@@ -536,6 +537,20 @@ fn dispatch(
             ]))
         }
 
+        // ADR 0021 named capture as the agent's eyes, and this is the last piece of it. The image
+        // goes to a **file** rather than into the reply: a screenshot is hundreds of kilobytes, and
+        // base64 in a JSON-RPC line would be unreadable in a transcript that is meant to be read.
+        //
+        // PNG rather than the PPM this engine already handles, because the whole point of a capture
+        // is that a human opens it — and nothing opens a PPM. Lossless either way, so what lands on
+        // disk is what the GPU produced.
+        "render.capture" => {
+            let path = request.string_param("path")?;
+            let width = request.optional_int_param("width")?.unwrap_or(1280);
+            let height = request.optional_int_param("height")?.unwrap_or(720);
+            capture_to_png(app, path, width, height, request)
+        }
+
         "replay.status" => {
             let Some(outcome) = replay else {
                 return Err(request.bad_params(format!(
@@ -680,6 +695,100 @@ fn count_entities(document: &amadeo_scene::SceneDocument) -> usize {
     document.entities.iter().map(count).sum()
 }
 
+/// Renders the current world offscreen and writes it to `path` as a PNG.
+///
+/// # Why this creates a backend rather than using the installed one
+///
+/// Agent mode is headless (ADR 0016 launches a game with `--amadeo-agent` and no window), so there
+/// is usually no [`Renderer`](amadeo_render::Renderer) at all — and if a game did install one, it
+/// would be the null backend, which draws nothing.
+///
+/// So capture builds its own offscreen wgpu backend, uses it, and drops it. That costs a device
+/// creation per call, which is the right trade for an introspection method nobody calls in a loop:
+/// the alternative is holding a GPU device open for every headless run, including the thousands that
+/// never capture anything.
+///
+/// The frame is rendered *from the world*, exactly as `render_quads` does in a real game — so what
+/// lands on disk is what this world would look like, not a reconstruction.
+#[cfg(feature = "gpu")]
+fn capture_to_png(
+    app: &mut App,
+    path: &str,
+    width: i64,
+    height: i64,
+    request: &Request,
+) -> Result<Json, RpcError> {
+    let width = u32::try_from(width.max(1)).unwrap_or(1280);
+    let height = u32::try_from(height.max(1)).unwrap_or(720);
+
+    let backend = amadeo_render::WgpuBackend::offscreen(width, height).map_err(|error| {
+        request.bad_params(format!(
+            "could not open a GPU for capture: {error}. \
+             `render.describe` answers what should be on screen without one"
+        ))
+    })?;
+
+    // Installed, used, and removed again, so the world this method was asked about is the world it
+    // leaves behind. A `Renderer` is a service, so none of this can reach the state hash (ADR 0009).
+    app.world
+        .insert_service(amadeo_render::Renderer::new(Box::new(backend)));
+    amadeo_render::render_quads(&mut app.world);
+    let mut renderer = app
+        .world
+        .remove_service::<amadeo_render::Renderer>()
+        .ok_or_else(|| request.bad_params("the capture renderer vanished".to_string()))?;
+
+    let image = renderer
+        .capture()
+        .map_err(|error| request.bad_params(format!("capture failed: {error}")))?;
+    let encoded = amadeo_render::encode_png(&image)
+        .map_err(|error| request.bad_params(format!("could not encode the capture: {error}")))?;
+
+    std::fs::write(path, &encoded).map_err(|error| {
+        request.bad_params(format!(
+            "could not write `{path}`: {error}. \
+             The path is resolved against the game's working directory, which the CLI sets to the \
+             project root"
+        ))
+    })?;
+
+    Ok(Json::object([
+        ("path", Json::string(path)),
+        ("width", Json::Int(i64::from(image.width))),
+        ("height", Json::Int(i64::from(image.height))),
+        ("bytes", Json::Int(encoded.len() as i64)),
+        ("tick", Json::Int(app.tick().0 as i64)),
+        ("drawn", Json::Int(drawn_count(&app.world))),
+    ]))
+}
+
+/// The same method when the engine was built without a GPU.
+///
+/// A clear refusal rather than a silent blank image, and it names the two ways forward: build with
+/// the feature, or ask `render.describe`, which answers most of the same questions without one.
+#[cfg(not(feature = "gpu"))]
+fn capture_to_png(
+    _app: &mut App,
+    _path: &str,
+    _width: i64,
+    _height: i64,
+    request: &Request,
+) -> Result<Json, RpcError> {
+    Err(request.bad_params(
+        "this build has no GPU support, so it cannot capture. Build the game with \
+         `amadeo-app/gpu` enabled, or use `render.describe`, which reports what is on screen \
+         without a GPU at all"
+            .to_string(),
+    ))
+}
+
+/// How many entities the current world would draw, for the capture reply.
+///
+/// Reported alongside the image because "the file is 3 KB and nothing is in it" and "the file is
+/// 3 KB and the world is empty" are different problems, and the second is much more common.
+fn drawn_count(world: &amadeo_ecs::World) -> i64 {
+    amadeo_render::describe_frame(world).drawn.len() as i64
+}
 #[cfg(test)]
 mod tests {
     use super::*;

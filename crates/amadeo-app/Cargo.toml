@@ -16,10 +16,18 @@ amadeo-ecs.workspace = true
 amadeo-events.workspace = true
 amadeo-input.workspace = true
 amadeo-reflect.workspace = true
+# `render.capture` renders the world offscreen and writes a PNG. The dependency is unconditional --
+# the *GPU* half is behind this crate.s `gpu` feature, so a game that never captures pays nothing.
+amadeo-render.workspace = true
 amadeo-scene.workspace = true
 # `--snapshot` restores before the first tick, and `snapshot.take` captures.
 amadeo-snapshot.workspace = true
 thiserror.workspace = true
+
+[features]
+# Lets `render.capture` create an offscreen wgpu backend. Off by default so a headless build -- a
+# dedicated server, a CI runner -- does not link a graphics stack it will never use (I7).
+gpu = ["amadeo-render/gpu"]
 
 [lints]
 workspace = true

@@ -60,6 +60,12 @@ enum Command {
     Import { check: bool, assets: Option<String> },
     /// Capture the world to a `.snapshot` file.
     Snapshot { path: PathBuf },
+    /// Render the world offscreen and write it as a PNG.
+    Capture {
+        path: PathBuf,
+        width: Option<i64>,
+        height: Option<i64>,
+    },
 }
 
 /// Options that apply to any command that launches the game.
@@ -138,6 +144,15 @@ fn run(command: Command, options: &Options) -> Result<()> {
         return take_snapshot(&path, options);
     }
 
+    if let Command::Capture {
+        path,
+        width,
+        height,
+    } = command
+    {
+        return capture(&path, width, height, options);
+    }
+
     let (method, params) = match &command {
         Command::Describe { type_name } => (
             "describe",
@@ -182,7 +197,8 @@ fn run(command: Command, options: &Options) -> Result<()> {
         | Command::Replay { .. }
         | Command::Assets
         | Command::Import { .. }
-        | Command::Snapshot { .. } => {
+        | Command::Snapshot { .. }
+        | Command::Capture { .. } => {
             unreachable!("handled above")
         }
     };
@@ -706,6 +722,50 @@ fn ask_game(method: &str, params: Json, options: &Options) -> Result<Json> {
 /// The game produces the text and the CLI writes it — the same division `amadeo check` and
 /// `amadeo import` use, and the reason `snapshot.take` returns a string rather than a path
 /// (ADR 0016: the game knows what the world is, the CLI is the side that touches the filesystem).
+/// Renders the world offscreen and writes a PNG.
+///
+/// **The agent's eyes** (ADR 0021). Unlike `snapshot`, the file is written by the *game* rather than
+/// here: the image is hundreds of kilobytes, and shipping it back through the JSON reply as base64
+/// would make a transcript unreadable for no gain. So the path is sent and the game writes it.
+///
+/// That is why the path is made absolute first — the game is launched with its working directory at
+/// the project root, which is not necessarily where the command was typed.
+fn capture(path: &Path, width: Option<i64>, height: Option<i64>, options: &Options) -> Result<()> {
+    let here = std::env::current_dir().context("could not read the current directory")?;
+    let project = Project::discover(&here)?;
+    let package = options.package.clone().unwrap_or(project.game);
+
+    let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    let mut params = vec![("path", Json::string(absolute.display().to_string()))];
+    if let Some(width) = width {
+        params.push(("width", Json::Int(width)));
+    }
+    if let Some(height) = height {
+        params.push(("height", Json::Int(height)));
+    }
+
+    let result = ask_once(
+        &project.root,
+        &package,
+        &options.launch_args(),
+        request("render.capture", Json::object(params), 1),
+    )?;
+
+    let width = number_field(&result, "width").unwrap_or(0);
+    let height = number_field(&result, "height").unwrap_or(0);
+    let bytes = number_field(&result, "bytes").unwrap_or(0);
+    let tick = number_field(&result, "tick").unwrap_or(0);
+    let drawn = number_field(&result, "drawn").unwrap_or(0);
+
+    // `drawn` is reported because "the file is tiny and the world is empty" and "the file is tiny
+    // and something is wrong" look identical otherwise.
+    println!(
+        "wrote {} — {width}x{height}, {bytes} bytes, tick {tick}, {drawn} drawable entities",
+        path.display()
+    );
+    Ok(())
+}
+
 fn take_snapshot(path: &Path, options: &Options) -> Result<()> {
     let here = std::env::current_dir().context("could not read the current directory")?;
     let project = Project::discover(&here)?;
@@ -798,6 +858,8 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
     let mut check = false;
     let mut example = false;
     let mut assets_dir: Option<String> = None;
+    let mut width: Option<i64> = None;
+    let mut height: Option<i64> = None;
 
     let mut index = 0;
     while index < arguments.len() {
@@ -853,6 +915,22 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
             }
             "--assets" => {
                 assets_dir = Some(value_after("--assets")?);
+                index += 2;
+            }
+            "--width" => {
+                width = Some(
+                    value_after("--width")?
+                        .parse()
+                        .context("--width must be a whole number of pixels")?,
+                );
+                index += 2;
+            }
+            "--height" => {
+                height = Some(
+                    value_after("--height")?
+                        .parse()
+                        .context("--height must be a whole number of pixels")?,
+                );
                 index += 2;
             }
             other if other.starts_with('-') => {
@@ -930,6 +1008,18 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
             check,
             assets: assets_dir,
         },
+        "capture" => {
+            let Some(path) = rest.first() else {
+                bail!(
+                    "capture needs a file to write to, such as `amadeo capture --ticks 60 shot.png`"
+                );
+            };
+            Command::Capture {
+                path: PathBuf::from(path),
+                width,
+                height,
+            }
+        }
         "snapshot" => {
             let Some(path) = rest.first() else {
                 bail!(
@@ -979,6 +1069,9 @@ RUNS IN THE GAME (launches it, asks, exits)
     replay <file>            replay a recording and verify its checkpoint hashes
     schedule [stage]         systems in resolved execution order
     status                   tick, state hash, and what is registered
+    capture <file>           render the world offscreen and write it as a PNG
+        --width <n>          image width in pixels (default 1280)
+        --height <n>         image height in pixels (default 720)
     snapshot <file>          capture the world to a .snapshot file
     call <method>            any protocol method
         --params <json>      its arguments, as a JSON object

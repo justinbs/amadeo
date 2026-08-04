@@ -237,6 +237,23 @@ impl Request {
         }
     }
 
+    /// An optional whole-number argument.
+    ///
+    /// # Errors
+    ///
+    /// [`RpcError::BadParams`] if present but not a whole number. Absent is not an error — that is
+    /// what "optional" means, and the caller supplies its own default.
+    pub fn optional_int_param(&self, name: &str) -> Result<Option<i64>, RpcError> {
+        match self.params.get(name) {
+            None | Some(Json::Null) => Ok(None),
+            Some(Json::Int(value)) => Ok(Some(*value)),
+            Some(other) => Err(self.bad_params(format!(
+                "`{name}` must be a whole number, found {}",
+                other.to_compact()
+            ))),
+        }
+    }
+
     /// A list-of-strings argument, defaulting to empty when absent.
     ///
     /// # Errors

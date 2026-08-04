@@ -422,3 +422,148 @@ mod tests {
         );
     }
 }
+
+/// Encodes 8-bit RGBA pixels as a PNG.
+///
+/// The counterpart to [`decode_png`], and the engine's only image *writer*. Added in session 8 for
+/// `render.capture`: a captured frame has to leave the process somehow, and pixels in a JSON reply
+/// would be megabytes of base64 for a screenshot.
+///
+/// # Why PNG rather than the PPM this crate already handles
+///
+/// PPM would have been a smaller change — the writer is twenty lines and needs no dependency at all.
+/// But the whole point of a capture is that **a human opens it**, and nothing opens a PPM: not a file
+/// browser, not a chat client, not a pull request. A capture nobody can look at is a capture that
+/// does not do its job. The `png` crate is already here for decoding, so encoding costs no new
+/// dependency — the reasoning in this module's header about not hand-rolling DEFLATE applies in
+/// exactly the same way to writing it.
+///
+/// Lossless, so what comes back is what the GPU produced, bit for bit. That matters for a capture
+/// used as evidence.
+///
+/// # Errors
+///
+/// [`EncodeError`] if the pixel buffer is the wrong length for the stated dimensions, or if the
+/// encoder itself fails.
+pub fn encode_png(image: &TextureData) -> Result<Vec<u8>, EncodeError> {
+    let expected = (image.width as usize)
+        .saturating_mul(image.height as usize)
+        .saturating_mul(image.format.bytes_per_pixel() as usize);
+    if image.pixels.len() != expected {
+        return Err(EncodeError::WrongLength {
+            width: image.width,
+            height: image.height,
+            expected,
+            found: image.pixels.len(),
+        });
+    }
+
+    let mut out = Vec::new();
+    // Scoped so the encoder's writer is dropped — and the stream finished — before `out` is returned.
+    {
+        let mut encoder = png::Encoder::new(&mut out, image.width, image.height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        // The pixels are sRGB (`PixelFormat::Rgba8UnormSrgb`), and saying so is what makes a viewer
+        // show the same colours the GPU produced rather than a slightly washed-out version.
+        encoder.set_source_srgb(png::SrgbRenderingIntent::Perceptual);
+
+        let mut writer = encoder
+            .write_header()
+            .map_err(|error| EncodeError::Failed(error.to_string()))?;
+        writer
+            .write_image_data(&image.pixels)
+            .map_err(|error| EncodeError::Failed(error.to_string()))?;
+        writer
+            .finish()
+            .map_err(|error| EncodeError::Failed(error.to_string()))?;
+    }
+    Ok(out)
+}
+
+/// What can go wrong writing an image.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum EncodeError {
+    /// The pixel buffer does not match the stated dimensions.
+    ///
+    /// Its own variant rather than a generic failure because it means the *caller* built the
+    /// `TextureData` wrongly, and the numbers say by how much — which is usually enough to spot a
+    /// forgotten row-padding strip.
+    #[error(
+        "cannot encode a {width}x{height} image: that needs {expected} bytes of pixels, found {found}"
+    )]
+    WrongLength {
+        /// Stated width.
+        width: u32,
+        /// Stated height.
+        height: u32,
+        /// How many bytes those dimensions require.
+        expected: usize,
+        /// How many were supplied.
+        found: usize,
+    },
+
+    /// The encoder itself refused.
+    #[error("the PNG encoder failed: {0}")]
+    Failed(String),
+}
+
+#[cfg(test)]
+mod encode_tests {
+    use super::*;
+
+    /// A small image with a distinct value in every channel of every pixel.
+    fn sample() -> TextureData {
+        let mut pixels = Vec::new();
+        for y in 0..3u8 {
+            for x in 0..4u8 {
+                pixels.extend_from_slice(&[x * 60, y * 80, 255 - x * 60, 255 - y * 40]);
+            }
+        }
+        TextureData::new(
+            "sample.png",
+            FORMAT,
+            4,
+            3,
+            PixelFormat::Rgba8UnormSrgb,
+            pixels,
+        )
+        .expect("well-formed")
+    }
+
+    #[test]
+    fn an_encoded_png_decodes_back_to_the_same_pixels() {
+        // The property that makes a capture usable as evidence: lossless, so what a test asserts on
+        // is what the GPU produced. Decoded with this crate's *own* decoder, so the two halves are
+        // checked against each other rather than against an assumption.
+        let original = sample();
+        let bytes = encode_png(&original).expect("encodes");
+        let round_tripped = decode_png(&bytes, "round-trip.png").expect("decodes");
+
+        assert_eq!(round_tripped.width, original.width);
+        assert_eq!(round_tripped.height, original.height);
+        assert_eq!(round_tripped.pixels, original.pixels);
+    }
+
+    #[test]
+    fn the_output_is_a_real_png() {
+        // The eight-byte signature every PNG starts with. Worth pinning: the whole reason for
+        // choosing PNG over PPM is that other tools open it, which requires being one.
+        let bytes = encode_png(&sample()).expect("encodes");
+        assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
+    }
+
+    #[test]
+    fn a_mismatched_pixel_buffer_says_by_how_much() {
+        // The likely caller mistake is forgetting to strip a readback's row padding, which leaves
+        // the buffer too *long* by a predictable amount — so the message gives both numbers.
+        let mut broken = sample();
+        broken.pixels.truncate(10);
+
+        let error = encode_png(&broken).expect_err("too few pixels");
+        let message = error.to_string();
+        assert!(message.contains("4x3"), "{message}");
+        assert!(message.contains("48"), "{message}");
+        assert!(message.contains("10"), "{message}");
+    }
+}

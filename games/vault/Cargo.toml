@@ -22,11 +22,11 @@ name = "pix"
 path = "src/bin/pix.rs"
 
 [dependencies]
-amadeo-app.workspace = true
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 amadeo-input.workspace = true
 amadeo-reflect.workspace = true
+amadeo-app = { workspace = true, features = ["gpu"] }
 amadeo-render = { workspace = true, features = ["gpu"] }
 amadeo-scene.workspace = true
 amadeo-transform.workspace = true
