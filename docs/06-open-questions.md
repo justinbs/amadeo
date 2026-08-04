@@ -247,6 +247,59 @@ list and that is the trigger.
 
 ---
 
+## Q24 · **P0 for M2's exit gate** · Rapier's determinism costs parallelism, and pins the version
+
+**Raised in session 9**, prompted by Justin asking whether the engine needs a physics engine. It
+does, and sooner than the question assumed: `amadeo-physics` is an **M2** item, and two of M2's four
+exit gates depend on it — gate 1 wants "a physics-driven character controller you can walk around
+with", gate 3 wants "a physics-heavy replay (200+ bodies) reproduces bit-identically across runs and
+processes".
+
+Gate 3 is the problem. **Invariant I3 is the keystone of this project**, and physics is the single
+largest body of floating-point arithmetic the engine will ever run.
+
+### What rapier actually guarantees
+
+Better than feared, and with a price tag. Rapier offers an **`enhanced-determinism`** feature giving
+bit-level cross-platform determinism — serialise the state after N steps on two different machines
+with different CPUs and operating systems, and the bytes match. That is exactly what gate 3 asks for.
+
+The conditions are the decision:
+
+- **`enhanced-determinism` cannot be enabled alongside `parallel`, `simd-stable` or `simd-nightly`.**
+  Determinism and multi-threaded or vectorised physics are **mutually exclusive**. So the choice is
+  bit-identical replays or fast physics, and it cannot be deferred by taking both.
+- **The target must comply strictly with IEEE 754-2008.** Fine for desktop and for WASM, which
+  matters because WASM is both M5's web export and ADR 0011's reserved modding hatch.
+- **Determinism holds for one rapier version.** An upgrade may legitimately change results, which
+  invalidates every committed replay that contains physics — the same class of event ADR 0017
+  described for an identity change, but triggered by a dependency rather than by us.
+
+### What to decide, before `amadeo-physics` exists
+
+1. **Is `enhanced-determinism` on, permanently?** The prior is **yes**, and strongly: I3 is
+   non-negotiable and gate 3 is written against it. Then physics is single-threaded and scalar, and
+   the throughput budget for gate 4 has to be set with that known rather than discovered.
+2. **What does that do to Q9?** Q9 asks what runs off the simulation thread. This removes the most
+   obvious candidate, which makes Q9 easier rather than harder — worth resolving the two together.
+3. **How is a rapier upgrade handled?** Pinning an exact version is the minimum. Beyond that, the
+   honest options are to treat a physics upgrade like a deliberate replay regeneration (with the
+   `docs/07` procedure) or to keep a physics-free replay set that an upgrade cannot move. Probably
+   both.
+4. **Does the engine-owned trait boundary hide the version?** ADR 0002 already says rapier sits
+   behind engine-owned traits. Worth checking that a rapier type never reaches a scene file, a
+   snapshot or the state hash — because if one does, the wrapper is not actually a boundary.
+
+### Why this is P0 rather than P2
+
+Not because anything is blocked today, but because **the answer changes what gets built**. A physics
+layer written assuming it may parallelise later is a different layer from one that knows it never
+will, and `CLAUDE.md`'s trap list puts retrofitting determinism first: it is "the single most
+expensive mistake available in this project". Decide before the crate exists, which is the same
+rhythm ADRs 0031, 0033, 0034 and 0035 used.
+
+---
+
 ## Q12 · P1 · `Service: Send + Sync` excludes every non-`Sync` runtime
 
 Found by the Q1 spike (ADR 0011), which could not put a script VM in the world.

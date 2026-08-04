@@ -198,8 +198,13 @@ without eyes, the design is wrong and we find out before 3D and the editor pile 
   with one root; shaders are hand-written WGSL with `#include`, `#ifdef` and a pipeline cache keyed
   by the defines. No material graph. What a `Material` *holds* arrives with meshes.
 - `amadeo-physics` — rapier 2D and 3D behind engine traits. Rigid bodies, colliders, joints,
-  raycasts, collision events into `amadeo-events`.
+  raycasts, collision events into `amadeo-events`. **The other half of M2, and not yet started.**
 - Verified deterministic physics: cross-run reproducibility test, in CI.
+  ⚠️ **Q24 must be settled first.** Rapier's `enhanced-determinism` feature delivers exactly the
+  bit-level cross-platform determinism gate 3 asks for, but **cannot be enabled alongside `parallel`
+  or `simd-*`** — so determinism and fast physics are mutually exclusive, and the choice cannot be
+  deferred by taking both. It also pins the rapier version, since an upgrade may legitimately move
+  results and invalidate every replay containing physics.
 
 **Exit gate**
 1. A 3D scene: imported glTF level, dynamic lighting, shadows, a physics-driven character controller

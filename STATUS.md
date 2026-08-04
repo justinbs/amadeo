@@ -231,7 +231,23 @@ and both files are now checked in CI, which is what would have caught it.
 **Worth generalising**: "the existing toolchain applies for nothing" is a claim about *other* code,
 which makes it exactly the kind that gets written into an ADR and never executed. Run it.
 
-**Nothing is blocked and nothing is undecided.** All three of M2's expensive decisions are made
+### Physics is the other half of M2, and it has a P0 question — Q24
+
+Raised by Justin asking whether the engine needs a physics engine. It does, and in **this milestone**:
+two of M2's four exit gates depend on `amadeo-physics`, which is not started.
+
+**Rapier can give exactly what gate 3 asks for** — bit-level cross-platform determinism, same bytes
+on different CPUs and operating systems — through its `enhanced-determinism` feature. **But that
+feature cannot be enabled alongside `parallel` or `simd-*`.** Determinism and fast physics are
+mutually exclusive, and there is no "take both and decide later". It also pins the rapier version,
+because an upgrade may legitimately change results and invalidate every replay containing physics.
+
+The prior is that determinism wins — I3 is non-negotiable and gate 3 is written against it — but that
+means the physics layer is single-threaded and scalar *by design*, which is a different layer from
+one written assuming it might parallelise later. `CLAUDE.md`'s trap list puts retrofitting
+determinism first, so this gets decided before the crate exists.
+
+**Nothing is blocked and nothing else is undecided.** All four of M2's expensive rendering decisions are made
 before their code — ADR 0031 for 2D/3D coexistence and the camera, ADR 0033 for the material and
 shader model, ADR 0034 for the render graph's visibility. What is left is build work.
 
