@@ -109,6 +109,10 @@ crates/
                      ADR 0014's path grammar), and an override is a top-level *patch* that reaches the
                      instance root and nothing inside it. That is what makes nesting structurally
                      safe. A dangling override refuses to load; a cycle is reported with its chain.
+                     ADR 0032 added value nesting: an indented block is a **list** if its lines start
+                     with `- ` and **named fields** otherwise (YAML's rule, and no schema needed), so
+                     nested structs, maps and enum payloads all write now. `Option::None` and any
+                     *empty* field value still have no spelling, deliberately.
 ✖ amadeo-script      NOT BUILT. ADR 0011: game logic is plain Rust in the game crate.
 🟡 amadeo-agent       the protocol: JSON reader and writer, JSON-RPC envelope, and the methods that
                      need only a world + registry (describe, describe.example, render.describe,

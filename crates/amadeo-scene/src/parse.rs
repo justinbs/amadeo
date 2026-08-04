@@ -160,6 +160,18 @@ pub enum ParseErrorKind {
     },
 }
 
+/// Which shape an indented block has, decided by its first line.
+///
+/// ADR 0032: `- ` items are a sequence, `name value` lines are named fields. That is YAML's rule,
+/// and it needs no schema — which matters, because layer 1 has none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Block {
+    /// `- ` items: a sequence.
+    List,
+    /// `name value` lines: named fields, so a struct or a map.
+    Fields,
+}
+
 /// One meaningful line: blanks and comment-only lines never reach the parser.
 #[derive(Debug, Clone)]
 struct Line {
@@ -610,10 +622,24 @@ impl Parser {
         };
 
         self.cursor += 1;
-        let inner = level + 1;
+        let fields = self.parse_fields(level + 1, &name)?;
+        Ok((name, Value::Struct(fields)))
+    }
+
+    /// Reads `name value` lines at `level` into a map, recursing into indented blocks.
+    ///
+    /// Shared by a component's body and by a nested struct beneath one of its fields — they are the
+    /// same shape, which is why ADR 0032's extension needed no new syntax. `owner` names whatever
+    /// these fields belong to, so a duplicate reads as `Material` or `Material.base_colour` rather
+    /// than as a bare field name.
+    fn parse_fields(
+        &mut self,
+        level: usize,
+        owner: &str,
+    ) -> Result<BTreeMap<String, Value>, ParseError> {
         let mut fields: BTreeMap<String, Value> = BTreeMap::new();
 
-        while let Some(next) = self.peek_at(inner).cloned() {
+        while let Some(next) = self.peek_at(level).cloned() {
             let field_tokens = tokenize(&next.text, next.number)?;
             if field_tokens.is_empty() {
                 self.cursor += 1;
@@ -627,34 +653,91 @@ impl Parser {
             }
 
             let field_name = field_tokens[0].text.clone();
+            let nested = format!("{owner}.{field_name}");
             self.cursor += 1;
 
             let value = if field_tokens.len() > 1 {
-                values_to_value(&field_tokens[1..])
-            } else {
-                // No inline value, so the field's value is the list indented beneath it.
-                let items = self.parse_list(inner + 1)?;
-                if items.is_empty() {
-                    return Err(ParseError {
-                        line: next.number,
-                        kind: ParseErrorKind::EmptyField { name: field_name },
-                    });
+                let inline = values_to_value(&field_tokens[1..]);
+                // An inline value *and* a block beneath it: an enum variant carrying fields, which
+                // is the one case where both halves are needed. `projection Orthographic` with
+                // `height 8.0` under it. Anything else with a block beneath is a mistake, and says
+                // so rather than silently dropping the block.
+                match self.block_kind(level + 1) {
+                    None => inline,
+                    Some(Block::Fields) => {
+                        let payload = self.parse_fields(level + 1, &nested)?;
+                        let Value::Enum(variant) = inline else {
+                            return Err(ParseError {
+                                line: next.number,
+                                kind: ParseErrorKind::MalformedEntity {
+                                    detail: format!(
+                                        "`{field_name}` has a value on its line *and* fields \
+                                         indented beneath it. That is only meaningful for an enum \
+                                         variant carrying data, where the value is a bare variant \
+                                         name — remove one or the other"
+                                    ),
+                                },
+                            });
+                        };
+                        Value::Enum(amadeo_reflect::EnumValue {
+                            variant: variant.variant,
+                            payload: Box::new(Value::Struct(payload)),
+                        })
+                    }
+                    Some(Block::List) => {
+                        return Err(ParseError {
+                            line: next.number,
+                            kind: ParseErrorKind::MalformedEntity {
+                                detail: format!(
+                                    "`{field_name}` has a value on its line and a `- ` list \
+                                     indented beneath it. A list belongs under a field with no \
+                                     inline value"
+                                ),
+                            },
+                        });
+                    }
                 }
-                Value::List(items)
+            } else {
+                // Nothing on the line, so the value is the block beneath. Which kind it is comes
+                // from the block's own first line — `- ` means a sequence, anything else means
+                // named fields. That is exactly YAML's rule, and it needs no schema, which matters
+                // because layer 1 has none.
+                match self.block_kind(level + 1) {
+                    Some(Block::List) => Value::List(self.parse_list(level + 1)?),
+                    Some(Block::Fields) => Value::Struct(self.parse_fields(level + 1, &nested)?),
+                    None => {
+                        return Err(ParseError {
+                            line: next.number,
+                            kind: ParseErrorKind::EmptyField { name: field_name },
+                        });
+                    }
+                }
             };
 
             if fields.insert(field_name.clone(), value).is_some() {
                 return Err(ParseError {
                     line: next.number,
                     kind: ParseErrorKind::DuplicateField {
-                        component: name,
+                        component: owner.to_string(),
                         field: field_name,
                     },
                 });
             }
         }
 
-        Ok((name, Value::Struct(fields)))
+        Ok(fields)
+    }
+
+    /// What, if anything, is indented at `level`.
+    fn block_kind(&self, level: usize) -> Option<Block> {
+        let next = self.peek_at(level)?;
+        // Deliberately a plain prefix check rather than a tokenize: this decides *which* parser
+        // runs, so it must not fail. A malformed line is reported by whichever one it picks.
+        if next.text.trim_start().starts_with("- ") || next.text.trim() == "-" {
+            Some(Block::List)
+        } else {
+            Some(Block::Fields)
+        }
     }
 
     /// Collects `- ...` items at `level`.

@@ -161,9 +161,16 @@ fn build_simulation() -> anyhow::Result<App> {
     // I7). It is a `Service`, so it cannot reach the state hash either way (ADR 0009).
     app.insert_service(TextureCache::new());
 
-    // The camera is an entity now (ADR 0031) and `markers.scene` authors it, so the view is part of
-    // the level rather than something this function sets up.
+    // The camera is an entity now (ADR 0031), spawned here beside the markers and the player.
+    //
+    // **Not** in `scenes/markers.scene`, tempting though that is: this game does not load its scene
+    // file. It never has — the file has sat unread since session 5, and the Vault is what
+    // `App::load_scene` was built for. Putting the camera there instead left quad-demo drawing
+    // nothing at all for one commit, which is why `quad_demo_has_a_camera` now exists.
     app.register_component::<Camera>()?;
+    let eye = app.world.spawn();
+    app.world.insert(eye, Transform::at(0.0, 0.0));
+    app.world.insert(eye, Camera::orthographic(10.0));
 
     app.add_system(Stage::PreSimulation, system(SAMPLE_INPUT, sample_input));
     app.add_system(Stage::Simulation, system("apply_input", apply_input));
@@ -463,4 +470,37 @@ fn main() -> anyhow::Result<()> {
     let mut demo = QuadDemo::default();
     event_loop.run_app(&mut demo)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quad_demo_has_a_camera() {
+        // A regression guard with a story. ADR 0031 made a camera an entity and a world without one
+        // draws nothing at all — correct, but it means "forgot to spawn a camera" is now a way to
+        // ship a black window. This game did exactly that for one commit, because its camera was
+        // added to `scenes/markers.scene` and **this game does not load its scene file**.
+        //
+        // Nothing caught it: the replay still passed (a camera it never had cannot move the state
+        // hash), and quad-demo has no `render.describe` test the way the Vault does.
+        let app = build_simulation().expect("the game builds");
+        let (camera, _) = amadeo_render::primary_camera(&app.world)
+            .expect("quad-demo must spawn a camera, or it draws nothing");
+        assert_eq!(camera.projection.height(), Some(10.0));
+    }
+
+    #[test]
+    fn quad_demo_actually_draws_something() {
+        // The broader claim, and the one that would have caught the above whatever the cause: this
+        // game puts things on screen. `render.describe` is how that is checkable without a window.
+        let app = build_simulation().expect("the game builds");
+        let description = amadeo_render::describe_frame(&app.world);
+
+        assert!(
+            description.visible_count() > 0,
+            "nothing is on screen: {description:?}"
+        );
+    }
 }

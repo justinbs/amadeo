@@ -95,14 +95,13 @@ pub fn inline_value(value: &Value) -> Option<String> {
             let parts: Option<Vec<String>> = items.iter().map(inline_value).collect();
             parts.map(|parts| parts.join(" "))
         }
-        // A map joins nested structs here, and for the same reason: the scene format has no syntax
-        // for either yet. A field with no inline value parses as a *list* of `- ` items (see
-        // `parse_field`), so writing a map as an indented block would produce a file the parser
-        // reads back as something else. Falling through to `write_field`'s bare form instead means
-        // a round trip fails loudly at parse time rather than quietly changing shape.
+        // These need their own lines, which `write_field` gives them. Since ADR 0032 that is a real
+        // indented block rather than a failure: a struct or a map writes as `name value` lines, and
+        // an enum variant carrying data writes as its name with those lines beneath it.
         //
-        // Nothing authors a map in a scene today — resources are not scene-authorable at all — so
-        // this is a gap ADR 0027 records rather than one it widens.
+        // `Value::Unit` is the exception and remains unwritable — it is `Option::None`, and every
+        // spelling for it either collides with an enum variant or invents punctuation this format
+        // does not have. Deliberately left out of ADR 0032; nothing uses one.
         Value::Unit | Value::Struct(_) | Value::Map(_) | Value::Enum(_) => None,
     }
 }
@@ -134,8 +133,30 @@ fn write_field(output: &mut String, level: usize, name: &str, value: &Value) {
                 }
             }
         }
-        // A field with no value at all. Written bare so a round trip fails loudly at parse time
-        // rather than quietly losing the field.
+        // A nested struct, or a map. **The same lines either way**, which is not a shortcut: the two
+        // are structurally identical (ADR 0027) and only the schema tells them apart, which layer 1
+        // has not got. So both write as `name value` lines and both read back as a `Struct`; the
+        // component's own `from_value` is what turns one into a map.
+        Value::Struct(fields) | Value::Map(fields) => {
+            let _ = writeln!(output, "{pad}{name}");
+            for (field, inner) in fields {
+                write_field(output, level + 1, field, inner);
+            }
+        }
+        // An enum variant carrying data: the variant on the field's line, its fields beneath. The
+        // *fieldless* case never reaches here — `inline_value` handles it, which is what keeps
+        // `state Patrol` reading the way ADR 0014 designed it.
+        Value::Enum(variant) => {
+            let _ = writeln!(output, "{pad}{name} {}", variant.variant);
+            if let Value::Struct(fields) = variant.payload.as_ref() {
+                for (field, inner) in fields {
+                    write_field(output, level + 1, field, inner);
+                }
+            }
+        }
+        // A field with no value at all — `Option::None`. Written bare so a round trip fails loudly
+        // at parse time rather than quietly losing the field. ADR 0032 left this unsolved on
+        // purpose: every spelling either collides with an enum variant or invents punctuation.
         Value::Unit => {
             let _ = writeln!(output, "{pad}{name}");
         }

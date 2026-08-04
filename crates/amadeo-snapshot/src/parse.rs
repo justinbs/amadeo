@@ -377,7 +377,29 @@ fn finish_value(
     line: usize,
 ) -> Result<Value, ParseError> {
     if !rest.is_empty() {
-        return parse_value(rest, field, line);
+        let inline = parse_value(rest, field, line)?;
+        // A value on the line *and* children beneath it means an enum variant carrying data. The
+        // counterpart to the writer's `Value::Enum` arm; anything else in that shape is a corrupt
+        // file, and says so rather than silently dropping the children.
+        let has_children = lines.get(*cursor).is_some_and(|next| next.level > level);
+        if !has_children {
+            return Ok(inline);
+        }
+        let Value::Enum(variant) = inline else {
+            return Err(ParseError {
+                line,
+                kind: ParseErrorKind::BadNumber {
+                    field: field.to_string(),
+                    expected: "a bare variant name, since fields are indented beneath it",
+                    found: rest.to_string(),
+                },
+            });
+        };
+        let payload = parse_fields(lines, cursor, level + 1)?;
+        return Ok(Value::Enum(amadeo_reflect::EnumValue {
+            variant: variant.variant,
+            payload: Box::new(payload),
+        }));
     }
 
     // Nothing on the line, so the value is whatever is indented beneath it. No children at all means

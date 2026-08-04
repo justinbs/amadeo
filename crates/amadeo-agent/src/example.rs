@@ -55,45 +55,69 @@ pub fn describe_example(info: &TypeInfo, types: &TypeRegistry) -> Result<Json, S
         ("json", crate::inspect::value_to_json(&value)),
     ];
 
-    // The scene form is omitted rather than faked when the format cannot express the value. A map is
-    // the live case: the scene grammar has no syntax for one (ADR 0027 records the gap), so emitting
-    // something would be emitting something that does not parse back.
-    match scene_form(&info.name, &value) {
-        Some(scene) => members.push(("scene", Json::string(scene))),
+    // The scene form is omitted rather than faked when the format cannot express the value. Since
+    // ADR 0032 that is a narrow case — nested structs, maps and enum payloads all write now — and
+    // what remains is anything *empty*, because an empty block is a parse error rather than an
+    // empty value.
+    match unwritable_reason(&value) {
         None => members.push((
+            "scene",
+            Json::string(amadeo_scene::component_block(&info.name, &value)),
+        )),
+        Some(reason) => members.push((
             "scene_note",
-            Json::string(
-                "this type contains a map, which the .scene format has no syntax for yet \
-                 (ADR 0027) — the JSON form above is complete",
-            ),
+            Json::string(format!(
+                "no scene form: {reason}. The JSON form above is complete"
+            )),
         )),
     }
 
     Ok(Json::object(members))
 }
 
-/// The scene spelling, or `None` when the format cannot express this value.
-fn scene_form(name: &str, value: &Value) -> Option<String> {
-    if contains_map(value) {
-        return None;
+/// Why this value has no scene spelling, or `None` when it has one.
+///
+/// The remaining gaps after ADR 0032, and both are the same shape: a field whose value is *nothing*
+/// writes as a bare field name, and a bare field name is how the format opens a block — so the
+/// parser reads it as an empty block and refuses it. There is no spelling for emptiness that does
+/// not invent punctuation this format has deliberately avoided.
+fn unwritable_reason(component: &Value) -> Option<String> {
+    // The component itself may be empty — a marker writes as just its name, which is fine. Only its
+    // *fields* have the problem, so the walk starts one level in.
+    match component {
+        Value::Struct(fields) => fields.values().find_map(field_unwritable),
+        other => field_unwritable(other),
     }
-    Some(amadeo_scene::component_block(name, value))
 }
 
-/// Whether a map appears anywhere in this value.
-fn contains_map(value: &Value) -> bool {
+/// The same question for something appearing as a field's value, where empty is fatal.
+fn field_unwritable(value: &Value) -> Option<String> {
     match value {
-        Value::Map(_) => true,
-        Value::Struct(fields) => fields.values().any(contains_map),
-        Value::List(items) => items.iter().any(contains_map),
-        Value::Enum(inner) => contains_map(&inner.payload),
-        Value::Unit
-        | Value::Bool(_)
+        // `Option::None`. Left unsolved by ADR 0032 on purpose: `none` collides with an enum variant
+        // of that name, and a sigil would be the format's first.
+        Value::Unit => Some("it has an absent optional field, which has no spelling".to_string()),
+        Value::Map(entries) if entries.is_empty() => {
+            Some("it has an empty map field, and an empty block is a parse error".to_string())
+        }
+        Value::List(items) if items.is_empty() => {
+            Some("it has an empty list field, and an empty block is a parse error".to_string())
+        }
+        Value::Struct(fields) if fields.is_empty() => {
+            Some("it has an empty struct field, and an empty block is a parse error".to_string())
+        }
+        Value::Struct(fields) | Value::Map(fields) => fields.values().find_map(field_unwritable),
+        Value::List(items) => items.iter().find_map(field_unwritable),
+        Value::Enum(inner) => match inner.payload.as_ref() {
+            // A fieldless variant is written inline, so its `Unit` payload is not a missing value.
+            Value::Unit => None,
+            payload => field_unwritable(payload),
+        },
+        Value::Bool(_)
         | Value::I64(_)
         | Value::U64(_)
         | Value::F32(_)
         | Value::F64(_)
-        | Value::String(_) => false,
+        | Value::String(_) => None,
     }
 }
 
@@ -138,10 +162,14 @@ fn example_value(
             } else {
                 let mut members = BTreeMap::new();
                 for field in &variant.fields {
-                    members.insert(
-                        field.name.clone(),
-                        example_for_named(&field.type_name, types, stack)?,
-                    );
+                    // Ranges are honoured here exactly as in a struct. Worth stating because they
+                    // were silently *dropped* by the derive on variant fields until session 8, so
+                    // this path looked correct while producing out-of-range advice.
+                    let value = match &field.range {
+                        Some(range) => bounded_example(&field.type_name, range.min, types, stack)?,
+                        None => example_for_named(&field.type_name, types, stack)?,
+                    };
+                    members.insert(field.name.clone(), value);
                 }
                 Value::Struct(members)
             };

@@ -87,10 +87,26 @@ fn every_component_example_parses_and_instantiates() {
 
 #[test]
 fn an_example_respects_a_declared_range() {
-    // `Camera::height` is annotated `min = 0.1`, and a zero-height camera is exactly the
-    // plausible-but-wrong value an unbounded example would have suggested.
+    // `Projection::Orthographic { height }` is annotated `min = 0.1`, and a zero-height camera is
+    // exactly the plausible-but-wrong value an unbounded example would have suggested.
+    //
+    // The annotation sits on an **enum variant's** field, which is also the point: the derive used
+    // to drop `min`, `max` and `unit` there, so a field lost its range simply by being moved into a
+    // variant. ADR 0032 made that shape usable and this is what keeps it honest.
     let types = full_schema();
-    let info = types.get("Camera").expect("registered");
+    let info = types.get("Projection").expect("a dependency of Camera");
+
+    let amadeo_reflect::TypeKind::Enum { variants } = &info.kind else {
+        panic!("Projection is an enum, found {:?}", info.kind)
+    };
+    let orthographic = variants
+        .iter()
+        .find(|variant| variant.name == "Orthographic")
+        .expect("Projection has an Orthographic variant");
+    let declared = orthographic.fields[0]
+        .range
+        .expect("height is range-annotated, which is what this test is about");
+    assert_eq!(declared.min, 0.1);
 
     let example = describe_example(info, &types).expect("an example exists");
     let amadeo_agent::Json::Object(members) = &example else {
@@ -99,18 +115,15 @@ fn an_example_respects_a_declared_range() {
     let Some(amadeo_agent::Json::Object(json)) = members.get("json") else {
         panic!("an example carries a json form");
     };
+    let Some(amadeo_agent::Json::Object(payload)) = json.get("payload") else {
+        panic!("an enum example carries its variant's payload, got {json:?}")
+    };
 
-    let field = info
-        .field("height")
-        .expect("Camera has a height")
-        .range
-        .expect("and it is range-annotated, which is what this test is about");
-
-    match json.get("height") {
+    match payload.get("height") {
         Some(amadeo_agent::Json::Float(height)) => assert!(
-            *height >= field.min,
+            *height >= declared.min,
             "the example's height {height} is below the declared minimum {}",
-            field.min
+            declared.min
         ),
         other => panic!("height should be a number, found {other:?}"),
     }

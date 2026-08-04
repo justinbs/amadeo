@@ -252,7 +252,7 @@ fn active_cameras(world: &World) -> Vec<(Camera, [f32; 2])> {
     let mut found: Vec<(i32, amadeo_ecs::Entity, Camera, [f32; 2])> = world
         .query::<(&Camera, &Transform, Option<&GlobalTransform>)>()
         .filter(|(_, (camera, _, _))| {
-            camera.active && matches!(camera.projection, Projection::Orthographic)
+            camera.active && matches!(camera.projection, Projection::Orthographic { .. })
         })
         .map(|(entity, (camera, transform, global))| {
             let matrix = match global {

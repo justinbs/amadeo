@@ -162,6 +162,21 @@ fn write_field(out: &mut String, level: usize, name: &str, value: &Value) {
                 write_field(out, level + 1, "-", item);
             }
         }
+        // An enum variant carrying data: the variant on the name's line, its fields beneath. The
+        // *fieldless* case never reaches here — `inline_value` returns the bare variant name.
+        //
+        // Added in session 8 alongside ADR 0032. Before it, a payload enum fell through to the
+        // `Display` arm below and came out as `Orthographic({height: 8})`, which nothing reads back
+        // — the same shape of defect the map handling above exists to prevent, found the same way:
+        // by snapshotting a real game and looking at the file.
+        Value::Enum(variant) => {
+            let _ = writeln!(out, "{}{name} {}", pad(level), variant.variant);
+            if let Value::Struct(fields) = variant.payload.as_ref() {
+                for (field, inner) in fields {
+                    write_field(out, level + 1, field, inner);
+                }
+            }
+        }
         // Nothing reaches here: `inline_value` handles every scalar, and the arms above cover the
         // rest. Written in `Display` form rather than skipped so that if a new `Value` variant ever
         // appears, the data survives to be seen in the file instead of vanishing.

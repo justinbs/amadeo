@@ -142,12 +142,9 @@ entity trap_east "Trap East" from floor_trap
 entity eye "Camera"
   Camera
     active true
-    far 1000.0
-    fov 60.0
-    height 8.0
-    near 0.1
     order 0
     projection Orthographic
+      height 8.0
     target ""
     viewport 0.0 0.0 1.0 1.0
   Transform

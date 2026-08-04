@@ -741,7 +741,7 @@ impl RenderBackend for WgpuBackend {
             // ratio, so a half-width viewport shows half the world rather than a squashed whole.
             let (px_width, px_height) = self.viewport_pixels(view);
             let aspect = px_width / px_height.max(1.0);
-            let half_height = view.camera.height / 2.0;
+            let half_height = view.camera.projection.height().unwrap_or(2.0) / 2.0;
             let camera = GpuCamera {
                 center: view.eye,
                 half_extents: [half_height * aspect, half_height],

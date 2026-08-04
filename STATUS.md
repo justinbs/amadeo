@@ -11,9 +11,10 @@ prefabs, and **`games/vault` — a complete small 2D game** have all landed.
 **Gate 4 was tested and found false** — `describe` is a schema, not a manual — which is a result
 rather than an omission. **ADR 0030 settles what the protocol is for** and fixes the three parts of
 that finding that were genuine holes; the API half stays in `docs/07` by invariant I5. **ADR 0029
-closes Q7** with prefabs. Q3, Q4, Q7, Q10, Q13, Q14, Q16 and Q17 are all closed; nothing is blocked.
-Two new ones are open: **Q19** (`amadeo import` cannot import a prefab) and **Q21** (the scene format
-cannot express a nested struct, a payload enum, or `None`).
+closes Q7** with prefabs, and **ADR 0032 closes Q21** by letting a scene file nest values at all.
+Q3, Q4, Q7, Q10, Q13, Q14, Q16, Q17 and Q21 are all closed; nothing is blocked. Two are open:
+**Q19** (`amadeo import` cannot import a prefab) and **Q22** (a resource's identity in the state hash
+is its Rust path, where a component's is its canonical name).
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
 
 > ### ⚠️ Two working rules that changed in session 7 — read before doing anything
@@ -41,10 +42,10 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
 `games/vault`.
-**839 tests passing**; fmt, clippy
+**853 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
-Eighteen things work end to end today:
+Nineteen things work end to end today:
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -69,6 +70,9 @@ Eighteen things work end to end today:
   structurally rather than by convention.
 - **Sprites batch into draw calls.** 20,000 fully interleaved sprites collapse to 32 batches in
   2.58 ms (15.5% of a 60 Hz frame); 50,000 tiles on one sheet are a single draw call.
+- **A scene file nests.** An indented block is a list if its lines start with `- ` and named fields
+  otherwise (ADR 0032), so `Material` with a `base_colour` inside it, a map, and
+  `projection Orthographic` with `height 8.0` beneath it all write and read back byte-identically.
 - **The view is part of the level.** `entity eye "Camera"` in a scene file decides what is drawn and
   from where. A world may hold any number (ADR 0031) -- each with a projection, a target that is the
   window or a texture, a viewport rectangle, and an order -- and a camera parented to a character
@@ -133,11 +137,11 @@ of them except Q4 built the same session it was decided.
 settled its shape. Declared passes, resource dependencies, transient targets. Then 3D: meshes, PBR,
 lights, shadows, culling, glTF.
 
-**Settle Q21 before the material model.** A scene file cannot express a nested struct, an enum with a
-payload, or `Option::None` — the first two emit a Rust `Debug` form nothing parses, and `None` fails
-to parse outright. Never hit before, because every component in the engine is scalars and flat lists.
-It is already why ADR 0031's camera is flat when `Projection::Orthographic { height }` is the obvious
-and better design, and a material is exactly the type nobody would want to flatten.
+**Q21 is closed, which is what unblocks it.** ADR 0032 extended the scene grammar: an indented block
+is a list if its lines start with `- ` and named fields otherwise, so nested structs, maps and enum
+payloads all write now. **A material can be designed on its merits** rather than around a format
+limitation — and worth knowing before that decision: a material is *shared*, so Godot's answer of an
+asset id may fit it better than nesting does, and ADR 0029 already built that machinery.
 
 ### The rest of M2
 
@@ -1449,3 +1453,47 @@ on purpose — several record a diagnosis that took a while to reach.
 
   839 tests, all four verification commands green, both replays passing on their new hashes, and
   `amadeo check` and `amadeo fmt --check` clean on all four scene files.
+
+  **Then Q21 — ADR 0032 — because the camera's flat fields were a symptom.** The grammar already had
+  the slot: a field with no inline value already opened an indented block, it just only accepted
+  `- ` items. So the whole extension is one rule, and it is **YAML's** rule — a block is a list if
+  its lines start with `- ` and named fields otherwise. No schema is consulted, which matters,
+  because layer 1 deliberately has none. Nested structs, maps and enum payloads all fall out of it,
+  and **maps became scene-expressible as a side effect**, closing ADR 0027's recorded gap.
+
+  Purely additive, so every scene file valid before is valid after.
+
+  `Option::None` was left unsolved on purpose. `none` collides with an enum variant of that name; a
+  sigil would be this format's first punctuation, having chosen indentation over punctuation
+  throughout; and omitting the field destroys ADR 0014's distinction between "explicitly nothing" and
+  "whoever wrote this forgot". Nothing has an `Option` field, so it waits for a real case.
+
+  **`Projection` was un-flattened immediately** — `Orthographic { height }` and
+  `Perspective { fov, near, far }`, each carrying only what it needs, with `Projection::height()`
+  returning `None` for a perspective camera rather than a fallback. Done now rather than later
+  because the replays had just been regenerated, so it was the cheapest moment it will ever be.
+
+  **Three things fell out of doing it, all found by use rather than reasoning:**
+
+  The derive was **silently dropping `min`, `max` and `unit` on enum variant fields** — so a field
+  lost its declared range simply by moving into a variant, which is precisely what this ADR
+  encourages. The struct and variant paths now share one function.
+
+  `amadeo-snapshot` **could not write a payload enum**: it came out as `Orthographic({height: 8})`,
+  Rust's `Debug`, which nothing reads back. That is the *second* time that exact defect has been
+  found in that crate — the first was maps, earlier this session — and both times by snapshotting a
+  real game and reading the file. It now has a test that builds a world holding every awkward shape
+  and asserts the restored state hash matches.
+
+  And **quad-demo had been drawing nothing since the previous commit.** ADR 0031's camera went into
+  `scenes/markers.scene`, and quad-demo *does not load its scene file* — it never has. Nothing caught
+  it: its replay still passed, because a camera the world never had cannot move the state hash, and
+  quad-demo has no `render.describe` test the way the Vault does. It now spawns its camera in code
+  beside everything else, and has two tests — one that it has a camera, one that something is
+  actually on screen.
+
+  Both replays regenerated again, and the vault's cause was proven by snapshot diff first: the only
+  difference between the two worlds was the camera's four flat fields collapsing into the
+  projection's payload. Nothing else moved.
+
+  853 tests, all four verification commands green.

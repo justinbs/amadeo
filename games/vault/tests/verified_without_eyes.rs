@@ -245,11 +245,12 @@ fn the_scene_camera_matches_the_declared_view_height() {
     let app = build_simulation().expect("the game builds");
     let (camera, eye) = amadeo_render::primary_camera(&app.world).expect("the scene authors one");
 
-    assert_eq!(camera.height, vault::VIEW_HEIGHT);
+    // `height()` returns `None` for a perspective camera rather than a fallback, so this asserts
+    // the projection *and* the number in one go (ADR 0032).
     assert_eq!(
-        camera.projection,
-        amadeo_render::Projection::Orthographic,
-        "a 2D game wants a parallel projection"
+        camera.projection.height(),
+        Some(vault::VIEW_HEIGHT),
+        "a 2D game wants a parallel projection at the declared height"
     );
     // The nudge upward that keeps the score readout clear of the top wall — found by
     // `render.describe` rather than by looking, and now authored in the level rather than in code.

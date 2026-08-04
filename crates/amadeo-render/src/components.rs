@@ -161,25 +161,64 @@ impl Component for SortOrder {}
 
 /// How a camera flattens the world onto the screen.
 ///
-/// A fieldless enum with the parameters as sibling fields on [`Camera`], rather than
-/// `Orthographic { height }` carrying exactly what it needs. That is the worse type and it is
-/// deliberate: **the scene format cannot express an enum with a payload** (Q21), and a camera has to
-/// be authorable in a `.scene` file for invariant I1 to hold here. ADR 0031 records the trade.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+/// Each variant carries exactly the parameters that projection needs, and no others — so a
+/// perspective camera has no `height` and an orthographic one has no `fov`. A camera in an
+/// impossible state is unrepresentable rather than merely unlikely.
+///
+/// **This was flat until ADR 0032.** The scene format could not express an enum carrying data, so
+/// ADR 0031 had to spread these across `Camera` as sibling fields, half of them meaningless at any
+/// given time. Extending the grammar was what made the honest type available.
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub enum Projection {
     /// Parallel: no perspective, so size does not change with distance.
     ///
-    /// Reads [`Camera::height`] and ignores [`Camera::fov`]. This is 2D, and it is also isometric —
-    /// which is why the projection belongs to the camera rather than to a pipeline (ADR 0031).
-    #[default]
-    Orthographic,
+    /// This is 2D, and it is also isometric — which is why the projection belongs to the camera
+    /// rather than to a pipeline (ADR 0031).
+    Orthographic {
+        /// How many world units tall the view is.
+        ///
+        /// Width follows from the target's aspect ratio, so resizing the window widens the view
+        /// rather than stretching it.
+        #[reflect(min = 0.1, max = 1000.0, unit = "world units")]
+        height: f32,
+    },
     /// A view frustum: things further away are smaller.
     ///
-    /// Reads [`Camera::fov`] and ignores [`Camera::height`]. **Nothing draws through one yet** — the
-    /// mesh pass arrives later in M2, and the sprite and quad passes skip a perspective camera
-    /// rather than guessing at a projection. `renders_nothing_through_a_perspective_camera_yet`
-    /// pins that, so it stays a known state rather than a mystery.
-    Perspective,
+    /// **Nothing draws through one yet** — the mesh pass arrives later in M2, and the sprite and
+    /// quad passes skip a perspective camera rather than guessing at a projection.
+    /// `renders_nothing_through_a_perspective_camera_yet` pins that, so it stays a known state
+    /// rather than a mystery.
+    Perspective {
+        /// The vertical field of view.
+        #[reflect(min = 1.0, max = 179.0, unit = "deg")]
+        fov: f32,
+        /// Nearest distance drawn.
+        #[reflect(min = 0.001, max = 1000.0, unit = "world units")]
+        near: f32,
+        /// Furthest distance drawn.
+        #[reflect(min = 0.1, max = 100000.0, unit = "world units")]
+        far: f32,
+    },
+}
+
+impl Default for Projection {
+    fn default() -> Self {
+        Projection::Orthographic { height: 10.0 }
+    }
+}
+
+impl Projection {
+    /// The orthographic view height, if this is an orthographic projection.
+    ///
+    /// Returns `None` for a perspective one rather than a fallback number, which is the whole point
+    /// of the enum carrying its own parameters: there is no height to report.
+    #[must_use]
+    pub fn height(&self) -> Option<f32> {
+        match self {
+            Projection::Orthographic { height } => Some(*height),
+            Projection::Perspective { .. } => None,
+        }
+    }
 }
 
 /// A camera: what is drawn, from where, and onto what.
@@ -202,27 +241,13 @@ pub enum Projection {
 /// ```
 #[derive(Debug, Clone, PartialEq, StableHash, Reflect)]
 pub struct Camera {
-    /// Which projection to use. The other fields say which ones this one reads.
+    /// Which projection to use, and its parameters.
     pub projection: Projection,
-    /// Orthographic only: how many world units tall the view is.
-    ///
-    /// Width follows from the target's aspect ratio, so resizing the window widens the view rather
-    /// than stretching it.
-    #[reflect(min = 0.1, max = 1000.0, unit = "world units")]
-    pub height: f32,
-    /// Perspective only: the vertical field of view.
-    #[reflect(min = 1.0, max = 179.0, unit = "deg")]
-    pub fov: f32,
-    /// Nearest distance drawn. Perspective only.
-    #[reflect(min = 0.001, max = 1000.0, unit = "world units")]
-    pub near: f32,
-    /// Furthest distance drawn. Perspective only.
-    #[reflect(min = 0.1, max = 100000.0, unit = "world units")]
-    pub far: f32,
     /// Where this camera draws. **Empty means the window**; anything else is a texture asset id.
     ///
-    /// A plain string rather than an `Option` or an enum, for the same reason [`Projection`] is
-    /// flat — see Q21. It matches [`Sprite::texture`], which is already an asset id in a string.
+    /// A plain string rather than an `Option`, because ADR 0032 deliberately left `Option::None`
+    /// without a spelling — and because it matches [`Sprite::texture`], which is already an asset id
+    /// in a string.
     pub target: String,
     /// The sub-rectangle of the target to draw into, as `[x, y, width, height]` in `0.0..=1.0`.
     ///
@@ -238,14 +263,7 @@ pub struct Camera {
 impl Default for Camera {
     fn default() -> Self {
         Self {
-            projection: Projection::Orthographic,
-            height: 10.0,
-            // Never read while `projection` is orthographic, but a sane number rather than zero so
-            // that flipping the projection in a scene file gives something visible rather than a
-            // degenerate frustum. That is the cost of the flat layout, paid where it is cheapest.
-            fov: 60.0,
-            near: 0.1,
-            far: 1000.0,
+            projection: Projection::default(),
             target: String::new(),
             viewport: [0.0, 0.0, 1.0, 1.0],
             order: 0,
@@ -261,18 +279,23 @@ impl Camera {
     #[must_use]
     pub fn orthographic(height: f32) -> Self {
         Self {
-            projection: Projection::Orthographic,
-            height,
+            projection: Projection::Orthographic { height },
             ..Self::default()
         }
     }
 
     /// A perspective camera with a vertical field of view in degrees, filling the window.
+    ///
+    /// `near` and `far` take the conventional defaults; set them on the [`Projection`] directly if
+    /// the scene needs something else.
     #[must_use]
     pub fn perspective(fov: f32) -> Self {
         Self {
-            projection: Projection::Perspective,
-            fov,
+            projection: Projection::Perspective {
+                fov,
+                near: 0.1,
+                far: 1000.0,
+            },
             ..Self::default()
         }
     }
@@ -294,7 +317,10 @@ impl Camera {
         } else {
             width as f32 / height as f32
         };
-        let half_height = self.height / 2.0;
+        // Only an orthographic camera has a height. A perspective one is not projected here at all
+        // -- the mesh pass will carry its own -- so it falls back to a unit view rather than
+        // inventing a number that would look plausible and be wrong.
+        let half_height = self.projection.height().unwrap_or(2.0) / 2.0;
         let half_width = half_height * aspect;
 
         [

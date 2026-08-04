@@ -380,40 +380,40 @@ already not the identity the outside world sees.
 
 ---
 
-## Q21 · **P1** · A scene file cannot express a nested struct, a payload enum, or `None`
+## ~~Q21~~ · **Resolved — ADR 0032.** A block of named fields is a struct
 
-**Found in session 8** by probing the format directly, while designing the camera component. Never
-hit before because no component has ever had such a field — every one so far is scalars, flat lists,
-and marker types.
+**Found in session 8 by probing the format**, resolved the same session. A block of `name value`
+lines is a struct; a block of `- ` lines is a list; a bare variant name with a block beneath it is an
+enum carrying data. That is YAML's rule, it needs no schema — which matters, because layer 1 has
+none — and the grammar already had the slot, since a field with no inline value already opened a
+block.
 
-What a component field can be today:
+What a component field can be now:
 
 | Shape | |
 |---|---|
 | scalar (`f32`, `bool`, `string`, ints) | ✅ |
 | flat list (`[f32; 3]`, `Vec<f32>`) | ✅ |
 | fieldless enum variant (`phase Playing`) | ✅ |
-| **nested struct** | ❌ emits `{height: 8}`, a Rust `Debug` form nothing parses |
-| **enum with a payload** | ❌ emits `Ortho({height: 8})`, same problem |
-| **`Option::None`** | ❌ writes a bare field name, and the parser refuses it |
-| map | ❌ known, recorded by ADR 0027 |
+| nested struct, to any depth | ✅ ADR 0032 |
+| enum with a payload | ✅ ADR 0032 |
+| map | ✅ ADR 0032 — same syntax as a struct, which closes ADR 0027's recorded gap |
+| **`Option::None`** | ❌ **still**, deliberately |
+| **anything empty** as a field value | ❌ an empty block is a parse error |
 
-The writer does not *lie* about it — `inline_value` returns `None` and the value falls through to a
-debug rendering, which fails loudly at parse time rather than silently changing shape. That was a
-deliberate choice in ADR 0014's implementation and it is why this is a gap rather than a corruption
-bug. But it means a whole class of natural component design is unavailable.
+**`None` was left unsolved on purpose.** `none` collides with an enum variant of that name; a sigil
+would be this format's first punctuation, having chosen indentation over punctuation throughout; and
+omitting the field destroys ADR 0014's distinction between "explicitly nothing" and "whoever wrote
+this forgot". Nothing in the engine has an `Option` field, so it waits for a real case to argue from.
 
-**It shaped ADR 0031's camera**, which is flat — a fieldless `Projection` enum beside plain `height`,
-`fov`, `near` and `far` fields — where the obvious design is `Projection::Orthographic { height }`.
-That is a worse type: it has representable states that mean nothing, which is exactly what the
-Vault's `Phase` comment argues against.
+**`Projection` was un-flattened immediately**, which was the point: `Orthographic { height }` and
+`Perspective { fov, near, far }` each carry only what they need, and `Projection::height()` returns
+`None` for a perspective camera rather than a fallback number.
 
-**It will bite again at materials** (M2), where `Material { base_colour, metallic, texture }` nested
-under a mesh is the natural shape, and at anything with an optional field.
-
-The likely answer is an indented block under a field name, which the *grammar* has room for — a field
-with no inline value already introduces a block, it just only accepts `- ` list items today. Wants
-its own ADR against ADR 0014, and wants deciding before M2's material model rather than after.
+Two defects fell out of doing it, both found by use rather than reasoning: the derive was silently
+dropping `min`/`max`/`unit` on **enum variant fields**, so a field lost its range simply by moving
+into a variant; and `amadeo-snapshot` could not write a payload enum, so a snapshot of any world
+holding one would capture and then refuse to restore. Both fixed, both now tested.
 
 ---
 

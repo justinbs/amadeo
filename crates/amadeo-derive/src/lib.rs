@@ -331,6 +331,32 @@ fn expand(input: DeriveInput) -> syn::Result<TokenStream2> {
     })
 }
 
+/// The `range:` initialiser for one field, from its `min`/`max` attributes.
+///
+/// Shared by struct fields and enum variant fields, which is the point: keeping one copy is what
+/// stops the two drifting, as they had until session 8.
+fn range_tokens(field: &syn::Field, options: &FieldOptions) -> syn::Result<TokenStream2> {
+    match (options.min, options.max) {
+        (Some(min), Some(max)) => Ok(
+            quote! { ::std::option::Option::Some(::amadeo_reflect::Range { min: #min, max: #max }) },
+        ),
+        (None, None) => Ok(quote! { ::std::option::Option::None }),
+        _ => Err(syn::Error::new_spanned(
+            field,
+            "#[reflect(...)] needs both `min` and `max`, or neither — a half-open range cannot \
+             drive an editor slider",
+        )),
+    }
+}
+
+/// The `unit:` initialiser for one field.
+fn unit_tokens(options: &FieldOptions) -> TokenStream2 {
+    match &options.unit {
+        Some(unit) => quote! { ::std::option::Option::Some(#unit.to_string()) },
+        None => quote! { ::std::option::Option::None },
+    }
+}
+
 /// Every type this one names in its schema, so `register_dependencies` can register them.
 ///
 /// Duplicates are fine and expected — three `f32` fields produce three calls, and the second and
@@ -586,17 +612,26 @@ fn expand_enum(
                     known.push(field_name.clone());
                     let field_docs = collect_docs(&field.attrs);
                     let binding = format_ident!("field_{}", field_ident);
+                    // Same metadata a struct's field carries. These used to be hard-coded empty,
+                    // which meant a `#[reflect(min = ..., unit = ...)]` inside a variant was
+                    // silently dropped — a field lost its range simply by being moved into an enum.
+                    // Found in session 8 when ADR 0032 made payload enums usable and `Camera`'s
+                    // annotated fields moved into `Projection::Orthographic`.
+                    let field_range = range_tokens(field, &options)?;
+                    let field_unit = unit_tokens(&options);
+                    let field_sync = &options.sync;
+                    let field_interpolate = &options.interpolate;
 
                     field_infos.push(quote! {
                         ::amadeo_reflect::FieldInfo {
                             name: #field_name.to_string(),
                             type_name: <#ty as ::amadeo_reflect::Reflect>::type_name(),
                             docs: #field_docs.to_string(),
-                            range: ::std::option::Option::None,
-                            unit: ::std::option::Option::None,
+                            range: #field_range,
+                            unit: #field_unit,
                             replication: ::amadeo_reflect::Replication {
-                                sync: ::amadeo_reflect::SyncPolicy::Never,
-                                interpolate: ::amadeo_reflect::Interpolation::None,
+                                sync: #field_sync,
+                                interpolate: #field_interpolate,
                             },
                         }
                     });

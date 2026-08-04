@@ -258,7 +258,7 @@ impl ScreenProjection {
         // Width follows the aspect ratio, so resizing shows more world rather than stretching it.
         // Identical to `WgpuBackend::render`; if that changes, this has to change with it.
         let aspect = viewport.0 as f32 / viewport.1.max(1) as f32;
-        let half_height = camera.height / 2.0;
+        let half_height = camera.projection.height().unwrap_or(2.0) / 2.0;
         ScreenProjection {
             eye,
             half_extents: [half_height * aspect, half_height],

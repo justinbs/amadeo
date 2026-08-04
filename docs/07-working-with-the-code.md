@@ -572,13 +572,25 @@ entity a1 "Corridor"           # entity <id> "<name>"
       waypoints
         - 0.0 0.0              # a list whose elements are themselves lists
         - 4.0 0.0
+      mood Chasing             # a variant CARRYING data: the fields go beneath it
+        speed 4.0
+      tuning                   # no value on the line, and no `- ` beneath: a nested struct
+        aggression 0.8
+        patience 0.2
 ```
 
-**Two rules worth internalising:**
+**Three rules worth internalising:**
 
 - **Bare words are identifiers, quoted words are strings.** `state Patrol` sets an enum variant;
   `label "Patrol"` sets text. The file says which, so no schema is needed to tell them apart.
 - **`1` is an integer, `1.0` is a float.** The decimal point is what carries the type.
+- **An indented block is a list if its lines start with `- `, and named fields otherwise** (ADR 0032).
+  That one rule covers nested structs, maps, and enum payloads, and it is YAML's rule — deliberately,
+  since it is the one people already know. Nesting goes as deep as the indentation does.
+
+**What still has no spelling:** `Option::None`, and anything *empty* used as a field value — an empty
+block is a parse error, so an empty struct, map or list cannot be written. Both are recorded in
+ADR 0032 rather than being oversights. Nothing in the engine has an `Option` field yet.
 
 **Canonical form** (`amadeo fmt`): fields sorted by name, components sorted by name, **children in
 declaration order** — siblings are a sequence and their order is meaningful, so sorting them would
@@ -605,12 +617,9 @@ camera or every assertion passes vacuously.
 entity eye "Camera"
   Camera
     active true
-    far 1000.0
-    fov 60.0
-    height 8.0
-    near 0.1
     order 0
     projection Orthographic
+      height 8.0
     target ""
     viewport 0.0 0.0 1.0 1.0
   Transform
@@ -625,16 +634,15 @@ case and no code.
 
 | Field | |
 |---|---|
-| `projection` | `Orthographic` reads `height`; `Perspective` reads `fov`. Nothing draws through a perspective camera yet — the mesh pass is later in M2. |
+| `projection` | `Orthographic { height }` or `Perspective { fov, near, far }` — each variant carries only what it needs. Nothing draws through a perspective camera yet; the mesh pass is later in M2. |
 | `target` | **empty means the window.** Anything else is a texture asset id. |
 | `viewport` | `[x, y, width, height]` in `0..1` of the target. A left half is `0.0 0.0 0.5 1.0`. |
 | `order` | low draws first. Only the first camera clears, so a higher-order camera composes *over* a lower one rather than erasing it. |
 | `active` | `false` keeps a camera configured but idle. |
 
-**Why the fields are flat** when `Projection::Orthographic { height }` is the obvious design: the
-scene format cannot express an enum with a payload (Q21), and a camera has to be authorable for I1 to
-hold. So a perspective camera carries a `height` that means nothing. That is a real wart, recorded
-rather than hidden.
+**The projection carries its own parameters**, so a perspective camera has no `height` at all rather
+than a meaningless one — `Projection::height()` returns `None` for it. It was flat for exactly one
+commit, because the scene format could not express an enum with a payload until ADR 0032.
 
 **Asking what is on screen.** `render.describe` answers for the active orthographic camera with the
 lowest `order` drawing to the window. For any other — a minimap, a security monitor, the editor's

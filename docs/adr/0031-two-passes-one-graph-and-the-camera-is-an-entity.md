@@ -2,6 +2,12 @@
 
 **Status:** Accepted · **Date:** 2026-08-03 · **Resolves:** Q3 (last third), Q10 · **Completes:** ADR 0018
 
+> **Amended by ADR 0032 (2026-08-04).** Section 3 below explains why the camera's fields are flat and
+> calls it a compromise. That compromise lasted one commit: ADR 0032 extended the scene grammar, and
+> `Projection` became `Orthographic { height }` / `Perspective { fov, near, far }` — each variant
+> carrying only what it needs. **Section 3 is left as written**, because the reasoning that a format
+> limitation was distorting a type is what got the format fixed, and deleting it would hide that.
+
 ## Context
 
 `docs/05-roadmap.md` makes this M2's first item and requires it **before any code**. It is the

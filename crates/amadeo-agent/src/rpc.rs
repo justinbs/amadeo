@@ -476,13 +476,28 @@ pub fn dispatch_world(
                                 Json::Float(f64::from(description.eye[1])),
                             ]),
                         ),
-                        ("height", Json::Float(f64::from(description.camera.height))),
+                        // Reported only for an orthographic camera, because since ADR 0032 that is
+                        // the only kind that has one — the projection carries its own parameters,
+                        // so a perspective camera has no height to report rather than a meaningless
+                        // one. Omitted rather than null, like every other optional field here.
                         (
                             "projection",
-                            Json::string(match description.camera.projection {
-                                amadeo_render::Projection::Orthographic => "orthographic",
-                                amadeo_render::Projection::Perspective => "perspective",
-                            }),
+                            match description.camera.projection {
+                                amadeo_render::Projection::Orthographic { height } => {
+                                    Json::object([
+                                        ("kind", Json::string("orthographic")),
+                                        ("height", Json::Float(f64::from(height))),
+                                    ])
+                                }
+                                amadeo_render::Projection::Perspective { fov, near, far } => {
+                                    Json::object([
+                                        ("kind", Json::string("perspective")),
+                                        ("fov", Json::Float(f64::from(fov))),
+                                        ("near", Json::Float(f64::from(near))),
+                                        ("far", Json::Float(f64::from(far))),
+                                    ])
+                                }
+                            },
                         ),
                         ("order", Json::Int(i64::from(description.camera.order))),
                     ]),

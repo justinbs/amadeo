@@ -139,7 +139,7 @@ fn describe_answers_for_the_camera_that_draws_first() {
 
     let description = describe_frame(&world);
     assert_eq!(description.eye, [0.0, 0.0]);
-    assert_eq!(description.camera.height, 10.0);
+    assert_eq!(description.camera.projection.height(), Some(10.0));
 }
 
 #[test]
@@ -150,7 +150,7 @@ fn describe_can_be_asked_about_a_different_camera() {
 
     let description = describe_frame_through(&world, minimap).expect("that entity is a camera");
     assert_eq!(description.eye, [7.0, 0.0]);
-    assert_eq!(description.camera.height, 50.0);
+    assert_eq!(description.camera.projection.height(), Some(50.0));
 
     // Asking about something that is not a camera answers `None` rather than quietly falling back
     // to a different one, which would answer a question nobody asked.
@@ -192,5 +192,11 @@ fn a_camera_reports_its_projection_in_the_schema() {
     let rendered = format!("{info:?}");
     assert!(rendered.contains("Orthographic"), "{rendered}");
     assert!(rendered.contains("Perspective"), "{rendered}");
-    assert_eq!(Camera::default().projection, Projection::Orthographic);
+    assert!(matches!(
+        Camera::default().projection,
+        Projection::Orthographic { .. }
+    ));
+    // The point of the payload: a perspective camera has no height to report, rather than a
+    // meaningless one sitting beside it.
+    assert_eq!(Camera::perspective(60.0).projection.height(), None);
 }
