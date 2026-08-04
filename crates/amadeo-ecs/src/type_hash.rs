@@ -14,15 +14,23 @@ use amadeo_core::StableHasher;
 ///
 /// A type's fully-qualified name is stable across builds, and has the additional benefit of being
 /// traceable back to something a human can read when diagnosing a collision.
+///
+/// **Services only, now.** Components and resources both use their canonical name instead — see
+/// [`hash_name`]. A service is engine machinery that no file names and no hash contains (ADR 0009),
+/// so it has nothing to gain from a canonical name and is not reflected in the first place.
 pub(crate) fn hash_type_name<T: 'static>() -> u64 {
     hash_name(std::any::type_name::<T>())
 }
 
 /// Hashes an already-chosen name into a stable 64-bit id.
 ///
-/// Used for [`crate::ComponentId`], which hashes a component's **canonical** name (ADR 0017) rather
-/// than its Rust path, so that moving a type between crates does not change its identity. See that
-/// ADR for why components differ from resources and services here.
+/// Used for [`crate::ComponentId`] and [`crate::ResourceId`], both of which hash a **canonical** name
+/// (ADR 0017) rather than a Rust path, so that moving a type between crates does not change its
+/// identity and *renaming* it is the deliberate breaking change.
+///
+/// Resources joined components here once ADR 0027 gave them a canonical name to use — ADR 0017 had
+/// deferred them for exactly that reason. Until then the two followed opposite rules, which is
+/// [`hash_type_name`]'s remaining caller and the whole of Q22.
 pub(crate) fn hash_name(name: &str) -> u64 {
     let mut hasher = StableHasher::new();
     hasher.write_str(name);

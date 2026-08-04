@@ -366,30 +366,36 @@ switch would have had no answer for it. A camera does: it is a projection settin
 
 ---
 
-## Q22 · P2 · A resource's identity in the state hash is its Rust path, not its canonical name
+## ~~Q22~~ · **Resolved — ADR 0017's second instalment**, which had been waiting for ADR 0027
 
-**Found in session 8**, while building the control experiment for ADR 0031's replay regeneration —
-by writing a stand-in type with the same canonical name and the same fields, and finding it hashed
-differently.
+**Found in session 8** while building the control experiment for ADR 0031's replay regeneration — by
+writing a stand-in type with the same canonical name and the same fields, and finding it hashed
+differently. `ResourceId::of` hashed `std::any::type_name`, the **Rust path**, where `ComponentId`
+hashes the *canonical* name. Opposite rules, so **moving a resource between crates silently
+invalidated every golden replay** with nothing in the type's own definition having changed.
 
-`ResourceId::of::<T>()` is `hash_type_name::<T>()`, which hashes `std::any::type_name::<T>()` — the
-**Rust path**. `ComponentId` does the opposite: ADR 0017 makes it the hash of the *canonical* name,
-precisely so that moving a component between crates is free and renaming it is the deliberate
-breaking change.
+**It turned out not to be a new question at all.** ADR 0017 had already decided it and deferred only
+the timing:
 
-So resources and components follow opposite rules, and the comment in `type_hash.rs` acknowledges it
-("See that ADR for why components differ from resources and services here"). The consequence is real:
-**moving a resource from one crate to another changes every state hash containing it**, silently
-invalidating every golden replay, with nothing in the type's own definition having changed.
+> `ResourceId` and `ServiceId` keep the path. Neither is reflected, so neither has a canonical name
+> to use. **Resources get this treatment when `Resource: Reflect` lands**; services never will, since
+> they are engine machinery that no file names.
 
-Nothing is broken today. But `amadeo-render`, `amadeo-input` and `amadeo-app` all own resources, and
-the crate graph is still moving — `Camera2d` moving out of `amadeo-render` would have been exactly
-this, had it not been deleted instead.
+ADR 0027 landed that bound earlier in the same session. The trigger had fired and been missed —
+which is worth noticing as a *class* of mistake: a deferred obligation inside an accepted ADR has
+nothing watching it, and only surfaces when something trips over the inconsistency.
 
-Worth deciding whether resources should follow ADR 0017 too. Against: a resource is never named in a
-scene file, so the canonical name buys less than it does for a component. For: `world.resources` and
-`describe` both report resources *by canonical name* already, so the identity used for hashing is
-already not the identity the outside world sees.
+ADR 0017 also anticipated the cost and argued for exactly this timing. It rejected "defer and change
+both together" because **"the cost of this decision grows with every recorded replay"** — so the
+right moment to act on the trigger is as soon as it fires.
+
+Services keep the Rust path, permanently and for the reason ADR 0017 gave: a service is not reflected,
+is not in any state hash (ADR 0009), and is named by no file.
+
+**Three replays regenerated**, and the signature was exactly the one ADR 0017 recorded for an
+identity change: the input streams are byte-identical and only the checkpoint lines moved. Confirmed
+independently by snapshot diff — the world before and after is byte-identical apart from the
+`state-hash` line, so nothing about *behaviour* moved.
 
 ---
 

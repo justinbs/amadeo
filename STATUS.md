@@ -12,9 +12,8 @@ prefabs, and **`games/vault` — a complete small 2D game** have all landed.
 rather than an omission. **ADR 0030 settles what the protocol is for** and fixes the three parts of
 that finding that were genuine holes; the API half stays in `docs/07` by invariant I5. **ADR 0029
 closes Q7** with prefabs, and **ADR 0032 closes Q21** by letting a scene file nest values at all.
-Q3, Q4, Q7, Q10, Q13, Q14, Q16, Q17, Q19 and Q21 are all closed; nothing is blocked. **Q22** is the
-only one opened this session that is still open: a resource.s identity in the state hash is its Rust
-path, where a component.s is its canonical name.
+Q3, Q4, Q7, Q10, Q13, Q14, Q16, Q17, Q19, Q21 and Q22 are all closed, and **every question this
+session opened has been closed in it**. Nothing is blocked.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
 
 > ### ⚠️ Two working rules that changed in session 7 — read before doing anything
@@ -42,7 +41,7 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
 `games/vault`.
-**855 tests passing**; fmt, clippy
+**857 tests passing**; fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Nineteen things work end to end today:
@@ -145,9 +144,6 @@ asset id may fit it better than nesting does, and ADR 0029 already built that ma
 
 ### The rest of M2
 
-- **Q22 — a resource's identity in the state hash is its Rust path**, where a component's is its
-  canonical name (ADR 0017). Opposite rules, so moving a resource between crates silently invalidates
-  every golden replay. Found by building ADR 0031's control experiment and having it not work.
 - **`render.capture`** — headless render-target readback. The GPU path still has **no automated
   coverage at all**: `render.describe` checks what *should* be drawn, and nothing checks what the
   wgpu backend actually put on screen. ADR 0021 already names capture as the agent's eyes. It becomes
@@ -1522,3 +1518,27 @@ on purpose — several record a diagnosis that took a while to reach.
   games/vault/assets` wrote them with nothing launched — **byte-identical** to the hand-written ones.
 
   855 tests, all four verification commands green.
+
+  **Then Q22, which turned out not to be a question.** A resource's identity in the state hash was
+  `std::any::type_name` — the Rust path — where a component's is its canonical name, so moving a
+  resource between crates silently invalidated every golden replay.
+
+  **ADR 0017 had already decided it and deferred only the timing:** *"resources get this treatment
+  when `Resource: Reflect` lands"*. ADR 0027 landed that bound earlier the same session, so the
+  trigger had fired and been missed. Worth noticing as a *class* of mistake rather than a one-off —
+  a deferred obligation inside an accepted ADR has nothing watching it, and only surfaces when
+  something trips over the inconsistency. ADR 0017 even argued the timing: it rejected deferring
+  because "the cost of this decision grows with every recorded replay".
+
+  Services keep the Rust path, permanently, for the reason that ADR gave: not reflected, not in any
+  hash, named by no file.
+
+  **Three replays regenerated** — including `walk_and_jump.replay`, the in-process one, which had not
+  moved all session. The signature was exactly what ADR 0017 recorded for an identity change: input
+  streams byte-identical, only checkpoint lines moved. Confirmed independently by snapshot diff, the
+  world before and after being byte-identical apart from the `state-hash` line.
+
+  857 tests, all four verification commands green.
+
+  **Every open question this session raised was closed in it** — Q7, Q19, Q21, Q22 — along with Q3,
+  Q10 and M1's gate 4. What is left is build work rather than decisions.

@@ -153,10 +153,12 @@ hierarchy components. **That was wrong** and ADR 0015 corrects it: `amadeo-rende
 and `amadeo-anim` all sit *below* `amadeo-scene` and all need transforms, so I6 makes that placement
 impossible. They live in `amadeo-transform`.
 
-**Careful:** `ComponentId` is the hash of a component's **canonical name** (`Reflect::type_name`),
-not its Rust path — ADR 0017. So *moving* a component between crates is free, and **renaming one
-changes its id and every state hash containing it**. `#[reflect(name = "...")]` renames the Rust type
-without changing identity. Two components may not share a canonical name; the registry refuses it.
+**Careful:** `ComponentId` **and `ResourceId`** are the hash of a type's **canonical name**
+(`Reflect::type_name`), not its Rust path — ADR 0017. So *moving* one between crates is free, and
+**renaming one changes its id and every state hash containing it**. `#[reflect(name = "...")]`
+renames the Rust type without changing identity. Two components may not share a canonical name; the
+registry refuses it. `ServiceId` keeps the Rust path, deliberately: a service is not reflected, is in
+no state hash (ADR 0009), and is named by no file.
 
 ## 4b. Verifying the build
 

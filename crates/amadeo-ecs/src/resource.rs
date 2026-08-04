@@ -3,7 +3,7 @@
 //! A component belongs to an entity; a resource is one value for the whole world. The simulation
 //! clock's seed, the input state for the current tick, and event queues are all resources.
 
-use crate::type_hash::hash_type_name;
+use crate::type_hash::hash_name;
 use amadeo_core::{StableHash, StableHasher};
 use amadeo_reflect::Reflect;
 use std::any::Any;
@@ -53,10 +53,35 @@ pub trait Resource: 'static + Send + Sync + fmt::Debug + StableHash + Reflect {}
 pub struct ResourceId(u64);
 
 impl ResourceId {
-    /// The id for resource type `T`.
+    /// The id for resource type `T`, from its **canonical** name.
+    ///
+    /// # Why the canonical name and not the Rust path — ADR 0017, second instalment
+    ///
+    /// ADR 0017 made a component's identity its canonical name so that moving one between crates is
+    /// free and *renaming* one is the deliberate breaking change. It could not do the same for
+    /// resources at the time, because a resource was not reflected and so had no canonical name —
+    /// and it said so: "resources get this treatment when `Resource: Reflect` lands".
+    ///
+    /// ADR 0027 landed that bound. This is the deferred half coming due.
+    ///
+    /// Until it did, a resource's identity was `std::any::type_name`, so the two followed **opposite
+    /// rules** — moving a resource between crates silently invalidated every golden replay, with
+    /// nothing in the type's own definition having changed. Filed as Q22, found by writing a
+    /// stand-in type with the same canonical name and the same fields and watching it hash
+    /// differently.
+    ///
+    /// Free at runtime for any derived resource, the same way [`ComponentId::of`] is: the derive
+    /// fills in `STATIC_NAME` and the hash is computed at compile time. The fallback covers a type
+    /// whose name is built from parameters and has no constant.
+    ///
+    /// [`ComponentId::of`]: crate::ComponentId::of
     #[must_use]
     pub fn of<T: Resource>() -> Self {
-        ResourceId(hash_type_name::<T>())
+        if T::STATIC_NAME.is_empty() {
+            ResourceId(hash_name(&T::type_name()))
+        } else {
+            ResourceId(T::STATIC_NAME_HASH)
+        }
     }
 
     /// The raw hash value, for diagnostics.
@@ -176,6 +201,49 @@ mod tests {
         }
     }
     impl Resource for Rounds {}
+
+    /// Two *different* Rust types claiming one canonical name, in different modules.
+    ///
+    /// This is what ADR 0017 bought for components and ADR 0027 made possible for resources: the
+    /// identity is the name, so where the type lives is irrelevant.
+    mod elsewhere {
+        use super::*;
+
+        /// The same resource, imagined as having moved to another crate.
+        #[derive(Debug, PartialEq, amadeo_reflect::Reflect)]
+        #[reflect(name = "Score")]
+        pub(super) struct Score(u32);
+
+        impl StableHash for Score {
+            fn stable_hash(&self, hasher: &mut StableHasher) {
+                self.0.stable_hash(hasher);
+            }
+        }
+        impl Resource for Score {}
+    }
+
+    #[test]
+    fn moving_a_resource_between_crates_does_not_change_its_id() {
+        // Q22, and the second half of ADR 0017. A resource used to be identified by
+        // `std::any::type_name`, so moving one between crates silently invalidated every golden
+        // replay -- with nothing in the type's own definition having changed.
+        //
+        // The two types below are genuinely different Rust types in different modules. They share a
+        // canonical name, so they share an id.
+        assert_eq!(
+            ResourceId::of::<Score>(),
+            ResourceId::of::<elsewhere::Score>()
+        );
+    }
+
+    #[test]
+    fn a_resource_id_matches_its_canonical_name() {
+        // Pins the derivation. Reverting to the Rust path would fail here rather than silently
+        // moving every state hash.
+        let mut expected = StableHasher::new();
+        expected.write_str("Score");
+        assert_eq!(ResourceId::of::<Score>().raw(), expected.finish());
+    }
 
     #[test]
     fn ids_differ_by_type() {

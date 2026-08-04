@@ -11,7 +11,7 @@ ticks 300
 142 button jump up
 240 axis move_x 0.0
 
-checkpoint 1 198ac61629411186
-checkpoint 60 5ce6404cf0cce097
-checkpoint 180 143246128f583117
-checkpoint 300 b5b9d5471898c078
+checkpoint 1 521d7dfd89ef7abf
+checkpoint 60 130a99a7d6d2192a
+checkpoint 180 47f7cb594a8d30aa
+checkpoint 300 b5c0ab6a7302e83d

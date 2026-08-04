@@ -47,6 +47,12 @@ Three consequences fall out deliberately:
 2. **`ResourceId` and `ServiceId` keep the path.** Neither is reflected, so neither has a canonical
    name to use. Resources get this treatment when `Resource: Reflect` lands; services never will,
    since they are engine machinery that no file names.
+
+   > **Done, session 8.** ADR 0027 gave resources the `Reflect` bound this clause was waiting on, and
+   > `ResourceId` now hashes the canonical name exactly as `ComponentId` does. The trigger fired and
+   > was missed for one session — long enough for the inconsistency to be rediscovered from scratch
+   > and filed as Q22. That is the argument for putting a deferred obligation somewhere that gets
+   > *read* rather than only somewhere that gets written. Services keep the path, permanently.
 3. **Moving a component between crates is now free**, which is what makes the transform rework Q3
    needs affordable.
 
