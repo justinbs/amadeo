@@ -143,6 +143,20 @@ Specific sub-questions when it is time:
 permanent architectural cost up front still stands; what has changed is that a second, independent
 reason to open the hatch now exists, and it should be recorded rather than rediscovered late.
 
+### A second instance arrived in session 9 — ADR 0034
+
+**ADR 0034 drew part of the module boundary, and it drew it closed.** The render graph is internal,
+so a game or module cannot add a render pass; it configures a look through reflected data instead.
+For a solo project that is the same act — adding an effect means editing `amadeo-render` — but for a
+mod author it is a wall, and it is the *first* place this project has said "no" to third-party code
+rather than simply not having got to it yet.
+
+**That makes the question sharper rather than more urgent.** ADR 0034 reserves a Rust extension trait
+as the escape hatch and names its trigger (an effect that genuinely is not parameters on an engine
+effect), so nothing is foreclosed. But it is now the second subsystem where "what can a mod do" has a
+concrete, already-decided answer, and the answers should agree with each other rather than be reached
+one at a time. Worth reading ADR 0034 §5 alongside this question when it is time to settle it.
+
 ---
 
 ## Q18 · P2 · A reflected `ActionId` is a number nobody can read

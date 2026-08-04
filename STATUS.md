@@ -1,10 +1,11 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-04 (end of session 8)
-**Current phase:** **M0 complete. M1 closed. M2 under way, with both of its expensive decisions made
-before their code.** **ADR 0031** settles 2D/3D coexistence and makes the camera an entity — decided,
-then built. **ADR 0033** settles the material and shader model — decided, not yet built, because the
-code it calls for needs mesh rendering.
+**Last updated:** 2026-08-04 (end of session 9)
+**Current phase:** **M0 complete. M1 closed. M2 under way, with all three of its expensive decisions
+made before their code.** **ADR 0031** settles 2D/3D coexistence and makes the camera an entity —
+decided, then built. **ADR 0033** settles the material and shader model — decided, not yet built,
+because the code it calls for needs mesh rendering. **ADR 0034** settles whether the render graph is
+a public API — it is not — decided, then built the same session.
 
 **The agent can see.** `amadeo capture shot.png` launches a game headless, renders it on an offscreen
 GPU and writes a PNG. That closes ADR 0021's "agent's eyes" and gave the GPU path its first automated
@@ -22,11 +23,15 @@ closes Q7** with prefabs, and **ADR 0032 closes Q21** by letting a scene file ne
 Q3, Q4, Q7, Q10, Q13, Q14, Q16, Q17, Q19, Q21 and Q22 are all closed, and **every question this
 session opened has been closed in it**. Nothing is blocked and nothing is undecided.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
-**Two commits were waiting to be pushed at the end of session 8** — `3ea5794` (`render.capture`) and
-`c017854` (ADR 0033). Check with `git log --oneline origin/main..HEAD` before assuming; Justin
-pushes, and he had been pushing as the session went.
-**Two commits are waiting to be pushed** as of this writing: `3ea5794` (render.capture) and
-`c017854` (ADR 0033). Justin pushes -- see the rules below.
+
+**Three commits are waiting to be pushed** at the end of session 9: `4cc03a1` (session 8's handoff),
+`c126cf5` (ADR 0034) and `78f8cc2` (the render graph). Justin pushes — see the rules below.
+
+> **A correction to what this file said.** The previous version claimed two commits were waiting,
+> naming `3ea5794` and `c017854`. Both were already on `origin/main`; only `4cc03a1` was unpushed.
+> The claim was written before those pushes and never revised. **Check with
+> `git log --oneline origin/main..HEAD` rather than trusting this line** — that is why the previous
+> version told you to, and it was right.
 
 > ### ⚠️ Two working rules that changed in session 7 — read before doing anything
 >
@@ -53,10 +58,10 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
 `games/vault`.
-**864 tests passing** (plus 4 GPU capture tests behind `--features gpu`); fmt, clippy
+**879 tests passing** (plus 5 GPU capture tests behind `--features gpu`); fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
-Twenty things work end to end today:
+Twenty-one things work end to end today:
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -88,6 +93,12 @@ Twenty things work end to end today:
   from where. A world may hold any number (ADR 0031) -- each with a projection, a target that is the
   window or a texture, a viewport rectangle, and an order -- and a camera parented to a character
   *is* a follow camera, with no special case.
+- **A frame is a declared plan, not a hardcoded sequence.** The render graph (ADR 0034) names each
+  pass and what it reads and writes, and derives the order from that: `view 0` and `view 1` write the
+  `scene` transient, `present` reads it and writes the destination. It knows nothing about wgpu, so
+  `NullBackend` compiles the same graph and reports the resolved order — a pass-ordering bug is
+  catchable with no GPU. Composing the frame off-screen is also **what gave the windowed backend
+  `capture`**, which this file had listed as waiting on post-processing.
 - **The agent can see.** `amadeo capture --package vault --ticks 200 shot.png` launches the game with
   no window, renders it offscreen on the GPU, and writes a PNG — walls, sigils, wardens, the player,
   the score readout. ADR 0021 called capture the agent.s eyes; this is them. `WgpuBackend::offscreen`
@@ -149,33 +160,58 @@ of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**The render graph proper, running once per camera** — M2's next build item, and ADR 0031 settled its
-shape. Declared passes, resource dependencies, transient targets. Then 3D: meshes, PBR, lights,
-shadows, culling, glTF.
+**Post-processing: the effects themselves, and ADR 0034's `Environment` asset.** The render graph
+landed in session 9 and this is what it was built for — the insertion point exists, and every camera
+already draws into a transient a present pass copies onward.
 
-**Nothing is blocked and nothing is undecided.** Every question session 8 raised was closed in it,
-the agent can now see (`amadeo capture shot.png` renders a game with no window and writes a PNG), and
-**M2's two expensive decisions are both made before their code** — ADR 0031 for 2D/3D coexistence and
-the camera, ADR 0033 for the material and shader model. What is left is build work.
+Both halves are decided and neither is started:
 
-### One decision hides inside the render graph — raise it before building
+- **The effects.** M2 requires a configurable post-process stack and M3's exit gate 5 is the exam for
+  it — a dark corridor with a moving flashlight that reads as genuinely atmospheric. Fog, bloom,
+  tonemapping, colour grading. Each is a pass reading one transient and writing another, which the
+  graph now expresses directly.
+- **`Environment`, the asset that configures them.** ADR 0034: a camera holds an environment id, the
+  file is a scene file with one root exactly as a material's is, and it carries **named effect blocks
+  in an engine-defined order** rather than a user-ordered list. What it *holds* was deliberately left
+  to arrive with the effects, the same way ADR 0033 left a material's field list to arrive with
+  meshes.
 
-**Is the graph a public, extensible surface or an internal detail of the wgpu backend?** M2 requires
-a *configurable* post-process stack, which implies games or modules can add passes — and that makes
-the graph an API rather than an implementation, which is expensive to change afterwards.
+**One thing to notice when the first effect lands**: the graph will finally have two transients, so
+`assign_transients` will do real reuse for the first time. `Lifetime::overlaps` is tested but has
+never yet had a second transient to decide about.
 
-This was spotted in session 8 and deliberately not decided, because nothing had been built against
-it yet. It follows the same shape as the last three renderer decisions: the *mechanism* is cheap
-(`RenderBackend` isolates it), so ask what **data** an extensible graph implies — is a pass declared
-in a text file, and if so what names its inputs and outputs? Worth putting to Justin with research
-before writing the graph, not after.
+Then 3D: meshes, PBR, lights, shadows, culling, glTF — and with meshes, the `Material` field list.
+
+**Nothing is blocked and nothing is undecided.** All three of M2's expensive decisions are made
+before their code — ADR 0031 for 2D/3D coexistence and the camera, ADR 0033 for the material and
+shader model, ADR 0034 for the render graph's visibility. What is left is build work.
+
+### The render-graph decision is closed — ADR 0034
+
+The question this file carried into session 9 — *is the graph a public, extensible surface or an
+internal detail?* — was researched and put to Justin, who took the recommendation: **internal**.
+
+**The framing needed correcting for the fourth time in this subsystem**, and this time the confusion
+was in the vocabulary rather than the emphasis. "Render graph" names two independent things: a frame
+scheduler that derives pass order and allocates transients, and an extension point where a game
+inserts a pass. The roadmap line asks for the first; the worry recorded here was about the second.
+Only the second is an API decision — and most of the first is already done by wgpu, which tracks
+resource state and inserts barriers itself.
+
+**"Configurable post-process stack" also does not say what it looks like it says.** Tunable and
+extensible are different things, and `docs/00-vision.md` asks only that the renderer not bake in a
+look. Godot, Unity and Unreal all ship the tunable stack as the primary answer and put the extension
+point behind an advanced, much later, much harder door. Bevy is the one engine that made its graph
+public, and it is evidence *against*: it walked back from resource dependencies (graph slots removed
+as boilerplate-heavy) and its public graph has been rewritten repeatedly, most recently as
+render-graph-as-systems in 0.19.
+
+The deciding argument for data over code was **I5 and I7**, not anything about rendering:
+configuration made of data is authorable, describable, checkable and visible headless for nothing,
+and a pass supplied as code is none of those. Same shape of argument that settled ADR 0030.
 
 ### The rest of M2
 
-- **Post-processing, which the *windowed* backend needs before it can capture.** M2 requires a
-  configurable post-process stack, and that needs the same offscreen target `WgpuBackend::offscreen`
-  already has — render into a texture, then composite to the surface. Doing it gives the windowed
-  backend `capture` for free, so the two belong together.
 - **Mesh rendering, and with it the `Material` field list.** ADR 0033 settled *where* a material
   lives — an asset with an id, its file a scene file with one root — and deliberately left what it
   *holds* to arrive with PBR, since adding a field to a reflected type is the cheap change the schema
@@ -1644,3 +1680,67 @@ on purpose — several record a diagnosis that took a while to reach.
 
   What a `Material` *holds* is deliberately not decided — that depends on the PBR model and arrives
   with meshes, because adding a field to a reflected type is the cheap change the schema exists for.
+- **S9 (2026-08-04):** **The render graph — decided, then built**, which is what this file had named
+  the single most important thing to do next.
+
+  **The framing was wrong for the fourth time in this subsystem, and this time it was the
+  vocabulary.** ADR 0018, 0031 and 0033 each found `docs/04` §4 asking about the pipeline while the
+  expensive decision was the data beside it. Here the trouble was that "render graph" names two
+  independent things — a frame scheduler that derives pass order and allocates transients, and an
+  extension point where a game inserts a pass. The roadmap line asks for the first and the worry
+  recorded here was about the second. Separating them is what made the question answerable, and it
+  also revealed that **most of the first is already done**: wgpu tracks resource state and inserts
+  barriers itself, which was half of what Frostbite's FrameGraph existed for.
+
+  **The requirement also does not say what it looks like it says.** "Configurable post-process stack"
+  can mean tunable or extensible, and `docs/00-vision.md` asks only that the renderer not bake in a
+  look. Godot, Unity and Unreal all ship the tunable stack as the primary answer and put the
+  extension point behind an advanced, later, harder door — Godot's `CompositorEffect` arrived in 4.3
+  and its own docs call it an advanced feature working on only two of three renderers.
+
+  **Bevy is the one engine that made its graph public, and it is evidence against.** It walked back
+  from resource dependencies — graph slots removed as boilerplate-heavy, data moved into ECS
+  components with the graph doing ordering only — and making it public turned it into a permanent
+  migration surface, rewritten as render-graph-as-systems as recently as 0.19.
+
+  **Justin took both recommendations.** The graph is internal; a look is an `Environment` asset held
+  by the camera, its file a scene file with one root exactly as a material's is. The deciding
+  argument for data over code was **I5 and I7** rather than anything about rendering — configuration
+  made of data is authorable, describable, checkable and visible headless for nothing, and a pass
+  supplied as code is none of those. Same shape as ADR 0030. Recorded honestly in the ADR: 0033's
+  *decisive* argument does not apply here, since a world has one to three cameras rather than
+  forty-four walls, so the asset form rests on a look being the thing that gets tuned and swapped.
+
+  Then built it. The graph is a plan that knows nothing about wgpu, so `NullBackend` compiles it too
+  and reports the resolved pass order — a pass-ordering bug is now catchable on a machine with no
+  GPU, which would have been impossible had the graph lived inside the wgpu backend. Ordering is
+  write-before-read, then declaration order between two writers of one image, then declaration order
+  for anything unordered — deliberately the opposite of `Schedule`'s alphabetical tie-break, because
+  a schedule's registration order is accidental while a graph's is the order the frame is composed
+  in.
+
+  **Two findings, both from writing the tests rather than the code.**
+
+  The `scene` transient is always RGBA and deliberately does **not** inherit the destination's
+  format. A window surface is commonly BGRA — the adapter picks, not the engine — so a transient that
+  copied it would hold the finished picture with red and blue swapped on the windowed path and not
+  the offscreen one, and every capture would have to know which.
+
+  And **the first version of `capture` was wrong**, caught only because the new orientation test was
+  checked against a deliberately broken shader and *passed*. It read the transient on both paths,
+  which meant a capture no longer observed the present pass at all — so the one shader that now runs
+  on every frame had no coverage, and the screen could have been upside down with every test green.
+  That is the exact gap session 8 closed and it had been quietly reopened. Fixed by having an
+  offscreen backend read its **destination**, after the present pass, so the path CI and agent mode
+  both use covers the whole pipeline; a windowed one reads the transient and is everything except the
+  final copy. Broke the shader again afterwards to confirm the test fails. **Worth generalising: a
+  new test is not evidence until it has been seen to fail.**
+
+  **And the windowed backend can capture**, which this file had listed as waiting on post-processing.
+  It was never really waiting on the effects — only on the off-screen target they need, which the
+  graph brought with it.
+
+  Verified end to end: the Vault captures through the new graph with walls, sigils, wardens, traps,
+  player and score readout, right way up and unchanged in colour.
+
+  879 tests plus 5 GPU capture tests, all four verification commands green.
