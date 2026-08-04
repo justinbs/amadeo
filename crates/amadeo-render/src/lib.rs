@@ -216,6 +216,28 @@ impl Renderer {
         }
     }
 
+    /// Uploads any geometry this frame needs that the backend does not already hold.
+    ///
+    /// Simpler than [`Renderer::upload_frame_textures`] in one way that matters: geometry has no
+    /// placeholder and no late arrival. A mesh either loaded or it did not, and one that did not was
+    /// already dropped during collection — so there is no "uploaded a stand-in, replace it later"
+    /// state to track, which is the whole of what makes the texture version complicated.
+    fn upload_frame_meshes(&mut self, frame: &FrameData, cache: &MeshCache) {
+        for view in &frame.views {
+            for instance in &view.meshes {
+                if self.backend.has_mesh(&instance.mesh) {
+                    continue;
+                }
+                let Some(data) = cache.get(&instance.mesh) else {
+                    continue;
+                };
+                if let Err(error) = self.backend.upload_mesh(&instance.mesh, data) {
+                    self.last_error = Some(error);
+                }
+            }
+        }
+    }
+
     /// Draws a frame.
     fn render(&mut self, frame: &FrameData) {
         match self.backend.render(frame) {
@@ -519,6 +541,9 @@ pub fn render_quads(world: &mut World) {
         // are two entries in the same service map, and only one of them can be borrowed at a time.
         if let Some(cache) = world.service::<TextureCache>() {
             renderer.upload_frame_textures(&frame, cache);
+        }
+        if let Some(cache) = world.service::<MeshCache>() {
+            renderer.upload_frame_meshes(&frame, cache);
         }
         renderer.render(&frame);
     });

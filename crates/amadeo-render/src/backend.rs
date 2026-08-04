@@ -376,6 +376,24 @@ pub trait RenderBackend: fmt::Debug + Send + Sync {
     /// beyond what the device supports.
     fn upload_texture(&mut self, id: &str, texture: &TextureData) -> Result<(), RenderError>;
 
+    /// Whether the backend already holds this geometry and can draw an instance naming it.
+    ///
+    /// The same push-rather-than-carry rule [`RenderBackend::upload_texture`] explains: a
+    /// [`MeshInstance`] holds an *id*, because vertices are megabytes and a frame is rebuilt sixty
+    /// times a second.
+    fn has_mesh(&self, _id: &str) -> bool {
+        false
+    }
+
+    /// Hands the backend geometry to hold under `id`, replacing any earlier version.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError`] if the backend could not take it — typically out of video memory.
+    fn upload_mesh(&mut self, _id: &str, _mesh: &crate::MeshData) -> Result<(), RenderError> {
+        Ok(())
+    }
+
     /// Draws one frame.
     fn render(&mut self, frame: &FrameData) -> Result<(), RenderError>;
 
@@ -426,6 +444,9 @@ pub struct NullBackend {
     textures: std::collections::BTreeMap<String, TextureData>,
     /// The labels of the passes the last frame's graph resolved to, in execution order.
     last_passes: Vec<String>,
+    /// Geometry that reached the backend, by id — so a headless test can assert the *right* mesh
+    /// arrived, which is a much sharper claim than "no error was returned".
+    meshes: std::collections::BTreeMap<String, crate::MeshData>,
 }
 
 impl Default for NullBackend {
@@ -444,6 +465,7 @@ impl NullBackend {
             last_frame: None,
             textures: std::collections::BTreeMap::new(),
             last_passes: Vec::new(),
+            meshes: std::collections::BTreeMap::new(),
         }
     }
 
@@ -519,6 +541,15 @@ impl RenderBackend for NullBackend {
 
     fn upload_texture(&mut self, id: &str, texture: &TextureData) -> Result<(), RenderError> {
         self.textures.insert(id.to_string(), texture.clone());
+        Ok(())
+    }
+
+    fn has_mesh(&self, id: &str) -> bool {
+        self.meshes.contains_key(id)
+    }
+
+    fn upload_mesh(&mut self, id: &str, mesh: &crate::MeshData) -> Result<(), RenderError> {
+        self.meshes.insert(id.to_string(), mesh.clone());
         Ok(())
     }
 

@@ -23,8 +23,9 @@
 
 use amadeo_ecs::World;
 use amadeo_render::{
-    Camera, Environment, EnvironmentCache, NullBackend, Quad, RenderBackend, Renderer, TextureData,
-    Vignette, WgpuBackend, render_quads,
+    BoxMesh, Camera, DirectionalLight, Environment, EnvironmentCache, Material, MaterialCache,
+    Mesh, MeshCache, NullBackend, Quad, RenderBackend, Renderer, TextureData, Vignette,
+    WgpuBackend, render_quads,
 };
 use amadeo_transform::Transform;
 
@@ -358,6 +359,214 @@ fn a_2d_capture_is_unchanged_by_the_depth_machinery() {
     };
     let centre = pixel_at(&image, 32, 32);
     assert!(centre[0] > 200 && centre[1] < 60, "got {centre:?}");
+}
+
+/// A world with a 3D camera looking down −Z at the origin, a light, and one box.
+///
+/// The camera sits at +Z looking back at the origin, which is what an unrotated camera does — it
+/// looks along its own negative Z, the same axis a light travels along.
+fn a_lit_box(colour: [f32; 4], size: [f32; 3]) -> World {
+    let mut world = World::new();
+
+    let eye = world.spawn();
+    let mut placement = Transform::at(0.0, 0.0);
+    // Five units back along +Z. An unrotated camera looks along its own negative Z, so this puts the
+    // origin — and the box — in front of it.
+    placement.translation = [0.0, 0.0, 5.0];
+    world.insert(eye, placement);
+    world.insert(eye, Camera::perspective(60.0));
+
+    let sun = world.spawn();
+    world.insert(sun, Transform::at(0.0, 0.0));
+    world.insert(sun, DirectionalLight::default());
+
+    let mut meshes = MeshCache::new();
+    meshes.insert("cube", BoxMesh { size }.tessellate());
+    world.insert_service(meshes);
+
+    let mut materials = MaterialCache::new();
+    materials.insert(
+        "paint",
+        Material {
+            base_colour: colour,
+            ..Material::default()
+        },
+    );
+    world.insert_service(materials);
+
+    let thing = world.spawn();
+    world.insert(thing, Transform::at(0.0, 0.0));
+    world.insert(thing, Mesh::new("cube", "paint"));
+    world
+}
+
+#[test]
+fn a_mesh_actually_reaches_the_pixels() {
+    // **The first 3D geometry this engine has ever drawn.** Everything before it — the graph, the
+    // depth buffer, the matrices, the collection pass — was scaffolding for exactly this.
+    //
+    // A red box two units across, five units from the camera. The light shines straight down −Z,
+    // which is directly at the box's front face, so that face is fully lit.
+    let mut world = a_lit_box([1.0, 0.0, 0.0, 1.0], [2.0, 2.0, 2.0]);
+
+    let Some(image) = capture(&mut world, 64, 64) else {
+        return;
+    };
+
+    let centre = pixel_at(&image, 32, 32);
+    assert!(
+        centre[0] > 100 && centre[1] < 60 && centre[2] < 60,
+        "the middle of the screen should be a lit red face, got {centre:?}"
+    );
+
+    // And the corner is still the background, so the box has a *size* rather than filling
+    // everything — which a wrong projection would produce and a colour check alone would miss.
+    // Compared against the clear colour's own bound rather than an absolute, because the clear is a
+    // dark *grey* whose red channel is 69: a tighter threshold would be asserting the background is
+    // black, which it deliberately is not.
+    let corner = pixel_at(&image, 2, 2);
+    assert!(
+        corner[0] < 128 && corner[0] == corner[1].saturating_sub(6),
+        "the corner should still be the neutral clear colour, got {corner:?}"
+    );
+}
+
+#[test]
+fn a_nearer_face_hides_a_further_one() {
+    // What the depth buffer is *for*, and the one thing no amount of graph testing could show. A
+    // box's back faces are behind its front ones; without depth testing whichever drew last would
+    // win, and the tessellation order is not the view order.
+    //
+    // Checked by making the box long in Z: if depth is broken, the far face — which is smaller on
+    // screen because it is further away — shows through the near one.
+    let mut world = a_lit_box([1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 6.0]);
+
+    let Some(image) = capture(&mut world, 64, 64) else {
+        return;
+    };
+
+    // The near face is lit head-on and the far one faces away, so a depth failure reads as the
+    // centre going dark. It is bright, so the nearer surface won.
+    let centre = pixel_at(&image, 32, 32);
+    assert!(
+        centre[0] > 100,
+        "the near face should win the depth test, got {centre:?}"
+    );
+}
+
+#[test]
+fn a_face_turned_away_from_the_light_is_darker_than_one_facing_it() {
+    // Proves the lighting is actually reading normals rather than painting every face flat, which
+    // is what a box tessellated with averaged corner normals would look like — the exact mistake
+    // ADR 0035's `a_box_has_flat_faces_rather_than_averaged_corners` guards on the CPU side.
+    //
+    // Two captures of the same box, one turned 50° about Y. Comparing the *centre pixel* of each
+    // rather than two points within one image, so the test does not depend on where the boundary
+    // between two faces happens to land on a 64-pixel target.
+    //
+    // Straight on, the front face is square to the light and fully lit. Turned, the surface at the
+    // centre is at an angle to it, so `N·L` is smaller and the pixel is darker.
+    let turn = |degrees: f32| {
+        let mut world = a_lit_box([1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 2.0]);
+        for entity in world.entities() {
+            if world.get::<Mesh>(entity).is_some() {
+                let mut transform = Transform::at(0.0, 0.0);
+                transform.rotation = [0.0, degrees, 0.0];
+                world.insert(entity, transform);
+            }
+        }
+        capture(&mut world, 64, 64)
+    };
+
+    let (Some(square_on), Some(turned)) = (turn(0.0), turn(50.0)) else {
+        return;
+    };
+
+    let lit = i32::from(pixel_at(&square_on, 32, 32)[0]);
+    let angled = i32::from(pixel_at(&turned, 32, 32)[0]);
+    assert!(
+        lit > angled + 15,
+        "a surface angled away from the light must be darker: {lit} square on vs {angled} turned"
+    );
+}
+
+/// Writes a 3D scene to a PNG when `AMADEO_SHOT` names a path.
+///
+/// Not an assertion — a way to *look* at what the mesh pass draws, which is how the sprite path was
+/// confirmed too. Skipped silently in CI, where nobody is looking.
+#[test]
+fn a_scene_can_be_looked_at() {
+    let Ok(path) = std::env::var("AMADEO_SHOT") else {
+        return;
+    };
+
+    let mut world = World::new();
+
+    let eye = world.spawn();
+    let mut placement = Transform::at(0.0, 0.0);
+    placement.translation = [3.5, 3.0, 7.0];
+    placement.rotation = [-18.0, 24.0, 0.0];
+    world.insert(eye, placement);
+    world.insert(eye, Camera::perspective(55.0));
+
+    let sun = world.spawn();
+    let mut sun_placement = Transform::at(0.0, 0.0);
+    sun_placement.rotation = [-50.0, -30.0, 0.0];
+    world.insert(sun, sun_placement);
+    world.insert(sun, DirectionalLight::default());
+
+    let mut meshes = MeshCache::new();
+    meshes.insert(
+        "ground",
+        amadeo_render::PlaneMesh { size: [14.0, 14.0] }.tessellate(),
+    );
+    meshes.insert(
+        "block",
+        BoxMesh {
+            size: [1.6, 1.6, 1.6],
+        }
+        .tessellate(),
+    );
+    meshes.insert(
+        "pillar",
+        BoxMesh {
+            size: [0.8, 3.4, 0.8],
+        }
+        .tessellate(),
+    );
+    world.insert_service(meshes);
+
+    let mut materials = MaterialCache::new();
+    let paint = |r: f32, g: f32, b: f32| Material {
+        base_colour: [r, g, b, 1.0],
+        ..Material::default()
+    };
+    materials.insert("slate", paint(0.30, 0.33, 0.40));
+    materials.insert("rust", paint(0.72, 0.32, 0.18));
+    materials.insert("moss", paint(0.28, 0.48, 0.30));
+    world.insert_service(materials);
+
+    let mut place = |mesh: &str, material: &str, at: [f32; 3]| {
+        let entity = world.spawn();
+        let mut transform = Transform::at(0.0, 0.0);
+        transform.translation = at;
+        world.insert(entity, transform);
+        world.insert(entity, Mesh::new(mesh, material));
+    };
+
+    place("ground", "slate", [0.0, 0.0, 0.0]);
+    place("block", "rust", [0.0, 0.8, 0.0]);
+    place("block", "moss", [2.2, 0.8, -1.4]);
+    place("block", "rust", [-2.0, 0.8, 1.2]);
+    place("pillar", "slate", [-3.0, 1.7, -2.6]);
+    place("pillar", "moss", [3.2, 1.7, 2.0]);
+
+    let Some(image) = capture(&mut world, 960, 540) else {
+        return;
+    };
+    let png = amadeo_render::encode_png(&image).expect("encodes");
+    std::fs::write(&path, png).expect("writes");
+    println!("wrote {path}");
 }
 
 #[test]

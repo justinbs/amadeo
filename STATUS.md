@@ -101,6 +101,12 @@ Twenty-three things work end to end today:
   `NullBackend` compiles the same graph and reports the resolved order — a pass-ordering bug is
   catchable with no GPU. Composing the frame off-screen is also **what gave the windowed backend
   `capture`**, which this file had listed as waiting on post-processing.
+- **There is 3D on the screen.** A `BoxMesh` from a text file, lit by a `DirectionalLight`, drawn
+  through a perspective camera with a depth buffer so nearer faces hide further ones and back faces
+  are culled. Three GPU tests each check something the others cannot: that geometry reaches the
+  pixels, that the nearer face wins the depth test, and that a surface angled away from the light is
+  darker than one square to it — which is what proves the lighting reads normals rather than
+  painting every face flat.
 - **A shape written as three numbers becomes geometry.** `games/vault/assets/meshes/wall_panel.mesh`
   is six lines of text carrying `BoxMesh { size 1.0 2.5 0.2 }`, and it comes out as a tessellated box
   of exactly that size — no toolchain, no binary, no import step (ADR 0035). `amadeo check` validates
@@ -199,11 +205,25 @@ Since then the *whole CPU side* has landed too, so what is left is only the wgpu
   tests against rather than an image any later pass reads. Verified on a real device, not just in
   the plan.
 
-**What remains, all behind `RenderBackend`:**
+- ✅ **The mesh pass. 3D is on the screen.** The first pipeline here with a real vertex buffer —
+  every other pass builds its geometry from the vertex index alone. Indexed drawing, per-instance
+  model matrices and materials, depth testing, back-face culling, and one directional light.
+  Geometry travels by id and is uploaded once, like a texture; a material travels by value in the
+  frame, because five numbers are not worth an upload path.
 
-1. **The mesh pipeline**: vertex and index buffers, which this backend has never had — every pass so
-   far generates its geometry from the vertex index alone. Also GPU-side upload of `MeshData`,
-   following the texture-upload pattern (`has_texture` / `upload_texture`).
+**What remains:**
+
+1. **PBR.** Shading is diffuse `N·L` today. The material already carries the metallic-roughness
+   fields and nothing reads them yet — deliberately, so that getting geometry, depth, projection and
+   lighting onto the screen was one problem rather than tangled with reflectance. `RenderBackend`
+   isolates the shader, so this is the cheap change four ADRs have found it to be.
+2. **A normal matrix per instance.** Normals are currently rotated by the model's basis, which is
+   correct for uniform scale and wrong for non-uniform. The fix belongs in the instance data, not
+   the shader, and nothing authors a non-uniformly scaled mesh yet. Commented where it lives.
+3. **More than one light**, which needs either a loop in the shader or a pass per light — picking
+   between those before anything wants two would be guessing.
+4. **Transparent meshes**, which need back-to-front sorting within a `SortOrder` (ADR 0018 says so).
+   The mesh pipeline is opaque-only until there is something transparent to sort.
 3. **A shader.** Start with diffuse `N·L` against the material's base colour to prove the path, then
    PBR — which is a shader change and therefore cheap, per four ADRs.
 4. **The projection**, built in the backend from `eye_matrix` and the target's aspect ratio, because

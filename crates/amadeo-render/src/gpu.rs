@@ -73,6 +73,50 @@ struct GpuCamera {
     half_extents: [f32; 2],
 }
 
+/// One mesh vertex as the GPU sees it. Matches `Vertex` and `mesh.wgsl`'s `VertexInput`.
+///
+/// `uv` is followed by two floats of padding so the struct is a multiple of 16 bytes — not required
+/// for a vertex buffer, which only needs its stride to match, but it keeps the layout obvious and
+/// matches how every other GPU struct here is written.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct GpuVertex {
+    position: [f32; 3],
+    normal: [f32; 3],
+    uv: [f32; 2],
+}
+
+/// One drawn copy of a mesh: where it is and what it is made of.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct GpuMeshInstance {
+    /// The model matrix, column by column — a vertex attribute cannot be a matrix.
+    model: [[f32; 4]; 4],
+    base_colour: [f32; 4],
+    /// rgb = emissive, a unused.
+    emissive: [f32; 4],
+}
+
+/// What one 3D view needs that is the same for every instance in it.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct GpuMeshView {
+    view_projection: [[f32; 4]; 4],
+    light_direction: [f32; 4],
+    light_colour: [f32; 4],
+}
+
+/// One uploaded mesh's buffers.
+///
+/// Held by id in a `BTreeMap`, exactly as an uploaded texture is, and for the same reason: geometry
+/// travels to the device once rather than in every frame.
+#[derive(Debug)]
+struct GpuMesh {
+    vertices: wgpu::Buffer,
+    indices: wgpu::Buffer,
+    index_count: u32,
+}
+
 /// How many instances the buffer starts with. Grows as needed; never shrinks.
 const INITIAL_INSTANCE_CAPACITY: usize = 256;
 
@@ -299,6 +343,21 @@ pub struct WgpuBackend {
     sprite_pipeline: wgpu::RenderPipeline,
     /// Copies a finished transient onto the destination. See `present.wgsl`.
     present_pipeline: wgpu::RenderPipeline,
+    /// Draws 3D geometry with one directional light. See `mesh.wgsl`.
+    mesh_pipeline: wgpu::RenderPipeline,
+    /// Uploaded geometry, by asset id.
+    meshes: BTreeMap<String, GpuMesh>,
+    /// One aligned slot per 3D view, addressed by dynamic offset — the same arrangement the 2D
+    /// camera uniform uses, and for the same reason (a queue write lands before the single submit,
+    /// so writing per view would overwrite rather than follow).
+    mesh_view_buffer: wgpu::Buffer,
+    mesh_view_bind_group: wgpu::BindGroup,
+    mesh_view_stride: u64,
+    mesh_view_capacity: usize,
+    mesh_view_layout: wgpu::BindGroupLayout,
+    /// Per-instance model matrices and material colours.
+    mesh_instance_buffer: wgpu::Buffer,
+    mesh_instance_capacity: usize,
     /// Applies the camera's `Environment` and brings HDR down to displayable. See `post.wgsl`.
     post_pipeline: wgpu::RenderPipeline,
     /// One frame's post-process settings, rewritten each frame.
@@ -795,6 +854,143 @@ impl WgpuBackend {
             cache: None,
         });
 
+        // --- The mesh pipeline. ---
+        //
+        // The first pipeline in this backend with a real vertex buffer: geometry comes from a mesh
+        // asset rather than from corners derivable from the vertex index. Two buffers, then —
+        // per-vertex and per-instance — plus a depth state, which is what makes nearer geometry
+        // hide further geometry rather than whatever drew last winning.
+        let mesh_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("amadeo mesh shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("mesh.wgsl").into()),
+        });
+
+        let mesh_view_stride = {
+            let alignment = u64::from(device.limits().min_uniform_buffer_offset_alignment).max(1);
+            let size = size_of::<GpuMeshView>() as u64;
+            size.div_ceil(alignment) * alignment
+        };
+
+        let mesh_view_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("amadeo mesh view layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: true,
+                    min_binding_size: wgpu::BufferSize::new(size_of::<GpuMeshView>() as u64),
+                },
+                count: None,
+            }],
+        });
+
+        let mesh_view_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("amadeo mesh view uniforms"),
+            size: mesh_view_stride * INITIAL_VIEW_CAPACITY as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let mesh_view_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("amadeo mesh view bind group"),
+            layout: &mesh_view_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &mesh_view_buffer,
+                    offset: 0,
+                    size: wgpu::BufferSize::new(size_of::<GpuMeshView>() as u64),
+                }),
+            }],
+        });
+
+        let mesh_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("amadeo mesh pipeline layout"),
+            bind_group_layouts: &[Some(&mesh_view_layout)],
+            immediate_size: 0,
+        });
+
+        let mesh_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("amadeo mesh pipeline"),
+            layout: Some(&mesh_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &mesh_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[
+                    // Per vertex: position, normal, uv.
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: size_of::<GpuVertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &wgpu::vertex_attr_array![
+                            0 => Float32x3,
+                            1 => Float32x3,
+                            2 => Float32x2,
+                        ],
+                    }),
+                    // Per instance: four matrix columns, then two colours. Locations continue from
+                    // 3, because they share one shader with the vertex attributes above.
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: size_of::<GpuMeshInstance>() as u64,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &wgpu::vertex_attr_array![
+                            3 => Float32x4,
+                            4 => Float32x4,
+                            5 => Float32x4,
+                            6 => Float32x4,
+                            7 => Float32x4,
+                            8 => Float32x4,
+                        ],
+                    }),
+                ],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &mesh_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: SCENE_FORMAT,
+                    // Opaque. Transparent meshes need back-to-front sorting within a `SortOrder`
+                    // (ADR 0018 says so), and doing that before there is anything transparent to
+                    // sort would be guessing at the shape of a problem nobody has yet.
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                // Back faces are culled, which is what makes the winding ADR 0035's tessellation
+                // tests assert on load-bearing rather than cosmetic: a face wound the wrong way
+                // becomes invisible here rather than merely mis-lit.
+                cull_mode: Some(wgpu::Face::Back),
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(true),
+                // `Less` because the projection puts near at 0 and far at 1 — a fragment passes
+                // when it is nearer than what is already there. Reversed depth would flip this.
+                depth_compare: Some(wgpu::CompareFunction::Less),
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        let mesh_instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("amadeo mesh instance buffer"),
+            size: (size_of::<GpuMeshInstance>() * INITIAL_INSTANCE_CAPACITY) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         // --- The post pipeline. ---
         //
         // Group 0 is the scene image, the same layout every sampled texture uses. Group 1 is the
@@ -886,6 +1082,15 @@ impl WgpuBackend {
             pipeline,
             sprite_pipeline,
             present_pipeline,
+            mesh_pipeline,
+            meshes: BTreeMap::new(),
+            mesh_view_buffer,
+            mesh_view_bind_group,
+            mesh_view_stride,
+            mesh_view_capacity: INITIAL_VIEW_CAPACITY,
+            mesh_view_layout,
+            mesh_instance_buffer,
+            mesh_instance_capacity: INITIAL_INSTANCE_CAPACITY,
             post_pipeline,
             post_buffer,
             post_bind_group,
@@ -991,6 +1196,55 @@ impl WgpuBackend {
             mapped_at_creation: false,
         });
         self.sprite_capacity = capacity;
+    }
+
+    /// Grows the mesh view uniform buffer, and rebuilds the bind group naming it.
+    fn ensure_mesh_view_capacity(&mut self, needed: usize) {
+        if needed <= self.mesh_view_capacity {
+            return;
+        }
+        let mut capacity = self.mesh_view_capacity.max(1);
+        while capacity < needed {
+            capacity *= 2;
+        }
+
+        self.mesh_view_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("amadeo mesh view uniforms"),
+            size: self.mesh_view_stride * capacity as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.mesh_view_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("amadeo mesh view bind group"),
+            layout: &self.mesh_view_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &self.mesh_view_buffer,
+                    offset: 0,
+                    size: wgpu::BufferSize::new(size_of::<GpuMeshView>() as u64),
+                }),
+            }],
+        });
+        self.mesh_view_capacity = capacity;
+    }
+
+    /// The same doubling growth for the mesh instance buffer.
+    fn ensure_mesh_instance_capacity(&mut self, needed: usize) {
+        if needed <= self.mesh_instance_capacity {
+            return;
+        }
+        let mut capacity = self.mesh_instance_capacity.max(1);
+        while capacity < needed {
+            capacity *= 2;
+        }
+        self.mesh_instance_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("amadeo mesh instance buffer"),
+            size: (size_of::<GpuMeshInstance>() * capacity) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.mesh_instance_capacity = capacity;
     }
 
     /// Creates one physical texture a graph transient can be drawn into and then sampled from.
@@ -1161,6 +1415,69 @@ impl RenderBackend for WgpuBackend {
         self.textures.contains_key(id)
     }
 
+    fn has_mesh(&self, id: &str) -> bool {
+        self.meshes.contains_key(id)
+    }
+
+    fn upload_mesh(&mut self, id: &str, mesh: &crate::MeshData) -> Result<(), RenderError> {
+        // `bytemuck` needs the exact GPU layout, and `Vertex` is a plain Rust struct with no
+        // guaranteed representation — so the vertices are rebuilt rather than reinterpreted. One
+        // copy per mesh, once, which is the right trade for not depending on field order.
+        let vertices: Vec<GpuVertex> = mesh
+            .vertices
+            .iter()
+            .map(|vertex| GpuVertex {
+                position: vertex.position,
+                normal: vertex.normal,
+                uv: vertex.uv,
+            })
+            .collect();
+
+        // An empty mesh would produce a zero-sized buffer, which wgpu rejects. Refusing here names
+        // the id; letting it through would fail at buffer creation with nothing to attribute it to.
+        if vertices.is_empty() || mesh.indices.is_empty() {
+            return Err(RenderError::InitFailed {
+                backend: "wgpu",
+                reason: format!(
+                    "mesh `{id}` has no geometry ({} vertices, {} indices); \
+                     a mesh asset that tessellated to nothing cannot be uploaded",
+                    vertices.len(),
+                    mesh.indices.len()
+                ),
+            });
+        }
+
+        let vertex_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(id),
+            size: (size_of::<GpuVertex>() * vertices.len()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.queue
+            .write_buffer(&vertex_buffer, 0, bytemuck::cast_slice(&vertices));
+
+        let index_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(id),
+            size: (size_of::<u32>() * mesh.indices.len()) as u64,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.queue
+            .write_buffer(&index_buffer, 0, bytemuck::cast_slice(&mesh.indices));
+
+        // Replacing drops the old buffers and their video memory, which is what makes a reloaded
+        // mesh work — the same property `upload_texture` relies on.
+        self.meshes.insert(
+            id.to_string(),
+            GpuMesh {
+                vertices: vertex_buffer,
+                indices: index_buffer,
+                index_count: mesh.indices.len() as u32,
+            },
+        );
+        Ok(())
+    }
+
     fn upload_texture(&mut self, id: &str, texture: &TextureData) -> Result<(), RenderError> {
         let format = match texture.format {
             // `Srgb` here and an sRGB surface format together are what make colours come out right:
@@ -1313,6 +1630,87 @@ impl RenderBackend for WgpuBackend {
         // Each view's data is concatenated and its own ranges recorded. Today every view holds the
         // same drawables, so this uploads them once per camera — deliberately, because per-camera
         // culling is coming and a shortcut that assumed the views agreed would have to be unpicked.
+        // 3D data, packed for the whole frame alongside the 2D data below and for the same reason:
+        // a queue write lands before the single submit, so writing per view would overwrite rather
+        // than follow. `mesh_draws` records each view's slice and which mesh each run uses.
+        let mut mesh_views: Vec<u8> = vec![0; self.mesh_view_stride as usize * frame.views.len()];
+        let mut mesh_instances: Vec<GpuMeshInstance> = Vec::new();
+        let mut mesh_draws: Vec<Vec<(&str, std::ops::Range<u32>)>> =
+            Vec::with_capacity(frame.views.len());
+
+        for (index, view) in frame.views.iter().enumerate() {
+            let (px_width, px_height) = self.viewport_pixels(view);
+            let aspect = px_width / px_height.max(1.0);
+
+            // Only a perspective camera feeds this pass. An orthographic one carries no meshes at
+            // all (the collection pass sees to that), so this is belt and braces — but the
+            // projection below would be meaningless for one, so it is worth being explicit.
+            let (fov, near, far) = match view.camera.projection {
+                crate::Projection::Perspective { fov, near, far } => (fov, near, far),
+                crate::Projection::Orthographic { .. } => {
+                    mesh_draws.push(Vec::new());
+                    continue;
+                }
+            };
+
+            // World to clip: undo the camera's placement, then project. `inverse_rigid` returns
+            // `None` only for a collapsed transform, which is a camera that flattened the world —
+            // it draws nothing rather than filling the screen with NaN.
+            let Some(camera_view) = view.eye_matrix.inverse_rigid() else {
+                mesh_draws.push(Vec::new());
+                continue;
+            };
+            let projection = amadeo_transform::Mat4::perspective(fov, aspect, near, far);
+            let view_projection = projection.mul(&camera_view);
+
+            // The first light, or none. Several directional lights need either a loop in the shader
+            // or a pass each, and picking between those before anything wants two is guessing.
+            let light = view.lights.first().copied().unwrap_or(crate::LightData {
+                direction: [0.0, -1.0, 0.0],
+                colour: [0.0, 0.0, 0.0],
+            });
+
+            let uniform = GpuMeshView {
+                view_projection: view_projection.columns,
+                light_direction: [
+                    light.direction[0],
+                    light.direction[1],
+                    light.direction[2],
+                    0.0,
+                ],
+                light_colour: [light.colour[0], light.colour[1], light.colour[2], 0.0],
+            };
+            let at = index * self.mesh_view_stride as usize;
+            mesh_views[at..at + size_of::<GpuMeshView>()]
+                .copy_from_slice(bytemuck::bytes_of(&uniform));
+
+            // Consecutive instances sharing a mesh become one draw call. The collection pass sorts
+            // by `SortOrder`, so this groups within an order rather than across it — the same rule
+            // ADR 0023 gave sprites, and for the same reason: layering must not be violated to save
+            // a draw call.
+            let mut draws: Vec<(&str, std::ops::Range<u32>)> = Vec::new();
+            for instance in &view.meshes {
+                let first = mesh_instances.len() as u32;
+                mesh_instances.push(GpuMeshInstance {
+                    model: instance.model.columns,
+                    base_colour: instance.material.base_colour,
+                    emissive: [
+                        instance.material.emissive[0],
+                        instance.material.emissive[1],
+                        instance.material.emissive[2],
+                        0.0,
+                    ],
+                });
+                let last = mesh_instances.len() as u32;
+
+                match draws.last_mut() {
+                    Some((mesh, range)) if *mesh == instance.mesh.as_str() => range.end = last,
+                    _ => draws.push((instance.mesh.as_str(), first..last)),
+                }
+            }
+            mesh_draws.push(draws);
+        }
+
         let mut cameras: Vec<u8> = vec![0; self.camera_stride as usize * frame.views.len()];
         let mut instances: Vec<GpuInstance> = Vec::with_capacity(frame.quad_count());
         let mut sprites: Vec<GpuSprite> = Vec::with_capacity(frame.sprite_count());
@@ -1384,6 +1782,21 @@ impl RenderBackend for WgpuBackend {
         if !sprites.is_empty() {
             self.queue
                 .write_buffer(&self.sprite_buffer, 0, bytemuck::cast_slice(&sprites));
+        }
+
+        self.ensure_mesh_view_capacity(frame.views.len());
+        if !mesh_views.is_empty() {
+            self.queue
+                .write_buffer(&self.mesh_view_buffer, 0, &mesh_views);
+        }
+
+        self.ensure_mesh_instance_capacity(mesh_instances.len());
+        if !mesh_instances.is_empty() {
+            self.queue.write_buffer(
+                &self.mesh_instance_buffer,
+                0,
+                bytemuck::cast_slice(&mesh_instances),
+            );
         }
 
         // Every transient the plan needs, backed by a pooled texture. After this the pool is not
@@ -1498,6 +1911,37 @@ impl RenderBackend for WgpuBackend {
                         continue;
                     }
                     pass.set_viewport(px_x, px_y, px_width, px_height, 0.0, 1.0);
+
+                    // 3D first: meshes write depth, and everything 2D in this engine is drawn
+                    // without depth at all. Today no camera carries both (a projection selects one
+                    // or the other), so the order is a statement of intent rather than a behaviour
+                    // anything depends on.
+                    if let Some(draws) = mesh_draws.get(index)
+                        && !draws.is_empty()
+                    {
+                        pass.set_pipeline(&self.mesh_pipeline);
+                        pass.set_bind_group(
+                            0,
+                            &self.mesh_view_bind_group,
+                            &[index as u32 * self.mesh_view_stride as u32],
+                        );
+                        pass.set_vertex_buffer(1, self.mesh_instance_buffer.slice(..));
+
+                        for (mesh_id, range) in draws {
+                            // A mesh that was never uploaded is skipped rather than drawn with
+                            // whatever buffer happened to be bound, which would render one shape
+                            // wearing another's geometry — silently, and very confusingly.
+                            let Some(mesh) = self.meshes.get(*mesh_id) else {
+                                continue;
+                            };
+                            pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+                            pass.set_index_buffer(
+                                mesh.indices.slice(..),
+                                wgpu::IndexFormat::Uint32,
+                            );
+                            pass.draw_indexed(0..mesh.index_count, 0, range.clone());
+                        }
+                    }
 
                     let camera_offset = index as u32 * self.camera_stride as u32;
 
