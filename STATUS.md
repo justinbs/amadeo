@@ -60,7 +60,7 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
 `games/vault`.
-**926 tests passing** (plus 7 GPU capture tests behind `--features gpu`); fmt, clippy
+**932 tests passing** (plus 9 GPU capture tests behind `--features gpu`); fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Twenty-three things work end to end today:
@@ -193,12 +193,17 @@ Since then the *whole CPU side* has landed too, so what is left is only the wgpu
   it feeds — orthographic gets quads and sprites, perspective gets meshes, neither built on the
   other (ADR 0031).
 
+- ✅ **The depth buffer.** `TargetFormat::Depth32`, declared **only when a frame holds a perspective
+  camera** — a full-screen depth texture for every 2D game would be a real cost paid for nothing.
+  Depth is its own field on a `Pass` rather than an entry in `writes`, because it is state a pass
+  tests against rather than an image any later pass reads. Verified on a real device, not just in
+  the plan.
+
 **What remains, all behind `RenderBackend`:**
 
-1. **A depth buffer**, as a graph transient with a depth format — `TargetFormat` needs a third
-   variant, which is exactly the shape it was built for.
-2. **The mesh pipeline**: vertex and index buffers, which this backend has never had — every pass so
-   far generates its geometry from the vertex index alone.
+1. **The mesh pipeline**: vertex and index buffers, which this backend has never had — every pass so
+   far generates its geometry from the vertex index alone. Also GPU-side upload of `MeshData`,
+   following the texture-upload pattern (`has_texture` / `upload_texture`).
 3. **A shader.** Start with diffuse `N·L` against the material's base colour to prove the path, then
    PBR — which is a shader change and therefore cheap, per four ADRs.
 4. **The projection**, built in the backend from `eye_matrix` and the target's aspect ratio, because
