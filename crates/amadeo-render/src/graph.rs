@@ -44,7 +44,12 @@ use std::collections::{BTreeMap, BTreeSet};
 pub(crate) const DESTINATION: &str = "destination";
 
 /// The image every camera draws into, before anything reaches the screen.
+///
+/// High dynamic range — see [`TargetFormat::Hdr16`].
 pub(crate) const SCENE: &str = "scene";
+
+/// The finished, displayable image, after the post pass and before it reaches the destination.
+pub(crate) const OUTPUT: &str = "output";
 
 /// The pixel format of a transient image.
 ///
@@ -67,6 +72,18 @@ pub(crate) enum TargetFormat {
     /// So the graph fixes the format it works in, and the present pass is the one place the
     /// destination's own format is met. The hardware does that conversion while writing.
     Srgb8,
+    /// Sixteen-bit floating point per channel, linear — **high dynamic range**.
+    ///
+    /// What the cameras draw into, so that a pixel can be *brighter than white*. Eight-bit sRGB
+    /// cannot represent that: everything is clamped into 0..1, which leaves bloom with no bright
+    /// parts to isolate and tonemapping with nothing to compress. Both effects exist precisely to
+    /// handle values above the display range, so without this they would be elaborate ways of doing
+    /// nothing.
+    ///
+    /// This is the variant [`TargetFormat`] was written expecting, and adding it cost a match arm —
+    /// which is what ADR 0026's format-tag argument predicted when the same shape was used for
+    /// decoded images.
+    Hdr16,
 }
 
 /// An image that exists only for the duration of one frame.
@@ -104,6 +121,12 @@ pub(crate) enum PassKind {
     /// persist, so "no camera" would look like "frozen" rather than "empty" — and a world under
     /// construction genuinely has no camera yet (ADR 0031).
     Clear,
+    /// Apply the camera's [`Environment`](crate::Environment): exposure, tonemap, grade, vignette.
+    ///
+    /// Reads the high-dynamic-range scene image and writes a displayable one. This is the step that
+    /// turns "brighter than white" into pixels, so everything after it is in display range and
+    /// everything before it is not.
+    Post,
     /// Put a finished image onto the destination.
     ///
     /// A full-screen draw rather than a texture copy, because a surface texture is not guaranteed to
@@ -492,9 +515,22 @@ impl RenderGraph {
 /// could only refuse. A transient *can* be read back, so the finished picture is now readable with
 /// or without a window; the two paths differ by the final copy alone, and `RenderBackend::capture`
 /// says which side of it each one reads.
+/// # Why there is a separate `output` image rather than posting straight onto the destination
+///
+/// Folding the post pass into the present pass would save one full-screen copy per frame. It would
+/// also take **windowed capture away again**: a window's image cannot be read back, so the finished
+/// picture has to exist somewhere readable, and after the post pass is the only place it is both
+/// finished and displayable. `scene` is not an answer — it is high dynamic range, so reading it back
+/// would hand out pixels nothing can display without redoing the tonemap in Rust, which is two
+/// copies of a curve that would drift.
+///
+/// One full-screen copy is a real cost and a small one. If it ever shows up in a profile, the fix is
+/// to fold the two passes together and give windowed capture its own on-demand pass instead — the
+/// graph already expresses that, and it is a local change.
 pub(crate) fn frame_graph(frame: &crate::FrameData, width: u32, height: u32) -> RenderGraph {
     let mut graph = RenderGraph::new();
-    graph.transient(SCENE, width, height, TargetFormat::Srgb8);
+    graph.transient(SCENE, width, height, TargetFormat::Hdr16);
+    graph.transient(OUTPUT, width, height, TargetFormat::Srgb8);
 
     if frame.views.is_empty() {
         graph.pass("clear", PassKind::Clear, &[], &[SCENE]);
@@ -514,7 +550,11 @@ pub(crate) fn frame_graph(frame: &crate::FrameData, width: u32, height: u32) -> 
         }
     }
 
-    graph.pass("present", PassKind::Present, &[SCENE], &[DESTINATION]);
+    // Always present, even when the environment does nothing, so that a frame has **one shape**
+    // rather than two. A conditional pass would mean the common path and the tested path could
+    // differ, which is the sort of saving that costs more than it returns.
+    graph.pass("post", PassKind::Post, &[SCENE], &[OUTPUT]);
+    graph.pass("present", PassKind::Present, &[OUTPUT], &[DESTINATION]);
     graph
 }
 
@@ -727,6 +767,7 @@ mod tests {
             views: (0..count)
                 .map(|_| View {
                     camera: Camera::default(),
+                    environment: crate::Environment::default(),
                     eye: [0.0, 0.0],
                     quads: Vec::new(),
                     batches: Vec::new(),
@@ -744,7 +785,7 @@ mod tests {
 
         assert_eq!(
             labels(&graph, &plan),
-            ["view 0", "view 1", "view 2", "present"]
+            ["view 0", "view 1", "view 2", "post", "present"]
         );
 
         let clears: Vec<bool> = graph
@@ -765,17 +806,50 @@ mod tests {
         let graph = frame_graph(&frame, 320, 200);
         let plan = graph.compile().expect("a frame graph is always valid");
 
-        assert_eq!(labels(&graph, &plan), ["clear", "present"]);
+        assert_eq!(labels(&graph, &plan), ["clear", "post", "present"]);
     }
 
     #[test]
-    fn the_scene_transient_matches_the_destination_size() {
+    fn the_transients_match_the_destination_size() {
         // A viewport rectangle is a fraction of the target, so a transient that did not match the
         // destination would put every camera in the wrong place by a scale factor.
         let frame = frame_with_views(1);
         let graph = frame_graph(&frame, 320, 200);
-        let scene = &graph.transients()[0];
-        assert_eq!((scene.width, scene.height), (320, 200));
-        assert_eq!(scene.format, TargetFormat::Srgb8);
+        for transient in graph.transients() {
+            assert_eq!((transient.width, transient.height), (320, 200));
+        }
+    }
+
+    #[test]
+    fn the_cameras_draw_in_high_dynamic_range_and_the_post_pass_brings_it_down() {
+        // The arrangement every effect depends on: bloom needs values above the display range to
+        // isolate and tonemapping exists to compress them, so an 8-bit scene target would make both
+        // elaborate ways of doing nothing.
+        let frame = frame_with_views(1);
+        let graph = frame_graph(&frame, 64, 64);
+
+        let scene = graph
+            .transients()
+            .iter()
+            .find(|transient| transient.name == SCENE)
+            .expect("declared");
+        let output = graph
+            .transients()
+            .iter()
+            .find(|transient| transient.name == OUTPUT)
+            .expect("declared");
+
+        assert_eq!(scene.format, TargetFormat::Hdr16);
+        assert_eq!(output.format, TargetFormat::Srgb8);
+    }
+
+    #[test]
+    fn capture_reads_the_displayable_image_rather_than_the_hdr_one() {
+        // If this ever came back as `scene`, a windowed capture would hand out pixels nothing can
+        // display — and it would do it silently, since the values are perfectly valid floats.
+        let frame = frame_with_views(1);
+        let graph = frame_graph(&frame, 64, 64);
+        let plan = graph.compile().expect("a frame graph is always valid");
+        assert_eq!(plan.destination_source(), Some(OUTPUT));
     }
 }

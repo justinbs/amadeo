@@ -142,6 +142,7 @@ entity trap_east "Trap East" from floor_trap
 entity eye "Camera"
   Camera
     active true
+    environment ""
     order 0
     projection Orthographic
       height 8.0

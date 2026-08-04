@@ -25,6 +25,7 @@
 //! with no GPU, and ADR 0034 is why the plan's types stay inside this crate.
 
 use crate::backend::{FrameData, RenderBackend, RenderError, View};
+use crate::environment::{Environment, Tonemap};
 use crate::graph::{self, DESTINATION, PassKind, Plan, RenderGraph, TargetFormat};
 use amadeo_image::{PixelFormat, TextureData};
 use std::any::Any;
@@ -103,20 +104,83 @@ struct ViewDraws<'a> {
     draws: Vec<(&'a str, std::ops::Range<u32>)>,
 }
 
-/// The format every graph transient uses, and therefore the format everything is *drawn* in.
+/// The format the cameras draw into: **high dynamic range**, linear, sixteen-bit float.
 ///
-/// Deliberately not the destination's format — see [`TargetFormat`] for why, and it matters more
-/// than it sounds: a window surface is commonly BGRA, so a capture that inherited the destination
-/// format would come back with red and blue swapped on the windowed path only.
-const SCENE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+/// A pixel can be brighter than white here, which is what gives tonemapping something to compress
+/// and bloom something to isolate. `rgba16float` is renderable and blendable in core WebGPU, so this
+/// costs no device feature and rules out no adapter.
+const SCENE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
+
+/// The format the finished, displayable picture sits in before it reaches the destination.
+///
+/// Deliberately **not** the destination's own format, and it matters more than it sounds: a window
+/// surface is commonly BGRA, so an output image that inherited it would come back from `capture`
+/// with red and blue swapped on the windowed path and not the offscreen one. Fixing it here means
+/// the present pass is the single place the destination's format is met, and the hardware does that
+/// conversion while writing.
+const OUTPUT_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
 /// Turns the graph's format into wgpu's.
 ///
-/// A `match` on a one-variant enum rather than a constant, so that adding a high-dynamic-range
-/// variant to [`TargetFormat`] fails to compile here instead of silently allocating the wrong thing.
+/// A `match` rather than a constant, so that adding a variant to [`TargetFormat`] fails to compile
+/// here instead of silently allocating the wrong thing.
 fn wgpu_format(format: TargetFormat) -> wgpu::TextureFormat {
     match format {
-        TargetFormat::Srgb8 => SCENE_FORMAT,
+        TargetFormat::Srgb8 => OUTPUT_FORMAT,
+        TargetFormat::Hdr16 => SCENE_FORMAT,
+    }
+}
+
+/// The post-process settings as the GPU sees them.
+///
+/// Packed into `vec4`s rather than named scalars because a WGSL uniform pads every member to 16
+/// bytes — four separate `f32`s would occupy 64 bytes and read no more clearly. Matches `Post` in
+/// `post.wgsl` field for field.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct GpuPost {
+    /// x = exposure, y = tonemap operator, z = vignette intensity, w = vignette radius.
+    controls: [f32; 4],
+    /// x = contrast, y = saturation, zw unused.
+    grade: [f32; 4],
+    /// rgb = tint, a unused.
+    tint: [f32; 4],
+}
+
+impl GpuPost {
+    /// Flattens an [`Environment`] into what the shader reads.
+    ///
+    /// The tonemap becomes a number, and **the numbering is a contract with `post.wgsl`** — see
+    /// `tonemap_operator`.
+    fn from_environment(look: &Environment) -> Self {
+        Self {
+            controls: [
+                look.exposure,
+                tonemap_operator(look.tonemap),
+                look.vignette.intensity,
+                look.vignette.radius,
+            ],
+            grade: [look.grade.contrast, look.grade.saturation, 0.0, 0.0],
+            tint: [
+                look.grade.tint[0],
+                look.grade.tint[1],
+                look.grade.tint[2],
+                0.0,
+            ],
+        }
+    }
+}
+
+/// Which curve `post.wgsl` should apply.
+///
+/// An exhaustive `match` rather than a cast, so adding a [`Tonemap`] variant fails to compile here
+/// rather than silently selecting the wrong curve — a cast from an enum's discriminant would happily
+/// send an unknown number to a shader that would then fall through to "no tonemap".
+fn tonemap_operator(tonemap: Tonemap) -> f32 {
+    match tonemap {
+        Tonemap::None => 0.0,
+        Tonemap::Reinhard => 1.0,
+        Tonemap::AcesFilmic => 2.0,
     }
 }
 
@@ -220,6 +284,11 @@ pub struct WgpuBackend {
     sprite_pipeline: wgpu::RenderPipeline,
     /// Copies a finished transient onto the destination. See `present.wgsl`.
     present_pipeline: wgpu::RenderPipeline,
+    /// Applies the camera's `Environment` and brings HDR down to displayable. See `post.wgsl`.
+    post_pipeline: wgpu::RenderPipeline,
+    /// One frame's post-process settings, rewritten each frame.
+    post_buffer: wgpu::Buffer,
+    post_bind_group: wgpu::BindGroup,
     /// Physical textures backing the graph's transients, reused within a frame and across frames.
     transients: Vec<PooledTexture>,
     /// Which pooled texture holds the last frame's finished picture.
@@ -711,6 +780,87 @@ impl WgpuBackend {
             cache: None,
         });
 
+        // --- The post pipeline. ---
+        //
+        // Group 0 is the scene image, the same layout every sampled texture uses. Group 1 is the
+        // frame's `Environment`, flattened into three vec4s.
+        let post_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("amadeo post shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("post.wgsl").into()),
+        });
+
+        let post_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("amadeo post uniform layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new(size_of::<GpuPost>() as u64),
+                },
+                count: None,
+            }],
+        });
+
+        let post_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("amadeo post uniforms"),
+            size: size_of::<GpuPost>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let post_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("amadeo post bind group"),
+            layout: &post_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: post_buffer.as_entire_binding(),
+            }],
+        });
+
+        let post_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("amadeo post pipeline layout"),
+            bind_group_layouts: &[Some(&texture_layout), Some(&post_layout)],
+            immediate_size: 0,
+        });
+
+        let post_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("amadeo post pipeline"),
+            layout: Some(&post_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &post_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &post_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    // The displayable image, not the destination — see `OUTPUT_FORMAT`.
+                    format: OUTPUT_FORMAT,
+                    // Replace: this pass produces the whole picture from the scene image.
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
         Ok(Self {
             target,
             device,
@@ -721,6 +871,9 @@ impl WgpuBackend {
             pipeline,
             sprite_pipeline,
             present_pipeline,
+            post_pipeline,
+            post_buffer,
+            post_bind_group,
             transients: Vec::new(),
             capture_source: None,
             camera_buffer,
@@ -1206,6 +1359,17 @@ impl RenderBackend for WgpuBackend {
         // touched again this frame, so the loop below can borrow it immutably.
         let assigned = self.assign_transients(&graph, &plan);
 
+        // The look the post pass will apply. **One environment per frame, taken from the camera
+        // that draws first** — the same "which camera when there are several" rule ADR 0031 gave
+        // `render.describe`. Per-camera post needs per-camera targets, which arrive with
+        // `Camera::target`; until then a HUD camera cannot have its own grade. Recorded as Q23.
+        let look = frame.look();
+        self.queue.write_buffer(
+            &self.post_buffer,
+            0,
+            bytemuck::bytes_of(&GpuPost::from_environment(&look)),
+        );
+
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -1242,7 +1406,11 @@ impl RenderBackend for WgpuBackend {
             // camera rather than erase it.
             let load = match declared.kind {
                 PassKind::View { clears: false, .. } => wgpu::LoadOp::Load,
-                PassKind::View { .. } | PassKind::Clear | PassKind::Present => clear,
+                PassKind::View { .. } | PassKind::Clear => clear,
+                // Both full-screen passes overwrite every pixel of their target, so what was there
+                // is irrelevant — but a load of undefined contents is worse than a clear on some
+                // backends, and a clear of something about to be fully written costs nothing.
+                PassKind::Post | PassKind::Present => clear,
             };
 
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1319,7 +1487,7 @@ impl RenderBackend for WgpuBackend {
                     }
                 }
 
-                PassKind::Present => {
+                PassKind::Post | PassKind::Present => {
                     let Some(source) = declared
                         .reads
                         .first()
@@ -1328,7 +1496,15 @@ impl RenderBackend for WgpuBackend {
                     else {
                         continue;
                     };
-                    pass.set_pipeline(&self.present_pipeline);
+
+                    // The two full-screen passes differ only in which shader runs and whether the
+                    // environment is bound — same triangle, same source binding, same draw.
+                    if matches!(declared.kind, PassKind::Post) {
+                        pass.set_pipeline(&self.post_pipeline);
+                        pass.set_bind_group(1, &self.post_bind_group, &[]);
+                    } else {
+                        pass.set_pipeline(&self.present_pipeline);
+                    }
                     pass.set_bind_group(0, &self.transients[source].bind_group, &[]);
                     // Three vertices, one instance, no buffers — see `present.wgsl`.
                     pass.draw(0..3, 0..1);

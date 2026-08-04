@@ -258,6 +258,17 @@ pub struct Camera {
     pub order: i32,
     /// Whether this camera draws at all. A cheap way to keep one configured but idle.
     pub active: bool,
+    /// What this camera's picture should look like — the asset id of an
+    /// [`Environment`](crate::Environment). **Empty means no post-processing** (ADR 0034).
+    ///
+    /// A plain string holding an asset id, matching [`Camera::target`] and `Sprite::texture`. The
+    /// look is an *asset* rather than fields inline here because it is the thing that gets tuned and
+    /// swapped — going from a corridor to a safe room is changing this one string.
+    ///
+    /// Nothing about whether it has loaded can reach the simulation (ADR 0021): an id that does not
+    /// resolve renders with the default look, which is the picture a camera with no environment
+    /// draws anyway.
+    pub environment: String,
 }
 
 impl Default for Camera {
@@ -268,6 +279,7 @@ impl Default for Camera {
             viewport: [0.0, 0.0, 1.0, 1.0],
             order: 0,
             active: true,
+            environment: String::new(),
         }
     }
 }

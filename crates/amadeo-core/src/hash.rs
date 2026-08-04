@@ -259,15 +259,25 @@ impl StableHash for bool {
     }
 }
 
+// The length goes first, for exactly the reason `[T]` below writes its own: without it, two string
+// fields sitting next to each other can be confused by moving a character between them. `("ab", "")`
+// and `("a", "b")` would hash identically, and that is reachable from content rather than
+// theoretical -- `Camera { target: "", environment: "x" }` and
+// `Camera { target: "x", environment: "" }` are different worlds that must not share a state hash.
+//
+// Deliberately here rather than inside `StableHasher::write_str`, which stays a raw primitive: it is
+// what `hash_str` mirrors for component *names*, where a name is hashed alone and never adjacent to
+// another field, and changing it would move every `ComponentId` in the engine for no gain.
 impl StableHash for str {
     fn stable_hash(&self, hasher: &mut StableHasher) {
+        hasher.write_u64(self.len() as u64);
         hasher.write_str(self);
     }
 }
 
 impl StableHash for String {
     fn stable_hash(&self, hasher: &mut StableHasher) {
-        hasher.write_str(self);
+        self.as_str().stable_hash(hasher);
     }
 }
 
@@ -346,6 +356,40 @@ mod tests {
                 "const and runtime hashes disagree for {name:?}"
             );
         }
+    }
+
+    #[test]
+    fn moving_a_character_between_two_string_fields_changes_the_hash() {
+        // Found in session 9 by adding a second string field to `Camera` and noticing that the
+        // golden replays did *not* move when they should have. Without a length prefix, two
+        // adjacent strings hash as their concatenation, so `("ab", "")` and `("a", "b")` collide —
+        // two genuinely different worlds sharing a state hash, which is invariant I3 failing
+        // silently rather than loudly.
+        //
+        // Reachable from content, not theoretical: `Camera` carries `target` and `environment`
+        // side by side, and both hold asset ids an author types.
+        let pair = |left: &str, right: &str| {
+            let mut hasher = StableHasher::new();
+            left.stable_hash(&mut hasher);
+            right.stable_hash(&mut hasher);
+            hasher.finish()
+        };
+
+        assert_ne!(pair("ab", ""), pair("a", "b"));
+        assert_ne!(pair("", "ab"), pair("ab", ""));
+        assert_ne!(pair("a", "bc"), pair("ab", "c"));
+        // And the ordinary case still behaves: the same pair hashes the same way twice.
+        assert_eq!(pair("wall", "corridor"), pair("wall", "corridor"));
+    }
+
+    #[test]
+    fn an_empty_string_field_is_not_invisible() {
+        // The specific symptom: adding an empty-by-default string field to a component used to
+        // contribute nothing at all, so a schema change that should have moved every state hash
+        // moved none of them.
+        let mut with = StableHasher::new();
+        "".stable_hash(&mut with);
+        assert_ne!(with.finish(), StableHasher::new().finish());
     }
 
     #[test]

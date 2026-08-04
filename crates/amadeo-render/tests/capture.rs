@@ -23,7 +23,8 @@
 
 use amadeo_ecs::World;
 use amadeo_render::{
-    Camera, NullBackend, Quad, RenderBackend, Renderer, TextureData, WgpuBackend, render_quads,
+    Camera, Environment, EnvironmentCache, NullBackend, Quad, RenderBackend, Renderer, TextureData,
+    Vignette, WgpuBackend, render_quads,
 };
 use amadeo_transform::Transform;
 
@@ -63,6 +64,19 @@ fn add_camera(world: &mut World, height: f32) {
     let eye = world.spawn();
     world.insert(eye, Transform::at(0.0, 0.0));
     world.insert(eye, Camera::orthographic(height));
+}
+
+/// The same camera, naming an environment asset id.
+fn add_camera_named(world: &mut World, height: f32, environment: &str) {
+    let eye = world.spawn();
+    world.insert(eye, Transform::at(0.0, 0.0));
+    world.insert(
+        eye,
+        Camera {
+            environment: environment.to_string(),
+            ..Camera::orthographic(height)
+        },
+    );
 }
 
 #[test]
@@ -186,6 +200,117 @@ fn the_present_pass_does_not_turn_the_screen_upside_down() {
     assert!(
         below[0] < 128,
         "the bottom half should still be background, got {below:?}"
+    );
+}
+
+/// The same capture, but with a look installed on the camera.
+fn capture_with(
+    world: &mut World,
+    look: Environment,
+    width: u32,
+    height: u32,
+) -> Option<TextureData> {
+    let mut cache = EnvironmentCache::new();
+    cache.insert("test_look", look);
+    world.insert_service(cache);
+    capture(world, width, height)
+}
+
+#[test]
+fn an_environment_actually_reaches_the_pixels() {
+    // The end of ADR 0034's chain, and the only assertion that covers all of it: a `.environment`
+    // asset id on a camera, through the cache, into the frame, into the post pass's uniform, into
+    // the shader, out as different pixels. Every earlier check in `tests/environment.rs` stops at
+    // the frame.
+    //
+    // A vignette is the effect worth testing here because it varies *across* the image — so a
+    // uniform that never reached the shader, or reached it as zeros, produces a picture this can
+    // tell apart from the real one. A pure colour change could be faked by almost any bug.
+    let quad = |world: &mut World| {
+        let entity = world.spawn();
+        world.insert(entity, Transform::at(0.0, 0.0));
+        // Filling the whole ten-unit view, so both sample points below are on the quad and any
+        // difference between them is the effect rather than the background.
+        world.insert(entity, Quad::new(20.0, 20.0, [1.0, 1.0, 1.0, 1.0]));
+    };
+
+    let mut plain = World::new();
+    add_camera_named(&mut plain, 10.0, "test_look");
+    quad(&mut plain);
+
+    let mut darkened = World::new();
+    add_camera_named(&mut darkened, 10.0, "test_look");
+    quad(&mut darkened);
+
+    let (Some(plain), Some(darkened)) = (
+        capture_with(&mut plain, Environment::default(), 64, 64),
+        capture_with(
+            &mut darkened,
+            Environment {
+                vignette: Vignette {
+                    intensity: 1.0,
+                    radius: 0.0,
+                },
+                ..Environment::default()
+            },
+            64,
+            64,
+        ),
+    ) else {
+        return;
+    };
+
+    // Widened to `i32` before comparing: these are `u8`s at the top of their range, and a tolerance
+    // added to 255 overflows.
+    let red = |pixel: [u8; 4]| i32::from(pixel[0]);
+
+    // The middle is essentially untouched: a vignette darkens the edges, not the centre.
+    let centre_before = pixel_at(&plain, 32, 32);
+    let centre_after = pixel_at(&darkened, 32, 32);
+    assert!(
+        red(centre_after) + 12 >= red(centre_before),
+        "the centre should survive the vignette, {centre_before:?} -> {centre_after:?}"
+    );
+
+    // The corner is markedly darker, which is the effect doing its job.
+    let corner_before = pixel_at(&plain, 2, 2);
+    let corner_after = pixel_at(&darkened, 2, 2);
+    assert!(
+        red(corner_after) + 40 < red(corner_before),
+        "the corner should be darkened, {corner_before:?} -> {corner_after:?}"
+    );
+}
+
+#[test]
+fn the_default_environment_leaves_the_picture_alone() {
+    // The claim that let post-processing ship without changing either game's confirmed appearance:
+    // a camera naming no environment must produce the same pixels as one naming a default. If the
+    // post pass ever stopped being a no-op by default, every existing capture would shift and this
+    // is what would say so.
+    let build = |world: &mut World| {
+        let entity = world.spawn();
+        world.insert(entity, Transform::at(0.0, 0.0));
+        world.insert(entity, Quad::new(2.0, 2.0, [0.8, 0.3, 0.1, 1.0]));
+    };
+
+    let mut bare = World::new();
+    add_camera(&mut bare, 10.0);
+    build(&mut bare);
+
+    let mut defaulted = World::new();
+    add_camera_named(&mut defaulted, 10.0, "test_look");
+    build(&mut defaulted);
+
+    let (Some(bare), Some(defaulted)) = (
+        capture(&mut bare, 64, 64),
+        capture_with(&mut defaulted, Environment::default(), 64, 64),
+    ) else {
+        return;
+    };
+
+    assert_eq!(
+        bare.pixels, defaulted.pixels,
+        "a default environment must be indistinguishable from none at all"
     );
 }
 

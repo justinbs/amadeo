@@ -8,8 +8,9 @@ use amadeo_events::{Event, WorldEvents};
 use amadeo_reflect::{
     FieldInfo, Reflect, ReflectError, RegistryError, Replication, TypeInfo, TypeKind, Value,
 };
+use amadeo_render::{Camera, Environment, EnvironmentCache};
 use amadeo_scene::PrefabLibrary;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 /// The simulation's random number generator, seeded once and advanced deterministically.
@@ -384,7 +385,97 @@ impl App {
         let registry = self.take_registry();
         let result = amadeo_scene::instantiate_with(document, &registry, &prefabs, &mut self.world);
         self.put_registry(registry);
+
+        // After instantiation, because the ids come off the `Camera` components the scene just
+        // created. A scene that authors no camera, or whose cameras name no environment, does
+        // nothing here.
+        self.load_environments();
         result
+    }
+
+    /// Turns every environment id a camera names into the look behind it — ADR 0034.
+    ///
+    /// Called automatically by [`App::load_scene`], and public because a game that spawns its camera
+    /// in code rather than in a scene file has to be able to do the same thing. Idempotent: calling
+    /// it twice re-reads the same bytes and produces the same cache.
+    ///
+    /// # Why this lives here rather than in `amadeo-render`
+    ///
+    /// An environment's file is a *scene* file (ADR 0034), and `amadeo-scene` sits **above**
+    /// `amadeo-render` in the crate graph — so by invariant I6 the renderer cannot parse its own
+    /// asset. It owns the type and the cache; this layer, which can see both crates, does the
+    /// reading. The same split `TextureCache` has, for the same reason.
+    ///
+    /// # Nothing here is fatal
+    ///
+    /// An id that does not resolve, will not parse, or holds no `Environment` is skipped, and the
+    /// camera renders with the default look — which is the picture a camera with no environment
+    /// draws anyway. ADR 0021 requires a missing asset to be visible and survivable rather than a
+    /// crash, and `EnvironmentCache::is_loaded` is what tells "asked for nothing" apart from "asked
+    /// for something that is not there".
+    pub fn load_environments(&mut self) -> &mut Self {
+        let wanted: BTreeSet<String> = self
+            .world
+            .entities()
+            .into_iter()
+            .filter_map(|entity| self.world.get::<Camera>(entity))
+            .map(|camera| camera.environment.clone())
+            .filter(|id| !id.is_empty())
+            .collect();
+
+        if wanted.is_empty() {
+            return self;
+        }
+
+        // The load barrier (ADR 0021): the bytes have to be resident before anything reads them. A
+        // scene that declared the id in its `assets` block has already loaded it and this is a
+        // no-op; one that forgot gets it loaded here rather than silently rendering flat.
+        self.load_assets(wanted.iter().map(String::as_str));
+
+        let mut found: Vec<(String, Environment)> = Vec::new();
+        for id in &wanted {
+            let Some(assets) = self.assets() else {
+                break;
+            };
+            let Some(loaded) = assets.store.get(id) else {
+                continue;
+            };
+            let Ok(text) = std::str::from_utf8(&loaded.bytes) else {
+                continue;
+            };
+            let Ok(document) = amadeo_scene::parse(text) else {
+                continue;
+            };
+            // A scene document with a single root carrying one `Environment`, exactly as a prefab is
+            // a document with a single root. `walk` rather than indexing the first entity, so a file
+            // that wraps it in a parent still works.
+            let Some(value) = document
+                .walk()
+                .into_iter()
+                .find_map(|entity| entity.components.get(Environment::STATIC_NAME))
+            else {
+                continue;
+            };
+            let Ok(environment) = Environment::from_value(value) else {
+                continue;
+            };
+            found.push((id.clone(), environment));
+        }
+
+        if found.is_empty() {
+            return self;
+        }
+        // Installed on first use rather than at construction, so a game that never asks for a look
+        // never carries the service — and so a game that does gets it without a setup step.
+        if !self.world.has_service::<EnvironmentCache>() {
+            self.world.insert_service(EnvironmentCache::new());
+        }
+        if let Some(cache) = self.world.service_mut::<EnvironmentCache>() {
+            for (id, environment) in found {
+                cache.insert(id, environment);
+            }
+        }
+        self
     }
 
     /// Parses every prefab a scene instances, from the bytes the load barrier made resident.

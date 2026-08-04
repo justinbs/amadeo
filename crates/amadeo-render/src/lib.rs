@@ -43,6 +43,7 @@
 mod backend;
 mod components;
 mod describe;
+mod environment;
 #[cfg(feature = "gpu")]
 mod gpu;
 mod graph;
@@ -57,6 +58,7 @@ pub use components::{Camera, Projection, Quad, SortOrder, Sprite};
 pub use describe::{
     DrawnEntity, DrawnKind, FrameDescription, describe_frame, describe_frame_through,
 };
+pub use environment::{Bloom, Environment, EnvironmentCache, Grade, Tonemap, Vignette};
 #[cfg(feature = "gpu")]
 pub use gpu::WgpuBackend;
 pub use sprites::{COLLECT_SPRITES, collect_sprites};
@@ -364,6 +366,16 @@ pub fn render_quads(world: &mut World) {
     // them, and "the sprites are one frame behind the quads" is a miserable bug to find.
     let batches = collect_sprites(world);
 
+    // Each camera's `environment` id becomes the look itself here, so the backend is handed
+    // everything it needs and never reaches back into the world. A world with no `EnvironmentCache`
+    // installed — which is every game that has not asked for post-processing — gets the default
+    // look, exactly as an unresolved id does (ADR 0021).
+    let looks = world.service::<EnvironmentCache>();
+    let resolve = |camera: &Camera| match looks {
+        Some(cache) => cache.get(&camera.environment),
+        None => Environment::default(),
+    };
+
     // The drawables are gathered once and then handed to each camera, rather than re-queried per
     // camera: what is in the world does not depend on who is looking at it, and re-collecting would
     // both cost more and open the door to two cameras disagreeing about one frame.
@@ -372,6 +384,7 @@ pub fn render_quads(world: &mut World) {
         views: active_cameras(world)
             .into_iter()
             .map(|(camera, eye)| View {
+                environment: resolve(&camera),
                 camera,
                 eye,
                 quads: quads.clone(),

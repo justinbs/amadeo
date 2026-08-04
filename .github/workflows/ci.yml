@@ -156,7 +156,8 @@ jobs:
             games/vault/scenes/vault.scene \
             games/vault/assets/prefabs/sigil_pickup.scene \
             games/vault/assets/prefabs/floor_trap.scene \
-            games/quad-demo/scenes/markers.scene
+            games/quad-demo/scenes/markers.scene \
+            games/vault/assets/looks/corridor_dark.environment
 
   docs:
     name: docs build without warnings

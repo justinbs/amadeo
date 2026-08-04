@@ -10,7 +10,7 @@ ticks 300
 81 axis move_y -1.0
 135 axis move_y 0.0
 
-checkpoint 1 2f595221e020dcc6
-checkpoint 81 852d80cc685b7467
-checkpoint 135 b83815784434161a
-checkpoint 300 d60c5bba9e943eaa
+checkpoint 1 03730d18140537d2
+checkpoint 81 2e3409800534ce0a
+checkpoint 135 f822cd13a5780a05
+checkpoint 300 1b43dd571fe43839

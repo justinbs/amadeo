@@ -167,6 +167,14 @@ pub struct View {
     /// Separate from [`View::camera`] because a `Camera` deliberately holds no position: ADR 0018
     /// keeps that on the transform, so that parenting a camera to a character is a follow camera.
     pub eye: [f32; 2],
+    /// The look this camera asked for, already resolved from its id (ADR 0034).
+    ///
+    /// Resolved here rather than in the backend for the same reason a frame holds no pixels: a
+    /// backend should be handed everything it needs to draw and never have to reach back into the
+    /// world. A camera whose environment has not loaded, or which named none, carries
+    /// [`Environment::default`](crate::Environment) — which does nothing, so there is no "no look"
+    /// case to branch on.
+    pub environment: crate::Environment,
     /// Quads to draw, already sorted by [`SortOrder`](crate::SortOrder).
     pub quads: Vec<QuadInstance>,
     /// Textured sprites, grouped into draw calls and ordered by [`SpriteBatch::order`].
@@ -198,6 +206,24 @@ impl FrameData {
     #[must_use]
     pub fn primary(&self) -> Option<&View> {
         self.views.first()
+    }
+
+    /// The look the post pass should apply to this frame.
+    ///
+    /// # Why one environment for a frame that may have several cameras
+    ///
+    /// ADR 0031 has every camera compose into **one** image — a HUD camera loads what the world
+    /// camera left rather than clearing — so by the time post-processing runs there is one picture
+    /// and the cameras are no longer separable. This takes the first view's environment, which is
+    /// the same "which camera when there are several" rule ADR 0031 gave `render.describe`.
+    ///
+    /// **The limitation is real and recorded as Q23**: a HUD camera cannot have a different grade
+    /// from the world beneath it. Fixing it means per-camera targets, which is the same work as
+    /// `Camera::target`, so the two belong together rather than being solved twice.
+    #[must_use]
+    pub fn look(&self) -> crate::Environment {
+        self.primary()
+            .map_or_else(crate::Environment::default, |view| view.environment)
     }
 
     /// Every quad across every view.
@@ -470,6 +496,7 @@ mod tests {
         FrameData {
             views: vec![View {
                 camera: Camera::default(),
+                environment: crate::Environment::default(),
                 eye: [0.0, 0.0],
                 quads: vec![QuadInstance {
                     center: [1.0, 2.0],
@@ -513,13 +540,13 @@ mod tests {
         // the whole reason it does not live inside the wgpu backend.
         let mut backend = NullBackend::new(64, 64);
         backend.render(&sample_frame()).expect("null never fails");
-        assert_eq!(backend.last_passes(), ["view 0", "present"]);
+        assert_eq!(backend.last_passes(), ["view 0", "post", "present"]);
 
         // And a world nobody gave a camera clears rather than freezing.
         backend
             .render(&FrameData::default())
             .expect("null never fails");
-        assert_eq!(backend.last_passes(), ["clear", "present"]);
+        assert_eq!(backend.last_passes(), ["clear", "post", "present"]);
     }
 
     #[test]
