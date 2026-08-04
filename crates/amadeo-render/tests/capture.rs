@@ -315,6 +315,52 @@ fn the_default_environment_leaves_the_picture_alone() {
 }
 
 #[test]
+fn a_3d_camera_allocates_and_attaches_a_depth_buffer_without_complaint() {
+    // The depth buffer's format, its usages and its attachment are all things wgpu validates on a
+    // real device and nowhere else — a depth texture asked for `TEXTURE_BINDING`, or attached with
+    // the colour bind-group layout, fails at creation with a message about the wrong thing. The
+    // graph tests prove the *plan*; only this proves the device accepts it.
+    //
+    // Nothing draws yet (the mesh pipeline is next), so the assertion is that a 3D frame renders and
+    // captures at all. That is a low bar and exactly the right one for prerequisite machinery.
+    let mut world = World::new();
+    let eye = world.spawn();
+    world.insert(eye, Transform::at(0.0, 0.0));
+    world.insert(eye, Camera::perspective(60.0));
+
+    let Some(image) = capture(&mut world, 64, 64) else {
+        return;
+    };
+
+    assert_eq!(image.pixels.len(), 64 * 64 * 4);
+    // Cleared, because a 3D camera with nothing in front of it is an empty room rather than a
+    // failure — and the clear colour is deliberately not black, so this tells them apart.
+    let pixel = pixel_at(&image, 32, 32);
+    assert!(
+        pixel[0] > 0 && pixel[0] < 128,
+        "expected the clear, got {pixel:?}"
+    );
+}
+
+#[test]
+fn a_2d_capture_is_unchanged_by_the_depth_machinery() {
+    // The claim that made it safe to add: a 2D frame declares no depth buffer at all, so nothing
+    // about the sprite path can have moved. Asserted against the clear colour rather than trusting
+    // that "no depth transient" means "no difference".
+    let mut world = World::new();
+    add_camera(&mut world, 10.0);
+    let entity = world.spawn();
+    world.insert(entity, Transform::at(0.0, 0.0));
+    world.insert(entity, Quad::new(2.0, 2.0, [1.0, 0.0, 0.0, 1.0]));
+
+    let Some(image) = capture(&mut world, 64, 64) else {
+        return;
+    };
+    let centre = pixel_at(&image, 32, 32);
+    assert!(centre[0] > 200 && centre[1] < 60, "got {centre:?}");
+}
+
+#[test]
 fn capture_reports_why_it_cannot_when_it_cannot() {
     // Needs no GPU, so this one always runs. A backend that cannot read its own output must say so
     // rather than return a blank image a caller would have to know not to trust — and the message

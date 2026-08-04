@@ -128,8 +128,15 @@ fn wgpu_format(format: TargetFormat) -> wgpu::TextureFormat {
     match format {
         TargetFormat::Srgb8 => OUTPUT_FORMAT,
         TargetFormat::Hdr16 => SCENE_FORMAT,
+        TargetFormat::Depth32 => DEPTH_FORMAT,
     }
 }
+
+/// The depth buffer's format.
+///
+/// `Depth32Float` rather than a packed depth-stencil format: nothing here uses a stencil buffer, and
+/// asking for one would cost memory on every 3D frame to carry eight bits nothing reads.
+const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 /// The post-process settings as the GPU sees them.
 ///
@@ -197,7 +204,15 @@ struct PooledTexture {
     view: wgpu::TextureView,
     /// Built once at creation so a later pass can sample it, for the same reason an uploaded
     /// texture's bind group is: creating one is a driver-side allocation.
-    bind_group: wgpu::BindGroup,
+    ///
+    /// **`None` for a depth buffer.** `texture_layout` declares `TextureSampleType::Float`, which is
+    /// right for every colour transient and wrong for depth — whose sample type is `Depth`. Building
+    /// one anyway fails at bind-group *creation* rather than at draw, so it reads as an allocation
+    /// bug rather than a layout one.
+    ///
+    /// An `Option` rather than a second layout, because nothing samples the depth buffer yet. When
+    /// shadow maps or fog need to, the compiler will ask about every place that assumed it could.
+    bind_group: Option<wgpu::BindGroup>,
 }
 
 /// Creates the colour target an offscreen backend draws into.
@@ -985,6 +1000,19 @@ impl WgpuBackend {
     /// back — which is the usage a window's own image can never have, and therefore the reason a
     /// windowed run can capture at all.
     fn create_transient(&self, width: u32, height: u32, format: TargetFormat) -> PooledTexture {
+        let depth = matches!(format, TargetFormat::Depth32);
+
+        // A depth buffer is only ever attached, never sampled or read back — so it asks for neither
+        // `TEXTURE_BINDING` nor `COPY_SRC`. Requesting usages nothing needs is not free: some
+        // backends choose a less efficient memory layout to satisfy them.
+        let usage = if depth {
+            wgpu::TextureUsages::RENDER_ATTACHMENT
+        } else {
+            wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC
+        };
+
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("amadeo transient target"),
             size: wgpu::Extent3d {
@@ -996,26 +1024,29 @@ impl WgpuBackend {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu_format(format),
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC,
+            usage,
             view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("amadeo transient bind group"),
-            layout: &self.texture_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
-                },
-            ],
-        });
+        // See `PooledTexture::bind_group` for why depth gets none.
+        let bind_group = if depth {
+            None
+        } else {
+            Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("amadeo transient bind group"),
+                layout: &self.texture_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                ],
+            }))
+        };
 
         PooledTexture {
             width,
@@ -1413,6 +1444,23 @@ impl RenderBackend for WgpuBackend {
                 PassKind::Post | PassKind::Present => clear,
             };
 
+            // Only a 3D view pass declares one (see `Pass::depth`). Cleared to 1.0, the far plane,
+            // because the projection puts near at 0 and far at 1 — the WebGPU convention rather than
+            // OpenGL's, and clearing to the wrong end means everything fails the depth test.
+            let depth_view = declared
+                .depth
+                .as_ref()
+                .and_then(|name| assigned.get(name))
+                .map(|pooled| &self.transients[*pooled].view);
+            let depth_attachment = depth_view.map(|view| wgpu::RenderPassDepthStencilAttachment {
+                view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            });
+
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some(declared.label.as_str()),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -1424,7 +1472,7 @@ impl RenderBackend for WgpuBackend {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: depth_attachment,
                 multiview_mask: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
@@ -1499,13 +1547,20 @@ impl RenderBackend for WgpuBackend {
 
                     // The two full-screen passes differ only in which shader runs and whether the
                     // environment is bound — same triangle, same source binding, same draw.
+                    // A full-screen pass reads a colour transient, which always has a bind group —
+                    // only depth lacks one. Skipping rather than unwrapping keeps that a fact this
+                    // code checks rather than one it assumes.
+                    let Some(binding) = self.transients[source].bind_group.as_ref() else {
+                        continue;
+                    };
+
                     if matches!(declared.kind, PassKind::Post) {
                         pass.set_pipeline(&self.post_pipeline);
                         pass.set_bind_group(1, &self.post_bind_group, &[]);
                     } else {
                         pass.set_pipeline(&self.present_pipeline);
                     }
-                    pass.set_bind_group(0, &self.transients[source].bind_group, &[]);
+                    pass.set_bind_group(0, binding, &[]);
                     // Three vertices, one instance, no buffers — see `present.wgsl`.
                     pass.draw(0..3, 0..1);
                 }

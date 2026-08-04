@@ -51,6 +51,11 @@ pub(crate) const SCENE: &str = "scene";
 /// The finished, displayable image, after the post pass and before it reaches the destination.
 pub(crate) const OUTPUT: &str = "output";
 
+/// How far away each pixel is, so nearer geometry hides further geometry.
+///
+/// Declared only when a frame actually holds a 3D camera — see [`frame_graph`].
+pub(crate) const DEPTH: &str = "depth";
+
 /// The pixel format of a transient image.
 ///
 /// One variant, deliberately, exactly as [`PixelFormat`](amadeo_image::PixelFormat) shipped with one
@@ -84,6 +89,15 @@ pub(crate) enum TargetFormat {
     /// which is what ADR 0026's format-tag argument predicted when the same shape was used for
     /// decoded images.
     Hdr16,
+    /// A depth buffer: how far away each pixel is, so nearer geometry hides further geometry.
+    ///
+    /// **Not a colour image**, and the difference is load-bearing in one place — nothing samples it
+    /// yet, so a pooled depth texture carries no bind group. See `PooledTexture` in the wgpu
+    /// backend, where building one against the colour layout would fail at *creation* rather than at
+    /// draw, and therefore look like an allocation bug rather than a layout one.
+    ///
+    /// Shadow maps and fog are what will eventually read it.
+    Depth32,
 }
 
 /// An image that exists only for the duration of one frame.
@@ -144,6 +158,20 @@ pub(crate) struct Pass {
     pub reads: Vec<String>,
     /// Resources this pass writes.
     pub writes: Vec<String>,
+    /// The depth buffer this pass tests and writes against, if it has one.
+    ///
+    /// # Why this is its own field rather than another entry in `writes`
+    ///
+    /// A depth attachment is written, but it is also *state the pass tests against* — it is not an
+    /// image any later pass reads, and it is bound in a different place in a render pass descriptor.
+    /// Folding it into `writes` would make the ordering rules apply to it (harmless) while giving
+    /// every consumer of `writes` a resource it has to specially exclude (not harmless).
+    ///
+    /// Only the 3D view passes have one. The 2D passes and the full-screen passes leave it `None`,
+    /// which is what keeps the sprite path provably untouched by any of this: a pipeline declaring
+    /// no depth state cannot be used in a pass that has a depth attachment, so "sometimes attached"
+    /// has to be a real distinction rather than a convenience.
+    pub depth: Option<String>,
     /// What it does.
     pub kind: PassKind,
 }
@@ -290,8 +318,19 @@ impl RenderGraph {
             label: label.to_string(),
             reads: reads.iter().map(|name| (*name).to_string()).collect(),
             writes: writes.iter().map(|name| (*name).to_string()).collect(),
+            depth: None,
             kind,
         });
+    }
+
+    /// Gives the pass declared most recently a depth attachment.
+    ///
+    /// Separate from [`RenderGraph::pass`] rather than a sixth argument, because only the 3D view
+    /// passes have one and every other call site would read `None`.
+    pub(crate) fn with_depth(&mut self, name: &str) {
+        if let Some(pass) = self.passes.last_mut() {
+            pass.depth = Some(name.to_string());
+        }
     }
 
     /// The declared passes, in declaration order.
@@ -346,7 +385,14 @@ impl RenderGraph {
             .collect();
 
         for pass in &self.passes {
-            for resource in pass.reads.iter().chain(pass.writes.iter()) {
+            // The depth attachment is checked alongside reads and writes, because "declared" is the
+            // same question for it — it is only the *ordering* rules it stays out of.
+            for resource in pass
+                .reads
+                .iter()
+                .chain(pass.writes.iter())
+                .chain(pass.depth.iter())
+            {
                 if !declared.contains(resource.as_str()) {
                     return Err(GraphError::UnknownResource {
                         pass: pass.label.clone(),
@@ -435,7 +481,10 @@ impl RenderGraph {
         let mut lifetimes: BTreeMap<String, Lifetime> = BTreeMap::new();
         for (position, &index) in order.iter().enumerate() {
             let pass = &self.passes[index];
-            for resource in &pass.writes {
+            // A depth attachment is written by the pass that uses it, so it is live exactly as a
+            // colour target is — and it needs a lifetime for the same reason: without one the
+            // backend has nothing to allocate against and the pass would run with no depth buffer.
+            for resource in pass.writes.iter().chain(pass.depth.iter()) {
                 if resource == DESTINATION {
                     continue;
                 }
@@ -532,10 +581,23 @@ pub(crate) fn frame_graph(frame: &crate::FrameData, width: u32, height: u32) -> 
     graph.transient(SCENE, width, height, TargetFormat::Hdr16);
     graph.transient(OUTPUT, width, height, TargetFormat::Srgb8);
 
+    // A depth buffer exists only if something needs one. Declaring it unconditionally would cost a
+    // full-screen texture for every 2D game in the engine, and every one of the target games that
+    // is 2D would pay it for nothing.
+    let any_3d = frame.views.iter().any(|view| {
+        matches!(
+            view.camera.projection,
+            crate::Projection::Perspective { .. }
+        )
+    });
+    if any_3d {
+        graph.transient(DEPTH, width, height, TargetFormat::Depth32);
+    }
+
     if frame.views.is_empty() {
         graph.pass("clear", PassKind::Clear, &[], &[SCENE]);
     } else {
-        for index in 0..frame.views.len() {
+        for (index, view) in frame.views.iter().enumerate() {
             graph.pass(
                 &format!("view {index}"),
                 PassKind::View {
@@ -547,6 +609,15 @@ pub(crate) fn frame_graph(frame: &crate::FrameData, width: u32, height: u32) -> 
                 &[],
                 &[SCENE],
             );
+            // Only a 3D view gets depth. A pipeline declaring no depth state cannot be used in a
+            // pass that has a depth attachment, so this is what keeps the 2D passes untouched by
+            // any of it rather than merely unaffected in practice.
+            if matches!(
+                view.camera.projection,
+                crate::Projection::Perspective { .. }
+            ) {
+                graph.with_depth(DEPTH);
+            }
         }
     }
 
@@ -844,6 +915,92 @@ mod tests {
 
         assert_eq!(scene.format, TargetFormat::Hdr16);
         assert_eq!(output.format, TargetFormat::Srgb8);
+    }
+
+    /// A frame holding one perspective camera.
+    fn frame_in_3d() -> FrameData {
+        let mut frame = frame_with_views(1);
+        frame.views[0].camera = Camera::perspective(60.0);
+        frame
+    }
+
+    #[test]
+    fn a_2d_frame_declares_no_depth_buffer() {
+        // A full-screen depth texture for every 2D game would be a real cost paid for nothing, and
+        // three of the eight target games are 2D.
+        let frame = frame_with_views(1);
+        let graph = frame_graph(&frame, 64, 64);
+
+        assert!(graph.transients().iter().all(|t| t.name != DEPTH));
+        assert!(
+            graph.passes().iter().all(|pass| pass.depth.is_none()),
+            "a 2D pass must not have a depth attachment: a pipeline declaring no depth state \
+             cannot be used in a pass that has one"
+        );
+    }
+
+    #[test]
+    fn a_3d_frame_declares_one_and_attaches_it_to_the_view_pass() {
+        let frame = frame_in_3d();
+        let graph = frame_graph(&frame, 64, 64);
+
+        let depth = graph
+            .transients()
+            .iter()
+            .find(|t| t.name == DEPTH)
+            .expect("a 3D frame needs somewhere to put depth");
+        assert_eq!(depth.format, TargetFormat::Depth32);
+        assert_eq!((depth.width, depth.height), (64, 64));
+
+        // The view pass has it; the full-screen passes do not.
+        let with_depth: Vec<&str> = graph
+            .passes()
+            .iter()
+            .filter(|pass| pass.depth.is_some())
+            .map(|pass| pass.label.as_str())
+            .collect();
+        assert_eq!(with_depth, ["view 0"]);
+    }
+
+    #[test]
+    fn a_depth_attachment_gets_a_lifetime_so_it_is_actually_allocated() {
+        // Without one the backend has nothing to allocate against and the pass would run with no
+        // depth buffer at all — which is not an error anywhere, just wrong pictures.
+        let frame = frame_in_3d();
+        let graph = frame_graph(&frame, 64, 64);
+        let plan = graph.compile().expect("valid");
+
+        assert!(
+            plan.lifetimes().contains_key(DEPTH),
+            "lifetimes: {:?}",
+            plan.lifetimes().keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn an_undeclared_depth_attachment_is_refused_like_any_other_resource() {
+        let mut graph = RenderGraph::new();
+        graph.transient("scene", 8, 8, TargetFormat::Hdr16);
+        graph.pass(
+            "view 0",
+            PassKind::View {
+                index: 0,
+                clears: true,
+            },
+            &[],
+            &["scene"],
+        );
+        graph.with_depth("depth_nobody_declared");
+
+        let error = graph.compile().expect_err("depth was never declared");
+        assert!(
+            matches!(error, GraphError::UnknownResource { .. }),
+            "{error}"
+        );
+        assert!(
+            error.to_string().contains("depth_nobody_declared"),
+            "{error}"
+        );
     }
 
     #[test]
