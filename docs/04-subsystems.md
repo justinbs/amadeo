@@ -145,12 +145,26 @@ across the scene format, the schema, the state hash, and a new GUI at once.
 The camera's fields are **flat** — a fieldless `projection` enum beside plain `height`, `fov`, `near`
 and `far` — because the scene format cannot express an enum with a payload. That is a worse type than
 it should be and it is recorded as **Q21** rather than hidden.
-✅ **Post-process and atmosphere model — ADR 0034.** The engine owns the effects; content configures
-them. That configuration is an **`Environment` asset** named by an id, its file a scene file with one
-root exactly as a material's is (ADR 0033), held by the camera the way a render target already is. It
-carries **named effect blocks in an engine-defined order** — `fog`, `bloom`, `tonemap`, `grade` — not
-a user-ordered list, because the order is a property of the maths rather than a preference. What an
-`Environment` *holds* arrives with the effects, as a material's field list arrives with meshes.
+✅ **Post-process and atmosphere model — ADR 0034, and built.** The engine owns the effects; content
+configures them. That configuration is an **`Environment` asset** named by an id, its file a scene
+file with one root exactly as a material's is (ADR 0033), held by the camera the way a render target
+already is. It carries **named effect blocks in an engine-defined order** — not a user-ordered list,
+because the order is a property of the maths rather than a preference.
+
+Shipped: `exposure`, `tonemap` (None / Reinhard / AcesFilmic), `grade` (contrast, saturation, tint),
+`vignette`. **`bloom` is declared and not yet drawn** — its fields are in the schema because they
+belong in one round of it rather than two, and `intensity` defaults to zero. **Fog is absent
+entirely**: it needs to know how far away each pixel is, and there is no depth buffer until the mesh
+pass lands.
+
+⚠️ **The scene target is now HDR** (`Rgba16Float`), which is what makes any of this meaningful — on an
+8-bit target, bloom has nothing above the display range to isolate and tonemapping has nothing to
+compress. A post pass brings it back down; the default `Environment` is a **byte-identical** no-op,
+verified by capturing the Vault before and after.
+
+⚠️ **One environment per frame, from the camera that draws first — Q23.** ADR 0031 has every camera
+compose into one image, so per-camera post needs per-camera targets, which is the same work as
+`Camera::target`. Decide the two together.
 
 **The deciding argument is I5 and I7 rather than rendering.** Configuration made of data is
 authorable, describable, checkable and visible headless for nothing; a pass supplied as code is none

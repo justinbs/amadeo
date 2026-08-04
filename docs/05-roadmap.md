@@ -177,11 +177,16 @@ without eyes, the design is wrong and we find out before 3D and the editor pile 
   outdoors, low-poly, dark atmospheric interiors, voxel, and pixel-art sprite work, so the renderer
   must not bake in a look (`00-vision.md` § Divergent). Fog/volumetrics and strong dynamic point
   lighting are requirements here, not polish — M3's horror slice depends on them.
-  ✅ **ADR 0034 decides the shape:** *configurable* here means tunable, not extensible. The engine
-  owns the effects and content configures them through an **`Environment` asset** held by the camera,
-  carrying named effect blocks in an engine-defined order. This is what Godot, Unity and Unreal all
-  ship as their primary answer, and it satisfies I5 and I7 for nothing where a code-supplied pass
-  satisfies neither.
+  ✅ **ADR 0034 decides the shape, and the stack is built:** *configurable* here means tunable, not
+  extensible. The engine owns the effects and content configures them through an **`Environment`
+  asset** held by the camera, carrying named effect blocks in an engine-defined order. This is what
+  Godot, Unity and Unreal all ship as their primary answer, and it satisfies I5 and I7 for nothing
+  where a code-supplied pass satisfies neither.
+
+  Shipped: an HDR scene target, exposure, tonemapping, colour grading and vignette, with the default
+  look a byte-identical no-op. **Still open here:** bloom's blur passes (its fields exist and are
+  inert), **fog and volumetrics — which need the depth buffer the mesh pass brings**, and per-camera
+  post (Q23). M3's exit gate 5 is the exam this has to pass, and fog is the piece it most needs.
 - Culling architecture must not preclude later world streaming (see non-goals table).
 - glTF import — meshes, materials, scene hierarchy, skins.
 - ✅ **ADR 0033 on the material and shader model** — decided before the second shader family, as

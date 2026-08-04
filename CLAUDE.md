@@ -104,9 +104,15 @@ crates/
                      NullBackend compiles it too and a pass-ordering bug is catchable with no GPU.
                      Every camera draws into a transient and a present pass copies it onward, which
                      is what gives the **windowed** backend capture -- it reads the transient, where
-                     an offscreen one reads its destination after the present pass. Still to come:
-                     the post-process effects themselves and ADR 0034's `Environment` asset, and
-                     render targets on a camera.
+                     an offscreen one reads its destination after the present pass.
+                     **Post-processing (ADR 0034)**: the cameras draw into an **HDR** target and a
+                     post pass brings it down -- `Environment` is an asset the camera names by id,
+                     holding exposure/tonemap/grade/vignette in an engine-defined order. Its file is
+                     a scene file, so `amadeo fmt` and `amadeo check` work on it unchanged. The
+                     default look is a **byte-identical** no-op. `bloom` is declared but not drawn;
+                     fog waits for a depth buffer. Still to come: bloom's blur passes, render targets
+                     on a camera, and per-camera post (**Q23** -- one look per frame today, from the
+                     camera that draws first).
 — amadeo-audio       mixer, buses, spatialization (null backend required)
 — amadeo-physics     rapier integration behind engine traits
 — amadeo-anim        sprite anim, skeletal, state machines, tweens

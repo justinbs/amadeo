@@ -24,8 +24,9 @@ Q3, Q4, Q7, Q10, Q13, Q14, Q16, Q17, Q19, Q21 and Q22 are all closed, and **ever
 session opened has been closed in it**. Nothing is blocked and nothing is undecided.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
 
-**Three commits are waiting to be pushed** at the end of session 9: `4cc03a1` (session 8's handoff),
-`c126cf5` (ADR 0034) and `78f8cc2` (the render graph). Justin pushes — see the rules below.
+**Commits are waiting to be pushed** at the end of session 9 — check with
+`git log --oneline origin/main..HEAD`, and see the correction below for why that is the instruction
+rather than a list.
 
 > **A correction to what this file said.** The previous version claimed two commits were waiting,
 > naming `3ea5794` and `c017854`. Both were already on `origin/main`; only `4cc03a1` was unpushed.
@@ -58,10 +59,10 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
 `games/vault`.
-**879 tests passing** (plus 5 GPU capture tests behind `--features gpu`); fmt, clippy
+**900 tests passing** (plus 7 GPU capture tests behind `--features gpu`); fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
-Twenty-one things work end to end today:
+Twenty-two things work end to end today:
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -99,6 +100,13 @@ Twenty-one things work end to end today:
   `NullBackend` compiles the same graph and reports the resolved order — a pass-ordering bug is
   catchable with no GPU. Composing the frame off-screen is also **what gave the windowed backend
   `capture`**, which this file had listed as waiting on post-processing.
+- **A camera has a look, and the look is a file.** `environment "corridor_dark"` on a camera, and the
+  file behind it is a scene document with one `Environment` — exposure, tonemap, grade, vignette, in
+  an order the engine fixes because the order is arithmetic rather than taste (ADR 0034). The
+  cameras draw into an **HDR** target so tonemapping has something to compress. `amadeo fmt --check`
+  found the new file already canonical, which is "no new format" being true rather than asserted.
+  **The default look is a byte-identical no-op** — the Vault's capture is the same PNG, byte for
+  byte, as before post-processing existed.
 - **The agent can see.** `amadeo capture --package vault --ticks 200 shot.png` launches the game with
   no window, renders it offscreen on the GPU, and writes a PNG — walls, sigils, wardens, the player,
   the score readout. ADR 0021 called capture the agent.s eyes; this is them. `WgpuBackend::offscreen`
@@ -160,27 +168,24 @@ of them except Q4 built the same session it was decided.
 
 ## The single most important thing to do next
 
-**Post-processing: the effects themselves, and ADR 0034's `Environment` asset.** The render graph
-landed in session 9 and this is what it was built for — the insertion point exists, and every camera
-already draws into a transient a present pass copies onward.
+**Mesh rendering and PBR** — and with it the `Material` field list ADR 0033 deferred, plus the depth
+buffer that three other things are now waiting on.
 
-Both halves are decided and neither is started:
+Post-processing landed in session 9, and what it did *not* build is the clearest statement of what to
+do next:
 
-- **The effects.** M2 requires a configurable post-process stack and M3's exit gate 5 is the exam for
-  it — a dark corridor with a moving flashlight that reads as genuinely atmospheric. Fog, bloom,
-  tonemapping, colour grading. Each is a pass reading one transient and writing another, which the
-  graph now expresses directly.
-- **`Environment`, the asset that configures them.** ADR 0034: a camera holds an environment id, the
-  file is a scene file with one root exactly as a material's is, and it carries **named effect blocks
-  in an engine-defined order** rather than a user-ordered list. What it *holds* was deliberately left
-  to arrive with the effects, the same way ADR 0033 left a material's field list to arrive with
-  meshes.
+- **Fog and volumetrics need a depth buffer**, which is the mesh pass's to create. `docs/00-vision.md`
+  calls them requirements rather than polish, and M3's exit gate 5 — a dark corridor with a moving
+  flashlight that reads as genuinely atmospheric — is the exam. Fog is the piece it most needs and
+  the piece that cannot be built yet.
+- **Bloom's blur passes.** Its fields exist in the schema and are inert (`intensity` defaults to
+  zero). This is the first effect needing more than one pass, so it is what will finally give
+  `assign_transients` two same-shaped transients to reuse a texture between — `Lifetime::overlaps` is
+  tested and has never had a real decision to make.
+- **Render targets on a camera**, which ADR 0031 shipped as a field and nothing implements. Q23 says
+  per-camera post-processing is the same work, so do them together.
 
-**One thing to notice when the first effect lands**: the graph will finally have two transients, so
-`assign_transients` will do real reuse for the first time. `Lifetime::overlaps` is tested but has
-never yet had a second transient to decide about.
-
-Then 3D: meshes, PBR, lights, shadows, culling, glTF — and with meshes, the `Material` field list.
+Then the rest of 3D: lights, shadows, culling, glTF.
 
 **Nothing is blocked and nothing is undecided.** All three of M2's expensive decisions are made
 before their code — ADR 0031 for 2D/3D coexistence and the camera, ADR 0033 for the material and
@@ -1744,3 +1749,51 @@ on purpose — several record a diagnosis that took a while to reach.
   player and score readout, right way up and unchanged in colour.
 
   879 tests plus 5 GPU capture tests, all four verification commands green.
+
+  **Then post-processing, which is what the graph was built for.** An `Environment` asset the camera
+  names by id, holding exposure, tonemap, grade and vignette; the cameras draw into an **HDR** target
+  and a post pass brings it down, because on an 8-bit target bloom has nothing above the display
+  range to isolate and tonemapping has nothing to compress. `TargetFormat` gained `Hdr16` and it cost
+  a match arm — ADR 0026's format-tag argument coming true a second time.
+
+  **The dependency direction decided where the loading lives, not preference.** An environment's file
+  is a *scene* file and `amadeo-scene` sits **above** `amadeo-render`, so by I6 the renderer cannot
+  parse its own asset. It owns the type and the cache; `App::load_environments` reads. The same split
+  `TextureCache` already had, arrived at the same way.
+
+  **A real defect in the state hash, found by accident and worth the detour.** Adding `environment`
+  to `Camera` should have moved every golden replay and moved *none* of them. `StableHash for str`
+  wrote the bytes with **no length prefix**, so an empty string contributed nothing — and worse, two
+  adjacent string fields hashed as their concatenation. `Camera { target: "", environment: "x" }` and
+  `Camera { target: "x", environment: "" }` are different worlds that hashed **identically**.
+  Reachable from content, in shipped code, in the one mechanism the whole determinism story rests on.
+
+  The fix goes in the `StableHash` impl rather than in `write_str` — which is exactly where the `[T]`
+  impl writes its own length, and which leaves the name-hashing path and every `ComponentId` alone.
+  **Diagnosed rather than obeyed**, and the control was already in hand: with the `Camera` field
+  added and *before* the fix, both replays matched exactly, so all of the movement is the fix.
+  `walk_and_jump.replay`, whose world holds no string fields, did not move at all — which is what a
+  string-hashing change predicts and nothing else does. Both regenerated files changed four lines
+  each, the checkpoints, with input streams byte-identical: ADR 0017's recorded signature for an
+  identity change.
+
+  **Two findings worth keeping beyond the fix.** *Adding a field to a reflected component breaks
+  every existing scene file that authors it* — `vault.scene` had to gain `environment ""` by hand,
+  because the format is strict about missing fields by design (ADR 0014's "explicitly nothing" versus
+  "whoever wrote this forgot"). That cost is small now and will recur with every `Material` field;
+  worth knowing before it is a surprise. And *a test is not evidence until it has been seen to fail* —
+  the same lesson as the capture bug earlier in the session, learned twice in one day.
+
+  **The Vault ships `corridor_dark.environment` and deliberately does not use it.** Its appearance is
+  what M1's exit gate was judged against, and pointing the camera at a look would move
+  `collect-three.replay` for a cosmetic reason — a content decision that is Justin's rather than
+  something to slip in. It is a worked example and the fixture for `a_look_is_a_file.rs`, which
+  drives the whole chain against real files: sidecar, catalogue, load barrier, parser, reflection,
+  cache.
+
+  Recorded as **Q23**: one environment per frame, from the camera that draws first. ADR 0031 has
+  every camera compose into one image, so per-camera post needs per-camera targets — the same work as
+  `Camera::target`, so the two belong together.
+
+  900 tests plus 7 GPU capture tests, all four verification commands green, both golden replays
+  regenerated and passing in separate processes.

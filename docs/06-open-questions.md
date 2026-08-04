@@ -198,6 +198,55 @@ shape is knowable. Nothing is blocked — `amadeo describe` and the `.replay` fo
 
 ---
 
+## Q23 · P1 · One environment per frame, when a world may hold several cameras
+
+**New in session 9**, created by building ADR 0034's post-processing rather than found by reasoning
+about it.
+
+ADR 0034 puts the look on the **camera** — `environment "corridor_dark"` — which is what Godot,
+Unity and Unreal all do, and what makes a render-to-texture security monitor showing night vision the
+same mechanism as everything else.
+
+**But ADR 0031 has every camera compose into *one* image.** A HUD camera loads what the world camera
+left rather than clearing, which is what makes composition work without extra machinery. By the time
+the post pass runs there is one picture and the cameras are no longer separable, so there is nothing
+to apply two different looks to.
+
+The current rule is therefore: **the post pass uses the environment of the camera that draws first**,
+which is the same "which camera when there are several" rule ADR 0031 gave `render.describe`.
+`FrameData::look` is where it happens, and every `View` still carries its own camera's environment —
+the information is resolved and then deliberately not used, so nothing has to be re-plumbed later.
+
+### What this actually costs today
+
+A HUD camera cannot have a different grade from the world beneath it. That is the whole of it, and
+nothing in either game wants it. `the_frames_look_comes_from_the_camera_that_draws_first` in
+`crates/amadeo-render/tests/environment.rs` pins the behaviour so it is a known state rather than a
+surprise.
+
+### Why it should be decided with `Camera::target` rather than on its own
+
+Per-camera post-processing means each camera drawing into **its own** transient, being post-processed
+separately, and the results being composited. That is the same machinery `Camera::target` needs —
+ADR 0031 shipped the field and nothing implements it yet, so a camera cannot actually render to a
+texture. Both are "a camera owns its own image" and solving them twice would be building the same
+thing twice.
+
+Sub-questions when it is time:
+
+- **Does compositing replace ADR 0031's load-rather-than-clear rule, or sit beside it?** The current
+  rule is cheap and correct for a HUD; per-camera targets are correct for a minimap. They may both
+  need to exist, selected by whether the camera names a target.
+- **What does `render.describe` say** once cameras genuinely have separate images?
+- **Does the frame get one graph or one per camera?** The graph already runs a pass per camera; this
+  would make it a *subgraph* per camera, which is where Bevy landed.
+
+Nothing is blocked. Decide before M2's exit gate, since gate 1 wants a 3D scene and gate 2 wants the
+M1 2D scene still rendering unchanged — neither needs two looks, but render-to-texture is on M2's
+list and that is the trigger.
+
+---
+
 ## Q12 · P1 · `Service: Send + Sync` excludes every non-`Sync` runtime
 
 Found by the Q1 spike (ADR 0011), which could not put a script VM in the world.

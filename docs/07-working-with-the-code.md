@@ -913,6 +913,54 @@ What a frame looks like today:
 handling it in `WgpuBackend::render`'s match. The compiler finds the second and third for you once
 you have done the first, which is why `PassKind` is an enum rather than a trait object.
 
+### How a look gets from a file onto the screen
+
+New in session 9, and worth following once because it crosses four crates in the *opposite*
+direction from the texture chain above.
+
+```
+assets/looks/corridor_dark.environment      a scene file with one root
+  + .ama-meta declaring  id = "corridor_dark"        (ADR 0020)
+        |
+        |  amadeo-assets: scan + load. Reads BYTES.
+        v
+  amadeo-app: parse, find the root's `Environment`, Reflect::from_value
+        |
+        v
+  EnvironmentCache["corridor_dark"]              a Service, so never hashed
+        |
+        |  amadeo-render: render_quads resolves `Camera::environment`
+        v
+  View { environment, .. } -> FrameData::look() -> the post pass's uniform
+        |
+        v
+  post.wgsl: exposure, tonemap, grade, vignette
+```
+
+**Four things worth knowing:**
+
+1. **`amadeo-app` does the parsing, not the renderer**, and this is the interesting bit. An
+   environment's file is a *scene* file, and `amadeo-scene` sits **above** `amadeo-render` — so by
+   invariant I6 the renderer cannot read its own asset. It owns the type and the cache; the layer
+   that can see both crates does the reading. `App::load_environments` is called automatically by
+   `load_scene`, and is public for a game that spawns its camera in code.
+2. **Nothing here can move a replay.** The camera's `environment` *id* is authored data and is in the
+   state hash; the look behind it lives in a `Service`, which ADR 0009 excludes by trait bound. So
+   whether the file loaded is invisible to the simulation (ADR 0021), and an id that never resolves
+   renders with the default look rather than failing.
+3. **The default look is a byte-identical no-op.** Verified rather than assumed: capturing the Vault
+   through the HDR path produces the same PNG, byte for byte, as before post-processing existed.
+   `the_default_environment_leaves_the_picture_alone` in `tests/capture.rs` is the standing version.
+4. **The order of the effects is the engine's**, not content's — ADR 0034 §4. Exposure scales light,
+   bloom needs values still above the display range, tonemapping collapses that range, grading and
+   vignetting correct the result. A format that let a scene file reorder them would mostly produce
+   wrong pictures and could not say so.
+
+**Adding an effect** means a field on `Environment`, a branch in `post.wgsl`, and a line in
+`GpuPost::from_environment`. If it needs more than one pass — bloom does, because a blur reads
+neighbouring pixels — it also needs a `PassKind` and its own transients, which is what the graph is
+for.
+
 ### Reflection: what a type has to be able to say about itself
 
 Three traits in this engine require `Reflect`, and it is the same argument each time:
