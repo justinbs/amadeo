@@ -1,6 +1,9 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "games/*"]
+# `modules/*` is the optional, genre-flavoured layer CLAUDE.md section 4 reserves. It sits ABOVE
+# every crate: a module may depend on engine crates and on other modules, and **no engine crate may
+# ever depend on a module** (invariant I6, one level up). ADR 0037 created the layer.
+members = ["crates/*", "modules/*", "games/*"]
 
 [workspace.package]
 version = "0.1.0"
@@ -35,6 +38,10 @@ amadeo-snapshot = { path = "crates/amadeo-snapshot", version = "0.1.0" }
 amadeo-agent = { path = "crates/amadeo-agent", version = "0.1.0" }
 amadeo-app = { path = "crates/amadeo-app", version = "0.1.0" }
 amadeo-cli = { path = "crates/amadeo-cli", version = "0.1.0" }
+
+# Modules -- the optional layer above every crate (ADR 0037). Listed after the engine, and nothing
+# above is allowed to appear in an engine crate's dependencies.
+amadeo-character = { path = "modules/amadeo-character", version = "0.1.0" }
 
 # External.
 thiserror = "2"

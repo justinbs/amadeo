@@ -83,6 +83,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "amadeo-character"
+version = "0.1.0"
+dependencies = [
+ "amadeo-app",
+ "amadeo-core",
+ "amadeo-ecs",
+ "amadeo-input",
+ "amadeo-physics",
+ "amadeo-reflect",
+ "amadeo-transform",
+]
+
+[[package]]
 name = "amadeo-cli"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,27 @@
+[package]
+name = "amadeo-character"
+description = "A physics-driven character controller for the Amadeo engine. A module, not engine core."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# A module may depend on any engine crate. The reverse is forbidden -- see ADR 0037 and invariant I6.
+amadeo-app.workspace = true
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-input.workspace = true
+amadeo-physics.workspace = true
+amadeo-reflect.workspace = true
+amadeo-transform.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Passed straight through so a game can ask for the real solver in one place. Off by default, so a
+# headless test of this module runs against `NullPhysics` -- which is what makes the
+# walks-through-walls control case in `tests/` cheap to run (ADR 0037 section 5).
+rapier = ["amadeo-physics/rapier"]
