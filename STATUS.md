@@ -60,7 +60,7 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
 `games/vault`.
-**958 tests passing** (plus 12 GPU capture tests behind `--features gpu`); fmt, clippy
+**969 tests passing with `--all-features`** (13 of them GPU capture tests, 7 rapier); fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Twenty-three things work end to end today:
@@ -101,6 +101,11 @@ Twenty-three things work end to end today:
   `NullBackend` compiles the same graph and reports the resolved order — a pass-ordering bug is
   catchable with no GPU. Composing the frame off-screen is also **what gave the windowed backend
   `capture`**, which this file had listed as waiting on post-processing.
+- **Bodies collide, and the hash is pinned across platforms.** A ball dropped on a floor lands and
+  rests; 200 bodies reproduce bit-identically; and one test asserts a **literal state-hash number**
+  that CI runs on Windows and Linux, so ADR 0036's cross-platform promise is checked rather than
+  believed. Behind `--features rapier`, off by default. Verified the collision tests are evidence by
+  pointing them at `NullPhysics`: the ball falls to −72 instead of resting at 0.5.
 - **Bodies fall, and the world is the record of it.** `RigidBody`, `Collider`, `Velocity` and
   `Gravity` are reflected, **hashed** data, so a physics-driven game is snapshot-able and replayable
   with nothing extra built (ADR 0036). `NullPhysics` integrates velocity and gravity for real — it is
@@ -183,43 +188,55 @@ false**, which is a result rather than an omission — see below.
 **No blockers of any kind.** Q14, Q13, Q4, and two thirds of Q3 all closed in session 6 — every one
 of them except Q4 built the same session it was decided.
 
-## The single most important thing to do next: rapier behind the trait
+## ⚠️ First: confirm CI is green again
 
-`amadeo-physics` exists with its components, its `PhysicsBackend` trait and `NullPhysics` — which
-integrates velocity and gravity for real, so headless determinism tests work with no rapier at all.
-**What is missing is rapier itself**, and everything it brings: collision detection and response,
-joints, raycasts, and collision events into `amadeo-events`.
+**CI failed 4/5 on the last two pushes** — the `determinism` job, with a
+`STATUS_ACCESS_VIOLATION` in `tests/capture.rs`. Diagnosed and fixed, but **the fix has not yet been
+seen to work on CI**, because it only ever failed there. Check that first.
 
-**The concrete details, checked rather than assumed** (`cargo add --dry-run`, session 9):
+**What it was**, because the shape of it is worth keeping:
 
-- **rapier3d `0.34.0`**, and ADR 0036 requires pinning it as `=0.34.0` rather than a caret range.
-- The feature set is exactly what ADR 0036 predicted: `enhanced-determinism` exists, and `parallel`,
-  `simd-stable` and `simd-nightly` sit beside it and stay **off**.
-- It needs `--no-default-features` plus `dim3`, `f32`, `std`, `enhanced-determinism` — worth spelling
-  out because the default feature set would quietly bring in what ADR 0036 forbids.
+1. The job's release step ran `cargo test --workspace --release` **without** `--test-threads=1`,
+   where the three debug runs three steps earlier had it. Same code, same job, one flag apart.
+2. It ran the GPU tests at all only because of **feature unification** — `quad-demo` and `vault`
+   enable `amadeo-render/gpu`, so `--workspace` turns it on for everything. A comment in `ci.yml`
+   asserted the opposite and had never been checked.
+3. Parallel GPU tests each drop a headless device while others are alive, which is
+   [`gfx-rs/wgpu#6571`](https://github.com/gfx-rs/wgpu/issues/6571) — reported against precisely this
+   situation.
 
-**This is a fresh-session-sized piece**, not a tail-of-session one. The integration is a lot of rapier
-API at once — `RigidBodySet`, `ColliderSet`, `IntegrationParameters`, `PhysicsPipeline`,
-`IslandManager`, broad and narrow phase, the CCD solver — plus a long first compile, and it is better
-done in one go than half-wired.
+**Fixed in two places on purpose**: `tests/capture.rs` takes a `static` mutex for each device's whole
+lifetime, so a developer running `cargo test --all-features` is safe too, and `ci.yml` passes
+`--test-threads=1` on the release step so it matches the debug ones.
 
-### One thing to design before writing it, and it is not obvious
+**The honest caveat**: this machine has a real GPU and never reproduced the crash, so the fix is
+reasoned from the known wgpu bug rather than confirmed against the failure. If CI still fails, the
+next thing to try is skipping the GPU tests in the determinism job outright — it is a
+*simulation*-determinism job and has no need of them.
 
-**Where does rapier's internal state live, and what happens to a snapshot?**
+## Then: M2's exit gate, which is now the nearest real target
 
-A real backend keeps state between steps that a step's *inputs* do not fully describe — contact
-caches, sleeping islands, the warm-starting that makes stacks stable. That is necessary and fine for
-determinism, because it is a deterministic function of history.
+**Rapier is built and behind the trait.** Bodies collide, stack and rest; `RapierPhysics` is behind a
+`rapier` feature that is off by default, like the renderer's `gpu`.
+`crates/amadeo-physics/tests/rapier_determinism.rs` pins a **literal state hash** that CI runs on
+Windows *and* Linux, so a cross-platform divergence turns CI red rather than going unnoticed. That is
+gate 3's claim made checkable instead of asserted.
 
-**But it breaks snapshots**, and in exactly the way ADR 0028 already found once. Restoring a snapshot
-restores the components; it does not restore rapier's caches. So a restored world would hash
-identically and then simulate *differently* from the run it was restored from — which is the same
-shape as the entity-allocator free list, and the ADR 0028 lesson applies verbatim: **hash equality
-after a restore is necessary and not sufficient.**
+`PhysicsBackend::reset` exists for ADR 0028's reason rather than a physics one — see its doc comment.
 
-`PhysicsBackend::step` was written as a pure function partly for this reason, but "rebuild the caches
-from the bodies each step" costs stability, and "keep them" costs snapshot fidelity. Worth deciding
-deliberately rather than discovering when a restored save behaves differently.
+**Gate 1 wants an imported glTF level, dynamic lighting, shadows, and a physics-driven character
+controller you can walk around with.** In rough order of what is missing:
+
+1. **A character controller.** Needs a kinematic body driven by input, and it is the first thing that
+   will use `BodyKind::Kinematic` in anger. `CLAUDE.md` trap 10 says this belongs in `modules/`, not
+   the core — the engine must not assume a game has a character.
+2. **Shadow maps**, the first thing that will *read* the depth buffer rather than only write it.
+3. **glTF import.** ADR 0035 made this a new *producer* of `MeshData`, so nothing above the loader
+   changes — which is why it could wait this long.
+4. **Collision events into `amadeo-events`**, which is what turns a sensor into a gameplay trigger.
+   The Vault's sigils are exactly this shape, done by hand today.
+5. **PBR**, a normal matrix per instance, more than one light, transparency. All cheap, all isolated
+   behind `RenderBackend`, none blocking a gate.
 
 ## After that
 
@@ -657,6 +674,9 @@ Verified on this machine (2026-07-30):
 | Smart App Control | **Resolved.** It was blocking every binary this project builds — confirmed via event log (3118, policy `{0283ac0f-…}`). Justin disabled it (one-way change on Win11). If a future machine hits `os error 4551`, this is why; see `docs/07-working-with-the-code.md` §5. |
 | Gotcha — winget | `winget install` on an already-installed package attempts an *upgrade* and silently ignores `--override`, so it cannot add a workload. Use the VS Installer to modify an existing install. |
 | Gotcha — wgpu | This project is on **wgpu 30**, which differs from most material online. Read the crate source under `~/.cargo/registry/src/*/wgpu-30.0.0/src/api/` rather than trusting search results. `docs/07` records the three changes that cost the most time. |
+| **Gotcha — GPU tests in parallel** | Dropping a headless wgpu device **while another is alive** is `gfx-rs/wgpu#6571`: `STATUS_ACCESS_VIOLATION` on Windows, reported against exactly this (parallel tests, headless adapters). Cargo runs tests in parallel by default. `tests/capture.rs` takes a `static` mutex for each device's whole lifetime; CI passes `--test-threads=1` as well. **It only ever failed in CI, never locally** — a real GPU tolerates it and the runner's software adapter does not, so "it passes on my machine" proves nothing here. |
+| **Gotcha — feature unification** | `cargo test --workspace` builds *every* member, so a feature any one of them enables is on for the whole build. `quad-demo` and `vault` enable `amadeo-render/gpu`, which means **the GPU tests run even without `--all-features`** — a CI comment claimed otherwise for months and was wrong. The same rule is why ADR 0036 says physics determinism cannot be a per-game choice. |
+| **Gotcha — rapier 0.34 uses glam** | Not nalgebra. `Rotation` is a `glam::Quat`, and rapier's own `vector![]` macro still builds an **nalgebra** vector its API will not accept. Use `Vector::new`. Both are "a vector" and only the compiler notices. |
 | **Gotcha — line endings** | `core.autocrlf` is **true** by default on Windows and on GitHub's windows-latest runners. It rewrites committed LF into CRLF on checkout, breaking byte comparisons of `.replay` and `.scene` fixtures — invariant I2. `.gitattributes` pins `eol=lf`; **do not remove it**. This machine has `core.autocrlf=false` set locally, which is why it reproduced nowhere here. Tell: only the *Windows* CI jobs fail, because Linux checkout does no conversion. |
 
 ## CI

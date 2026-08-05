@@ -63,12 +63,16 @@ jobs:
       # separate processes catches nondeterminism that comes from address-space layout, hash seeds,
       # or iteration order, which is exactly the class of bug that silently voids golden replays.
       # Deliberately NOT --all-features: this job is about simulation determinism, which the GPU
-      # backend cannot affect (it is a Service and excluded from the state hash, ADR 0009). Building
-      # wgpu three times over would multiply this job's runtime for no additional coverage.
+      # backend cannot affect (it is a Service and excluded from the state hash, ADR 0009).
       #
-      # Note the replay step at the end of this job *does* build wgpu once, because it launches
-      # quad-demo and quad-demo links the GPU backend. So this job is not wgpu-free overall — the
-      # saving is that the three test runs and the release run do not each rebuild it.
+      # ⚠️ THIS DOES NOT MEAN THE GPU TESTS DO NOT RUN. Cargo unifies features across a build, and
+      # `--workspace` includes quad-demo and vault, which enable `amadeo-render/gpu` — so the whole
+      # build gets it and `tests/capture.rs` runs here too. The comment that used to sit here claimed
+      # otherwise and was simply wrong; it cost a CI failure to find out.
+      #
+      # `--test-threads=1` is therefore load-bearing rather than tidy: wgpu#6571 crashes when one
+      # headless device is dropped while another is alive, which is what parallel GPU tests do. The
+      # tests also take a lock of their own now, so this is belt and braces.
       - name: Run the suite three times in separate processes
         shell: bash
         run: |
@@ -79,8 +83,12 @@ jobs:
 
       # Debug and release builds must agree too. A mismatch usually means a float optimisation or an
       # overflow check is changing behaviour, both of which break replay portability.
+      #
+      # `--test-threads=1` matches the debug runs above. It was missing, and that asymmetry is the
+      # whole reason this job failed while the three runs three steps earlier passed on the same
+      # code — see the note above.
       - name: Release build must agree with debug
-        run: cargo test --workspace --release
+        run: cargo test --workspace --release -- --test-threads=1
 
       # The SEPARATE-PROCESS half of the golden-replay mechanism, and the last item carried over
       # from M0's exit gate. The in-process test in amadeo-app proves a recording survives a

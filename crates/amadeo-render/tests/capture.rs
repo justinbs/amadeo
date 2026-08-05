@@ -29,8 +29,42 @@ use amadeo_render::{
 };
 use amadeo_transform::Transform;
 
+/// Only one GPU device exists at a time, across every test in this file.
+///
+/// # This is working around a real wgpu bug, not being cautious
+///
+/// Each test here creates an offscreen device and drops it at the end. Dropping one **while another
+/// is still alive** is `gfx-rs/wgpu#6571` — a `STATUS_ACCESS_VIOLATION` on Windows, reported
+/// specifically against parallel tests using headless adapters. Cargo runs tests in parallel by
+/// default, so without this the whole binary is a race.
+///
+/// **It reached CI before it reached anyone's machine**, which is worth knowing: the determinism
+/// job's three debug runs pass because they pass `--test-threads=1`, and its release run did not —
+/// so the same code crashed in one step and passed in another, three steps earlier in the same job.
+///
+/// A lock rather than `--test-threads=1` in CI, because the bug is in the tests rather than in the
+/// runner: a developer running `cargo test --all-features` should not hit it either.
+static ONE_DEVICE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Takes the GPU lock for the rest of the test.
+///
+/// Poisoning is deliberately ignored. A poisoned lock means some *other* test panicked, which is a
+/// failure that test already reports — turning it into a cascade of failures here would bury the one
+/// message worth reading.
+fn one_device_at_a_time() -> std::sync::MutexGuard<'static, ()> {
+    ONE_DEVICE_AT_A_TIME
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// Renders one world offscreen and hands back the pixels, or `None` if this machine has no GPU.
 fn capture(world: &mut World, width: u32, height: u32) -> Option<TextureData> {
+    // Held for this whole function, which is exactly the device's lifetime: it is created below and
+    // dropped when `renderer` falls out of scope at the end. That is why one lock here covers all
+    // thirteen tests rather than needing a line in each — and why it must stay here rather than
+    // moving into `WgpuBackend::offscreen`, where it would not cover the drop.
+    let _gpu = one_device_at_a_time();
+
     let backend = match WgpuBackend::offscreen(width, height) {
         Ok(backend) => backend,
         Err(error) => {
