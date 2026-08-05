@@ -114,7 +114,17 @@ crates/
                      on a camera, and per-camera post (**Q23** -- one look per frame today, from the
                      camera that draws first).
 — amadeo-audio       mixer, buses, spatialization (null backend required)
-— amadeo-physics     rapier integration behind engine traits
+🟡 amadeo-physics    RigidBody/Collider/Velocity/Gravity as reflected, HASHED data, the
+                     PhysicsBackend trait, and NullPhysics -- which integrates velocity and gravity
+                     for real rather than doing nothing, so a headless determinism test is
+                     meaningful without rapier. ADR 0036: `enhanced-determinism` is on
+                     **permanently**, so physics is single-threaded and scalar; the rapier version
+                     is pinned exactly, because an upgrade may move results and invalidate every
+                     replay containing physics. **No rapier type may cross PhysicsBackend** -- not
+                     into a component, a scene file, a snapshot, or the state hash. Components are
+                     the source of truth and the solver's world is a cache rebuilt from them, which
+                     is what makes a physics game snapshot-able. Rapier itself, collision detection,
+                     joints, raycasts and collision events are all still to come.
 — amadeo-anim        sprite anim, skeletal, state machines, tweens
 — amadeo-ui          retained-mode game UI: layout, theming, focus navigation
 ✅ amadeo-snapshot    the .snapshot text format (ADR 0028): capture a whole world to a file and put

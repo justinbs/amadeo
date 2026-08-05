@@ -1,0 +1,19 @@
+[package]
+name = "amadeo-physics"
+description = "Rigid-body physics for the Amadeo engine, behind engine-owned traits."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-events.workspace = true
+amadeo-reflect.workspace = true
+amadeo-transform.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
