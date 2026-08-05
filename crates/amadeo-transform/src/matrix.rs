@@ -104,6 +104,53 @@ impl Mat4 {
         }
     }
 
+    /// Recovers the Euler angles, in degrees, that [`Mat4::from_euler_degrees`] would build this
+    /// from.
+    ///
+    /// The exact inverse of that function, including its **Z, then X, then Y** order (ADR 0018).
+    /// Order matters: nearly every other library composes Euler angles differently — nalgebra's
+    /// `from_euler_angles` is roll-pitch-yaw, meaning Z·Y·X — so converting through a library that
+    /// disagrees produces rotations that are right for one axis and subtly wrong for the others.
+    /// That is the kind of error that reads as "physics is drifting" rather than as a conversion bug.
+    ///
+    /// Assumes the matrix is a rotation, optionally scaled **uniformly**. A non-uniform scale has no
+    /// Euler decomposition, and this will return something plausible and wrong for one — which is why
+    /// the only caller is the physics boundary, where rapier hands back pure rotations.
+    ///
+    /// # Gimbal lock
+    ///
+    /// When X reaches ±90° the Y and Z rotations become the same motion, so infinitely many pairs
+    /// describe the same orientation. This returns one of them rather than failing: the orientation
+    /// is correct, but feeding it back in and reading it out again may give different Y and Z. That
+    /// is inherent to Euler angles, not to this implementation, and is why ADR 0018 kept them for
+    /// *authoring* while everything computed stays a matrix.
+    #[must_use]
+    pub fn to_euler_degrees(&self) -> [f32; 3] {
+        // Undo any uniform scale first, so the trigonometry below sees a pure rotation. Each of the
+        // first three columns is an axis scaled by that axis's scale, so its length is the scale.
+        let length = |column: [f32; 4]| {
+            (column[0] * column[0] + column[1] * column[1] + column[2] * column[2]).sqrt()
+        };
+        let scale = length(self.columns[0])
+            .max(length(self.columns[1]))
+            .max(length(self.columns[2]));
+        if scale < 1e-6 {
+            return [0.0, 0.0, 0.0];
+        }
+        let at = |column: usize, row: usize| self.columns[column][row] / scale;
+
+        // From `from_euler_degrees`, whose third column is [sin_y*cos_x, -sin_x, cos_y*cos_x]:
+        //   x comes straight out of that middle entry,
+        //   z from the first two entries of the middle *row* (cos_x*sin_z, cos_x*cos_z),
+        //   y from the outer entries of the third column (sin_y*cos_x, cos_y*cos_x).
+        // The shared cos_x cancels inside each `atan2`, which is why this needs no division.
+        let x = (-at(2, 1)).clamp(-1.0, 1.0).asin();
+        let z = at(0, 1).atan2(at(1, 1));
+        let y = at(2, 0).atan2(at(2, 2));
+
+        [x.to_degrees(), y.to_degrees(), z.to_degrees()]
+    }
+
     /// Multiplies two matrices: `self` applied *after* `rhs`.
     ///
     /// For a hierarchy this reads as `parent.mul(child)` — the child's local transform first, then
@@ -243,6 +290,78 @@ impl Mat4 {
             return None;
         }
         Some([out[0] / out[3], out[1] / out[3], out[2] / out[3]])
+    }
+}
+
+#[cfg(test)]
+mod euler_tests {
+    use super::*;
+
+    /// The angles that come back must rebuild the same matrix. Comparing *matrices* rather than
+    /// angles is what makes this meaningful — two different angle triples can describe one
+    /// orientation, and the orientation is what anything downstream actually uses.
+    fn round_trips(degrees: [f32; 3]) {
+        let original = Mat4::from_euler_degrees(degrees);
+        let rebuilt = Mat4::from_euler_degrees(original.to_euler_degrees());
+        for (a, b) in original.columns.iter().zip(rebuilt.columns.iter()) {
+            for (x, y) in a.iter().zip(b.iter()) {
+                assert!(
+                    (x - y).abs() < 1e-4,
+                    "{degrees:?} did not round trip: {original:?} vs {rebuilt:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn euler_angles_survive_a_round_trip() {
+        for degrees in [
+            [0.0, 0.0, 0.0],
+            [30.0, 0.0, 0.0],
+            [0.0, 45.0, 0.0],
+            [0.0, 0.0, -60.0],
+            [15.0, 25.0, 35.0],
+            [-40.0, 170.0, 80.0],
+            [12.5, -95.0, -170.0],
+        ] {
+            round_trips(degrees);
+        }
+    }
+
+    #[test]
+    fn the_order_is_z_then_x_then_y_and_not_the_other_convention() {
+        // The trap this function exists to avoid. Composing the same three angles in a different
+        // order gives a *different orientation*, so a conversion that quietly used nalgebra's
+        // roll-pitch-yaw would be right for one axis and wrong for the others.
+        let ours = Mat4::from_euler_degrees([30.0, 40.0, 50.0]);
+        // Z·Y·X — nalgebra's order — built from the same numbers.
+        let theirs = Mat4::from_euler_degrees([0.0, 0.0, 50.0])
+            .mul(&Mat4::from_euler_degrees([0.0, 40.0, 0.0]))
+            .mul(&Mat4::from_euler_degrees([30.0, 0.0, 0.0]));
+
+        let differs = ours
+            .columns
+            .iter()
+            .zip(theirs.columns.iter())
+            .any(|(a, b)| a.iter().zip(b.iter()).any(|(x, y)| (x - y).abs() > 1e-3));
+        assert!(differs, "the two conventions should not agree");
+    }
+
+    #[test]
+    fn a_uniform_scale_does_not_disturb_the_angles() {
+        // rapier hands back pure rotations, but a `GlobalTransform` composed through a scaled parent
+        // does not — and reading an angle out of one should still give the angle.
+        let scaled = Mat4::from_transform([1.0, 2.0, 3.0], [20.0, -35.0, 10.0], [4.0, 4.0, 4.0]);
+        let angles = scaled.to_euler_degrees();
+        assert!((angles[0] - 20.0).abs() < 1e-3, "{angles:?}");
+        assert!((angles[1] + 35.0).abs() < 1e-3, "{angles:?}");
+        assert!((angles[2] - 10.0).abs() < 1e-3, "{angles:?}");
+    }
+
+    #[test]
+    fn a_collapsed_matrix_reports_no_rotation_rather_than_nan() {
+        let flat = Mat4::from_transform([0.0; 3], [45.0, 45.0, 45.0], [0.0, 0.0, 0.0]);
+        assert_eq!(flat.to_euler_degrees(), [0.0, 0.0, 0.0]);
     }
 }
 

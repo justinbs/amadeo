@@ -13,7 +13,25 @@ amadeo-ecs.workspace = true
 amadeo-events.workspace = true
 amadeo-reflect.workspace = true
 amadeo-transform.workspace = true
+# Pinned to an EXACT version, not a caret range -- ADR 0036 §3. Rapier's determinism holds for one
+# version: an upgrade may legitimately change results, which invalidates every committed replay
+# containing physics. The pin turns "results moved mysteriously" into "we upgraded rapier".
+#
+# `default-features = false` is load-bearing rather than tidy. The default set would bring in the
+# very features ADR 0036 forbids -- `parallel` and `simd-*` are mutually exclusive with
+# `enhanced-determinism`, so a default build would silently be the fast, nondeterministic one.
+rapier3d = { version = "=0.34.0", default-features = false, features = [
+    "dim3",
+    "f32",
+    "std",
+    "enhanced-determinism",
+], optional = true }
 thiserror.workspace = true
 
 [lints]
 workspace = true
+
+[features]
+# Off by default, like `amadeo-render`'s `gpu`. A game that wants only the null backend -- a
+# dedicated server, a CI run, a test -- does not compile a physics engine it will never call (I7).
+rapier = ["dep:rapier3d"]

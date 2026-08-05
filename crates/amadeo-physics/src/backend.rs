@@ -120,6 +120,22 @@ pub trait PhysicsBackend: std::fmt::Debug + Send + Sync {
         bodies: &[BodyState],
         gravity: [f32; 3],
     ) -> Result<Vec<BodyResult>, PhysicsError>;
+
+    /// Throws away everything cached between steps, so the next step rebuilds from the bodies.
+    ///
+    /// # This exists because of ADR 0028, not because of physics
+    ///
+    /// Restoring a snapshot puts the *components* back. It does not put back a solver's contact
+    /// caches, sleeping islands or warm-start data — so without this, a restored world would hash
+    /// identically to the one it came from and then **simulate differently**.
+    ///
+    /// That is precisely the failure ADR 0028 found with the entity allocator's free list, and its
+    /// conclusion applies unchanged: hash equality after a restore is necessary and **not
+    /// sufficient**. Anything that replaces the world wholesale — a snapshot restore, loading a new
+    /// level — calls this.
+    ///
+    /// The default does nothing, which is correct for a backend that caches nothing.
+    fn reset(&mut self) {}
 }
 
 /// A backend with no solver: it integrates velocity and detects nothing.

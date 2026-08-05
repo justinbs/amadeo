@@ -40,9 +40,13 @@
 
 mod backend;
 mod components;
+#[cfg(feature = "rapier")]
+mod rapier;
 
 pub use backend::{BodyResult, BodyState, NullPhysics, PhysicsBackend, PhysicsError};
 pub use components::{BodyKind, Collider, RigidBody, Shape, Velocity};
+#[cfg(feature = "rapier")]
+pub use rapier::RapierPhysics;
 
 use amadeo_core::StableHash;
 use amadeo_ecs::{Resource, Service, World};
