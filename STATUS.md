@@ -56,11 +56,11 @@ texture cache, and the wgpu texture path — **closed invariant I8**, making `Re
 compiler-enforced bound on resources and events and shipping `world.resources`, **shipped snapshots**,
 **built `games/vault` and closed M1**, and then **settled Q7 with prefabs**. ADRs 0022–0029.
 
-**Fifteen crates plus two games**, all tested: `amadeo-derive`, `amadeo-image`, `amadeo-core`,
+**Seventeen crates plus two games** (`amadeo-image` and `amadeo-physics` joined the list), all tested: `amadeo-derive`, `amadeo-image`, `amadeo-core`,
 `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
 `amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
 `games/vault`.
-**936 tests passing** (plus 12 GPU capture tests behind `--features gpu`); fmt, clippy
+**958 tests passing** (plus 12 GPU capture tests behind `--features gpu`); fmt, clippy
 `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
 
 Twenty-three things work end to end today:
@@ -101,6 +101,11 @@ Twenty-three things work end to end today:
   `NullBackend` compiles the same graph and reports the resolved order — a pass-ordering bug is
   catchable with no GPU. Composing the frame off-screen is also **what gave the windowed backend
   `capture`**, which this file had listed as waiting on post-processing.
+- **Bodies fall, and the world is the record of it.** `RigidBody`, `Collider`, `Velocity` and
+  `Gravity` are reflected, **hashed** data, so a physics-driven game is snapshot-able and replayable
+  with nothing extra built (ADR 0036). `NullPhysics` integrates velocity and gravity for real — it is
+  a backend without a *solver*, not a stub — so a determinism test runs in milliseconds with no
+  rapier. Collision detection is what is missing.
 - **There is 3D on the screen.** A `BoxMesh` from a text file, lit by a `DirectionalLight`, drawn
   through a perspective camera with a depth buffer so nearer faces hide further ones and back faces
   are culled. Three GPU tests each check something the others cannot: that geometry reaches the
@@ -178,7 +183,45 @@ false**, which is a result rather than an omission — see below.
 **No blockers of any kind.** Q14, Q13, Q4, and two thirds of Q3 all closed in session 6 — every one
 of them except Q4 built the same session it was decided.
 
-## The single most important thing to do next
+## The single most important thing to do next: rapier behind the trait
+
+`amadeo-physics` exists with its components, its `PhysicsBackend` trait and `NullPhysics` — which
+integrates velocity and gravity for real, so headless determinism tests work with no rapier at all.
+**What is missing is rapier itself**, and everything it brings: collision detection and response,
+joints, raycasts, and collision events into `amadeo-events`.
+
+**The concrete details, checked rather than assumed** (`cargo add --dry-run`, session 9):
+
+- **rapier3d `0.34.0`**, and ADR 0036 requires pinning it as `=0.34.0` rather than a caret range.
+- The feature set is exactly what ADR 0036 predicted: `enhanced-determinism` exists, and `parallel`,
+  `simd-stable` and `simd-nightly` sit beside it and stay **off**.
+- It needs `--no-default-features` plus `dim3`, `f32`, `std`, `enhanced-determinism` — worth spelling
+  out because the default feature set would quietly bring in what ADR 0036 forbids.
+
+**This is a fresh-session-sized piece**, not a tail-of-session one. The integration is a lot of rapier
+API at once — `RigidBodySet`, `ColliderSet`, `IntegrationParameters`, `PhysicsPipeline`,
+`IslandManager`, broad and narrow phase, the CCD solver — plus a long first compile, and it is better
+done in one go than half-wired.
+
+### One thing to design before writing it, and it is not obvious
+
+**Where does rapier's internal state live, and what happens to a snapshot?**
+
+A real backend keeps state between steps that a step's *inputs* do not fully describe — contact
+caches, sleeping islands, the warm-starting that makes stacks stable. That is necessary and fine for
+determinism, because it is a deterministic function of history.
+
+**But it breaks snapshots**, and in exactly the way ADR 0028 already found once. Restoring a snapshot
+restores the components; it does not restore rapier's caches. So a restored world would hash
+identically and then simulate *differently* from the run it was restored from — which is the same
+shape as the entity-allocator free list, and the ADR 0028 lesson applies verbatim: **hash equality
+after a restore is necessary and not sufficient.**
+
+`PhysicsBackend::step` was written as a pure function partly for this reason, but "rebuild the caches
+from the bodies each step" costs stability, and "keep them" costs snapshot fidelity. Worth deciding
+deliberately rather than discovering when a restored save behaves differently.
+
+## After that
 
 **M2's exit gate, which is now within reach for the first time.** Gate 1 wants "an imported glTF
 level, dynamic lighting, shadows, and a physics-driven character controller you can walk around
