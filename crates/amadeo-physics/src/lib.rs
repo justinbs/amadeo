@@ -40,11 +40,13 @@
 
 mod backend;
 mod components;
+mod query;
 #[cfg(feature = "rapier")]
 mod rapier;
 
 pub use backend::{BodyResult, BodyState, NullPhysics, PhysicsBackend, PhysicsError};
 pub use components::{BodyKind, Collider, RigidBody, Shape, Velocity};
+pub use query::{ShapeMotion, ShapeMove};
 #[cfg(feature = "rapier")]
 pub use rapier::RapierPhysics;
 
@@ -135,6 +137,19 @@ impl Physics {
     #[must_use]
     pub fn last_error(&self) -> Option<&PhysicsError> {
         self.last_error.as_ref()
+    }
+
+    /// Moves one shape through the world, sliding along what it hits — ADR 0037.
+    ///
+    /// The gameplay-facing half of [`PhysicsBackend::move_shape`]. Reach it with
+    /// [`World::with_service_taken`](amadeo_ecs::World::with_service_taken), which is what lets a
+    /// system hold the world and the backend at once.
+    ///
+    /// **Call this after [`step_physics`] has run this tick.** A backend answers from a spatial
+    /// index the step builds, so asking first queries an empty one on tick 1 and the shape passes
+    /// through the level exactly once.
+    pub fn move_shape(&mut self, request: &ShapeMove) -> ShapeMotion {
+        self.backend.move_shape(request)
     }
 }
 

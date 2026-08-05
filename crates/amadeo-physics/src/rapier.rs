@@ -31,10 +31,12 @@
 
 use crate::backend::{BodyResult, BodyState, PhysicsBackend, PhysicsError};
 use crate::components::{BodyKind, Shape, Velocity};
+use crate::query::{ShapeMotion, ShapeMove};
 use amadeo_core::FIXED_DT;
 use amadeo_ecs::Entity;
 use amadeo_transform::Mat4;
-use rapier3d::math::{Matrix, Rotation, Vector};
+use rapier3d::control::{CharacterAutostep, CharacterLength, KinematicCharacterController};
+use rapier3d::math::{Matrix, Pose, Rotation, Vector};
 use rapier3d::prelude::*;
 use std::collections::BTreeMap;
 
@@ -162,6 +164,24 @@ impl RapierPhysics {
             }
         }
     }
+
+    /// The bare geometry of one of this engine's shapes, with no body or material attached.
+    ///
+    /// Separate from [`collider_for`](Self::collider_for) because a scene query needs the *shape*
+    /// and nothing else — building a whole collider to throw away would be wasteful and would put a
+    /// second place in this file where half-extents are computed.
+    fn shape_for(shape: Shape) -> SharedShape {
+        match shape {
+            // Rapier takes half-extents where Amadeo authors full sizes, exactly as in
+            // `collider_for`. Getting this wrong makes a character twice its intended width, which
+            // reads as the level being too narrow.
+            Shape::Cuboid { size } => {
+                SharedShape::cuboid(size[0] / 2.0, size[1] / 2.0, size[2] / 2.0)
+            }
+            Shape::Sphere { radius } => SharedShape::ball(radius),
+            Shape::Capsule { radius, height } => SharedShape::capsule_y(height / 2.0, radius),
+        }
+    }
 }
 
 impl PhysicsBackend for RapierPhysics {
@@ -173,6 +193,88 @@ impl PhysicsBackend for RapierPhysics {
         // Everything, not just the bodies: the caches are what has to go. The next step rebuilds
         // from the components, which is why they are the source of truth.
         *self = Self::new();
+    }
+
+    /// Move-and-slide, via rapier's own character controller — ADR 0037.
+    ///
+    /// # Why this adds nothing to `reset`
+    ///
+    /// `as_query_pipeline` builds a **borrowed view** over the body and collider sets this struct
+    /// already owns. It allocates nothing that outlives the call and caches nothing between calls,
+    /// so unlike the solver's contact caches there is no state here for a snapshot restore to have
+    /// missed. That was checked in rapier's source rather than assumed, because ADR 0028's lesson
+    /// is that the state you forget about is the state that breaks a restore.
+    fn move_shape(&mut self, request: &ShapeMove) -> ShapeMotion {
+        let mut controller = KinematicCharacterController {
+            up: Vector::new(request.up[0], request.up[1], request.up[2]),
+            // `Absolute` rather than `Relative`: the caller gave world units, and rapier's relative
+            // lengths are fractions of the shape's own height. Silently reinterpreting one as the
+            // other would make the skin scale with the character.
+            offset: CharacterLength::Absolute(request.skin),
+            slide: true,
+            max_slope_climb_angle: request.max_slope_degrees.to_radians(),
+            ..KinematicCharacterController::default()
+        };
+
+        // Both are opt-in, and both are off when the caller passes zero — so a game that never
+        // mentions stairs never pays for the shape casts autostep costs.
+        controller.autostep = (request.step_height > 0.0).then_some(CharacterAutostep {
+            max_height: CharacterLength::Absolute(request.step_height),
+            // The ledge must be at least as wide as it is tall to be worth stepping onto. Rapier's
+            // own default relationship, kept rather than invented.
+            min_width: CharacterLength::Absolute(request.step_height),
+            include_dynamic_bodies: false,
+        });
+        controller.snap_to_ground = (request.snap_distance > 0.0)
+            .then_some(CharacterLength::Absolute(request.snap_distance));
+
+        let shape = Self::shape_for(request.shape);
+        let pose = Pose::from_parts(
+            Vector::new(
+                request.translation[0],
+                request.translation[1],
+                request.translation[2],
+            ),
+            Self::rotation_of(request.rotation),
+        );
+
+        // Without this the first thing the cast hits is the character's own collider, and the
+        // character cannot move at all -- which looks like the controller being broken rather than
+        // like a filter being absent.
+        let mut filter = QueryFilter::default();
+        if let Some(handle) = request.ignore.and_then(|entity| self.handles.get(&entity)) {
+            filter = filter.exclude_rigid_body(*handle);
+        }
+
+        let queries = self.broad_phase.as_query_pipeline(
+            self.narrow_phase.query_dispatcher(),
+            &self.bodies,
+            &self.colliders,
+            filter,
+        );
+
+        let movement = controller.move_shape(
+            FIXED_DT,
+            &queries,
+            shape.as_ref(),
+            &pose,
+            Vector::new(request.motion[0], request.motion[1], request.motion[2]),
+            // Per-collision events are not collected: nothing consumes them yet, and the collision
+            // events the roadmap wants belong in `amadeo-events` rather than smuggled out of here.
+            |_| {},
+        );
+
+        ShapeMotion {
+            // Rapier hands back the distance actually travelled; this crate's contract is the
+            // absolute position, so the addition happens once here rather than at every call site.
+            translation: [
+                request.translation[0] + movement.translation.x,
+                request.translation[1] + movement.translation.y,
+                request.translation[2] + movement.translation.z,
+            ],
+            grounded: movement.grounded,
+            sliding_down_slope: movement.is_sliding_down_slope,
+        }
     }
 
     fn step(

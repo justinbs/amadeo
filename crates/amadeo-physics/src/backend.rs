@@ -19,6 +19,7 @@
 //! which is enough to keep a headless test meaningful and cheap enough to be the default.
 
 use crate::components::{BodyKind, Collider, RigidBody, Velocity};
+use crate::query::{ShapeMotion, ShapeMove};
 use amadeo_core::FIXED_DT;
 use amadeo_ecs::Entity;
 
@@ -120,6 +121,28 @@ pub trait PhysicsBackend: std::fmt::Debug + Send + Sync {
         bodies: &[BodyState],
         gravity: [f32; 3],
     ) -> Result<Vec<BodyResult>, PhysicsError>;
+
+    /// Moves one shape through the world, sliding along whatever it hits — ADR 0037.
+    ///
+    /// # Why this is a second operation rather than part of `step`
+    ///
+    /// A `Kinematic` body handed to `step` goes exactly where gameplay put it, walls included. That
+    /// is what kinematic means, and it is what a moving platform wants. A character wants the other
+    /// question: *given this much desired motion, where do I actually end up?*
+    ///
+    /// # It must run after `step`, and the caller is responsible for that
+    ///
+    /// A real backend answers this from a spatial index that `step` builds. Asking before the first
+    /// step means asking an **empty** index, and the shape passes through the level — once, on tick
+    /// one, which is close to the hardest kind of bug to notice. `modules/amadeo-character`
+    /// registers its system `.after(STEP_PHYSICS)` for exactly this reason.
+    ///
+    /// # No `Result`, deliberately
+    ///
+    /// Every [`Shape`](crate::Shape) variant is representable by every backend, so there is no
+    /// failure to report. A backend that cannot detect anything returns
+    /// [`ShapeMotion::unobstructed`], which is an honest answer rather than an error.
+    fn move_shape(&mut self, request: &ShapeMove) -> ShapeMotion;
 
     /// Throws away everything cached between steps, so the next step rebuilds from the bodies.
     ///
@@ -242,11 +265,24 @@ impl PhysicsBackend for NullPhysics {
             })
             .collect())
     }
+
+    /// Applies the motion in full and reports mid-air, because nothing here can detect otherwise.
+    ///
+    /// # This being useless is the point
+    ///
+    /// It is the same posture `step` takes: a backend without a *solver*, not a stub. And it is
+    /// what makes the character tests evidence rather than decoration — pointed at this backend, a
+    /// character walks straight through a wall, which is what proves the passing rapier test is
+    /// measuring collision response and not an accidentally-correct constant. ADR 0037 §5.
+    fn move_shape(&mut self, request: &ShapeMove) -> ShapeMotion {
+        ShapeMotion::unobstructed(request)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::components::Shape;
 
     fn body(entity: Entity, velocity: Velocity) -> BodyState {
         BodyState {
@@ -395,6 +431,24 @@ mod tests {
 
         let out = physics.step(&[state], [0.0; 3]).expect("no failure");
         assert!(out[0].translation[0] > 0.0);
+    }
+
+    #[test]
+    fn the_null_backend_moves_a_shape_straight_through_everything() {
+        // Not a limitation being tolerated — it is the control case ADR 0037 §5 relies on. A
+        // character test that passes against *this* backend is not testing collision.
+        let mut physics = NullPhysics::new();
+        let request = ShapeMove::new(
+            Shape::Capsule {
+                radius: 0.4,
+                height: 1.2,
+            },
+            [0.0, 1.0, 0.0],
+            [5.0, 0.0, 0.0],
+        );
+        let motion = physics.move_shape(&request);
+        assert_eq!(motion.translation, [5.0, 1.0, 0.0]);
+        assert!(!motion.grounded, "nothing here can detect ground");
     }
 
     #[test]
