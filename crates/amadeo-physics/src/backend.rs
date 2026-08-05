@@ -18,7 +18,7 @@
 //! here means *no solver*, not *no engine*. [`NullPhysics`] integrates velocity and nothing else,
 //! which is enough to keep a headless test meaningful and cheap enough to be the default.
 
-use crate::components::Velocity;
+use crate::components::{BodyKind, Collider, RigidBody, Velocity};
 use amadeo_core::FIXED_DT;
 use amadeo_ecs::Entity;
 
@@ -62,6 +62,16 @@ pub struct BodyState {
     pub rotation: [f32; 3],
     /// How fast it is moving.
     pub velocity: Velocity,
+    /// How the body is driven, its mass, and its damping.
+    pub body: RigidBody,
+    /// Its shape and surface properties, if it has any.
+    ///
+    /// `None` is a body that participates in the simulation but collides with nothing — a marker
+    /// that moves, or something whose collision is handled by gameplay. It is a real state rather
+    /// than an oversight, which is why it is an `Option` rather than a default shape: inventing a
+    /// one-metre cube for an entity nobody gave a collider would put an invisible obstacle in the
+    /// world.
+    pub collider: Option<Collider>,
 }
 
 /// What a step produced for one body.
@@ -160,17 +170,43 @@ impl PhysicsBackend for NullPhysics {
         Ok(bodies
             .iter()
             .map(|body| {
+                // A static body never moves, whatever its velocity says. Honoured here rather than
+                // filtered out by the caller, because a solver still needs to *know about* static
+                // bodies — they are what dynamic ones collide with — so every backend is handed all
+                // of them and each decides what to do.
+                if body.body.kind == BodyKind::Static {
+                    return BodyResult {
+                        entity: body.entity,
+                        translation: body.translation,
+                        rotation: body.rotation,
+                        velocity: body.velocity,
+                    };
+                }
+
+                // Gravity is per body, so a flying character or a projectile with its own arc can
+                // opt out without the world's gravity changing for everything else.
+                let pull = if body.body.gravity { gravity } else { [0.0; 3] };
+
                 // Semi-implicit Euler: apply the acceleration to the velocity *first*, then move by
                 // the new velocity. The explicit form (move, then accelerate) loses energy on every
                 // step and makes a bouncing object sink through the floor over time. This is the
                 // form every game physics engine uses, and it costs nothing extra.
+                //
+                // Damping is applied as a per-tick factor rather than an exponential, which is what
+                // rapier does too — exact enough at a fixed 60 Hz and cheaper.
+                let damp = (1.0 - body.body.linear_damping * dt).clamp(0.0, 1.0);
+                let angular_damp = (1.0 - body.body.angular_damping * dt).clamp(0.0, 1.0);
                 let velocity = Velocity {
                     linear: [
-                        body.velocity.linear[0] + gravity[0] * dt,
-                        body.velocity.linear[1] + gravity[1] * dt,
-                        body.velocity.linear[2] + gravity[2] * dt,
+                        (body.velocity.linear[0] + pull[0] * dt) * damp,
+                        (body.velocity.linear[1] + pull[1] * dt) * damp,
+                        (body.velocity.linear[2] + pull[2] * dt) * damp,
                     ],
-                    angular: body.velocity.angular,
+                    angular: [
+                        body.velocity.angular[0] * angular_damp,
+                        body.velocity.angular[1] * angular_damp,
+                        body.velocity.angular[2] * angular_damp,
+                    ],
                 };
 
                 BodyResult {
@@ -202,6 +238,8 @@ mod tests {
             translation: [0.0, 0.0, 0.0],
             rotation: [0.0, 0.0, 0.0],
             velocity,
+            body: RigidBody::dynamic(1.0),
+            collider: Some(Collider::default()),
         }
     }
 
@@ -284,6 +322,63 @@ mod tests {
             out.iter().map(|result| result.entity).collect::<Vec<_>>(),
             entities
         );
+    }
+
+    #[test]
+    fn a_static_body_does_not_move_however_hard_it_is_pushed() {
+        // Static is the default, so this is what most bodies in a level do. A backend that moved
+        // them would send the floor falling out from under everything on the first tick.
+        let mut physics = NullPhysics::new();
+        let mut state = body(some_entity(), Velocity::linear(100.0, 0.0, 0.0));
+        state.body = RigidBody::default();
+        assert_eq!(state.body.kind, BodyKind::Static);
+
+        let out = physics
+            .step(&[state], [0.0, -9.81, 0.0])
+            .expect("no failure");
+        assert_eq!(out[0].translation, [0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn a_body_can_opt_out_of_gravity() {
+        // A flying character or a projectile with its own arc, without the world's gravity changing
+        // for everything else.
+        let mut physics = NullPhysics::new();
+        let mut state = body(some_entity(), Velocity::default());
+        state.body.gravity = false;
+
+        let out = physics
+            .step(&[state], [0.0, -9.81, 0.0])
+            .expect("no failure");
+        assert_eq!(out[0].velocity.linear[1], 0.0);
+        assert_eq!(out[0].translation[1], 0.0);
+    }
+
+    #[test]
+    fn damping_bleeds_speed_away() {
+        let mut physics = NullPhysics::new();
+        let mut state = body(some_entity(), Velocity::linear(10.0, 0.0, 0.0));
+        state.body.gravity = false;
+        state.body.linear_damping = 2.0;
+
+        let out = physics.step(&[state], [0.0; 3]).expect("no failure");
+        assert!(
+            out[0].velocity.linear[0] < 10.0,
+            "damping should slow it, got {:?}",
+            out[0].velocity
+        );
+    }
+
+    #[test]
+    fn a_body_with_no_collider_is_still_simulated() {
+        // `None` is a real state — a marker that moves, or something whose collision gameplay
+        // handles — rather than an oversight to substitute a default cube for.
+        let mut physics = NullPhysics::new();
+        let mut state = body(some_entity(), Velocity::linear(1.0, 0.0, 0.0));
+        state.collider = None;
+
+        let out = physics.step(&[state], [0.0; 3]).expect("no failure");
+        assert!(out[0].translation[0] > 0.0);
     }
 
     #[test]

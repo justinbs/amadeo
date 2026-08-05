@@ -172,8 +172,9 @@ pub fn step_physics(world: &mut World) {
             &Transform,
             Option<&Velocity>,
             Option<&GlobalTransform>,
+            Option<&Collider>,
         )>()
-        .map(|(entity, (_body, transform, velocity, global))| {
+        .map(|(entity, (body, transform, velocity, global, collider))| {
             let placement = match global {
                 Some(global) => global.to_mat4().translation(),
                 None => transform.translation,
@@ -183,6 +184,11 @@ pub fn step_physics(world: &mut World) {
                 translation: placement,
                 rotation: transform.rotation,
                 velocity: velocity.copied().unwrap_or_default(),
+                body: *body,
+                // Optional, and absence means "collides with nothing" rather than "give it a
+                // default shape" — inventing a one-metre cube for an entity nobody gave a collider
+                // would put an invisible obstacle in the world.
+                collider: collider.copied(),
             }
         })
         .collect();
