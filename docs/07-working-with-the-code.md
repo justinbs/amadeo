@@ -1115,6 +1115,70 @@ list would restore a world that hashes identically and then hands out different 
 next `spawn`. So comparing hashes after a restore cannot prove a restore is correct — the tests run
 the world *on* afterwards instead, which is the only check that can see it.
 
+### `modules/` — the layer above the engine, and what belongs in it
+
+New in session 10 (ADR 0037), and the first thing that ever lived there is
+`modules/amadeo-character`.
+
+**The rule, in one line:** a module may depend on any engine crate and on other modules, and **no
+engine crate may ever depend on a module**. That is invariant I6 stated one level up, and it is the
+whole point of the layer.
+
+**How to tell whether something is a crate or a module.** Ask what it would have to *know*:
+
+| | Belongs in `crates/` | Belongs in `modules/` |
+|---|---|---|
+| Knows about | shapes, matrices, files, ticks | characters, health, inventories, weather |
+| Question it answers | "move this capsule and slide" | "how fast does the player walk" |
+| Could a game not want it? | no, it is machinery | yes, it is a genre choice |
+
+The character controller is the worked example, and the split runs right through the middle of it.
+The **geometry** — sweep a shape, slide along what it hits, report whether it landed on something —
+is in `amadeo-physics` as `PhysicsBackend::move_shape`, and knows nothing about walking; it describes
+a lift, a projectile and a camera equally well. The **character** — walk speed, acceleration, jump,
+turning, which input actions drive them — is in `modules/amadeo-character`.
+
+`CLAUDE.md` trap 10 is why this matters rather than being tidiness: of the eight target games one has
+no character at all, so an engine that assumed one would have quietly picked a genre.
+
+**A module registers its own components.** `amadeo_character::install(&mut app)?` registers
+`CharacterController` and `CharacterMotion`, adds `step_physics`, and adds its own system *after* it.
+It returns a `Result` because registration can clash. Do not skip the registration if you write
+another module — trap 5 is that a component nobody registered works fine at runtime and is invisible
+to `describe`, to `amadeo check`, and to the editor, and you find out three milestones later.
+
+### Why the character system must run after physics
+
+This is the one ordering in the engine that is wrong in a way you would not notice.
+
+`move_shape` answers from a spatial index that `step_physics` builds each tick. Register the character
+system *before* the step and it queries an **empty** index on tick one — so the character passes
+through the level exactly once, at startup, and behaves perfectly forever after. `install` sets
+`.after(STEP_PHYSICS)` so no game has to remember; if a game registers the character system by hand
+and forgets, the schedule refuses to resolve and names the missing label.
+
+### A worked bug: the character that sank through the floor
+
+Worth reading because the *shape* of it recurs, and because it is what the tick-by-tick trace in
+`modules/amadeo-character/tests/` is guarding.
+
+The first version pressed the character gently downward while grounded — a common trick, meant to keep
+it attached to the floor. It sank about 0.07 units per second and eventually fell through.
+
+The cause: ground detection holds a character a **skin width** (0.01 units) above the surface, and the
+downward bias moved it 0.0167 units in one tick. Moving further than the gap put the capsule exactly
+touching the floor, which is the degenerate case for a shape cast — rapier's own penetration-fixing
+routine is commented out in its source — so the next tick sank again. Slow enough to look like tuning,
+fast enough to lose a level.
+
+The fix was to stop pressing downward at all: vertical speed is exactly zero while grounded, and
+staying attached is `snap_distance`'s job, which pulls the character down to the surface *after* the
+move rather than aiming below it.
+
+**The generalisable part:** when something moves by a small amount per tick and something else holds a
+small tolerance, compare the two numbers. If the per-tick movement exceeds the tolerance, it will
+tunnel, and it will do it slowly enough to be mistaken for a feel problem.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

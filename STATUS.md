@@ -1,12 +1,17 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-04 (end of session 9)
-**Current phase:** **M0 complete. M1 closed. M2 under way, with all four of its expensive decisions
-made before their code** — ADR 0035 settles what a mesh asset is (a procedural shape or vertex data),
-and its data half is built. **ADR 0031** settles 2D/3D coexistence and makes the camera an entity —
-decided, then built. **ADR 0033** settles the material and shader model — decided, not yet built,
-because the code it calls for needs mesh rendering. **ADR 0034** settles whether the render graph is
-a public API — it is not — decided, then built the same session.
+**Last updated:** 2026-08-05 (end of session 10)
+**Current phase:** **M0 complete. M1 closed. M2 well along, with every expensive decision in it made
+before its code** — ADR 0031 (2D/3D coexistence, and the camera becomes an entity), ADR 0033 (the
+material and shader model), ADR 0034 (the render graph is internal, and a look is an asset), ADR 0035
+(a mesh is a procedural shape or vertex data), ADR 0036 (physics is deterministic before it is fast),
+and now **ADR 0037** (a character is a move-and-slide query, and the character itself is a module).
+All six are decided *and* built.
+
+**Two of M2's four exit gates are met, and gate 1 is halfway.** 3D renders with meshes, depth and
+lighting; post-processing works; rapier physics is in with a cross-platform determinism test that
+pins a literal hash; and **something walks around and walls stop it**. What remains for gate 1 is
+shadow maps and glTF import. Gate 4 — the frame-time budget — has not been looked at by anyone.
 
 **The agent can see.** `amadeo capture shot.png` launches a game headless, renders it on an offscreen
 GPU and writes a PNG. That closes ADR 0021's "agent's eyes" and gave the GPU path its first automated
@@ -25,7 +30,7 @@ Q3, Q4, Q7, Q10, Q13, Q14, Q16, Q17, Q19, Q21 and Q22 are all closed, and **ever
 session opened has been closed in it**. Nothing is blocked and nothing is undecided.
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
 
-**Commits are waiting to be pushed** at the end of session 9 — check with
+**Commits are waiting to be pushed** at the end of session 10 — check with
 `git log --oneline origin/main..HEAD`, and see the correction below for why that is the instruction
 rather than a list.
 
@@ -56,14 +61,16 @@ texture cache, and the wgpu texture path — **closed invariant I8**, making `Re
 compiler-enforced bound on resources and events and shipping `world.resources`, **shipped snapshots**,
 **built `games/vault` and closed M1**, and then **settled Q7 with prefabs**. ADRs 0022–0029.
 
-**Seventeen crates plus two games** (`amadeo-image` and `amadeo-physics` joined the list), all tested: `amadeo-derive`, `amadeo-image`, `amadeo-core`,
-`amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`, `amadeo-input`,
-`amadeo-render`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`, `amadeo-app`, `amadeo-cli`, plus `games/quad-demo` and
-`games/vault`.
-**969 tests passing with `--all-features`** (13 of them GPU capture tests, 7 rapier); fmt, clippy
-`-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated determinism job.
+**Seventeen crates, one module, and two games**, all tested: `amadeo-derive`, `amadeo-image`,
+`amadeo-core`, `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`,
+`amadeo-input`, `amadeo-render`, `amadeo-physics`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`,
+`amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
+reserved since session 1 — and `games/quad-demo` and `games/vault`.
+**983 tests passing with `--all-features`** (13 of them GPU capture tests, 7 rapier, 9 character);
+fmt, clippy `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated
+determinism job.
 
-Twenty-three things work end to end today:
+Twenty-four things work end to end today:
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -106,6 +113,14 @@ Twenty-three things work end to end today:
   that CI runs on Windows and Linux, so ADR 0036's cross-platform promise is checked rather than
   believed. Behind `--features rapier`, off by default. Verified the collision tests are evidence by
   pointing them at `NullPhysics`: the ball falls to −72 instead of resting at 0.5.
+- **Something walks around, and walls stop it.** A capsule driven by named input actions accelerates
+  to speed, turns, jumps only when it is standing on something, slides along a wall instead of
+  stopping dead, and lands back on the floor. `CharacterController` and `CharacterMotion` are
+  reflected and **hashed**, so a character-driven game is snapshot-able and replayable for nothing.
+  The geometry is `PhysicsBackend::move_shape` in `amadeo-physics`, which knows nothing about
+  characters; the character is `modules/amadeo-character`, which is what I4 and trap 10 ask for
+  (ADR 0037). **Every collision claim is asserted twice** — against rapier where it must hold, and
+  against `NullPhysics` where it must fail.
 - **Bodies fall, and the world is the record of it.** `RigidBody`, `Collider`, `Velocity` and
   `Gravity` are reflected, **hashed** data, so a physics-driven game is snapshot-able and replayable
   with nothing extra built (ADR 0036). `NullPhysics` integrates velocity and gravity for real — it is
@@ -188,13 +203,12 @@ false**, which is a result rather than an omission — see below.
 **No blockers of any kind.** Q14, Q13, Q4, and two thirds of Q3 all closed in session 6 — every one
 of them except Q4 built the same session it was decided.
 
-## ⚠️ First: confirm CI is green again
+## ✅ The CI crash is fixed and confirmed — nothing to do here
 
-**CI failed 4/5 on the last two pushes** — the `determinism` job, with a
-`STATUS_ACCESS_VIOLATION` in `tests/capture.rs`. Diagnosed and fixed, but **the fix has not yet been
-seen to work on CI**, because it only ever failed there. Check that first.
+`baefb1f` went **5/5 green** on both platforms, so the wgpu fix worked. This section stays only
+because the shape of the bug is worth keeping; there is no outstanding action.
 
-**What it was**, because the shape of it is worth keeping:
+**What it was:**
 
 1. The job's release step ran `cargo test --workspace --release` **without** `--test-threads=1`,
    where the three debug runs three steps earlier had it. Same code, same job, one flag apart.
@@ -209,52 +223,127 @@ seen to work on CI**, because it only ever failed there. Check that first.
 lifetime, so a developer running `cargo test --all-features` is safe too, and `ci.yml` passes
 `--test-threads=1` on the release step so it matches the debug ones.
 
-**The honest caveat**: this machine has a real GPU and never reproduced the crash, so the fix is
-reasoned from the known wgpu bug rather than confirmed against the failure. If CI still fails, the
-next thing to try is skipping the GPU tests in the determinism job outright — it is a
-*simulation*-determinism job and has no need of them.
+**The caveat that was here is now discharged.** This machine has a real GPU and never reproduced the
+crash, so the fix was reasoned from the known wgpu bug rather than confirmed against the failure —
+and then CI confirmed it. Worth remembering that "it passes on my machine" proved nothing here, and
+the only evidence available was a push.
 
-## Then: M2's exit gate, which is now the nearest real target
+## The single most important thing to do next
 
-**Rapier is built and behind the trait.** Bodies collide, stack and rest; `RapierPhysics` is behind a
-`rapier` feature that is off by default, like the renderer's `gpu`.
-`crates/amadeo-physics/tests/rapier_determinism.rs` pins a **literal state hash** that CI runs on
-Windows *and* Linux, so a cross-platform divergence turns CI red rather than going unnoticed. That is
-gate 3's claim made checkable instead of asserted.
+**Shadow maps.** Gate 1 has four parts and two are now done — dynamic lighting landed in session 9,
+and the character controller landed in session 10. What is left is shadows and glTF import, and
+shadows are the harder of the two because they are the first thing that will **read** the depth
+buffer rather than only write to it.
 
-`PhysicsBackend::reset` exists for ADR 0028's reason rather than a physics one — see its doc comment.
+Then, in order:
 
-**Gate 1 wants an imported glTF level, dynamic lighting, shadows, and a physics-driven character
-controller you can walk around with.** In rough order of what is missing:
-
-1. **A character controller.** Needs a kinematic body driven by input, and it is the first thing that
-   will use `BodyKind::Kinematic` in anger. `CLAUDE.md` trap 10 says this belongs in `modules/`, not
-   the core — the engine must not assume a game has a character.
-2. **Shadow maps**, the first thing that will *read* the depth buffer rather than only write it.
-3. **glTF import.** ADR 0035 made this a new *producer* of `MeshData`, so nothing above the loader
+1. **Shadow maps.** The depth texture's `bind_group` is deliberately `Option::None` today — see the
+   wrinkle recorded further down — so the compiler will ask about every place that assumed it could
+   sample a transient. That is the design working, not an obstacle.
+2. **glTF import.** ADR 0035 made this a new *producer* of `MeshData`, so nothing above the loader
    changes — which is why it could wait this long.
-4. **Collision events into `amadeo-events`**, which is what turns a sensor into a gameplay trigger.
-   The Vault's sigils are exactly this shape, done by hand today.
-5. **PBR**, a normal matrix per instance, more than one light, transparency. All cheap, all isolated
+3. **Collision events into `amadeo-events`**, which turns a sensor into a gameplay trigger. The
+   Vault's sigils are exactly this shape, done by hand today. This is also what would let the
+   character report what it bumped into: `move_shape` already receives per-collision callbacks from
+   rapier and deliberately throws them away, because nothing consumes them yet.
+4. **PBR**, a normal matrix per instance, more than one light, transparency. All cheap, all isolated
    behind `RenderBackend`, none blocking a gate.
 
-## After that
+**A gate-1 demo does not exist yet.** Every claim below is asserted by headless tests rather than by
+a game you can walk around in. Building one — a small 3D room with a floor, walls and a character —
+is the cheapest way to find what the controller is awkward at, on the same reasoning that made
+`games/vault` worth building in M1.
 
-**M2's exit gate, which is now within reach for the first time.** Gate 1 wants "an imported glTF
-level, dynamic lighting, shadows, and a physics-driven character controller you can walk around
-with". Three of those four are now partly or wholly built; the fourth has not started.
+## The character controller landed — ADR 0037
 
-**The honest ordering, and it is not the renderer:**
+**Gate 1's character controller is built, and it created the `modules/` layer.** Justin was given
+three options and took the recommendation: **a move-and-slide query on `PhysicsBackend`**.
 
-1. **`amadeo-physics`, which does not exist** — and **Q24 must be settled before it does**. Two of
-   M2's four gates depend on it, and rapier's `enhanced-determinism` is mutually exclusive with
-   `parallel` and `simd-*`, so the answer changes what the layer *is* rather than how fast it runs.
-   This is the largest remaining piece of M2 by a wide margin.
-2. **Shadow maps**, which gate 1 names and which are the first thing that will *read* the depth
-   buffer rather than only write it.
-3. **glTF import.** ADR 0035 deliberately made this a new *producer* of `MeshData` rather than a
-   precondition, so it changes nothing above the loader — which is why it can wait this long.
-4. **PBR, and the rest of the renderer's polish** — see the list below. All cheap, all isolated.
+**The framing was, for the fifth time in this project, about the data rather than the mechanism.**
+`PhysicsBackend` had exactly one operation — `step(bodies, gravity)` — and for a `Kinematic` body
+that means *put it exactly where gameplay said*, walls included. So a character built on the existing
+trait would walk through the level. The question was never "how do we write a controller"; it was
+"what second question does a solver have to be able to answer".
+
+**What the research found**, and it decided the answer: Unity, Unreal, Godot and PhysX all ship an
+explicit kinematic controller as the *primary* answer and treat a dynamic-body character as the
+alternative. The line that settled it for this engine was not about feel — the recurring advice is to
+choose an explicit controller **when deterministic replay and network sync are priorities**, which is
+I3 and ADR 0006 rather than a preference.
+
+**The split, which is what `modules/` is for:**
+
+- **`amadeo-physics` owns the geometry.** `PhysicsBackend::move_shape` sweeps a shape, slides along
+  what it hits, and reports where it ended up and whether it landed on something. It has no concept
+  of a character — it describes a lift, a projectile, or a camera that must not clip through a wall.
+- **`modules/amadeo-character` owns the character.** `CharacterController` (speed, acceleration,
+  jump, turn, slope limit, step height) and `CharacterMotion` (velocity, grounded), driven by named
+  input actions. Trap 10 in full: the engine must not assume a game has a character, and one of the
+  eight target games does not.
+
+**It cost less than expected and adds no determinism surface.** Rapier's `as_query_pipeline` is a
+*borrowed view* over sets `RapierPhysics` already owns — it allocates nothing that outlives the call
+and caches nothing between calls, so there is nothing new for `PhysicsBackend::reset` to clear.
+Checked in rapier's source before the ADR was written rather than assumed.
+
+**One ordering is load-bearing and would not have been noticed.** `move_shape` answers from a spatial
+index `step` builds, so the character system must run **after** `step_physics`. The other way round it
+queries an *empty* index on tick 1 — the character passes through the level once, at startup, and
+behaves perfectly forever after. `install` sets `.after(STEP_PHYSICS)` so no game has to remember, and
+a game that registers by hand and forgets gets a schedule that refuses to resolve and names the
+missing label.
+
+### The bug it produced, which is worth reading before touching the controller
+
+The first version pressed the character gently downward while grounded — the usual trick for staying
+attached to the floor. **It sank about 0.07 units per second and would eventually have fallen
+through.**
+
+Ground detection holds a character a **skin width** (0.01 units) above the surface; the downward bias
+moved it 0.0167 units in one tick. Moving further than the gap left the capsule exactly touching the
+floor, which is the degenerate case for a shape cast — **rapier's own penetration-fixing routine is
+commented out in its source** — so it sank again next tick. Slow enough to look like tuning, fast
+enough to lose a level.
+
+Fixed by not pressing down at all: vertical speed is exactly zero while grounded, and staying attached
+is `snap_distance`'s job, which pulls *down to* the surface after the move rather than aiming below it.
+`a_resting_character_does_not_sink_into_the_floor` pins it over ten seconds.
+
+**Generalise this:** when something moves a small amount per tick and something else holds a small
+tolerance, compare the two numbers. Movement exceeding the tolerance will tunnel, slowly enough to be
+mistaken for a feel problem.
+
+**Found by tracing, not by reasoning.** Twelve ticks of printed height and grounded flags showed the
+ratchet immediately — ticks 6, 7, 10 and 11 each dropping by exactly `1.0 * FIXED_DT`. The arithmetic
+was in the output; no amount of re-reading the code would have been faster.
+
+### And the session-9 lesson was applied rather than restated
+
+**Every collision claim in `modules/amadeo-character/tests/walks_around.rs` is made twice** — once
+against `RapierPhysics`, where it must hold, and once against `NullPhysics`, where it must fail. A
+character that walks through a wall and falls through a floor is an asserted test, not a known
+limitation. That is "a test is not evidence until you have watched it fail" built into the suite
+rather than done once by hand.
+
+## Where M2's exit gate actually stands
+
+**Gate 1** — "an imported glTF level, dynamic lighting, shadows, and a physics-driven character
+controller you can walk around with". Lighting ✅ (session 9), character controller ✅ (session 10),
+**shadows and glTF import remain**. No demo scene exists yet; see the note above.
+
+**Gate 2** — a 2D scene from M1 still renders unchanged. ✅ Holds: `games/vault` is untouched and its
+tests, replays and capture all still pass.
+
+**Gate 3** — a physics-heavy replay of 200+ bodies reproducing bit-identically across runs and
+processes. ✅ `crates/amadeo-physics/tests/rapier_determinism.rs` pins a **literal state hash** that CI
+runs on Windows *and* Linux, so a cross-platform divergence turns CI red rather than going unnoticed.
+
+**Gate 4** — frame time within a declared budget at a declared scene complexity, numbers written
+down. **Not started, and it is the one nobody has looked at.** ADR 0036 says it must be measured
+knowing physics uses one core; if physics is the limit the answers are fewer bodies, better culling
+or sleeping inactive bodies, **not** relaxing determinism.
+
+`PhysicsBackend::reset` exists for ADR 0028's reason rather than a physics one — see its doc comment.
 
 ### The renderer: what landed, and what is left
 
@@ -352,25 +441,27 @@ and both files are now checked in CI, which is what would have caught it.
 **Worth generalising**: "the existing toolchain applies for nothing" is a claim about *other* code,
 which makes it exactly the kind that gets written into an ADR and never executed. Run it.
 
-### Physics is the other half of M2, and it has a P0 question — Q24
+### Physics: Q24 is closed, and the crate is built — ADR 0036
 
-Raised by Justin asking whether the engine needs a physics engine. It does, and in **this milestone**:
-two of M2's four exit gates depend on `amadeo-physics`, which is not started.
+Raised by Justin asking whether the engine needs a physics engine. It does, and in **this
+milestone**: two of M2's four exit gates depend on it. Both are now met or half met.
 
-**Rapier can give exactly what gate 3 asks for** — bit-level cross-platform determinism, same bytes
-on different CPUs and operating systems — through its `enhanced-determinism` feature. **But that
-feature cannot be enabled alongside `parallel` or `simd-*`.** Determinism and fast physics are
-mutually exclusive, and there is no "take both and decide later". It also pins the rapier version,
-because an upgrade may legitimately change results and invalidate every replay containing physics.
+**Rapier gives exactly what gate 3 asks for** — bit-level cross-platform determinism, same bytes on
+different CPUs and operating systems — through its `enhanced-determinism` feature. **But that feature
+cannot be enabled alongside `parallel` or `simd-*`.** Determinism and fast physics are mutually
+exclusive, and there was no "take both and decide later". It also pins the rapier version, because an
+upgrade may legitimately change results and invalidate every replay containing physics.
 
-The prior is that determinism wins — I3 is non-negotiable and gate 3 is written against it — but that
-means the physics layer is single-threaded and scalar *by design*, which is a different layer from
-one written assuming it might parallelise later. `CLAUDE.md`'s trap list puts retrofitting
-determinism first, so this gets decided before the crate exists.
+**Determinism won**, permanently: I3 is non-negotiable and gate 3 is written against it. So the
+physics layer is single-threaded and scalar *by design*. `CLAUDE.md`'s trap list puts retrofitting
+determinism first, which is why this was decided before the crate existed rather than after.
 
-**Nothing is blocked and nothing else is undecided.** All four of M2's expensive rendering decisions are made
-before their code — ADR 0031 for 2D/3D coexistence and the camera, ADR 0033 for the material and
-shader model, ADR 0034 for the render graph's visibility. What is left is build work.
+**The consequence to remember for gate 4:** physics uses one core, and that is not negotiable. If the
+frame-time budget is missed because of physics, the answers are fewer bodies, better culling, or
+sleeping inactive bodies — not relaxing this.
+
+**Nothing is blocked and nothing is undecided.** All six of M2's expensive decisions are made and
+built. What is left is build work.
 
 ### The render-graph decision is closed — ADR 0034
 

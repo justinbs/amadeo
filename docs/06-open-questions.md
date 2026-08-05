@@ -201,6 +201,14 @@ Where the join happens, and how general it is:
 Recommendation is deliberately not stated yet; this needs the second real instance before the general
 shape is knowable. Nothing is blocked — `amadeo describe` and the `.replay` format both read fine.
 
+**Session 10 added the first real consumer, and it went the other way than expected.**
+`modules/amadeo-character` reads four named actions (`move_forward`, `move_right`, `turn`, `jump`) and
+publishes them as `pub const` strings rather than putting `ActionId`s on the `CharacterController`
+component. That was the right call for the module — a scene file carrying unreadable integers would
+be worse than one carrying none — but it means the question is now **more** likely to bite: a game
+inspecting a running character sees four opaque numbers in `InputState` and has to know the names to
+match them up. Still not blocking. Worth revisiting when the second module wants input.
+
 ---
 
 ## Q23 · P1 · One environment per frame, when a world may hold several cameras

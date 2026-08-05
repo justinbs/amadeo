@@ -134,6 +134,12 @@ crates/
                      **rapier 0.34 uses glam, not nalgebra** -- `Rotation` is a `glam::Quat`, and
                      rapier's own `vector![]` macro still builds an *nalgebra* vector its API will
                      not accept. Use `Vector::new`.
+                     **`PhysicsBackend::move_shape` is the second operation (ADR 0037)**: move a
+                     shape and slide along what it hits, returning where it ended up and whether it
+                     landed on something. It is what a character controller is built on, and it
+                     knows nothing about characters. It answers from an index `step` builds, so it
+                     MUST be called after `step_physics` in the same tick -- asking first queries an
+                     empty index and the shape passes through the level on tick 1 only.
 — amadeo-anim        sprite anim, skeletal, state machines, tweens
 — amadeo-ui          retained-mode game UI: layout, theming, focus navigation
 ✅ amadeo-snapshot    the .snapshot text format (ADR 0028): capture a whole world to a file and put
@@ -172,7 +178,17 @@ crates/
                      Pending: new/run/test/build/export. ADR 0016: `fmt` is standalone;
                      everything else spawns the game binary in agent mode and talks to it over stdio,
                      because only that process knows the game's components.
-modules/             optional, genre-flavored. Core NEVER depends on these.
+modules/             optional, genre-flavored. Core NEVER depends on these. Created by ADR 0037; a
+                     module may depend on engine crates and on other modules, and no engine crate may
+                     ever depend on a module (I6, one level up).
+🟡 amadeo-character   the first module. `CharacterController` (speed, acceleration, jump, turn, slope,
+                     step height) and `CharacterMotion` (velocity, grounded), driven by named input
+                     actions, moved by `PhysicsBackend::move_shape`. `install(&mut app)?` registers
+                     both components, `step_physics`, and its own system **after** it -- the ordering
+                     is load-bearing, see the physics entry. Not gated on `rapier`: against
+                     `NullPhysics` the character walks through walls, which is deliberately the
+                     control case its tests assert. Still to come: crouching, coyote time, and
+                     imparting velocity to dynamic bodies (see ADR 0037's consequences).
 games/               actual games built with the engine
   quad-demo          M0's exit gate: a steerable quad, plus the replay fixture CI asserts on.
   vault              M1's exit gate: a complete small 2D game. The level is scenes/vault.scene;
