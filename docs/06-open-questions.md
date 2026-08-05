@@ -143,6 +143,11 @@ Specific sub-questions when it is time:
 permanent architectural cost up front still stands; what has changed is that a second, independent
 reason to open the hatch now exists, and it should be recorded rather than rediscovered late.
 
+**ADR 0036 adds a constraint worth knowing here:** physics is now bit-deterministic on any IEEE
+754-2008 target, **including WASM**. So the reserved hatch has no physics exception — a mod running
+in WASM sees the same simulation as native, which removes one of the harder objections to WASM
+modding before it was ever raised.
+
 ### A second instance arrived in session 9 — ADR 0034
 
 **ADR 0034 drew part of the module boundary, and it drew it closed.** The render graph is internal,
@@ -247,7 +252,28 @@ list and that is the trigger.
 
 ---
 
-## Q24 · **P0 for M2's exit gate** · Rapier's determinism costs parallelism, and pins the version
+## ~~Q24~~ · **Resolved — ADR 0036.** Physics is deterministic before it is fast
+
+**Justin chose determinism, permanently.** `enhanced-determinism` is on, physics is single-threaded
+and scalar, physics state is in the state hash, and the rapier version is pinned exactly so that an
+upgrade is a deliberate replay regeneration rather than a mystery.
+
+The deciding argument was the *failure mode* of the alternative rather than the merits of either: a
+replay that passes on one machine and fails on another does not look like a physics configuration
+problem, it looks like a bug in the game, and it is close to unattributable.
+
+Two things the research settled that the question had not anticipated. **A per-game switch is not
+available** — Cargo unifies features across a build, so two games in one workspace cannot disagree
+about a feature rapier forbids combining. And **excluding physics from the state hash is not really
+possible** either: a physics-driven character's position *is* gameplay state, so a replay that
+skipped it would prove almost nothing about any game using physics.
+
+The original text is below for the reasoning that led there.
+
+<details>
+<summary>Q24 as filed</summary>
+
+### Rapier's determinism costs parallelism, and pins the version
 
 **Raised in session 9**, prompted by Justin asking whether the engine needs a physics engine. It
 does, and sooner than the question assumed: `amadeo-physics` is an **M2** item, and two of M2's four

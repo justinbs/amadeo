@@ -200,11 +200,12 @@ without eyes, the design is wrong and we find out before 3D and the editor pile 
 - `amadeo-physics` — rapier 2D and 3D behind engine traits. Rigid bodies, colliders, joints,
   raycasts, collision events into `amadeo-events`. **The other half of M2, and not yet started.**
 - Verified deterministic physics: cross-run reproducibility test, in CI.
-  ⚠️ **Q24 must be settled first.** Rapier's `enhanced-determinism` feature delivers exactly the
-  bit-level cross-platform determinism gate 3 asks for, but **cannot be enabled alongside `parallel`
-  or `simd-*`** — so determinism and fast physics are mutually exclusive, and the choice cannot be
-  deferred by taking both. It also pins the rapier version, since an upgrade may legitimately move
-  results and invalidate every replay containing physics.
+  ✅ **ADR 0036 settles how, before the crate exists.** `enhanced-determinism` is on **permanently**,
+  so physics is single-threaded and scalar; physics state **is** in the state hash, which is what
+  makes gate 3 meaningful; and the rapier version is pinned exactly, so an upgrade is a deliberate
+  replay regeneration rather than a mystery. Gate 4's frame-time budget must be measured knowing
+  physics uses one core — and if physics is the limit, the answers are fewer bodies, better culling
+  or sleeping inactive bodies, **not** relaxing this.
 
 **Exit gate**
 1. A 3D scene: imported glTF level, dynamic lighting, shadows, a physics-driven character controller
