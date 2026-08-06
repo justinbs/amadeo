@@ -184,6 +184,12 @@ impl Component for CharacterMotion {}
 /// registers the type it holds — otherwise `describe` and `amadeo check` disagree with what actually
 /// loads.
 ///
+/// **Call this before loading a scene that authors either component.** Registration is what lets a
+/// scene file name a type, so `install` after `load_scene` fails with *no component named
+/// `CharacterController` is registered*. `games/atrium` was written the wrong way round the first
+/// time; the error names the module, which is what made it a two-minute problem rather than a
+/// mystery.
+///
 /// # Errors
 ///
 /// [`RegistryError`] if a game has already registered a different type under one of these names.

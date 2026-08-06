@@ -500,8 +500,15 @@ fn a_face_turned_away_from_the_light_is_darker_than_one_facing_it() {
     //
     // Straight on, the front face is square to the light and fully lit. Turned, the surface at the
     // centre is at an angle to it, so `N·L` is smaller and the pixel is darker.
+    //
+    // **A mid-grey box rather than a white one**, and that is not cosmetic. A white box square to
+    // the light comes out at 255 — *clipped* — so the comparison was against a value that had run
+    // out of room to be brighter, and any change that lifted the darker side shrank the gap for no
+    // reason to do with normals. Raising the ambient term when shadows landed did exactly that and
+    // this test failed at a difference of 13. Grey keeps both readings inside the range, which makes
+    // the assertion about the lighting rather than about where the clip happens to be.
     let turn = |degrees: f32| {
-        let mut world = a_lit_box([1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 2.0]);
+        let mut world = a_lit_box([0.5, 0.5, 0.5, 1.0], [2.0, 2.0, 2.0]);
         for entity in world.entities() {
             if world.get::<Mesh>(entity).is_some() {
                 let mut transform = Transform::at(0.0, 0.0);

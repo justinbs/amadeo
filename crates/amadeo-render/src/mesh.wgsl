@@ -155,10 +155,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let towards_light = -normalize(view.light_direction.xyz);
     let lambert = max(dot(normal, towards_light), 0.0);
 
-    // A small ambient term so an unlit face is dark rather than pure black. Not a lighting model --
-    // it is a stand-in until there is something better, and it is deliberately small enough to read
-    // as "in shadow" rather than as "flat".
-    let ambient = 0.03;
+    // A small ambient term so an unlit surface is dark rather than pure black. Not a lighting model
+    // -- it is a stand-in until there is something better.
+    //
+    // **Raised from 0.03 to 0.12 when shadows arrived**, and the reason is worth keeping. Before
+    // shadow maps, the only ambient-only pixels were faces turned away from the light, which are
+    // small and read fine as near-black. With shadows, whole areas of *floor* are ambient-only, and
+    // at 0.03 they came out as holes in the world rather than as shade. Real outdoor shadow is
+    // roughly a tenth to a fifth of direct sun, because the sky is also a light -- which is what
+    // this is standing in for, and what should eventually replace it as an authored sky colour on
+    // `Environment`.
+    let ambient = 0.12;
 
     // Shadow multiplies the *direct* light only. Ambient is deliberately left out of it: a surface
     // in shadow is still lit by the sky, and multiplying ambient too would make every shadow a

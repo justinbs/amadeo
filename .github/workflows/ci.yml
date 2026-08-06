@@ -128,6 +128,23 @@ jobs:
           ./target/debug/amadeo.exe check games/vault/assets/looks/corridor_dark.environment --package vault
           ./target/debug/amadeo.exe check games/vault/assets/meshes/wall_panel.mesh --package vault
 
+      # Every one of the Atrium's files, and the asset files are the point rather than the level.
+      #
+      # Three of its materials were missing a required field. Nothing failed: `load_materials` skips
+      # an asset that will not parse, so all eleven meshes drew with the default white material and
+      # the room came out looking like an untextured grey box. `check` says exactly which field is
+      # missing in which file -- it just had never been pointed at them, because only the *level* was
+      # in this list. A validator nobody runs is a validator that does not exist.
+      - name: Validate the Atrium's level and every asset it ships
+        shell: bash
+        run: |
+          ./target/debug/amadeo.exe check games/atrium/scenes/atrium.scene --package atrium
+          for asset in games/atrium/assets/meshes/*.mesh \
+                       games/atrium/assets/materials/*.material \
+                       games/atrium/assets/looks/*.environment; do
+            ./target/debug/amadeo.exe check "$asset" --package atrium
+          done
+
       # The first automated coverage the GPU path has ever had. `render.describe` checks what *should*
       # be drawn; this renders offscreen and asserts on the pixels that came back.
       #
@@ -171,7 +188,11 @@ jobs:
             games/vault/assets/prefabs/floor_trap.scene \
             games/quad-demo/scenes/markers.scene \
             games/vault/assets/looks/corridor_dark.environment \
-            games/vault/assets/meshes/wall_panel.mesh
+            games/vault/assets/meshes/wall_panel.mesh \
+            games/atrium/scenes/atrium.scene \
+            games/atrium/assets/looks/atrium.environment \
+            games/atrium/assets/meshes/*.mesh \
+            games/atrium/assets/materials/*.material
 
   docs:
     name: docs build without warnings
