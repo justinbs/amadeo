@@ -72,15 +72,15 @@ texture cache, and the wgpu texture path — **closed invariant I8**, making `Re
 compiler-enforced bound on resources and events and shipping `world.resources`, **shipped snapshots**,
 **built `games/vault` and closed M1**, and then **settled Q7 with prefabs**. ADRs 0022–0029.
 
-**Nineteen crates, one module, and three games**, all tested: `amadeo-derive`, `amadeo-image`,
+**Twenty crates, one module, and three games**, all tested: `amadeo-derive`, `amadeo-image`,
 `amadeo-core`, `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`,
 `amadeo-input`, `amadeo-render`, `amadeo-physics`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`,
-`amadeo-gltf`, `amadeo-jobs`,
+`amadeo-gltf`, `amadeo-jobs`, `amadeo-voxel`,
 `amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
 reserved since session 1 — and `games/quad-demo`, `games/vault` and `games/atrium`.
-**1063 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
+**1072 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
 7 shadow fitting, 12 the Atrium, 13 glTF, 5 profiling, 8 jobs, 6 parallel iteration,
-4 parallel loading);
+4 parallel loading, 8 surface nets);
 fmt, clippy `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated
 determinism job.
 
@@ -127,6 +127,12 @@ Twenty-eight things work end to end today:
   that CI runs on Windows and Linux, so ADR 0036's cross-platform promise is checked rather than
   believed. Behind `--features rapier`, off by default. Verified the collision tests are evidence by
   pointing them at `NullPhysics`: the ball falls to −72 instead of resting at 0.5.
+- **A signed-distance field becomes smooth terrain.** `amadeo-voxel` meshes a field with naive
+  surface nets -- the **fourth producer of mesh data**, and nothing above the loader can tell it from
+  a box or a glTF primitive. A sphere meshes onto its radius, normals point outward, and the same
+  field meshes byte-identically every time, which is what a terrain *collider* being gameplay state
+  requires (ADR 0041). ADR 0042 settles the data model: a generated base plus sparse hashed edits, so
+  a save file is a seed and a diff.
 - **Assets load across threads, and the result is byte-identical.** `load_all_in_parallel` reads
   files on a job pool and fills the store in **key order** at a barrier, so it produces exactly what
   loading them one at a time produces — failure messages included. ADR 0021 forbidding gameplay from
@@ -288,8 +294,14 @@ included, and `AssetStore` derives `PartialEq` so the test compares the whole st
 sample of it. Reading files parallelises better than arithmetic does, because it is mostly waiting on
 the operating system.
 
-**Next: surface-nets terrain**, then chunked streaming — which is where ADR 0041's visual/gameplay
-split gets its first real exercise.
+**Surface-nets meshing is built** -- `amadeo-voxel`, no dependencies, a pure function from a
+signed-distance `Field` to a mesh. **ADR 0042 settles the data model**, which is the half that
+matters: terrain is a **generated base plus a sparse overlay of edits, and only the edits are
+hashed**. An untouched world costs nothing to store or hash; a dug tunnel costs the samples that were
+dug; and a save file is a seed plus a diff rather than gigabytes of voxels.
+
+**Next: chunked streaming** -- where ADR 0041's visual/gameplay split gets its first real exercise,
+and where the apron constraint bites.
 
 **Before that, one loose end worth closing early: export something from Blender and import it.** The
 whole glTF path is built and tested from both ends, but only against `.glb` fixtures constructed in

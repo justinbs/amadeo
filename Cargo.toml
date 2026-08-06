@@ -28,6 +28,9 @@ amadeo-gltf = { path = "crates/amadeo-gltf", version = "0.1.0" }
 # channel and a mutex, and ADR 0041 explains why a work-stealing runtime does not belong under the
 # one thing that must be reproducible.
 amadeo-jobs = { path = "crates/amadeo-jobs", version = "0.1.0" }
+# Signed-distance fields and surface-nets meshing (ADR 0042). No deps: it is a function from a
+# field to a mesh and knows nothing about worlds, assets or rendering.
+amadeo-voxel = { path = "crates/amadeo-voxel", version = "0.1.0" }
 amadeo-core = { path = "crates/amadeo-core", version = "0.1.0" }
 amadeo-reflect = { path = "crates/amadeo-reflect", version = "0.1.0" }
 amadeo-ecs = { path = "crates/amadeo-ecs", version = "0.1.0" }

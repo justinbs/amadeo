@@ -1,0 +1,16 @@
+[package]
+name = "amadeo-voxel"
+description = "Signed-distance fields and surface-nets meshing. Pure geometry, no engine dependencies."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# None, and for the same reason amadeo-gltf and amadeo-image have almost none: this is a function
+# from a field to a mesh. It knows nothing about worlds, entities, assets or rendering, which is
+# what lets it sit at the bottom of the graph and be tested with no engine at all.
+
+[lints]
+workspace = true

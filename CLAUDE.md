@@ -83,6 +83,15 @@ crates/
                      parallelism a pure speedup nothing downstream can observe), or **deliver into a
                      Service** that gameplay cannot see (ADR 0009). `pending()` is diagnostics only:
                      a count that depends on machine speed is what makes a replay diverge.
+✅ amadeo-voxel       signed-distance `Field` -> mesh, by naive surface nets (ADR 0042). No deps at
+                     all. **Sized in samples, not cells** -- `Field::new(n)` holds (n+1)^3 samples
+                     and meshes n^3 cells, because a cell needs its eight corners and the last cell
+                     of a chunk needs the next chunk's data. A chunk without that apron cracks at
+                     every seam, and it reads as a rendering bug. Negative is inside; getting the
+                     sign backwards makes the mesh inside out and it reads as invisible terrain.
+                     Surface nets over marching cubes: fewer triangles, no TransVoxel needed for
+                     seams, and neither can do sharp corners anyway -- so buildings stay BoxMesh and
+                     glTF. **The fourth producer of mesh data**, and nothing above the loader knows.
 — amadeo-math        vectors, matrices, quaternions, rects, curves. No engine deps.
 ✅ amadeo-core        Tick, FIXED_DT, Rng (PCG32), StableHasher (FNV-1a), StableId/NetId/Authority
 ✅ amadeo-reflect     Value tree, TypeInfo schema, TypeRegistry. ADR 0012. Values include maps with
