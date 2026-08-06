@@ -238,22 +238,27 @@ in documents nobody is allowed to correct.
   shapes where determinism is structural: jobs that own their inputs and return through a barrier or
   into a `Service`, and an `Inbox` that drains in **key order rather than completion order**.
   `amadeo-jobs` is built and has no dependencies at all.
-- **Background asset loading.** The first consumer of `amadeo-jobs`. ADR 0021's load barrier already
-  forbids gameplay from observing load state, which is precisely what makes this safe — the
-  groundwork was laid three milestones early.
-- **`par_for_each_mut`** — within-system parallel iteration with a closure constrained to one
-  entity's components, so writes are provably disjoint. Needs one narrow follow-up decision: scoped
-  borrows across a persistent pool want either `rayon` or `unsafe`, and ADR 0008 forbids the second.
-- **Surface-nets terrain.** A signed-distance field becomes a mesh — the **fourth producer of
-  `MeshData`** after `BoxMesh`, `PlaneMesh` and `GltfPart`, which is ADR 0035's bet paying off again.
-  Smooth voxel terrain rather than blocky, and destructible by construction, which is what three of
-  the target games need.
+- ✅ **Background asset loading.** The first consumer of `amadeo-jobs`, and **byte-identical** to the
+  sequential path, failure messages included. ADR 0021's load barrier already forbade gameplay from
+  observing load state, which is precisely what made this safe — groundwork laid three milestones
+  early for a different reason.
+- ✅ **`par_for_each_mut`** — within-system parallel iteration whose closure is `Fn + Sync`, so a
+  captured accumulator does not compile. The `rayon` question was answered by measurement rather than
+  argument: 1.29× at 2,048 rows, 3.35× at 16,384, 5.42× at 131,072, so a persistent pool would only
+  help where this should not be used at all. No dependency taken.
+- ✅ **Surface-nets terrain meshing** — `amadeo-voxel`, the **fourth producer of mesh data** after
+  `BoxMesh`, `PlaneMesh` and `GltfPart`, which is ADR 0035's bet paying off a third time.
+  **ADR 0042** settles the data model: a generated base plus sparse **hashed** edits, so an untouched
+  world costs nothing to hash and a save file is a seed plus a diff.
 - **Chunked streaming.** Which chunks are active is decided **deterministically** from the player's
   position; the work is parallel; the simulation blocks on colliders it needs. ADR 0041 §2 is the
-  rule, and it is the thing most likely to be got wrong.
+  rule, and it is the thing most likely to be got wrong. **Q25 (level of detail) should be decided
+  here rather than before**, because whether a chunk's mesh may depend on its neighbours is the same
+  question both raise.
 - **Frustum culling.** Every mesh is drawn every frame today. This is the single largest open-world
   blocker, and `docs/04` already requires the design not to preclude streaming.
-- **Level of detail**, at least for terrain chunks.
+- **Level of detail**, at least for terrain chunks — **Q25**, deliberately left open by ADR 0042
+  because the honest options depend on how streaming ends up shaped.
 - **`amadeo-math` over glam.** `Mat4` is hand-written scalar — fine for eleven objects, not for
   meshing a field. `docs/02` already specifies glam wrapped so the engine owns its surface.
 - **GPU timestamp queries.** Gate 4 could not measure GPU time at all. With terrain the GPU becomes

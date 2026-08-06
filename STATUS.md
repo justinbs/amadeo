@@ -1,14 +1,17 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-06 (end of session 10)
-**Current phase:** **M0 complete. M1 closed. M2 COMPLETE — all four exit gates met. M2.5 under way**, with every
-expensive decision in it made before its code: ADR 0031 (2D/3D coexistence, and the camera becomes an
-entity), ADR 0033 (the material and shader model), ADR 0034 (the render graph is internal, and a look
-is an asset), ADR 0035 (a mesh is a procedural shape or vertex data), ADR 0036 (physics is
-deterministic before it is fast), **ADR 0037** (a character is a move-and-slide query, and the
-character itself is a module), **ADR 0038** (one shadow map now, and the mode is authored data),
-**ADR 0039** (glTF geometry stays art, the scene graph becomes text), and **ADR 0040** (the profiler
-is a service, and it is always on). All nine are decided *and* built.
+**Last updated:** 2026-08-07 (end of session 11)
+**Current phase:** **M0 complete. M1 closed. M2 COMPLETE — all four exit gates met. M2.5 under way and
+about half built.**
+
+Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
+built: ADR 0031 (2D/3D coexistence, camera becomes an entity), 0033 (material and shader model), 0034
+(render graph is internal, a look is an asset), 0035 (a mesh is a procedural shape or vertex data),
+0036 (physics is deterministic before it is fast), **0037** (a character is a move-and-slide query,
+and the character is a module), **0038** (one shadow map now, the mode is authored data), **0039**
+(glTF geometry stays art, the scene graph becomes text), **0040** (the profiler is a service and is
+always on), **0041** (parallelism is deterministic by construction or absent — resolves Q9), and
+**0042** (terrain is a generated base plus hashed edits).
 
 **M2's four exit gates, all met:**
 
@@ -22,7 +25,32 @@ is a service, and it is always on). All nine are decided *and* built.
    8.3 µs per simulation tick, 125 µs of CPU-side frame preparation, and 2.7% of a frame at gate 3's
    200-body complexity.
 
-**The next milestone is M3.** Read `docs/05-roadmap.md` before starting it.
+## ⚠️ Start here — where M2.5 actually is
+
+`docs/05-roadmap.md` has the milestone in full. Built so far:
+
+| | |
+|---|---|
+| ✅ | **Threading model** — ADR 0041, which resolved **Q9**, the oldest open question |
+| ✅ | **`amadeo-jobs`** — worker pool + `Inbox` draining in key order. No dependencies at all |
+| ✅ | **`par_for_each_mut`** — parallel iteration whose closure cannot be written unsafely |
+| ✅ | **Background asset loading** — byte-identical to the sequential path |
+| ✅ | **`amadeo-voxel`** — surface-nets meshing, and **ADR 0042** for the terrain data model |
+| → | **Chunked streaming** — the next thing, and the one with a trap in it (below) |
+| | Frustum culling, LOD, `amadeo-math` over glam, GPU timestamp queries |
+| | More than one light, textures on materials |
+
+**The next task is chunked streaming, and ADR 0041 §2 is the rule it must obey.** A chunk has two
+products with different rules: its **mesh** is drawn and nothing else, so it may arrive whenever and
+lives in a `Service`; its **collider** is gameplay, because a character stands on it, so *when* it
+arrives changes where the character ends up. Which chunks are active is decided **deterministically**
+from the player's position, and the simulation **blocks** on colliders it needs. A slow machine gets
+a frame hitch and keeps its replay.
+
+**And the apron constraint bites here.** `Field::new(n)` holds `(n+1)³` samples for `n³` cells,
+because meshing the last cell of a chunk needs the next chunk's data. A chunk that samples only its
+own volume cracks at every seam — and it reads as a rendering bug, not a data one. So chunk
+*generation* must run one chunk ahead of chunk *meshing*.
 
 **The agent can see.** `amadeo capture shot.png` launches a game headless, renders it on an offscreen
 GPU and writes a PNG. That closes ADR 0021's "agent's eyes" and gave the GPU path its first automated
@@ -37,11 +65,28 @@ prefabs, and **`games/vault` — a complete small 2D game** have all landed.
 rather than an omission. **ADR 0030 settles what the protocol is for** and fixes the three parts of
 that finding that were genuine holes; the API half stays in `docs/07` by invariant I5. **ADR 0029
 closes Q7** with prefabs, and **ADR 0032 closes Q21** by letting a scene file nest values at all.
-Q3, Q4, Q7, Q10, Q13, Q14, Q16, Q17, Q19, Q21 and Q22 are all closed, and **every question this
-session opened has been closed in it**. Nothing is blocked and nothing is undecided.
+Q3, Q4, Q7, Q10, Q13, Q14, Q16, Q17, Q19, Q21 and Q22 are all closed.
+
+**Q9 closed in session 11 — ADR 0041 — which was the oldest one open**, raised in session 2 and
+answered the way it asked to be: before the first background task rather than after.
+
+**Nothing is blocked.** Seven questions are open and every one of them is a *decision waiting for its
+first real case*, which is the state this project deliberately keeps them in:
+
+| | | |
+|---|---|---|
+| **Q25** | P1 | LOD across chunks at different resolutions — deferred by ADR 0042, decide **with** streaming |
+| **Q23** | P1 | One environment per frame, when a world may hold several cameras |
+| **Q15** | P1 | Modding, and whether ADR 0011 still holds |
+| **Q12** | P1 | `Service: Send + Sync` — ADR 0041 changed the argument without closing it |
+| **Q26** | P2 | `render.describe` cannot see meshes |
+| **Q27** | P2 | A third-person camera clips through walls |
+| **Q28** | P2 | Ambient light is a hardcoded constant |
+| **Q6, Q8, Q11, Q18, Q20** | P2 | Editor process model, entity relations, netcode introspection, unreadable `ActionId`, gate 4's stronger test |
+
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
 
-**Commits are waiting to be pushed** at the end of session 10 — check with
+**Commits are waiting to be pushed** at the end of session 11 — check with
 `git log --oneline origin/main..HEAD`, and see the correction below for why that is the instruction
 rather than a list.
 
@@ -321,8 +366,9 @@ Then, in order:
 4. **PBR**, a normal matrix per instance, more than one light, transparency. All cheap, all isolated
    behind `RenderBackend`, none blocking a gate.
 
-Two things the Atrium turned up that should be done before they bite again — both below: **authored
-ambient / sky light** on `Environment`, and **camera collision** for a third-person rig.
+Two things the Atrium turned up are now written down as **Q28** (authored ambient / sky light) and
+**Q27** (camera collision for a third-person rig), so they are decisions waiting rather than notes
+buried in a status file.
 
 ## Q9 is resolved and M2.5 exists — ADR 0041
 
@@ -963,9 +1009,9 @@ needs no shared code, which matters because `amadeo-cli` deliberately does not d
 
 Worth knowing for next time: "no open decisions left" is a claim that should be checked, not trusted.
 
-**Two things are undecided rather than unbuilt** — Q12 and Q15. All four entries are in
-`docs/06-open-questions.md`; the struck-through two are kept here because their reasoning is still
-worth reading:
+*(This paragraph was written in session 7 and named two open questions. The current list is the table
+near the top of this file — there are seven now, and `docs/06-open-questions.md` is authoritative.
+The struck-through two below are kept because their reasoning is still worth reading.)*
 
 - ~~**Q3 (the last third) — which render pipeline shape.**~~ **Resolved in session 7 — ADR 0023.**
   Sprites batch by `(sort order, texture)`. Decided against measurements, as the question demanded:
@@ -1114,6 +1160,10 @@ Verified on this machine (2026-07-30):
 | **Gotcha — GPU tests in parallel** | Dropping a headless wgpu device **while another is alive** is `gfx-rs/wgpu#6571`: `STATUS_ACCESS_VIOLATION` on Windows, reported against exactly this (parallel tests, headless adapters). Cargo runs tests in parallel by default. `tests/capture.rs` takes a `static` mutex for each device's whole lifetime; CI passes `--test-threads=1` as well. **It only ever failed in CI, never locally** — a real GPU tolerates it and the runner's software adapter does not, so "it passes on my machine" proves nothing here. |
 | **Gotcha — feature unification** | `cargo test --workspace` builds *every* member, so a feature any one of them enables is on for the whole build. `quad-demo` and `vault` enable `amadeo-render/gpu`, which means **the GPU tests run even without `--all-features`** — a CI comment claimed otherwise for months and was wrong. The same rule is why ADR 0036 says physics determinism cannot be a per-game choice. |
 | **Gotcha — rapier 0.34 uses glam** | Not nalgebra. `Rotation` is a `glam::Quat`, and rapier's own `vector![]` macro still builds an **nalgebra** vector its API will not accept. Use `Vector::new`. Both are "a vector" and only the compiler notices. |
+| **Gotcha — a `Field` is sized in samples** | `Field::new(n)` holds `(n+1)³` samples and meshes `n³` cells. A chunk that fills only its own volume **cracks at every seam**, and the symptom points at the renderer rather than at the data. Chunk *generation* therefore has to run one chunk ahead of chunk *meshing*. |
+| **Gotcha — an asset that will not parse is skipped in silence** | By design (ADR 0021): a missing asset must be survivable. So a `.material` with one field missing produces no error and a uniformly white scene. `amadeo check <file>` names the field — but only if you point it at the *asset* files, not just the level. CI does both games now. |
+| **Gotcha — `Grade::contrast` above 1.0 crushes shadows to black** | `(colour - 0.5) * contrast + 0.5` drives near-black values negative and they clamp to zero. Inherent to a pivot with no toe. Invisible before shadows existed, because nothing in a scene was ever that dark. |
+| **Gotcha — `amadeo check` and `fmt` need `--package`** | Both validate against a *game's* registered components (ADR 0016). Run without `--package` and they check against whatever `amadeo.toml` names, which will report every component of the game you meant as unregistered. |
 | **Gotcha — line endings** | `core.autocrlf` is **true** by default on Windows and on GitHub's windows-latest runners. It rewrites committed LF into CRLF on checkout, breaking byte comparisons of `.replay` and `.scene` fixtures — invariant I2. `.gitattributes` pins `eol=lf`; **do not remove it**. This machine has `core.autocrlf=false` set locally, which is why it reproduced nowhere here. Tell: only the *Windows* CI jobs fail, because Linux checkout does no conversion. |
 
 ## CI

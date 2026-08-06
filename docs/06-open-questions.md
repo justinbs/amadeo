@@ -92,6 +92,100 @@ became a target requirement (`docs/00-vision.md` § Divergent).
 
 ---
 
+## Q25 · P1 · Level of detail across chunks at different resolutions
+
+**New in session 11, and deliberately deferred by ADR 0042 rather than overlooked.**
+
+Surface nets avoids marching cubes' seam problem *between chunks at the same resolution*: a chunk
+that samples one cell into its neighbour already agrees with it about where the surface is. **Chunks
+at different resolutions still crack**, because a coarse chunk's samples do not line up with a fine
+one's.
+
+This has to be answered before terrain covers real distances, because every open-world target needs
+distant chunks to be cheaper than near ones.
+
+### The honest options, none of them free
+
+- **Skirts.** Each chunk grows a downward-facing lip at its border, hiding the crack rather than
+  fixing it. Cheapest by a long way, universally used, and visibly wrong at glancing angles.
+- **Transition cells at the boundary**, the surface-nets equivalent of TransVoxel. Correct, and it
+  means a chunk's mesh depends on its neighbours' *resolutions*, not just their samples — which
+  couples chunks in a way the current design deliberately avoids.
+- **Sample the coarse level everywhere near a boundary**, so both sides agree. Simple and correct,
+  and it gives up the saving exactly where chunk counts are highest.
+- **Clipmaps** — concentric rings at fixed resolutions centred on the camera. Very well understood
+  for heightfields, much less so for a full 3D field.
+
+### Why it cannot be decided yet, honestly
+
+Which one is right depends on how streaming ends up shaped — specifically whether a chunk's mesh may
+depend on its neighbours at all. That is the same question chunked *generation* order raises, and
+answering both together is cheaper than answering either alone. **Decide with the streaming system,
+not before it.**
+
+Nothing is blocked: terrain at one resolution works today.
+
+---
+
+## Q26 · P2 · `render.describe` cannot see meshes
+
+**Found in session 10 by reaching for it and getting nothing.** Asked what `games/atrium` was
+drawing, it reported a default orthographic camera and zero entities — because it only knows the 2D
+path: quads and sprites.
+
+That made it useless for the one debugging job it was actually reached for, and the workaround was
+writing a throwaway test that printed `FrameData` by hand.
+
+**It matters beyond that afternoon.** `render.describe` is the agent's main way of seeing a frame
+*without* a GPU, and `docs/03` makes "what is on screen" a pillar. An editor will need it in M4, and
+by then 3D is most of what there is to see.
+
+The shape is probably obvious — a `DrawnKind::Mesh` alongside the existing kinds, carrying the mesh
+id, the resolved material and the model matrix. What needs thought is what "on screen" means for a
+perspective camera, since the existing `visible` / `off_screen` split is computed against a 2D
+viewport rectangle.
+
+---
+
+## Q27 · P2 · A third-person camera clips through walls
+
+**Found in session 10 by `games/atrium`**, whose follow camera is a child entity at a fixed offset.
+Backing the character into a wall pushes the camera outside the room, and the world turns inside out.
+
+This is a solved problem everywhere — a spring arm that shortens the offset when something is in the
+way — and **`PhysicsBackend::move_shape` is already the right tool**: ADR 0037 explicitly names "a
+camera that must not clip through a wall" as something the query describes.
+
+The decision is not *how*, it is **where**. A camera rig is not geometry and is not gameplay; it sits
+in the same awkward place `CharacterController` did. `docs/00-vision.md` says the camera rig must be
+separate from the character controller because the targets are a mix of first- and third-person, so
+this is probably a second module — `modules/amadeo-camera` — rather than anything in `crates/`.
+
+Worth deciding when a game needs it. The Atrium tolerates it because you can see the whole room.
+
+---
+
+## Q28 · P2 · Ambient light is a hardcoded constant, and shadows made that visible
+
+**Found in session 10 the moment shadows landed.** Before shadow maps the only ambient-only pixels
+were faces turned away from the light — small, and fine as near-black. With shadows, whole areas of
+*floor* are ambient-only, and at 0.03 they came out as holes in the world rather than as shade.
+
+Raised to 0.12, which is a stopgap and is marked as one in `mesh.wgsl`. **The real answer is an
+authored sky colour on `Environment`**, because ambient is standing in for the sky being a light —
+and `Environment` is already the place a game says what its look is (ADR 0034).
+
+Two things to decide with it: whether ambient is a flat colour or a simple sky/ground gradient (the
+cheap version of image-based lighting, and the one that makes an outdoor scene stop looking flat);
+and whether it belongs to the `Environment` asset or to a light entity.
+
+Also found alongside it, and worth remembering: **`Grade::contrast` above 1.0 crushes shadows to pure
+black**, because the operation is `(colour - 0.5) * contrast + 0.5` and near-black values go negative
+and clamp. Inherent to a pivot with no toe. Nothing in a scene had ever been that dark before shadows
+existed.
+
+---
+
 ## Q15 · P1 · Modding, and whether ADR 0011 still holds
 
 **Raised session 7, when the target list went from three games to eight.** Four of the five
@@ -356,6 +450,17 @@ that can keep it, and stays visible to introspection — which is the actual los
 
 Decide when the first real offender lands, which is M3 at the latest. Do not decide speculatively.
 
+**Session 11 update: ADR 0041 changed the argument without resolving the question.** `Send + Sync` on
+`Service` was added speculatively so the *scheduler* could run systems in parallel later — and
+ADR 0041 decided it never will: system execution stays sequential and ordered, because the whole
+simulation tick is 8.3 µs and parallelising it would optimise nothing.
+
+So the original justification for the bound is gone. What replaced it is a better one: a `Service` is
+where a background job's results land (ADR 0041), and `JobPool` and `Inbox` both genuinely cross
+threads. The bound is now **earned rather than speculative**, which makes the `LocalService` prior
+stronger rather than weaker — the things that need to be `Sync` really do, and the things that cannot
+be have no reason to pretend.
+
 ---
 
 ## Q6 · P2 · Editor in-process or separate process?
@@ -477,13 +582,33 @@ are a significant ECS complexity increase and it's not yet clear we need them.
 
 ---
 
-## Q9 · P2 · Threading model, precisely
+## ~~Q9~~ · **Resolved — ADR 0041.** Parallelism is deterministic by construction, or it does not exist
 
-Which pools exist, what runs off the simulation thread (asset loading, audio mixing, render
-submission), and exactly how results re-enter the deterministic zone in a fixed order.
+Raised in session 2, resolved in session 11 — and resolved the way it asked to be. It said *"decide
+before adding the first background task, not after"*, and Justin asking for multithreaded asset
+loading and parallel ECS queries **was** the first background task.
 
-This is where determinism is most commonly lost in real engines. Decide before adding the first
-background task, not after.
+**The research found three specific ways parallelism destroys determinism**, all demonstrated in
+shipping engines: Bevy's own `ParallelCommands` documents that command order depends on thread count;
+floating-point addition is not associative, so parallel reduction changes results (the same wall
+ADR 0036 hit); and whether a job finished by tick N depends on the wall clock, which diverges a
+replay even when every computation was correct.
+
+**But ECS is a viable deterministic concurrency model on a precise condition**: each parallel unit
+must write only its own entity's components, with no shared accumulator and no cross-entity reads.
+That is enforceable by API shape, which is what ADR 0041 does — the unsafe shapes are made
+*unspellable* rather than discouraged.
+
+**And one measurement set the priority.** Gate 4 says the whole simulation tick is 8.3 µs. Parallel
+*system execution* would optimise something that costs nothing; asset loading and chunk meshing are
+where the work is, and neither is a gameplay system.
+
+What was built: `amadeo-jobs` (barrier or `Service`, `Inbox` draining in key order),
+`par_for_each_mut` (`Fn + Sync` closure), background asset loading. System execution stays sequential
+and ordered.
+
+**Q12 is not moot** — see below. But `Service: Send + Sync` is now an earned bound rather than a
+speculative one.
 
 ---
 
