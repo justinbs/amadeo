@@ -113,6 +113,15 @@ crates/
                      fog waits for a depth buffer. Still to come: bloom's blur passes, render targets
                      on a camera, and per-camera post (**Q23** -- one look per frame today, from the
                      camera that draws first).
+                     **Shadows (ADR 0038)** are the first thing that *reads* a depth texture rather
+                     than only writing one. `ShadowMode` on `DirectionalLight` is an enum shipping
+                     `Off | Orthogonal`; cascades arrive as a third variant, which is why one map now
+                     is not a shortcut to undo. The box is centred on the camera and snapped to a
+                     grid anchored at the **world origin** -- anchoring it on the camera is snapping
+                     to something that moves, and shadow edges crawl. A shadow map is its own
+                     `TargetFormat` variant, not a flag: it needs `TEXTURE_BINDING` and the scene
+                     depth buffer must not ask for it, and the transient pool matches on format.
+                     One casting light per view, directional only.
 — amadeo-audio       mixer, buses, spatialization (null backend required)
 🟡 amadeo-physics    RigidBody/Collider/Velocity/Gravity as reflected, HASHED data, the
                      PhysicsBackend trait, and NullPhysics -- which integrates velocity and gravity

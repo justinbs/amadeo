@@ -1179,6 +1179,54 @@ move rather than aiming below it.
 small tolerance, compare the two numbers. If the per-tick movement exceeds the tolerance, it will
 tunnel, and it will do it slowly enough to be mistaken for a feel problem.
 
+### How a shadow gets onto the floor
+
+Worth reading before touching lighting, because it is the first thing in the engine where one pass
+*reads* what another pass measured.
+
+A **shadow map** is the scene drawn from the light's point of view, storing only depth — how far the
+light can see before something blocks it. Shading a pixel then asks "is anything closer to the light
+than me?" If yes, it is in shadow. Four steps:
+
+1. **`fit_shadow` works out what box the map covers** (`amadeo-render/src/lib.rs`). A directional
+   light has no position, so the box is centred on the *camera* — that is where resolution is needed.
+   It comes out as a `ShadowData` on the frame's `LightData`, so the backend is handed a finished
+   matrix and never reaches back into the world.
+2. **The graph declares a shadow pass** writing a `ShadowMap32` transient, and the view pass declares
+   it in `reads`. The ordering is *derived from that*, not from writing them in order.
+3. **`run_shadow_pass` draws the meshes** through a depth-only pipeline with no fragment stage and no
+   colour attachment — the only pass in the engine shaped like that.
+4. **`mesh.wgsl` samples it** with `textureSampleCompare`, which does the comparison in hardware
+   across four neighbouring texels at once. That is a soft edge for the price of one sample.
+
+**The three settings and what they trade.** `shadow_distance` is the half-extent of the box, and it
+is the one that matters most: the map is a fixed number of pixels stretched over it, so doubling the
+distance halves the detail. `shadow_resolution` costs memory as its *square* — 4096 is four times
+2048, not twice. `shadow_bias` fixes acne (see below) and too much of it makes shadows detach from
+what cast them.
+
+**Why `ShadowMode` is an enum with two variants.** Cascades — splitting the camera's range into
+slices with a map each — are what fixes blocky shadows over large outdoor scenes, and they arrive as
+a third variant. The mode being *data* is why that is an addition rather than a rewrite; ADR 0038 has
+the full argument, and it is the same one `PixelFormat` shipped with.
+
+### Three shadow defects with names, and what this engine does about each
+
+These have names because everyone hits them. If shadows ever look wrong, it is almost certainly one
+of these three.
+
+| Defect | What you see | What is done about it |
+|---|---|---|
+| **Acne** | A lit surface striped with thin shadows of itself | Front-face culling in the shadow pass, plus a slope-scaled bias |
+| **Peter-panning** | A shadow detached from the object, which floats | Keep `shadow_bias` small; the culling above is what lets it be |
+| **Shimmer / crawl** | Edges fizzing and swimming as you walk, with nothing moving | Snapping the box to a **world-anchored** texel grid |
+
+The third is the one worth understanding, because the fix has a trap in it. Snapping the box to a
+grid stops each shadow-map pixel covering a slightly different patch of world every frame. But the
+grid must be anchored at the **world origin** — snapping relative to the camera is snapping to
+something that moves, which is no snapping at all. That was got wrong once while deriving it, and
+`a_shadow_box_moves_in_whole_texels` is what pins it.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

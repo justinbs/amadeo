@@ -1,17 +1,19 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-05 (end of session 10)
+**Last updated:** 2026-08-06 (end of session 10)
 **Current phase:** **M0 complete. M1 closed. M2 well along, with every expensive decision in it made
 before its code** — ADR 0031 (2D/3D coexistence, and the camera becomes an entity), ADR 0033 (the
 material and shader model), ADR 0034 (the render graph is internal, and a look is an asset), ADR 0035
 (a mesh is a procedural shape or vertex data), ADR 0036 (physics is deterministic before it is fast),
-and now **ADR 0037** (a character is a move-and-slide query, and the character itself is a module).
-All six are decided *and* built.
+**ADR 0037** (a character is a move-and-slide query, and the character itself is a module), and
+**ADR 0038** (one shadow map now, and the mode is authored data). All seven are decided *and* built.
 
-**Two of M2's four exit gates are met, and gate 1 is halfway.** 3D renders with meshes, depth and
-lighting; post-processing works; rapier physics is in with a cross-platform determinism test that
-pins a literal hash; and **something walks around and walls stop it**. What remains for gate 1 is
-shadow maps and glTF import. Gate 4 — the frame-time budget — has not been looked at by anyone.
+**Two of M2's four exit gates are met, and gate 1 is three parts of four.** 3D renders with meshes,
+depth and lighting; post-processing works; rapier physics is in with a cross-platform determinism
+test that pins a literal hash; **something walks around and walls stop it**; and **things cast
+shadows**. What remains for gate 1 is glTF import — but the more useful next step is a demo scene,
+because none of the three built parts have ever been seen together. Gate 4, the frame-time budget,
+still has no work against it at all.
 
 **The agent can see.** `amadeo capture shot.png` launches a game headless, renders it on an offscreen
 GPU and writes a PNG. That closes ADR 0021's "agent's eyes" and gave the GPU path its first automated
@@ -66,11 +68,12 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-input`, `amadeo-render`, `amadeo-physics`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`,
 `amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
 reserved since session 1 — and `games/quad-demo` and `games/vault`.
-**983 tests passing with `--all-features`** (13 of them GPU capture tests, 7 rapier, 9 character);
+**1001 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
+7 shadow fitting);
 fmt, clippy `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated
 determinism job.
 
-Twenty-four things work end to end today:
+Twenty-five things work end to end today:
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -113,6 +116,12 @@ Twenty-four things work end to end today:
   that CI runs on Windows and Linux, so ADR 0036's cross-platform promise is checked rather than
   believed. Behind `--features rapier`, off by default. Verified the collision tests are evidence by
   pointing them at `NullPhysics`: the ball falls to −72 instead of resting at 0.5.
+- **Things cast shadows.** A block above a floor darkens the floor beneath it — a real shadow map,
+  drawn from the sun's point of view, sampled with hardware comparison filtering and softened over
+  nine taps. Off by default; `ShadowMode::Orthogonal` on a `DirectionalLight` turns it on, and
+  cascades are a third variant of that enum rather than a rewrite (ADR 0038). The box follows the
+  camera and is snapped to a world grid so edges do not crawl. **Measured, not assumed:** 46 in
+  shadow against 235 in light, and 235 in both with shadows off.
 - **Something walks around, and walls stop it.** A capsule driven by named input actions accelerates
   to speed, turns, jumps only when it is standing on something, slides along a wall instead of
   stopping dead, and lands back on the floor. `CharacterController` and `CharacterMotion` are
@@ -230,18 +239,24 @@ the only evidence available was a push.
 
 ## The single most important thing to do next
 
-**Shadow maps.** Gate 1 has four parts and two are now done — dynamic lighting landed in session 9,
-and the character controller landed in session 10. What is left is shadows and glTF import, and
-shadows are the harder of the two because they are the first thing that will **read** the depth
-buffer rather than only write to it.
+**A gate-1 demo — a small 3D room you can walk around in.** Three of gate 1's four parts are now
+built and *none of them have ever been seen together*: lighting (session 9), the character controller
+and shadows (session 10). Every claim below is asserted by headless tests and single-purpose GPU
+captures.
+
+This is the same bet the roadmap made in M1, and it paid: `games/vault` found things about the scene
+format that no amount of reasoning had. A room with a floor, walls, a light casting shadows and a
+character walking around is the cheapest way to find what this stack is actually awkward at — and it
+is also the only thing that will show whether the shadows *look* right, as opposed to being darker in
+the pixel a test samples.
 
 Then, in order:
 
-1. **Shadow maps.** The depth texture's `bind_group` is deliberately `Option::None` today — see the
-   wrinkle recorded further down — so the compiler will ask about every place that assumed it could
-   sample a transient. That is the design working, not an obstacle.
-2. **glTF import.** ADR 0035 made this a new *producer* of `MeshData`, so nothing above the loader
-   changes — which is why it could wait this long.
+1. **glTF import**, the last part of gate 1. ADR 0035 made this a new *producer* of `MeshData`, so
+   nothing above the loader changes — which is why it could wait this long.
+2. **Gate 4: frame time within a declared budget, numbers written down.** Still nobody has looked at
+   it, and it is now the only gate with no work against it at all. ADR 0036 says it must be measured
+   knowing physics uses one core.
 3. **Collision events into `amadeo-events`**, which turns a sensor into a gameplay trigger. The
    Vault's sigils are exactly this shape, done by hand today. This is also what would let the
    character report what it bumped into: `move_shape` already receives per-collision callbacks from
@@ -249,10 +264,59 @@ Then, in order:
 4. **PBR**, a normal matrix per instance, more than one light, transparency. All cheap, all isolated
    behind `RenderBackend`, none blocking a gate.
 
-**A gate-1 demo does not exist yet.** Every claim below is asserted by headless tests rather than by
-a game you can walk around in. Building one — a small 3D room with a floor, walls and a character —
-is the cheapest way to find what the controller is awkward at, on the same reasoning that made
-`games/vault` worth building in M1.
+## Shadows landed — ADR 0038
+
+**The first thing in this engine that reads a depth texture rather than only writing one**, which
+`STATUS.md` had carried as a known wrinkle since the mesh pass.
+
+**The framing was about data again, for the sixth time in this subsystem.** `RenderBackend` isolates
+the shader completely, so *how* shadows are computed was never the expensive part. The field on
+`DirectionalLight` is: it is authored, it is hashed, and scene files carry it.
+
+**The research is what settled the scope.** Godot ships single-map ("Orthogonal") as a real supported
+mode alongside 2 and 4 splits — not as a stepping stone — and Unity and Unreal both expose cascade
+count as an ordinary setting. Nobody treats one-versus-many as an architectural fork, because it is
+not one. So `ShadowMode` ships `Off | Orthogonal` and cascades become a third variant: **one map now
+is a value of a field that has to exist anyway, not a shortcut to undo.** Same argument `PixelFormat`
+shipped with under ADR 0026.
+
+Justin was given three options and took the recommendation.
+
+**What is built:** the shadow pass, a sampleable depth format, hardware comparison sampling, 3×3 PCF
+softening, slope-scaled bias, front-face culling in the shadow pass, and world-anchored texel
+snapping. Off by default, so a game that never asks pays a 1×1 placeholder texture and a uniform
+branch.
+
+**Its honest limitation**, which is the mode's rather than a defect: one map stretched over a large
+outdoor scene gives every shadow-map pixel a lot of ground, and edges go blocky. That is what
+cascades fix, and where they will go.
+
+### Four things in it worth not rediscovering
+
+- **The snap grid must be anchored at the world origin, not the camera.** Got this wrong once while
+  deriving it. Snapping the box relative to the camera is snapping to something that moves, which is
+  no snapping at all — and without snapping every shadow edge crawls and fizzes as the player walks,
+  with nothing in the scene moving. `a_shadow_box_moves_in_whole_texels` pins it.
+- **A shadow map is its own `TargetFormat` variant, not a flag on `Depth32`.** They are the same wgpu
+  format and differ in what they are *for*: one needs `TEXTURE_BINDING` and the other must not ask
+  for it, and `assign_transients` matches on `(width, height, format)` — so without distinct tags the
+  two could be handed the same texture and one would be missing the usage it needs.
+- **`PooledTexture::bind_group` stays an `Option`.** The old note predicted shadows would be what
+  finally sampled a depth texture and the `Option` would go away. Half right: there turned out to be
+  *two* kinds of depth texture, and only one is sampled. The scene depth buffer still gets none.
+- **Front-face culling in the shadow pass is the cheapest acne fix there is.** Recording the far side
+  of each object moves the stored depth away from the surface being lit, so a lit surface stops
+  shadowing itself. Paired with a **slope-scaled** bias, because a surface seen edge-on by the light
+  spans far more depth per texel than one facing it square — one flat bias forces a choice between
+  acne on slopes and peter-panning on flat ground.
+
+### And it was verified by watching it fail
+
+The floor under a floating block reads **46** with shadows on and **235** with them off, against a
+lit floor of **235** in both. Measured before believing the green.
+`the_same_scene_without_shadows_is_evenly_lit` keeps that control in the suite rather than as
+something done once by hand — the same discipline session 9 arrived at the expensive way, and the
+second session running where it is built in rather than restated.
 
 ## The character controller landed — ADR 0037
 
@@ -328,8 +392,10 @@ rather than done once by hand.
 ## Where M2's exit gate actually stands
 
 **Gate 1** — "an imported glTF level, dynamic lighting, shadows, and a physics-driven character
-controller you can walk around with". Lighting ✅ (session 9), character controller ✅ (session 10),
-**shadows and glTF import remain**. No demo scene exists yet; see the note above.
+controller you can walk around with". Lighting ✅ (session 9), character controller ✅ and shadows ✅
+(session 10), **glTF import remains**. **No demo scene exists yet, and none of the three built parts
+have ever been seen together** — see the note at the top, which is why that is now the next thing
+rather than the last part of the gate.
 
 **Gate 2** — a 2D scene from M1 still renders unchanged. ✅ Holds: `games/vault` is untouched and its
 tests, replays and capture all still pass.
@@ -390,33 +456,32 @@ ADR 0035's data half, the whole CPU side, and the mesh pass are all built. 3D re
    only the backend knows the target size. `View` deliberately carries the camera's transform rather
    than a finished view-projection for that reason.
 
-#### One wrinkle already found by reading, before writing any of it
+#### The wrinkle this section predicted, and how it actually resolved
 
-**A depth texture cannot use the transient pool's existing bind group.** `create_transient` builds
-one against `texture_layout`, which declares `TextureSampleType::Float` — correct for every transient
-so far, all of which are colour images that a later pass samples. A depth texture's sample type is
-`Depth`, so creating that bind group against it is a wgpu validation error at *creation*, not at
-draw, which makes it look like an allocation bug rather than a layout one.
+The previous version predicted that **shadow maps or fog would be what finally sampled a depth
+texture**, and that when they did, `PooledTexture::bind_group`'s `Option` would force the compiler to
+ask about every place that assumed it could. Shadows landed in session 10, and that is half right —
+worth recording, because the half that was wrong is the interesting one.
 
-Two ways out, and the second is better: give `PooledTexture::bind_group` an `Option` and leave it
-`None` for depth (nothing samples the depth buffer until shadow maps or fog need it), or give depth
-its own layout. **Prefer the `Option`** — it is honest about the fact that nothing reads it yet, and
-the day something does, the compiler asks about every place that assumed it could.
+**The `Option` survives rather than going away.** There turned out to be *two* kinds of depth
+texture: the scene depth buffer, which is only ever attached, and a shadow map, which is attached and
+then sampled. They are the same wgpu format and want different usages, so they became **two
+`TargetFormat` variants** rather than one with a flag. The shadow map gets a bind group built against
+a comparison layout; the scene depth buffer still gets none, exactly as before.
 
-Related: `assign_transients` matches on `(width, height, format)`, so a depth transient will never be
-handed a colour texture by accident. That was luck rather than design, and is worth keeping.
+The related note — that `assign_transients` matches on `(width, height, format)` so a depth transient
+can never be handed a colour texture — turned out to be **load-bearing rather than lucky**. It is
+what keeps a shadow map and a scene depth buffer of the same size from sharing a texture, which would
+leave one of them missing the usage it needs. `a_shadow_map_and_the_scene_depth_buffer_never_share_a_texture`
+pins it.
 
-#### And a decision to make when the pass is written
+The other open question here — where depth fits in the graph's vocabulary — was settled when the pass
+was written: `Pass::depth: Option<String>`, cleared by the first view pass and loaded by later ones.
+A shadow pass is the exception that proves it useful, being the only pass with a depth attachment and
+**no colour attachment at all**.
 
-**Where does depth fit into the graph's vocabulary?** A `Pass` currently declares `reads` and
-`writes`, both colour. A depth attachment is neither exactly — it is written, but it is also *state*
-the pass tests against. The simplest honest answer is a `Pass::depth: Option<String>` naming a
-transient, cleared by the first view pass and loaded by later ones, which is the same rule colour
-already follows. Not decided; it is cheap either way, and the graph is internal (ADR 0034) so nothing
-outside the crate can observe the choice.
-
-Then fog and volumetrics, which need the depth buffer from (2), and which M3's exit gate 5 depends
-on. Then shadow maps, culling and glTF import — the last of which ADR 0035 made additive.
+Fog and volumetrics are what still want the depth buffer, and M3's exit gate 5 depends on them.
+Culling and glTF import are the rest — the last of which ADR 0035 made additive.
 
 **Also still open in the renderer, in rough order after the mesh pass:**
 
