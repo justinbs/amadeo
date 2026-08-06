@@ -443,9 +443,15 @@ free (threading, filesystem, and audio all differ).
 
 ## 18. Observability & Profiling — M0 (hooks) → M5 (tooling)
 
-✅ Per-system timings exposed via `profile.frame`.
+✅ Per-system timings exposed via `profile.frame`. **This line was marked ✅ while nothing existed** —
+`docs/protocol/v1.md` had it right and listed the method as pending. Built in session 10 (ADR 0040),
+so it is now true: `Profiler` is a service, so ADR 0009 keeps the clock read it does inside the tick
+structurally out of the state hash.
 ⚠️ **Declared frame budgets per system**, so a regression is an automatic failure rather than a slow
-realization. This is how an agent catches performance problems it cannot feel.
+realization. This is how an agent catches performance problems it cannot feel. **Still ⚠️, and
+deliberately**: an automatic failure on a wall-clock number needs dedicated hardware and a baseline
+history, and a flaky performance gate is one people learn to ignore. Until then the honest version is
+a committed re-runnable measurement — `docs/10-frame-budget.md` and ADR 0040 §4.
 ⚠️ `tracing` spans throughout, plus a chrome-trace export.
 ⚠️ Memory tracking per subsystem.
 

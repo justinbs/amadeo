@@ -1,5 +1,6 @@
 //! The application: a world, its schedules, and the fixed-timestep loop that drives them.
 
+use crate::profile::Profiler;
 use crate::schedule::{Schedule, ScheduleError, Stage, SystemConfig};
 use amadeo_assets::{Assets, ScanError};
 use amadeo_core::{FIXED_DT_NANOS, Rng, StableHash, Tick};
@@ -193,6 +194,10 @@ impl App {
         // Installed by default: a system that wants to spawn or despawn from inside a query needs
         // this, and having to remember to add it would be a confusing first failure.
         world.insert_service(Commands::new());
+        // Also installed by default, so `profile.frame` always has something to report and a game
+        // never has to opt in to being measurable. A service, so nothing it records can reach the
+        // state hash (ADR 0040, ADR 0009).
+        world.insert_service(Profiler::new());
         Self {
             world,
             registry: ComponentRegistry::new(),
@@ -744,6 +749,9 @@ impl App {
         }
 
         self.world.advance_tick();
+        if let Some(profiler) = self.world.service_mut::<Profiler>() {
+            profiler.record_tick();
+        }
         Ok(())
     }
 

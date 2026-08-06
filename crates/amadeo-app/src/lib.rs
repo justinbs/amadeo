@@ -53,6 +53,7 @@
 
 mod agent;
 mod app;
+mod profile;
 mod schedule;
 
 pub use agent::{
@@ -61,4 +62,5 @@ pub use agent::{
     serve_if_requested,
 };
 pub use app::{App, SimRng};
+pub use profile::{Profiler, SystemTiming};
 pub use schedule::{Schedule, ScheduleError, Stage, SystemConfig, system};

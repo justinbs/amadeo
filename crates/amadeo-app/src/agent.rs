@@ -63,6 +63,7 @@ pub const SNAPSHOT_FLAG: &str = "--snapshot";
 pub const APP_METHODS: &[&str] = &[
     "render.capture",
     "replay.status",
+    "profile.frame",
     "scene.check",
     "schedule.list",
     "sim.status",
@@ -520,6 +521,54 @@ fn dispatch(
         // writes it, which is the same division `amadeo check` and `amadeo import` use: the game
         // knows what the world is, the CLI is the side that touches the filesystem (ADR 0016).
         //
+        // Where the frame goes — ADR 0040, and `docs/04-subsystems.md` §18's stated reason: an agent
+        // cannot *feel* a frame-rate problem, so the only way it finds one is by being told.
+        //
+        // Times are **reported, never asserted** here, exactly as `sprite_throughput.rs` established:
+        // a duration is a fact about the machine that produced it, and treating one as a pass/fail
+        // is what makes a perf gate flaky enough that people stop believing it.
+        "profile.frame" => {
+            let Some(profiler) = app.world.service::<crate::Profiler>() else {
+                // Cannot happen through `App`, which installs one — but a world assembled by hand
+                // is a legitimate thing, and saying so beats reporting zeroes as if they were real.
+                return Ok(Json::object([
+                    ("ticks", Json::Int(0)),
+                    ("systems", Json::Array(Vec::new())),
+                    (
+                        "note",
+                        Json::string("no profiler is installed on this world"),
+                    ),
+                ]));
+            };
+
+            let systems: Vec<Json> = profiler
+                .systems()
+                .map(|(label, timing)| {
+                    Json::object([
+                        ("system", Json::string(label)),
+                        ("runs", Json::Int(timing.runs as i64)),
+                        // Microseconds as a float: nanoseconds would overflow the readable range of
+                        // a JSON number for a long session, and milliseconds lose the resolution
+                        // that matters for a system costing a few microseconds.
+                        ("mean_us", Json::Float(timing.mean().as_secs_f64() * 1e6)),
+                        ("worst_us", Json::Float(timing.worst.as_secs_f64() * 1e6)),
+                    ])
+                })
+                .collect();
+
+            Ok(Json::object([
+                ("tick", Json::Int(app.tick().0 as i64)),
+                ("ticks_measured", Json::Int(profiler.ticks() as i64)),
+                (
+                    "mean_tick_us",
+                    Json::Float(profiler.mean_tick().as_secs_f64() * 1e6),
+                ),
+                // The 60 Hz frame this has to fit inside, so a reader does not have to know it.
+                ("frame_budget_us", Json::Float(16_666.7)),
+                ("systems", Json::Array(systems)),
+            ]))
+        }
+
         // There is no `snapshot.restore` method to match, deliberately. Restoring has to happen
         // before the first tick, so it is the `--snapshot` launch flag instead — the same shape,
         // and for the same reason, as `--replay`.

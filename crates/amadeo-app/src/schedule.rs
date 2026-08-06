@@ -1,8 +1,10 @@
 //! System schedules and the deterministic ordering that makes them reproducible.
 
+use crate::profile::Profiler;
 use amadeo_ecs::World;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::time::Instant;
 
 /// When during a tick a system runs.
 ///
@@ -239,13 +241,42 @@ impl Schedule {
         Ok(order.iter().map(|&i| self.systems[i].label).collect())
     }
 
-    /// Runs every system in this stage, in resolved order.
+    /// Runs every system in this stage, in resolved order, timing each one.
+    ///
+    /// # The clock read is safe, and ADR 0009 is why
+    ///
+    /// `CLAUDE.md` trap 2 forbids `Instant::now()` in gameplay, and this reads it twice per system.
+    /// What makes it safe is that the result goes into [`Profiler`](crate::Profiler), which is a
+    /// **service** — structurally outside the state hash, so nothing recorded here can reach a
+    /// replay, a snapshot or a hash. ADR 0040 has the full argument.
+    ///
+    /// A world with no profiler installed pays for neither the clock reads nor the lookup, which is
+    /// what keeps this honest for anything constructing a `World` directly rather than through
+    /// [`App`](crate::App).
     pub fn run(&mut self, world: &mut World) -> Result<(), ScheduleError> {
         self.resolve()?;
         // Cloned so the borrow of `self.order` ends before `self.systems` is borrowed mutably.
         let order = self.order.clone().expect("resolve succeeded");
+
+        // Checked once per stage rather than once per system: the answer cannot change while the
+        // stage runs, and a service lookup per system would cost more than the timing it guards.
+        if !world.has_service::<Profiler>() {
+            for index in order {
+                (self.systems[index].run)(world);
+            }
+            return Ok(());
+        }
+
         for index in order {
+            let label = self.systems[index].label;
+            let started = Instant::now();
             (self.systems[index].run)(world);
+            let elapsed = started.elapsed();
+            // Taken and put back around the *record* rather than held across the system: a system
+            // is handed the whole world and would otherwise find the profiler missing from it.
+            if let Some(profiler) = world.service_mut::<Profiler>() {
+                profiler.record(label, elapsed);
+            }
         }
         Ok(())
     }

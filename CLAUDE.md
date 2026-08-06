@@ -181,7 +181,10 @@ crates/
                      docs/07, which the reply points at. `render.capture` is served by the *host* in amadeo-app, since it needs an App.
                      Mutation pending.
                      ADR 0016, spec in docs/protocol/v1.md.
-✅ amadeo-app         Stage/Schedule, fixed-timestep loop, SimRng, ComponentRegistry, and the agent
+✅ amadeo-app         Stage/Schedule, fixed-timestep loop, SimRng, ComponentRegistry, `Profiler`
+                     (ADR 0040: per-system timings, **always on**; a wall clock does run inside the
+                     tick and that is safe only because a Service is structurally outside the state
+                     hash -- see ADR 0009), and the agent
                      *host* — serve_if_requested reads stdin and answers. The host lives here rather
                      than in amadeo-agent because it needs App and I6 forbids reaching down.
 — amadeo-editor      graphical editor. A CLIENT of amadeo-agent. No privileged access.
@@ -424,4 +427,5 @@ Things that will quietly destroy the design if allowed:
 | `docs/07-working-with-the-code.md` | Setup, commands, and the Rust patterns this engine uses. **Justin's map into the codebase — keep it current.** |
 | `docs/08-assets.md` | You're adding an asset, or wondering why it isn't showing up. |
 | `docs/09-gate-4-describe-is-not-enough.md` | You are about to rely on `describe` telling you how to *write* something, rather than what data exists. Records what M1 exit gate 4 found, and how ADR 0030 closed it. |
+| `docs/10-frame-budget.md` | You want to know what a frame costs, or you are about to claim something is fast. M2 exit gate 4's numbers, measured and re-runnable. |
 | `docs/adr/` | You want to know why something is the way it is. |

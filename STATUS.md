@@ -1,21 +1,28 @@
 # Amadeo — Current Status
 
 **Last updated:** 2026-08-06 (end of session 10)
-**Current phase:** **M0 complete. M1 closed. M2 well along, with every expensive decision in it made
-before its code** — ADR 0031 (2D/3D coexistence, and the camera becomes an entity), ADR 0033 (the
-material and shader model), ADR 0034 (the render graph is internal, and a look is an asset), ADR 0035
-(a mesh is a procedural shape or vertex data), ADR 0036 (physics is deterministic before it is fast),
-**ADR 0037** (a character is a move-and-slide query, and the character itself is a module),
-**ADR 0038** (one shadow map now, and the mode is authored data), and **ADR 0039** (glTF geometry
-stays art, the scene graph becomes text). All eight are decided *and* built.
+**Current phase:** **M0 complete. M1 closed. M2 COMPLETE — all four exit gates met**, with every
+expensive decision in it made before its code: ADR 0031 (2D/3D coexistence, and the camera becomes an
+entity), ADR 0033 (the material and shader model), ADR 0034 (the render graph is internal, and a look
+is an asset), ADR 0035 (a mesh is a procedural shape or vertex data), ADR 0036 (physics is
+deterministic before it is fast), **ADR 0037** (a character is a move-and-slide query, and the
+character itself is a module), **ADR 0038** (one shadow map now, and the mode is authored data),
+**ADR 0039** (glTF geometry stays art, the scene graph becomes text), and **ADR 0040** (the profiler
+is a service, and it is always on). All nine are decided *and* built.
 
-**Three of M2's four exit gates are met.** 3D renders with meshes, depth and lighting;
-post-processing works; rapier physics is in with a cross-platform determinism test that pins a
-literal hash; **something walks around and walls stop it**; **things cast shadows**; and **a glTF
-imports into engine text**. `games/atrium` is a room you can run and walk around in.
+**M2's four exit gates, all met:**
 
-**Gate 4 — a frame-time budget with numbers written down — is the only one left, and nothing has
-been done against it.**
+1. **A 3D scene** — imported glTF, dynamic lighting, shadows, and a physics-driven character
+   controller you can walk around with. `cargo run -p atrium`.
+2. **A 2D scene from M1 still renders unchanged.** `games/vault` is untouched and its tests, replays
+   and capture all still pass.
+3. **A physics-heavy replay reproduces bit-identically across runs and processes**, with a literal
+   state hash pinned on Windows *and* Linux.
+4. **Frame time within a declared budget, numbers written down** — `docs/10-frame-budget.md`.
+   8.3 µs per simulation tick, 125 µs of CPU-side frame preparation, and 2.7% of a frame at gate 3's
+   200-body complexity.
+
+**The next milestone is M3.** Read `docs/05-roadmap.md` before starting it.
 
 **The agent can see.** `amadeo capture shot.png` launches a game headless, renders it on an offscreen
 GPU and writes a PNG. That closes ADR 0021's "agent's eyes" and gave the GPU path its first automated
@@ -71,12 +78,12 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-gltf`,
 `amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
 reserved since session 1 — and `games/quad-demo`, `games/vault` and `games/atrium`.
-**1032 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
-7 shadow fitting, 7 the Atrium, 13 glTF);
+**1043 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
+7 shadow fitting, 12 the Atrium, 13 glTF, 5 profiling);
 fmt, clippy `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated
 determinism job.
 
-Twenty-seven things work end to end today:
+Twenty-eight things work end to end today:
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -119,6 +126,11 @@ Twenty-seven things work end to end today:
   that CI runs on Windows and Linux, so ADR 0036's cross-platform promise is checked rather than
   believed. Behind `--features rapier`, off by default. Verified the collision tests are evidence by
   pointing them at `NullPhysics`: the ball falls to −72 instead of resting at 0.5.
+- **The engine says where the frame goes.** `amadeo call profile.frame --package atrium --ticks 600`
+  reports every system's mean and worst run against the 16.67 ms budget — which exists because an
+  agent cannot *feel* a frame-rate problem and can only be told about one. The `Profiler` is a
+  service, so the wall clock it reads inside the tick is structurally outside the state hash
+  (ADR 0040), and two worlds — one profiled, one not — are asserted to reach the identical hash.
 - **A model becomes a level.** `amadeo import-gltf level.glb` writes a `.scene` for the node
   hierarchy, a `.material` per material, and a `.mesh` per primitive — each a four-line pointer, not
   vertex data. The geometry stays in the `.glb` as source art, exactly as a `.png` already does
@@ -253,19 +265,17 @@ the only evidence available was a push.
 
 ## The single most important thing to do next
 
-**Gate 4 — frame time within a declared budget, numbers written down.** It is now the **only** part
-of M2 with no work against it at all, and `games/atrium` is the obvious thing to measure: the first
-scene with real geometry, real physics and a shadow pass in it at once. ADR 0036 says it must be
-measured knowing physics uses one core.
+**M2 is complete — all four exit gates are met.** The next milestone is **M3**, and
+`docs/05-roadmap.md` is the thing to read before starting it.
 
-**Also worth doing early: export something from Blender and import it.** The whole glTF path is
-built and tested from both ends, but only against `.glb` fixtures constructed in the tests. Nothing
-has yet been through a real digital content creation tool, and that is exactly the sort of gap that
-turns out to contain a surprise. `amadeo import-gltf <file.glb>` is the command.
+**Before that, one loose end worth closing early: export something from Blender and import it.** The
+whole glTF path is built and tested from both ends, but only against `.glb` fixtures constructed in
+the tests. Nothing has yet been through a real digital content creation tool, and that is exactly the
+sort of gap that turns out to contain a surprise. `amadeo import-gltf <file.glb>` is the command.
 
 Then, in order:
 
-1. **Gate 4**, as above, and a real Blender round-trip alongside it.
+1. **A real Blender round-trip**, as above.
 2. **Textures on imported materials.** A generated `.material` carries colours only, so a textured
    model imports untextured. ADR 0026's decode path already exists, so this is wiring rather than
    design.
@@ -278,6 +288,60 @@ Then, in order:
 
 Two things the Atrium turned up that should be done before they bite again — both below: **authored
 ambient / sky light** on `Environment`, and **camera collision** for a third-person rig.
+
+## Gate 4 closed, and M2 with it — ADR 0040
+
+**Numbers, measured and written down**, in `docs/10-frame-budget.md`. Regenerate with
+`cargo test -p atrium --release --test frame_budget -- --nocapture`.
+
+| | Release | Share of a 60 Hz frame |
+|---|---:|---:|
+| One simulation tick, `games/atrium` | **8.3 µs** | 0.05% |
+| CPU-side frame preparation, 1280×720 | **125.5 µs** | 0.75% |
+| Simulation at 211 bodies (gate 3's case) | **450.2 µs** | 2.70% |
+| Simulation at 811 bodies | 1914.3 µs | 11.49% |
+
+Growth is roughly linear and slightly worse — 13.3× the bodies costs 16.3× the time, which is what
+contact-heavy physics looks like. Single-threaded permanently, by ADR 0036.
+
+**The engine had no profiler at all**, so this needed one, and that was the decision: measuring per
+system means the tick loop reads a clock, and `CLAUDE.md` trap 2 names exactly that as a
+nondeterminism leak. Justin was given three options and took the recommendation — **a `Profiler`
+service, always on**.
+
+**ADR 0009's split is what makes it safe**, and it turns out to have been built for exactly this: a
+resource is simulation state and is hashed, a service is machinery and is structurally excluded. So
+nothing the profiler records *can* reach a replay — `World::state_hash` cannot see the service store.
+`profiling_does_not_move_the_state_hash` runs two worlds 180 ticks, one profiled and one not, and
+they agree exactly. **The residual risk is named rather than hidden:** a gameplay system could read
+the service and branch on a duration, and only the golden replays would catch it.
+
+**Always on rather than feature-gated**, because an agent cannot *feel* a frame-rate problem — which
+is `docs/04` §18's own stated reason for wanting `profile.frame`. A profiler compiled out of the
+shipped build would report on a build nobody runs.
+
+### Three things worth keeping
+
+- **`docs/04` §18 marked `profile.frame` ✅ and it did not exist.** `docs/protocol/v1.md` had it right
+  and listed it as pending. Same class of error as the CI comment that asserted the GPU tests did not
+  run — a claim written into a doc and never executed. Both docs are now correct.
+- **The worst run matters as much as the mean, and `SystemTiming` keeps both.** `step_physics`
+  averages 4.4 µs and its worst single run was 102.8 µs — 23× its own average. Still only 0.6% of a
+  frame, so it is a fact rather than a problem, but an average alone would have hidden it entirely.
+- **Nothing fails CI on a timing regression, deliberately.** §6 forbids wall-clock tests, CI runners
+  are variable, and a flaky performance gate is one people learn to ignore — which is worse than not
+  having one. What *is* asserted: scene complexity, run counts, one enormous ceiling at half a frame,
+  and a loose scaling ratio across four body counts an order of magnitude apart, which can tell a
+  slow constant from a bad complexity class where a single measurement cannot. Same split
+  `sprite_throughput.rs` settled.
+
+### What the gate does not answer, stated rather than papered over
+
+**GPU execution time is not measured.** The profiler covers systems and CPU-side frame preparation is
+timed separately, but how long the GPU takes to run the commands it is handed needs **timestamp
+queries** the wgpu backend does not have. On a scene this small the GPU is almost certainly idle —
+and "almost certainly" is not a measurement. Also unmeasured: a scene with real art in it, sustained
+frame time in a real window with vsync, and memory.
 
 ## glTF import landed — ADR 0039
 
@@ -528,9 +592,11 @@ processes. ✅ `crates/amadeo-physics/tests/rapier_determinism.rs` pins a **lite
 runs on Windows *and* Linux, so a cross-platform divergence turns CI red rather than going unnoticed.
 
 **Gate 4** — frame time within a declared budget at a declared scene complexity, numbers written
-down. **Not started, and it is the one nobody has looked at.** ADR 0036 says it must be measured
-knowing physics uses one core; if physics is the limit the answers are fewer bodies, better culling
-or sleeping inactive bodies, **not** relaxing determinism.
+down. ✅ `docs/10-frame-budget.md`, regenerated by
+`cargo test -p atrium --release --test frame_budget -- --nocapture`. Measured knowing physics uses
+one core, as ADR 0036 requires — and it is nowhere near the limit: gate 3's 200-body case costs 2.7%
+of a frame. **GPU execution time is the piece this does not answer**; it needs timestamp queries the
+backend does not have.
 
 `PhysicsBackend::reset` exists for ADR 0028's reason rather than a physics one — see its doc comment.
 
