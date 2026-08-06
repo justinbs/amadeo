@@ -44,7 +44,9 @@ mod query;
 #[cfg(feature = "rapier")]
 mod rapier;
 
-pub use backend::{BodyResult, BodyState, NullPhysics, PhysicsBackend, PhysicsError};
+pub use backend::{
+    BodyResult, BodyState, NullPhysics, PhysicsBackend, PhysicsError, StaticMesh, StaticMeshId,
+};
 pub use components::{BodyKind, Collider, RigidBody, Shape, Velocity};
 pub use query::{ShapeMotion, ShapeMove};
 #[cfg(feature = "rapier")]

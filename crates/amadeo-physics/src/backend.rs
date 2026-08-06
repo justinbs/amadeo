@@ -45,6 +45,22 @@ pub enum PhysicsError {
         /// What was wrong with it, in terms the author can act on.
         reason: String,
     },
+
+    /// Static geometry could not be turned into a collision shape.
+    #[error(
+        "static mesh {id:?} cannot be used for collision: {reason} \
+         ({vertices} vertices, {triangles} triangles)"
+    )]
+    BadGeometry {
+        /// Which mesh.
+        id: StaticMeshId,
+        /// What was wrong with it.
+        reason: String,
+        /// How many vertices it had, which is usually the first thing worth knowing.
+        vertices: usize,
+        /// How many triangles it had.
+        triangles: usize,
+    },
 }
 
 /// One body handed to the backend for a step.
@@ -90,6 +106,68 @@ pub struct BodyResult {
     pub rotation: [f32; 3],
     /// How fast it is now moving.
     pub velocity: Velocity,
+}
+
+/// Names one piece of static collision geometry held by a backend between steps.
+///
+/// Opaque on purpose. The caller decides what the number means — the terrain streamer derives it
+/// from a chunk key — and this crate never interprets it, exactly as `move_shape` knows nothing
+/// about characters (ADR 0037).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct StaticMeshId(pub u64);
+
+/// A triangle mesh that does not move, held by the backend until it is removed.
+///
+/// # Why this does not go through `step` like everything else
+///
+/// [`BodyState`] is `Copy` and is handed over in full every tick, which is what makes a step a pure
+/// function. Terrain cannot work that way: a chunk is thousands of triangles, there are hundreds of
+/// chunks, and copying all of it sixty times a second to say "still there" would dominate the frame.
+///
+/// # And why it is not a [`Collider`] component
+///
+/// [`Shape`](crate::Shape) is `Copy` and `StableHash`. A triangle mesh is neither cheap to copy nor
+/// something ADR 0042 will allow into the state hash — its whole point is that an untouched world
+/// costs nothing to hash, and walking a world's worth of vertices is the opposite of that.
+///
+/// So the geometry travels the way a texture travels to the GPU: **by id, uploaded once**. It is
+/// *derived* data — regenerable from a seed and a sparse edit list — so ADR 0019's rule applies and
+/// it belongs outside the hash. What *is* hashed is the seed and the edits, which are what produced
+/// it.
+///
+/// # This is a mechanism, not terrain
+///
+/// Nothing here knows about chunks, voxels or ground. A static trimesh is equally what an imported
+/// level's collision geometry is, or a bridge, or a piece of scenery too concave for a box.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StaticMesh {
+    /// What to call this geometry, so it can be replaced or removed later.
+    pub id: StaticMeshId,
+    /// Where the mesh's origin sits in the world. Vertices are relative to it.
+    ///
+    /// Separate from the vertices so that a chunk's mesh can be generated in its own local space and
+    /// placed by one translation — which is also what stops a chunk a kilometre out losing precision
+    /// in its vertex coordinates.
+    pub translation: [f32; 3],
+    /// Vertex positions, relative to `translation`.
+    pub vertices: Vec<[f32; 3]>,
+    /// Triangles, as indices into `vertices`.
+    pub indices: Vec<[u32; 3]>,
+    /// How much sliding contact is resisted, as on [`Collider`].
+    pub friction: f32,
+}
+
+impl StaticMesh {
+    /// Whether there is any geometry here at all.
+    ///
+    /// **Worth checking before inserting.** Most chunks of a real world are entirely air or entirely
+    /// rock, and both mesh into nothing — that is the honest answer rather than a failure. A backend
+    /// asked to build a triangle mesh from no triangles has every right to refuse, so the empty case
+    /// is filtered rather than handed over.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.indices.is_empty() || self.vertices.is_empty()
+    }
 }
 
 /// Something that can advance a set of bodies by one fixed tick.
@@ -158,7 +236,40 @@ pub trait PhysicsBackend: std::fmt::Debug + Send + Sync {
     /// level — calls this.
     ///
     /// The default does nothing, which is correct for a backend that caches nothing.
+    ///
+    /// **It also drops every [`StaticMesh`].** That is deliberate: static geometry is derived data,
+    /// so throwing it away loses nothing that cannot be rebuilt, and keeping it across a snapshot
+    /// restore would leave the old world's terrain standing in the new one. Whatever inserted the
+    /// geometry is responsible for putting it back, which the terrain streamer does by noticing it
+    /// is missing.
     fn reset(&mut self) {}
+
+    /// Adds or replaces one piece of static collision geometry, keeping it until it is removed.
+    ///
+    /// Inserting an id that already exists **replaces** it, which is what editing terrain does — a
+    /// chunk that has been dug into is the same chunk with a different surface.
+    ///
+    /// # This is a gameplay-visible operation, and its timing matters
+    ///
+    /// ADR 0041 §2: a chunk's collider is what a character stands on, so *when* it arrives changes
+    /// where the character ends up. A caller must therefore insert the geometry it needs **before**
+    /// the step that needs it, and block if it is not ready yet — a frame hitch that keeps its
+    /// replay, rather than a character falling through a world that had not finished loading.
+    ///
+    /// # Errors
+    ///
+    /// [`PhysicsError::BadGeometry`] if the mesh cannot be built — degenerate triangles, or an index
+    /// pointing past the end of the vertices. An empty mesh is *not* an error to construct but is
+    /// rejected here, because most chunks of a real world are empty and the caller should be
+    /// filtering them with [`StaticMesh::is_empty`] rather than asking.
+    fn insert_static_mesh(&mut self, mesh: StaticMesh) -> Result<(), PhysicsError>;
+
+    /// Removes static geometry. Removing something that is not there is not an error — a chunk that
+    /// never had a collider because it was empty is the common case, not a mistake.
+    fn remove_static_mesh(&mut self, id: StaticMeshId);
+
+    /// How many pieces of static geometry are held. Diagnostics and tests.
+    fn static_mesh_count(&self) -> usize;
 }
 
 /// A backend with no solver: it integrates velocity and detects nothing.
@@ -177,6 +288,12 @@ pub trait PhysicsBackend: std::fmt::Debug + Send + Sync {
 #[derive(Debug, Clone, Default)]
 pub struct NullPhysics {
     steps: u64,
+    /// Static geometry it has been given, tracked but never collided against.
+    ///
+    /// A `BTreeSet` rather than a count so that inserting the same id twice is a replacement here
+    /// too — otherwise this backend and the real one would disagree about how many pieces exist, and
+    /// a test asserting that count would pass against one and fail against the other.
+    static_meshes: std::collections::BTreeSet<StaticMeshId>,
 }
 
 impl NullPhysics {
@@ -276,6 +393,44 @@ impl PhysicsBackend for NullPhysics {
     /// measuring collision response and not an accidentally-correct constant. ADR 0037 §5.
     fn move_shape(&mut self, request: &ShapeMove) -> ShapeMotion {
         ShapeMotion::unobstructed(request)
+    }
+
+    /// Records the geometry and collides with none of it — the same posture as `step` and
+    /// `move_shape`.
+    ///
+    /// **This being useless is what makes the terrain tests evidence.** Pointed at this backend, a
+    /// body dropped onto a meshed chunk falls straight through it, which is what proves the passing
+    /// rapier test is measuring real collision against real triangles rather than a body that
+    /// happened to start at rest. ADR 0037 §5, applied to terrain.
+    fn insert_static_mesh(&mut self, mesh: StaticMesh) -> Result<(), PhysicsError> {
+        // Rejected here as well as in the real backend, so that a caller which forgets to filter
+        // empty chunks fails the same way against both. A null backend that accepted more than the
+        // real one would hide the bug until someone turned rapier on.
+        if mesh.is_empty() {
+            return Err(PhysicsError::BadGeometry {
+                id: mesh.id,
+                reason:
+                    "the mesh has no triangles; filter empty chunks with `StaticMesh::is_empty`"
+                        .to_string(),
+                vertices: mesh.vertices.len(),
+                triangles: mesh.indices.len(),
+            });
+        }
+        self.static_meshes.insert(mesh.id);
+        Ok(())
+    }
+
+    fn remove_static_mesh(&mut self, id: StaticMeshId) {
+        self.static_meshes.remove(&id);
+    }
+
+    fn static_mesh_count(&self) -> usize {
+        self.static_meshes.len()
+    }
+
+    /// Drops the recorded geometry, matching what a real backend does on a reset.
+    fn reset(&mut self) {
+        self.static_meshes.clear();
     }
 }
 

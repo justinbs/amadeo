@@ -29,7 +29,9 @@
 //! throwing the whole world away so the next step rebuilds from the components — which are the
 //! source of truth precisely so that this is possible.
 
-use crate::backend::{BodyResult, BodyState, PhysicsBackend, PhysicsError};
+use crate::backend::{
+    BodyResult, BodyState, PhysicsBackend, PhysicsError, StaticMesh, StaticMeshId,
+};
 use crate::components::{BodyKind, Shape, Velocity};
 use crate::query::{ShapeMotion, ShapeMove};
 use amadeo_core::FIXED_DT;
@@ -58,6 +60,12 @@ pub struct RapierPhysics {
     /// order reaches the order bodies are inserted into rapier's sets, and iteration order deciding
     /// a simulation result is exactly the nondeterminism trap `CLAUDE.md` lists second.
     handles: BTreeMap<Entity, RigidBodyHandle>,
+    /// Which rapier collider each piece of static geometry owns.
+    ///
+    /// A `BTreeMap` for the same reason `handles` is one. These colliders have **no parent body**:
+    /// they are free-standing static geometry, which is what terrain and baked level collision are,
+    /// and giving each a rigid body would cost one per chunk for something that never moves.
+    static_meshes: BTreeMap<StaticMeshId, ColliderHandle>,
 }
 
 /// Hand-written because **rapier's types do not implement `Debug`**, and [`PhysicsBackend`] requires
@@ -104,6 +112,7 @@ impl RapierPhysics {
             broad_phase: DefaultBroadPhase::new(),
             narrow_phase: NarrowPhase::new(),
             impulse_joints: ImpulseJointSet::new(),
+            static_meshes: BTreeMap::new(),
             multibody_joints: MultibodyJointSet::new(),
             ccd: CCDSolver::new(),
             parameters,
@@ -192,7 +201,78 @@ impl PhysicsBackend for RapierPhysics {
     fn reset(&mut self) {
         // Everything, not just the bodies: the caches are what has to go. The next step rebuilds
         // from the components, which is why they are the source of truth.
+        //
+        // This also drops every static mesh, which is correct rather than incidental: terrain is
+        // derived from a seed and a sparse edit list, so it costs nothing to rebuild, and leaving
+        // the old world's ground standing in a restored one would be a real bug.
         *self = Self::new();
+    }
+
+    fn insert_static_mesh(&mut self, mesh: StaticMesh) -> Result<(), PhysicsError> {
+        // Empty is the common case, not a failure -- most chunks of a real world are entirely air
+        // or entirely rock and mesh into nothing. Rapier would refuse to build a triangle mesh from
+        // no triangles, so the caller is told to filter rather than handed an opaque error.
+        if mesh.is_empty() {
+            return Err(PhysicsError::BadGeometry {
+                id: mesh.id,
+                reason:
+                    "the mesh has no triangles; filter empty chunks with `StaticMesh::is_empty`"
+                        .to_string(),
+                vertices: mesh.vertices.len(),
+                triangles: mesh.indices.len(),
+            });
+        }
+
+        // `Vector::new`, never rapier's own `vector![]` macro: in rapier 0.34 that macro still
+        // builds an *nalgebra* vector, which this API will not accept. Both are "a vector" and only
+        // the compiler notices.
+        let vertices: Vec<Vector> = mesh
+            .vertices
+            .iter()
+            .map(|v| Vector::new(v[0], v[1], v[2]))
+            .collect();
+
+        let builder =
+            ColliderBuilder::trimesh(vertices, mesh.indices.clone()).map_err(|error| {
+                PhysicsError::BadGeometry {
+                    id: mesh.id,
+                    reason: error.to_string(),
+                    vertices: mesh.vertices.len(),
+                    triangles: mesh.indices.len(),
+                }
+            })?;
+
+        let built = builder
+            .friction(mesh.friction)
+            .translation(Vector::new(
+                mesh.translation[0],
+                mesh.translation[1],
+                mesh.translation[2],
+            ))
+            .build();
+
+        // Replace rather than accumulate. Digging into a chunk re-meshes it under the same id, and
+        // leaving the old surface behind would make the tunnel you just dug still solid.
+        self.remove_static_mesh(mesh.id);
+        // No parent body: free-standing static geometry. A rigid body per chunk would cost one body
+        // each for something that never moves.
+        let handle = self.colliders.insert(built);
+        self.static_meshes.insert(mesh.id, handle);
+        Ok(())
+    }
+
+    fn remove_static_mesh(&mut self, id: StaticMeshId) {
+        if let Some(handle) = self.static_meshes.remove(&id) {
+            // `true` wakes bodies resting on it. Removing the ground from under a sleeping crate
+            // without waking it would leave the crate hanging in the air until something else
+            // disturbed it -- which reads as a physics bug and is really a bookkeeping one.
+            self.colliders
+                .remove(handle, &mut self.islands, &mut self.bodies, true);
+        }
+    }
+
+    fn static_mesh_count(&self) -> usize {
+        self.static_meshes.len()
     }
 
     /// Move-and-slide, via rapier's own character controller — ADR 0037.
