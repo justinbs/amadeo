@@ -9,8 +9,8 @@ use amadeo_reflect::{
     FieldInfo, Reflect, ReflectError, RegistryError, Replication, TypeInfo, TypeKind, Value,
 };
 use amadeo_render::{
-    BoxMesh, Camera, Environment, EnvironmentCache, Material, MaterialCache, Mesh, MeshCache,
-    MeshData, PlaneMesh,
+    BoxMesh, Camera, Environment, EnvironmentCache, GltfPart, Material, MaterialCache, Mesh,
+    MeshCache, MeshData, PlaneMesh, Vertex,
 };
 use amadeo_scene::PrefabLibrary;
 use std::collections::{BTreeMap, BTreeSet};
@@ -499,6 +499,10 @@ impl App {
         for (id, shape) in self.read_component_assets::<PlaneMesh>(&wanted) {
             built.push((id, shape.tessellate()));
         }
+        // The third producer, and the one ADR 0035 predicted: geometry read out of a glTF file
+        // (ADR 0039). Nothing above this line changes because of it, which is the property that
+        // ADR being written early was for.
+        built.extend(self.read_gltf_meshes(&wanted));
 
         if built.is_empty() {
             return self;
@@ -512,6 +516,78 @@ impl App {
             }
         }
         self
+    }
+
+    /// Reads geometry out of glTF files for every `.mesh` asset that points into one — ADR 0039.
+    ///
+    /// # Each source file is parsed once, however many parts name it
+    ///
+    /// A level exported from Blender is one `.glb` and thirty `.mesh` files pointing into it.
+    /// Parsing per part would read and decode the whole file thirty times, so the parts are grouped
+    /// by source first. That is the only reason this is not three lines inside
+    /// [`App::load_meshes`].
+    ///
+    /// # Nothing here is fatal
+    ///
+    /// A part whose source will not resolve, will not parse, or names an index the file does not
+    /// have is skipped, and `MeshCache` treats it as a mesh that never loaded — an entity naming it
+    /// draws nothing. ADR 0021 requires a missing asset to be survivable, and `MeshCache::get`
+    /// explains why a missing *mesh* has no honest stand-in the way a missing texture does.
+    fn read_gltf_meshes(&mut self, wanted: &BTreeSet<String>) -> Vec<(String, MeshData)> {
+        let parts = self.read_component_assets::<GltfPart>(wanted);
+        if parts.is_empty() {
+            return Vec::new();
+        }
+
+        // The glTF files themselves are assets too, and the barrier applies to them exactly as it
+        // does to anything else (ADR 0021): their bytes have to be resident before this reads them.
+        let sources: BTreeSet<String> = parts.iter().map(|(_, part)| part.source.clone()).collect();
+        self.load_assets(sources.iter().map(String::as_str));
+
+        // Parsed once per source, keyed by id. A `BTreeMap` rather than a hash map for the reason
+        // every registry in this engine uses one: iteration order reaches the mesh cache.
+        let mut documents: BTreeMap<String, amadeo_gltf::GltfDocument> = BTreeMap::new();
+        for source in &sources {
+            let Some(assets) = self.assets() else {
+                break;
+            };
+            let Some(loaded) = assets.store.get(source) else {
+                continue;
+            };
+            let Ok(document) = amadeo_gltf::read(&loaded.bytes) else {
+                continue;
+            };
+            documents.insert(source.clone(), document);
+        }
+
+        let mut built = Vec::new();
+        for (id, part) in parts {
+            let Some(document) = documents.get(&part.source) else {
+                continue;
+            };
+            let Some(mesh) = document.meshes.get(part.mesh as usize) else {
+                continue;
+            };
+            let Some(primitive) = mesh.primitives.get(part.primitive as usize) else {
+                continue;
+            };
+            built.push((
+                id,
+                MeshData {
+                    vertices: primitive
+                        .vertices
+                        .iter()
+                        .map(|vertex| Vertex {
+                            position: vertex.position,
+                            normal: vertex.normal,
+                            uv: vertex.uv,
+                        })
+                        .collect(),
+                    indices: primitive.indices.clone(),
+                },
+            ));
+        }
+        built
     }
 
     /// Turns every material id a [`Mesh`] names into the material behind it — ADR 0033.

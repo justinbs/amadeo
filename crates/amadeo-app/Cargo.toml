@@ -11,6 +11,10 @@ rust-version.workspace = true
 amadeo-agent.workspace = true
 # The asset catalogue is installed on the World before the first tick -- ADR 0021's load barrier.
 amadeo-assets.workspace = true
+# Reads glTF geometry for a `.mesh` asset that points into one (ADR 0039). Here rather than in
+# amadeo-render because the *asset store* is what holds the bytes, and this is the layer that can
+# see both it and MeshData.
+amadeo-gltf.workspace = true
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 amadeo-events.workspace = true
@@ -34,3 +38,6 @@ workspace = true
 
 [dev-dependencies]
 amadeo-input.workspace = true
+# The glTF load-path test places entities, which needs a Transform. Not a real dependency of this
+# crate: `amadeo-render` re-exports what the app itself touches.
+amadeo-transform.workspace = true

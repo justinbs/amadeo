@@ -17,6 +17,11 @@ amadeo-agent.workspace = true
 # side that touches the filesystem -- the same division `scene.check` uses.
 amadeo-assets.workspace = true
 amadeo-scene.workspace = true
+# `import-gltf` reads the file and converts its rotations. Both are here rather than in the engine
+# because the importer is a *tool*: the engine never links a glTF parser for the import path
+# (ADR 0039).
+amadeo-gltf.workspace = true
+amadeo-transform.workspace = true
 
 # `anyhow` is allowed here and in games only (CLAUDE.md section 6). A CLI's errors are printed and
 # read, never matched on, so the typed-error discipline the library crates keep buys nothing here.

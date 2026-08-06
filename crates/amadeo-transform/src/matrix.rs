@@ -323,6 +323,46 @@ impl Mat4 {
         Mat4 { columns }
     }
 
+    /// A rotation matrix from a quaternion `[x, y, z, w]`.
+    ///
+    /// **The bridge from formats that store rotations as quaternions**, which is most of them —
+    /// glTF among them (ADR 0039). ADR 0018 authors Euler degrees because a quaternion cannot be
+    /// hand-written, so an importer converts on the way in, and this plus
+    /// [`Mat4::to_euler_degrees`] is that conversion.
+    ///
+    /// Doing it through a matrix rather than with a direct quaternion-to-Euler formula is
+    /// deliberate: `to_euler_degrees` already owns ADR 0018's exact Z-then-X-then-Y order, and a
+    /// second implementation of that convention is precisely the bug that reads as "the imported
+    /// model is rotated slightly wrong".
+    ///
+    /// A zero-length quaternion has no rotation to describe and gives the identity, rather than
+    /// dividing by zero and filling the world with NaN.
+    #[must_use]
+    pub fn from_quaternion(quaternion: [f32; 4]) -> Self {
+        let [x, y, z, w] = quaternion;
+        let square = x * x + y * y + z * z + w * w;
+        if square < 1e-12 {
+            return Mat4::IDENTITY;
+        }
+        // Normalising through the squared length folds the usual 2/|q|² factor in, so the entries
+        // below are the standard ones with no separate normalisation step.
+        let scale = 2.0 / square;
+
+        let (xs, ys, zs) = (x * scale, y * scale, z * scale);
+        let (wx, wy, wz) = (w * xs, w * ys, w * zs);
+        let (xx, xy, xz) = (x * xs, x * ys, x * zs);
+        let (yy, yz, zz) = (y * ys, y * zs, z * zs);
+
+        Mat4 {
+            columns: [
+                [1.0 - (yy + zz), xy + wz, xz - wy, 0.0],
+                [xy - wz, 1.0 - (xx + zz), yz + wx, 0.0],
+                [xz + wy, yz - wx, 1.0 - (xx + yy), 0.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+        }
+    }
+
     /// The inverse of a matrix that only rotates, scales uniformly, and translates.
     ///
     /// **A camera's view matrix is exactly this**: the world seen from the camera is the inverse of
@@ -744,5 +784,50 @@ mod tests {
             (moved - 1.0).abs() < 1e-5,
             "one unit apart should stay one unit, got {moved}"
         );
+    }
+    #[test]
+    fn an_identity_quaternion_rotates_nothing() {
+        let matrix = Mat4::from_quaternion([0.0, 0.0, 0.0, 1.0]);
+        assert_eq!(matrix.to_euler_degrees(), [0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn a_quaternion_round_trips_through_euler_degrees() {
+        // The property an importer depends on: glTF stores quaternions, ADR 0018 authors Euler, and
+        // the two have to describe the same orientation. Checked by where a point ends up rather
+        // than by comparing angles, because Euler triples are not unique.
+        let quarter_turn_about_y = [0.0, (0.5_f32).sqrt(), 0.0, (0.5_f32).sqrt()];
+        let direct = Mat4::from_quaternion(quarter_turn_about_y);
+        let through_euler = Mat4::from_euler_degrees(direct.to_euler_degrees());
+
+        let point = [1.0, 2.0, 3.0];
+        let a = direct.project_point(point).expect("finite");
+        let b = through_euler.project_point(point).expect("finite");
+        for axis in 0..3 {
+            assert!(
+                (a[axis] - b[axis]).abs() < 1e-4,
+                "the same rotation two ways should agree: {a:?} vs {b:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_quaternion_rotation_preserves_length() {
+        // A rotation matrix must not scale. One that did would make every imported model the wrong
+        // size in a way that looks like a units problem.
+        let matrix = Mat4::from_quaternion([0.3, 0.4, 0.1, 0.86]);
+        let moved = matrix.project_point([1.0, 0.0, 0.0]).expect("finite");
+        let length = (moved[0] * moved[0] + moved[1] * moved[1] + moved[2] * moved[2]).sqrt();
+        assert!(
+            (length - 1.0).abs() < 1e-4,
+            "should stay unit length, got {length}"
+        );
+    }
+
+    #[test]
+    fn a_collapsed_quaternion_gives_the_identity() {
+        // Rather than dividing by zero and filling a scene with NaN, which spreads to every value it
+        // touches and survives every comparison.
+        assert_eq!(Mat4::from_quaternion([0.0; 4]), Mat4::IDENTITY);
     }
 }

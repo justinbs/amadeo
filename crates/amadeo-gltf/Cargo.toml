@@ -1,0 +1,26 @@
+[package]
+name = "amadeo-gltf"
+description = "Reads glTF 2.0 files into plain data. No engine dependencies."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# The only dependency, and the reason this is its own crate rather than a module of amadeo-render --
+# exactly the precedent `amadeo-image` set for the `png` crate. A heavy external parser lives in one
+# place, behind types this crate defines, so nothing above it ever names a `gltf::` type.
+#
+# `default-features = false` drops the crate's own image decoding: ADR 0026 already decided how a
+# texture becomes pixels, and a second decoder reachable by a different path is how two code paths
+# start disagreeing about what a PNG contains.
+gltf = { version = "1.4.1", default-features = false, features = [
+    "import",
+    "utils",
+    "names",
+] }
+thiserror.workspace = true
+
+[lints]
+workspace = true

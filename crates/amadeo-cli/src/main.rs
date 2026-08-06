@@ -18,6 +18,7 @@
 //! Anything this can do, the RPC can do, because this *is* the RPC (invariant I5). There is no
 //! privileged path, here or in the editor later.
 
+mod gltf_import;
 mod launch;
 mod project;
 
@@ -58,6 +59,14 @@ enum Command {
     /// `assets` names the directory directly, so a project whose game will not start can still be
     /// repaired (Q19). Without it the game is asked, which is authoritative.
     Import { check: bool, assets: Option<String> },
+    /// Turn a glTF file into engine text: a scene, materials, and a mesh file per primitive.
+    ///
+    /// Geometry stays in the source file; what becomes text is what people author (ADR 0039).
+    ImportGltf {
+        path: PathBuf,
+        out: Option<PathBuf>,
+        dry_run: bool,
+    },
     /// Capture the world to a `.snapshot` file.
     Snapshot { path: PathBuf },
     /// Render the world offscreen and write it as a PNG.
@@ -140,6 +149,27 @@ fn run(command: Command, options: &Options) -> Result<()> {
         return import_assets(check, assets.as_deref(), options);
     }
 
+    // Standalone, like `fmt`: it reads a file and writes text files, and never needs to ask a game
+    // anything. That is what lets it run against a project whose game does not compile yet — which
+    // is the state a project is in *while* someone is importing art into it.
+    if let Command::ImportGltf { path, out, dry_run } = command {
+        let imported = gltf_import::import_gltf(&path, out.as_deref(), dry_run)?;
+        for written in &imported.written {
+            println!(
+                "{} {}",
+                if dry_run { "would write" } else { "wrote" },
+                written.display()
+            );
+        }
+        println!(
+            "\n{} file(s) from {}. The source keeps its geometry and is now asset id `{}`.",
+            imported.written.len(),
+            path.display(),
+            imported.source_id
+        );
+        return Ok(());
+    }
+
     if let Command::Snapshot { path } = command {
         return take_snapshot(&path, options);
     }
@@ -197,6 +227,7 @@ fn run(command: Command, options: &Options) -> Result<()> {
         | Command::Replay { .. }
         | Command::Assets
         | Command::Import { .. }
+        | Command::ImportGltf { .. }
         | Command::Snapshot { .. }
         | Command::Capture { .. } => {
             unreachable!("handled above")
@@ -1008,6 +1039,20 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
             check,
             assets: assets_dir,
         },
+        "import-gltf" => {
+            let Some(path) = rest.first() else {
+                bail!(
+                    "import-gltf needs a file, as in `amadeo import-gltf games/atrium/assets/models/level.glb`"
+                );
+            };
+            Command::ImportGltf {
+                path: PathBuf::from(path),
+                // `--assets` is reused as the output directory rather than inventing a second
+                // directory flag: it already means "the directory to work in" on `import`.
+                out: assets_dir.as_deref().map(PathBuf::from),
+                dry_run: check,
+            }
+        }
         "capture" => {
             let Some(path) = rest.first() else {
                 bail!(

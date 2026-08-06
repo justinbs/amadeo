@@ -293,6 +293,55 @@ impl Mesh {
     }
 }
 
+/// One piece of geometry inside a glTF file — ADR 0039.
+///
+/// **The third producer of [`MeshData`]**, alongside [`BoxMesh`] and [`PlaneMesh`], and exactly the
+/// additive change ADR 0035 was written to buy: nothing above the loader knows where a mesh came
+/// from.
+///
+/// # Why this indirection exists rather than a field on `Mesh`
+///
+/// A glTF file holds many meshes and a `Mesh` component draws one. Something has to say *which*.
+/// The alternatives were a compound id string (`"level#3"`), which hides structure inside a name —
+/// the exact defect ADR 0030 called out when an array's length existed only inside its type name —
+/// or a new field on `Mesh`, which every existing scene file would have had to grow.
+///
+/// This is a third option and a better one: a `.mesh` asset file already *is* the indirection, so it
+/// carries this instead of a `BoxMesh`. Mesh ids stay flat, `Mesh` is untouched, and the mapping
+/// from a name to a piece of a file is a two-line text file anyone can read:
+///
+/// ```text
+/// scene chair_seat
+/// version 1
+///
+/// entity mesh "Chair seat"
+///   GltfPart
+///     mesh 0
+///     primitive 0
+///     source "chair_glb"
+/// ```
+#[derive(Debug, Clone, PartialEq, Default, StableHash, Reflect)]
+pub struct GltfPart {
+    /// The declared asset id of the `.glb` or `.gltf` file (ADR 0020).
+    pub source: String,
+    /// Which mesh of that file, by index.
+    ///
+    /// An index rather than a name because glTF does not require names to exist or to be unique,
+    /// and an importer that invented them would be inventing the thing the file is addressed by.
+    /// The generated file's own *scene name* carries the readable version.
+    #[reflect(min = 0.0, max = 1000000.0)]
+    pub mesh: u32,
+    /// Which primitive within that mesh, by index.
+    ///
+    /// A glTF mesh holds one primitive per material. This is the level Amadeo's `Mesh` corresponds
+    /// to — treating a whole glTF mesh as one Amadeo mesh silently loses every material but the
+    /// first.
+    #[reflect(min = 0.0, max = 1000000.0)]
+    pub primitive: u32,
+}
+
+impl Component for GltfPart {}
+
 /// How a light casts shadows, or whether it does — ADR 0038.
 ///
 /// # An enum rather than a `bool`, and why it ships with two variants

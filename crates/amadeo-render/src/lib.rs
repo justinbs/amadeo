@@ -63,8 +63,8 @@ pub use environment::{Bloom, Environment, EnvironmentCache, Grade, Tonemap, Vign
 #[cfg(feature = "gpu")]
 pub use gpu::WgpuBackend;
 pub use mesh::{
-    BoxMesh, DirectionalLight, Material, MaterialCache, Mesh, MeshCache, MeshData, PlaneMesh,
-    ShadowMode, Vertex,
+    BoxMesh, DirectionalLight, GltfPart, Material, MaterialCache, Mesh, MeshCache, MeshData,
+    PlaneMesh, ShadowMode, Vertex,
 };
 pub use sprites::{COLLECT_SPRITES, collect_sprites};
 pub use textures::{PLACEHOLDER_TEXTURE_ID, TextureCache, TextureFailure, decode_frame_textures};
