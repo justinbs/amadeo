@@ -104,24 +104,46 @@ one's.
 This has to be answered before terrain covers real distances, because every open-world target needs
 distant chunks to be cheaper than near ones.
 
-### The honest options, none of them free
+### Two of the four options in the original version were not real — corrected in session 12
+
+The research done for ADR 0043 removed two candidates this question used to list, so they are struck
+here rather than left to be re-investigated:
+
+- ~~**Transition cells**, "the surface-nets equivalent of TransVoxel"~~. **Transvoxel does not
+  apply.** It is for marching cubes, a *primal* method; surface nets is *dual*. There is no
+  equivalent to port.
+- ~~**Seam meshes** (Nick Gildea's approach for dual contouring)~~. **Needs an adaptive octree with
+  variable-size leaf nodes.** `amadeo-voxel` is a uniform grid, so this would be a rewrite of the
+  mesher rather than an addition to it.
+
+What is left, and every one of them would be derived here rather than ported:
 
 - **Skirts.** Each chunk grows a downward-facing lip at its border, hiding the crack rather than
-  fixing it. Cheapest by a long way, universally used, and visibly wrong at glancing angles.
-- **Transition cells at the boundary**, the surface-nets equivalent of TransVoxel. Correct, and it
-  means a chunk's mesh depends on its neighbours' *resolutions*, not just their samples — which
-  couples chunks in a way the current design deliberately avoids.
-- **Sample the coarse level everywhere near a boundary**, so both sides agree. Simple and correct,
-  and it gives up the saving exactly where chunk counts are highest.
-- **Clipmaps** — concentric rings at fixed resolutions centred on the camera. Very well understood
-  for heightfields, much less so for a full 3D field.
+  fixing it. Cheapest by a long way, universally used, and visibly wrong at glancing angles — and one
+  reported failure mode is worth knowing about: on flat ground the skirt can overlap geometry the
+  mesher already produced there.
+- **Derived transition geometry** — a chunk is told its neighbours' resolutions and generates matching
+  boundary cells. Correct, and it makes a chunk's mesh depend on its neighbours' *choices*, not just
+  their samples, so one chunk changing level dirties up to six others.
+- **Sample the coarse level everywhere near a boundary**, so both sides agree. Simple and correct, and
+  it gives up the saving exactly where chunk counts are highest.
+- **Clipmaps** — concentric rings at fixed resolutions centred on the camera. Very well understood for
+  heightfields, much less so for a full 3D field. Note that ADR 0043 already adopted concentric
+  *integer boxes* for residency, which is the same idea one level up.
 
-### Why it cannot be decided yet, honestly
+### It is now better posed, and deliberately still open
 
-Which one is right depends on how streaming ends up shaped — specifically whether a chunk's mesh may
-depend on its neighbours at all. That is the same question chunked *generation* order raises, and
-answering both together is cheaper than answering either alone. **Decide with the streaming system,
-not before it.**
+**ADR 0043 pinned colliders to the finest detail level**, which changes this question's character
+entirely: a collider never changes resolution, so **the seam is purely a rendering problem** and sits
+outside the state hash. It was previously entangled with determinism and no longer is.
+
+So the question is no longer "which of four options". It is: **may a chunk's mesh depend on its
+neighbours' resolutions?** Everything else follows from that answer.
+
+Still not decided, for the reason this question always gave: the honest comparison needs a running
+streaming system to look at, and ADR 0043 built the residency and meshing layers rather than the whole
+pipeline. `ChunkKey` carries `lod` and `ChunkShape` does the arithmetic, so whichever answer wins is
+an addition rather than a change to the key type everything is built on.
 
 Nothing is blocked: terrain at one resolution works today.
 

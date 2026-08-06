@@ -42,6 +42,22 @@
 //! assert!(!mesh.positions.is_empty());
 //! assert_eq!(mesh.indices.len() % 3, 0);
 //! ```
+//!
+//! # Chunks
+//!
+//! [`chunk`] decides *which* chunks a world keeps loaded, from the positions of its viewers. It is
+//! integer arithmetic because residency is gameplay state (ADR 0041 §2), and it turns the apron
+//! constraint above into a checked property — [`Residency`] carries a `data` set one chunk larger
+//! than its `visual` set, so the outermost drawn chunk always has a neighbour to mesh against.
+
+//! [`terrain`] is where a chunk's samples come from — ADR 0042's generated base plus sparse edits —
+//! and where one chunk is filled and meshed so that it meets its neighbours.
+
+pub mod chunk;
+pub mod terrain;
+
+pub use chunk::{ChunkKey, Residency, Viewer};
+pub use terrain::{ChunkShape, Edits, FlatGround, TerrainSource, fill_chunk, mesh_chunk};
 
 /// A cubic grid of signed-distance samples.
 ///
