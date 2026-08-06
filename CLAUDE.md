@@ -66,8 +66,14 @@ crates/
                      encodes PNG for `render.capture` --
                      width, height, an explicit PixelFormat, and flat pixels. Also no engine deps.
                      ADR 0026: decoding happens at load time *for now*, and the format tag is what
-                     makes the eventual import pipeline an addition rather than a rewrite. Holds the
-                     only non-`thiserror` dependency in the engine; that is why it is its own crate.
+                     makes the eventual import pipeline an addition rather than a rewrite. Holds one
+                     of the engine's two non-`thiserror` dependencies; that is why it is its own crate.
+✅ amadeo-gltf        reads glTF 2.0 (.glb, or .gltf with embedded buffers) into plain data: meshes,
+                     materials, and the node hierarchy. Also no engine deps, for amadeo-image's exact
+                     reason -- **no `gltf::` type is visible above it** (ADR 0039). Rotations come out
+                     as **quaternions**, deliberately: ADR 0018's Euler order belongs to
+                     amadeo-transform, and a second implementation of it is the bug that reads as
+                     "the imported model is rotated slightly wrong".
 — amadeo-math        vectors, matrices, quaternions, rects, curves. No engine deps.
 ✅ amadeo-core        Tick, FIXED_DT, Rng (PCG32), StableHasher (FNV-1a), StableId/NetId/Authority
 ✅ amadeo-reflect     Value tree, TypeInfo schema, TypeRegistry. ADR 0012. Values include maps with
@@ -180,7 +186,7 @@ crates/
                      than in amadeo-agent because it needs App and I6 forbids reaching down.
 — amadeo-editor      graphical editor. A CLIENT of amadeo-agent. No privileged access.
 🟡 amadeo-cli         the `amadeo` binary. Built: describe/query/entity/schedule/status/call/check/
-                     replay/fmt/assets/import/snapshot/capture (import takes `--assets <dir>` to work on a
+                     replay/fmt/assets/import/import-gltf/snapshot/capture (import takes `--assets <dir>` to work on a
                      project whose game will not start -- Q19), plus `--from <file>` on any of them to
                      restore a snapshot before answering, and `describe <Type> --example` for a
                      minimal valid instance in both the scene and JSON spellings.

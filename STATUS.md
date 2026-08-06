@@ -5,15 +5,17 @@
 before its code** — ADR 0031 (2D/3D coexistence, and the camera becomes an entity), ADR 0033 (the
 material and shader model), ADR 0034 (the render graph is internal, and a look is an asset), ADR 0035
 (a mesh is a procedural shape or vertex data), ADR 0036 (physics is deterministic before it is fast),
-**ADR 0037** (a character is a move-and-slide query, and the character itself is a module), and
-**ADR 0038** (one shadow map now, and the mode is authored data). All seven are decided *and* built.
+**ADR 0037** (a character is a move-and-slide query, and the character itself is a module),
+**ADR 0038** (one shadow map now, and the mode is authored data), and **ADR 0039** (glTF geometry
+stays art, the scene graph becomes text). All eight are decided *and* built.
 
-**Two of M2's four exit gates are met, and gate 1 is three parts of four.** 3D renders with meshes,
-depth and lighting; post-processing works; rapier physics is in with a cross-platform determinism
-test that pins a literal hash; **something walks around and walls stop it**; and **things cast
-shadows**. What remains for gate 1 is glTF import — but the more useful next step is a demo scene,
-because none of the three built parts have ever been seen together. Gate 4, the frame-time budget,
-still has no work against it at all.
+**Three of M2's four exit gates are met.** 3D renders with meshes, depth and lighting;
+post-processing works; rapier physics is in with a cross-platform determinism test that pins a
+literal hash; **something walks around and walls stop it**; **things cast shadows**; and **a glTF
+imports into engine text**. `games/atrium` is a room you can run and walk around in.
+
+**Gate 4 — a frame-time budget with numbers written down — is the only one left, and nothing has
+been done against it.**
 
 **The agent can see.** `amadeo capture shot.png` launches a game headless, renders it on an offscreen
 GPU and writes a PNG. That closes ADR 0021's "agent's eyes" and gave the GPU path its first automated
@@ -63,17 +65,18 @@ texture cache, and the wgpu texture path — **closed invariant I8**, making `Re
 compiler-enforced bound on resources and events and shipping `world.resources`, **shipped snapshots**,
 **built `games/vault` and closed M1**, and then **settled Q7 with prefabs**. ADRs 0022–0029.
 
-**Seventeen crates, one module, and three games**, all tested: `amadeo-derive`, `amadeo-image`,
+**Eighteen crates, one module, and three games**, all tested: `amadeo-derive`, `amadeo-image`,
 `amadeo-core`, `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`,
 `amadeo-input`, `amadeo-render`, `amadeo-physics`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`,
+`amadeo-gltf`,
 `amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
 reserved since session 1 — and `games/quad-demo`, `games/vault` and `games/atrium`.
-**1008 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
-7 shadow fitting, 7 the Atrium);
+**1032 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
+7 shadow fitting, 7 the Atrium, 13 glTF);
 fmt, clippy `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated
 determinism job.
 
-Twenty-six things work end to end today:
+Twenty-seven things work end to end today:
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -116,6 +119,12 @@ Twenty-six things work end to end today:
   that CI runs on Windows and Linux, so ADR 0036's cross-platform promise is checked rather than
   believed. Behind `--features rapier`, off by default. Verified the collision tests are evidence by
   pointing them at `NullPhysics`: the ball falls to −72 instead of resting at 0.5.
+- **A model becomes a level.** `amadeo import-gltf level.glb` writes a `.scene` for the node
+  hierarchy, a `.material` per material, and a `.mesh` per primitive — each a four-line pointer, not
+  vertex data. The geometry stays in the `.glb` as source art, exactly as a `.png` already does
+  (ADR 0039). What comes out is canonical scene text, because the importer runs its own output
+  through the canonical writer rather than trying to match it by hand. Nothing above the loader can
+  tell a glTF primitive from a `BoxMesh`, which is ADR 0035's bet paying off three milestones later.
 - **There is a 3D room you can walk around in.** `cargo run -p atrium` — a floor, four walls, four
   pillars, a plinth, a sun casting shadows, and an amber character steered with WASD, Q/E and Space.
   Lighting, the character controller and shadow maps in one place for the first time. Everything in
@@ -244,16 +253,22 @@ the only evidence available was a push.
 
 ## The single most important thing to do next
 
-**glTF import** — the last unbuilt part of M2's exit gate 1. ADR 0035 made it a new *producer* of
-`MeshData`, so nothing above the loader changes, which is why it could wait this long.
+**Gate 4 — frame time within a declared budget, numbers written down.** It is now the **only** part
+of M2 with no work against it at all, and `games/atrium` is the obvious thing to measure: the first
+scene with real geometry, real physics and a shadow pass in it at once. ADR 0036 says it must be
+measured knowing physics uses one core.
+
+**Also worth doing early: export something from Blender and import it.** The whole glTF path is
+built and tested from both ends, but only against `.glb` fixtures constructed in the tests. Nothing
+has yet been through a real digital content creation tool, and that is exactly the sort of gap that
+turns out to contain a surprise. `amadeo import-gltf <file.glb>` is the command.
 
 Then, in order:
 
-1. **glTF import**, as above.
-2. **Gate 4: frame time within a declared budget, numbers written down.** Still nobody has looked at
-   it, and it is now the only gate with no work against it at all. ADR 0036 says it must be measured
-   knowing physics uses one core. **`games/atrium` is the obvious thing to measure** — it is the
-   first scene with real geometry, real physics and a shadow pass in it at once.
+1. **Gate 4**, as above, and a real Blender round-trip alongside it.
+2. **Textures on imported materials.** A generated `.material` carries colours only, so a textured
+   model imports untextured. ADR 0026's decode path already exists, so this is wiring rather than
+   design.
 3. **Collision events into `amadeo-events`**, which turns a sensor into a gameplay trigger. The
    Vault's sigils are exactly this shape, done by hand today. This is also what would let the
    character report what it bumped into: `move_shape` already receives per-collision callbacks from
@@ -263,6 +278,64 @@ Then, in order:
 
 Two things the Atrium turned up that should be done before they bite again — both below: **authored
 ambient / sky light** on `Environment`, and **camera collision** for a third-person rig.
+
+## glTF import landed — ADR 0039
+
+**M2's exit gate 1 is now complete on every part.** `amadeo import-gltf level.glb` turns a model into
+engine text.
+
+**The framing was about data again, and this time it was about which data.** "Import a glTF" is
+ambiguous, because a glTF is *not a model* — it is a whole scene, with a node hierarchy, materials
+and meshes. So the question was never how to read one. It was **which parts become engine text and
+which stay art**, because I1 says text files are the only source of truth.
+
+Half of that was already settled by precedent: a `.png` is opaque bytes and ADR 0026 accepted it,
+because a PNG is source art rather than authored engine data. A `.glb` from Blender is the same kind
+of thing. The other half is what Godot, Unity and Unreal all do — convert the hierarchy into the
+engine's own scene format, leave geometry as a resource. Nobody serialises vertex arrays into their
+human-editable format, and nobody leaves the layout locked inside the interchange file either.
+
+Justin was given three options and took the recommendation.
+
+**What one command writes:** a `.scene` for the hierarchy, a `.material` per material, a `.mesh` per
+**primitive** (a four-line pointer, not vertex data), and a sidecar for the `.glb`. What people and
+agents author — where the wall goes, what colour it is, what is parented to what — is text. Vertex
+positions are not.
+
+### Four things in it worth not rediscovering
+
+- **A glTF *primitive* is what corresponds to an Amadeo mesh, not a glTF *mesh*.** A mesh holds one
+  primitive per material and a `Mesh` component draws one thing with one material, so getting this
+  backwards silently loses every material but the first — which looks like an art problem.
+- **The indirection is a `GltfPart` component inside the `.mesh` asset**, not a compound id string
+  and not a field on `Mesh`. A string like `"level#3"` hides structure inside a name, which is the
+  exact defect ADR 0030 called out; a field on `Mesh` would make every existing scene file grow
+  something meaningless to a procedural shape. A `.mesh` file already *is* the indirection from a
+  name to a shape.
+- **Generated text is parsed and re-emitted through the canonical writer** rather than written
+  canonically by hand. I2 says `amadeo fmt` is the single authority, and a generator reimplementing
+  the rules is a second one — they disagreed over a trailing blank line the first time this ran.
+  Parsing its own output also turns a generator bug into a failure at import time that names the file.
+- **The scene format needed no change at all** to express an imported hierarchy, because nested
+  entities already meant parenting. ADR 0014 and ADR 0032 paying off rather than luck.
+
+### And ADR 0035's bet paid, three milestones later
+
+It was written before any of this existed, specifically so the importer would be an **addition**
+rather than a change to the mesh component, the cache, the batcher and every test that asserts on a
+mesh. `GltfPart` is simply a third producer of `MeshData` alongside `BoxMesh` and `PlaneMesh`, and
+`a_gltf_mesh_is_still_just_a_mesh_to_everything_above_the_loader` pins it: both load through one
+call, into one cache, with no caller distinguishing them.
+
+**Tested from both ends, because either half alone would pass its own tests while the pair was
+broken.** `amadeo-cli` asserts the importer writes valid canonical scene text; `amadeo-app` asserts
+that text actually loads and produces the glTF's vertices rather than an empty mesh nobody notices.
+The `.glb` fixtures are **built in the tests rather than committed**, so the format is written down
+and reviewable instead of hidden in a binary.
+
+**What it does not import:** textures (a generated material carries colours only, so a textured model
+imports untextured), animations, skins, and cameras. And **nothing has been through Blender yet** —
+only fixtures built in the tests.
 
 ## `games/atrium` — M2's demo, and what building it found
 
@@ -442,8 +515,10 @@ rather than done once by hand.
 
 **Gate 1** — "an imported glTF level, dynamic lighting, shadows, and a physics-driven character
 controller you can walk around with". Lighting ✅ (session 9), character controller ✅ and shadows ✅
-(session 10), **glTF import remains**. All three built parts are now in one place and running —
-`games/atrium` — so what is left of gate 1 is the importer and a level that came through it.
+(session 10), glTF import ✅ (session 10). All four parts are built, and the first three are in one
+place and running as `games/atrium`. **The honest caveat: nothing has been through Blender yet** —
+the glTF path is tested against `.glb` fixtures built in the tests, so a real digital-content-creation
+round trip is the remaining unknown.
 
 **Gate 2** — a 2D scene from M1 still renders unchanged. ✅ Holds: `games/vault` is untouched and its
 tests, replays and capture all still pass.

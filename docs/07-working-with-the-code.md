@@ -1250,6 +1250,61 @@ what you point it at. CI now runs it over every one of them for both games.
 Unlike the texture path, there is no `failures()` to ask at runtime. If a scene looks untextured or
 uniformly white, that is the first thing to suspect.
 
+### Getting a model from Blender into the engine
+
+```bash
+amadeo import-gltf games/atrium/assets/models/level.glb
+```
+
+Export from Blender as **`.glb`**, or as `.gltf` with buffers embedded. A plain `.gltf` that keeps
+its buffers in sibling files is refused, and the message says so — the asset layer decides where
+bytes come from (ADR 0021), not the parser.
+
+That one command writes, next to the source:
+
+| File | What it is |
+|---|---|
+| `level.scene` | the node hierarchy, as nested entities with `Transform` and `Mesh` |
+| `level_<material>.material` | one per glTF material |
+| `level_<name>.mesh` | one per glTF **primitive** — a pointer, not vertex data |
+| `level.glb.ama-meta` | the sidecar giving the source file its asset id |
+
+**The geometry stays in the `.glb`.** ADR 0039 has the full argument; the short version is that what
+people and agents author is layout and materials, and nobody hand-edits vertex positions. A `.glb` is
+source art exactly as a `.png` is.
+
+Ids are prefixed with the file's stem, so importing two models cannot collide. Names from authoring
+tools are lowercased and cleaned up — `Wall Segment` becomes `wall_segment`, `Cube.001` becomes
+`cube_001` — and duplicates get a numeric suffix, because glTF does not require names to be unique
+and two files claiming one id is something the asset scanner refuses outright.
+
+**Re-importing overwrites.** Hand edits to generated files are lost, deliberately. Treat the
+generated scene as a starting point to copy from or instance, not as a file to maintain.
+
+**A glTF *mesh* is not an Amadeo mesh.** A glTF mesh holds one primitive per material, and an Amadeo
+`Mesh` draws one thing with one material — so a primitive is the unit. A node whose mesh has several
+primitives becomes one entity plus a child per extra primitive.
+
+**What is not imported yet:** textures (a generated material carries colours only, so a textured
+model imports untextured), animations, skins, and cameras.
+
+### Where geometry comes from, and why nothing above the loader knows
+
+There are three producers of `MeshData` and they all arrive at the same place:
+
+| A `.mesh` file holding… | Produces geometry by… |
+|---|---|
+| `BoxMesh` | tessellating a box from three numbers |
+| `PlaneMesh` | tessellating a quad from two |
+| `GltfPart` | reading a primitive out of the `.glb` it names |
+
+`App::load_meshes` tries each in turn, and `MeshCache` holds the result under the asset id. The
+`Mesh` component, the render pass and everything downstream cannot tell which one a mesh came from.
+
+That is ADR 0035 paying off: it was written before any of this existed specifically so the importer
+would be an *addition* rather than a change to the mesh component, the cache, the batcher and every
+test that asserts on a mesh. It was, three milestones later.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

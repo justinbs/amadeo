@@ -1109,6 +1109,9 @@ RUNS IN THE GAME (launches it, asks, exits)
         --check              report them instead of writing
         --assets <dir>       import into this directory without launching the game,
                              for when the game will not start until the sidecars exist
+    import-gltf <file>       turn a .glb or .gltf into a scene, materials and mesh files
+        --check              report what it would write instead of writing
+        --assets <dir>       write the generated files here (default: beside the source)
     query <component>...     entities carrying all of the named components
     entity <index>           one entity's components
     replay <file>            replay a recording and verify its checkpoint hashes
