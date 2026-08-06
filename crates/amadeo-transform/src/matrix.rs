@@ -223,6 +223,106 @@ impl Mat4 {
         Mat4 { columns }
     }
 
+    /// A box-shaped projection: no perspective, so parallel lines stay parallel.
+    ///
+    /// The box is **centred on the eye** and symmetric, which is what a shadow map for a directional
+    /// light wants — the sun has no position, so there is nothing to be off-centre from.
+    ///
+    /// `half_width` and `half_height` are half the box's extent across, `near` and `far` its extent
+    /// along the view direction. Depth maps to 0 at `near` and 1 at `far`, the same WebGPU convention
+    /// [`Mat4::perspective`] follows and for the same reason.
+    #[must_use]
+    pub fn orthographic(half_width: f32, half_height: f32, near: f32, far: f32) -> Self {
+        // Guarded the same way `perspective` is: a degenerate box produces a usable matrix rather
+        // than infinities that turn every vertex into NaN one frame later.
+        let half_width = if half_width.abs() < 1e-6 {
+            1.0
+        } else {
+            half_width
+        };
+        let half_height = if half_height.abs() < 1e-6 {
+            1.0
+        } else {
+            half_height
+        };
+        let far = if (far - near).abs() < 1e-6 {
+            near + 1.0
+        } else {
+            far
+        };
+
+        let mut columns = [[0.0_f32; 4]; 4];
+        columns[0][0] = 1.0 / half_width;
+        columns[1][1] = 1.0 / half_height;
+        // Negative, because the view looks down its own negative Z: a point further away has a more
+        // negative z, and must come out with a *larger* depth.
+        columns[2][2] = 1.0 / (near - far);
+        columns[3][2] = near / (near - far);
+        columns[3][3] = 1.0;
+        Mat4 { columns }
+    }
+
+    /// A view matrix for something at `eye` looking along `direction`.
+    ///
+    /// **This is a view matrix, not a world matrix** — it takes world space *to* the viewer's space,
+    /// which is what a projection expects to be handed. [`Mat4::inverse_rigid`] is the other way of
+    /// arriving at one, from a transform; this is the way that is convenient when all you have is a
+    /// direction, which is exactly the case for a directional light.
+    ///
+    /// The viewer looks along its own **negative Z**, the same convention a camera and a
+    /// `DirectionalLight` both use, so `direction` is the direction light *travels*.
+    ///
+    /// `up` only resolves the remaining roll. When it is parallel to `direction` there is no unique
+    /// answer, so a different up is substituted rather than returning a matrix full of NaN — a light
+    /// pointing straight down is the overwhelmingly common case and must not be the broken one.
+    #[must_use]
+    pub fn look_along(eye: [f32; 3], direction: [f32; 3], up: [f32; 3]) -> Self {
+        let normalise = |v: [f32; 3]| {
+            let length = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+            if length < 1e-6 {
+                None
+            } else {
+                Some([v[0] / length, v[1] / length, v[2] / length])
+            }
+        };
+        let cross = |a: [f32; 3], b: [f32; 3]| {
+            [
+                a[1] * b[2] - a[2] * b[1],
+                a[2] * b[0] - a[0] * b[2],
+                a[0] * b[1] - a[1] * b[0],
+            ]
+        };
+        let dot = |a: [f32; 3], b: [f32; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+        // Looking *along* the negative Z axis means the positive Z axis points back the way we came.
+        let forward = normalise(direction).unwrap_or([0.0, -1.0, 0.0]);
+        let z_axis = [-forward[0], -forward[1], -forward[2]];
+
+        // A light pointing straight down has `up` parallel to its view direction, so the cross
+        // product collapses. +Z is an arbitrary but stable substitute; any vector not parallel to
+        // the direction gives an equally valid matrix, and they differ only by a roll nobody can see
+        // in a depth-only render.
+        let x_axis = match normalise(cross(up, z_axis)) {
+            Some(axis) => axis,
+            None => normalise(cross([0.0, 0.0, 1.0], z_axis)).unwrap_or([1.0, 0.0, 0.0]),
+        };
+        let y_axis = cross(z_axis, x_axis);
+
+        // The rotation part of a view matrix is the transpose of the viewer's basis, and the
+        // translation is the eye moved through it, negated -- the same shape `inverse_rigid` builds.
+        let mut columns = [[0.0_f32; 4]; 4];
+        for row in 0..3 {
+            columns[row][0] = x_axis[row];
+            columns[row][1] = y_axis[row];
+            columns[row][2] = z_axis[row];
+        }
+        columns[3][0] = -dot(x_axis, eye);
+        columns[3][1] = -dot(y_axis, eye);
+        columns[3][2] = -dot(z_axis, eye);
+        columns[3][3] = 1.0;
+        Mat4 { columns }
+    }
+
     /// The inverse of a matrix that only rotates, scales uniformly, and translates.
     ///
     /// **A camera's view matrix is exactly this**: the world seen from the camera is the inverse of
@@ -559,5 +659,90 @@ mod tests {
 
         assert!((rotated_then_offset[1] - 2.0).abs() < 1e-5);
         assert!((offset_then_rotated[0] - 2.0).abs() < 1e-5);
+    }
+    #[test]
+    fn an_orthographic_box_maps_near_to_zero_and_far_to_one() {
+        // The WebGPU depth convention, asserted the same way the perspective test does. Getting this
+        // backwards does not error -- it makes everything fail the depth test, which reads as
+        // "shadows are missing" rather than as a matrix bug.
+        let projection = Mat4::orthographic(10.0, 10.0, 1.0, 51.0);
+        let near = projection
+            .project_point([0.0, 0.0, -1.0])
+            .expect("in front");
+        let far = projection
+            .project_point([0.0, 0.0, -51.0])
+            .expect("in front");
+        assert!(
+            (near[2] - 0.0).abs() < 1e-5,
+            "near should map to 0, got {near:?}"
+        );
+        assert!(
+            (far[2] - 1.0).abs() < 1e-5,
+            "far should map to 1, got {far:?}"
+        );
+    }
+
+    #[test]
+    fn an_orthographic_box_does_not_shrink_with_distance() {
+        // The whole difference from a perspective projection, and what makes it right for a
+        // directional light: the sun's rays are parallel, so its projection must be too.
+        let projection = Mat4::orthographic(10.0, 10.0, 1.0, 51.0);
+        let near = projection
+            .project_point([5.0, 0.0, -2.0])
+            .expect("in front");
+        let far = projection
+            .project_point([5.0, 0.0, -50.0])
+            .expect("in front");
+        assert!(
+            (near[0] - far[0]).abs() < 1e-5,
+            "x should not change with depth"
+        );
+        assert!(
+            (near[0] - 0.5).abs() < 1e-5,
+            "half the half-width should be 0.5"
+        );
+    }
+
+    #[test]
+    fn look_along_puts_what_it_looks_at_in_front_of_it() {
+        // Looking down from above: a point below the eye should land ahead of the viewer, which in
+        // this convention means a negative z.
+        let view = Mat4::look_along([0.0, 10.0, 0.0], [0.0, -1.0, 0.0], [0.0, 1.0, 0.0]);
+        let ahead = view.project_point([0.0, 0.0, 0.0]).expect("finite");
+        assert!(
+            ahead[2] < 0.0,
+            "the ground should be in front of a light above it, got {ahead:?}"
+        );
+        assert!(
+            ahead[0].abs() < 1e-5 && ahead[1].abs() < 1e-5,
+            "and centred, got {ahead:?}"
+        );
+    }
+
+    #[test]
+    fn look_along_survives_pointing_straight_down() {
+        // The overwhelmingly common case for a sun, and the one where `up` is parallel to the view
+        // direction so the usual cross product collapses. It must not be the broken one.
+        let view = Mat4::look_along([0.0, 10.0, 0.0], [0.0, -1.0, 0.0], [0.0, 1.0, 0.0]);
+        for column in view.columns {
+            for cell in column {
+                assert!(cell.is_finite(), "a straight-down light produced {view:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn look_along_preserves_distance() {
+        // A view matrix only rotates and translates, so it must not stretch anything -- a light that
+        // scaled the world would put its shadow map's depths on a different scale from its own
+        // projection, and the shadows would be uniformly wrong by a factor nobody could see.
+        let view = Mat4::look_along([3.0, 4.0, 5.0], [1.0, -2.0, 0.5], [0.0, 1.0, 0.0]);
+        let a = view.project_point([0.0, 0.0, 0.0]).expect("finite");
+        let b = view.project_point([1.0, 0.0, 0.0]).expect("finite");
+        let moved = ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt();
+        assert!(
+            (moved - 1.0).abs() < 1e-5,
+            "one unit apart should stay one unit, got {moved}"
+        );
     }
 }
