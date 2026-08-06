@@ -1305,6 +1305,79 @@ That is ADR 0035 paying off: it was written before any of this existed specifica
 would be an *addition* rather than a change to the mesh component, the cache, the batcher and every
 test that asserts on a mesh. It was, three milestones later.
 
+### Threads: the two shapes that are allowed, and why only two
+
+ADR 0041 settles this. The rule is that **parallelism is allowed only where determinism is
+structural** — the unsafe shapes are made unspellable rather than discouraged.
+
+**Shape 1 — a job, for work that owns its inputs.** `amadeo-jobs`:
+
+```rust
+let pool = JobPool::for_this_machine();
+let inbox: Inbox<ChunkCoord, MeshData> = Inbox::new();
+
+for coord in chunks_to_build {
+    let inbox = inbox.clone();
+    pool.submit(move || inbox.deliver(coord, build_mesh(coord)));
+}
+
+pool.wait_for_idle();              // the barrier
+for (coord, mesh) in inbox.drain() // sorted by coord, never by who finished
+```
+
+A job is `FnOnce + Send + 'static`, so it **cannot borrow the world**. There are exactly two ways an
+answer may come back: wait at a barrier (which makes parallelism a pure speedup nothing downstream
+can observe), or deliver into a `Service` that gameplay cannot see.
+
+**`Inbox` drains in key order, never completion order.** That is the whole reason it is not a
+channel.
+
+**Shape 2 — `par_for_each_mut`, for heavy per-entity work.**
+
+```rust
+world.par_for_each_mut::<Height>(threads, |_entity, height| height.0 = sample_noise(height.0));
+```
+
+The closure is `Fn + Sync`, and that signature *is* the safety argument:
+
+- **`Fn` forbids a captured accumulator** — summing into a captured variable needs `FnMut` and will
+  not compile. Which matters, because float addition is not associative and a parallel sum genuinely
+  gives a different number.
+- **`Sync` forbids the escape hatches** — `Cell` and `RefCell` are not `Sync`.
+- **No `&World`, no `Commands`** — so no cross-entity reads, no spawning, no despawning.
+
+Every write goes to a row that thread owns exclusively, so the answer cannot depend on how the rows
+were divided. `the_thread_count_cannot_reach_the_answer` runs the same work at 1, 2, 3, 5 and 8
+threads and requires identical output — odd counts included, because an off-by-one in chunk slicing
+hides completely when the rows divide evenly.
+
+**When to reach for it: rarely.** Measured, 8 threads:
+
+| rows | speedup |
+|---:|---:|
+| 2,048 | 1.29× |
+| 16,384 | 3.35× |
+| 131,072 | 5.42× |
+
+Below `PARALLEL_THRESHOLD` (2,048) it runs sequentially and spawns nothing. The whole Atrium
+simulation tick is 8.3 µs, so this is for a system doing real arithmetic over thousands of entities —
+not for moving a hundred transforms.
+
+### The threading rule most likely to be got wrong
+
+**A streamed thing usually has two products, and they have different rules.**
+
+A terrain chunk's **mesh** is drawn and nothing else — it goes in a `Service` and may arrive whenever
+it arrives. Its **collider** is gameplay, because a character stands on it, so *when* it arrives
+changes where the character ends up.
+
+So: decide **which** chunks are active deterministically (from the player's position, which is
+deterministic), do the **work** in parallel, and **block** on colliders you need. A slow machine gets
+a frame hitch and keeps its replay.
+
+ADR 0021 built half of this rule three milestones early by forbidding gameplay from asking "has this
+asset finished loading?" The general form is that **gameplay may not observe any completion timing.**
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

@@ -73,4 +73,4 @@ pub use query::{QueryIter, QueryTerm};
 pub use registry::{ComponentRegistry, RegistryError};
 pub use resource::{Resource, ResourceId};
 pub use service::{Service, ServiceId};
-pub use world::World;
+pub use world::{PARALLEL_THRESHOLD, World};

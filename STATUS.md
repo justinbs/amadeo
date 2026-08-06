@@ -78,8 +78,8 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-gltf`, `amadeo-jobs`,
 `amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
 reserved since session 1 — and `games/quad-demo`, `games/vault` and `games/atrium`.
-**1052 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
-7 shadow fitting, 12 the Atrium, 13 glTF, 5 profiling, 8 jobs);
+**1059 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
+7 shadow fitting, 12 the Atrium, 13 glTF, 5 profiling, 8 jobs, 6 parallel iteration);
 fmt, clippy `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated
 determinism job.
 
@@ -270,11 +270,15 @@ gained a milestone between it and M3: **Worlds That Scale**. The threading model
 (ADR 0041) and `amadeo-jobs` is built; the next concrete steps are **background asset loading** — the
 first consumer — then surface-nets terrain and chunked streaming.
 
-**The immediate next task is `par_for_each_mut`, and it has one narrow decision in it.** Scoped
-borrows across a *persistent* thread pool need either `rayon` or `unsafe`, and ADR 0008 forbids the
-second. `std::thread::scope` avoids both but spawns threads per call — tens of microseconds, which is
-fine for chunk meshing and too slow per tick. Worth putting to Justin when the code is written rather
-than deciding in the abstract.
+**`par_for_each_mut` is built, and the `rayon` question is answered by measurement rather than
+argument** — no dependency. `std::thread::scope` spawns threads per call and that cost is real, but
+the numbers say it does not matter: 1.29× at 2,048 rows, **3.35× at 16,384**, **5.42× at 131,072**,
+on 8 threads. A persistent pool would only help the small end — which is the case where this should
+not be used at all, since the whole simulation tick is 8.3 µs. `amadeo-jobs` already has a persistent
+pool for genuinely coarse work.
+
+**Next: background asset loading**, the first real consumer of `amadeo-jobs`, then surface-nets
+terrain.
 
 **Before that, one loose end worth closing early: export something from Blender and import it.** The
 whole glTF path is built and tested from both ends, but only against `.glb` fixtures constructed in
@@ -330,6 +334,18 @@ the world, and there are exactly two ways an answer returns: wait at a barrier, 
 Service gameplay cannot observe. An `Inbox` drains in **key order, never completion order** —
 `the_same_work_drains_identically_however_many_workers_run_it` runs the same jobs on a pool of 1 and
 a pool of 8 and requires identical output.
+
+**`par_for_each_mut` is built too**, and its signature is the safety argument: the closure is
+`Fn + Sync`, so a captured accumulator will not compile — which matters because float addition is
+not associative and a parallel sum genuinely gives a different number. No `&World` and no `Commands`
+either, so no cross-entity reads and no spawning. `the_thread_count_cannot_reach_the_answer` runs the
+same work at 1, 2, 3, 5 and 8 threads and requires identical output; the odd counts are there because
+an off-by-one in chunk slicing hides completely when the rows divide evenly.
+
+**And the `rayon` question is closed by measurement rather than argument.** On 8 threads: 1.29× at
+2,048 rows, 3.35× at 16,384, 5.42× at 131,072. `std::thread::scope`'s per-call thread spawning is
+what the small end pays, and a persistent pool would only help there — which is the case where this
+should not be used at all, since the whole simulation tick is 8.3 µs. No dependency taken.
 
 ### The rule most likely to be got wrong later
 

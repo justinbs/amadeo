@@ -246,6 +246,12 @@ impl Archetype {
     ///
     /// Returned together because `entities` and `columns` are separate fields, so the borrow can be
     /// split here — whereas a caller holding `&mut Archetype` could not borrow both at once.
+    /// How many rows carry `T`, or `None` if this archetype has no such column.
+    pub(crate) fn len_with_column<T: Component>(&self) -> Option<usize> {
+        self.column_index(ComponentId::of::<T>())?;
+        Some(self.entities.len())
+    }
+
     pub(crate) fn entities_with_column_mut<T: Component>(
         &mut self,
         tick: Tick,

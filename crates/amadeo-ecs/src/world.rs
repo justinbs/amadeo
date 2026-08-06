@@ -9,6 +9,34 @@ use amadeo_core::{StableHasher, Tick};
 use amadeo_reflect::{ReflectError, Value};
 use std::collections::BTreeMap;
 
+/// Below this many rows in one archetype, [`World::par_for_each_mut`] runs sequentially.
+///
+/// Spawning a thread costs tens of microseconds; a few hundred rows of arithmetic costs less than
+/// that, so dividing them would make the work slower and no more correct.
+///
+/// # Measured, and the numbers argue against a persistent pool
+///
+/// From `crates/amadeo-ecs/tests/parallel_iteration.rs`, release, 8 threads, 24 transcendental
+/// operations per row:
+///
+/// | rows | speedup |
+/// |---:|---:|
+/// | 2,048 | 1.29× |
+/// | 16,384 | 3.35× |
+/// | 131,072 | 5.42× |
+///
+/// So the threshold is where parallelism stops *losing*, and a real win needs closer to 16,000 rows.
+/// `std::thread::scope` spawns fresh threads per call, and that cost is what the small end is paying.
+///
+/// **A persistent pool would remove it, and is still not worth a dependency.** The case it would
+/// help — frequent parallel-for over a moderate number of rows — is the case where this should not
+/// be used at all, because the whole simulation tick is 8.3 µs (`docs/10-frame-budget.md`). Work
+/// coarse enough to deserve threads is coarse enough that a few tens of microseconds of setup do not
+/// matter, and `amadeo-jobs` already has a persistent pool for the genuinely coarse case. Taking
+/// `rayon` would also mean `unsafe` or a work-stealing scheduler under the deterministic zone, which
+/// ADR 0008 and ADR 0041 respectively refuse.
+pub const PARALLEL_THRESHOLD: usize = 2_048;
+
 /// Rebuilds one resource type from a reflected value.
 ///
 /// A plain `fn` pointer rather than a boxed closure: each one is a monomorphised
@@ -709,6 +737,110 @@ impl World {
                 }
             }
         }
+    }
+
+    /// [`World::for_each_mut`], across threads — ADR 0041.
+    ///
+    /// # This is bit-identical to the sequential version, and the signature is why
+    ///
+    /// `f` is `Fn + Sync`, not `FnMut`. That is the whole safety argument, and it is enforced by the
+    /// compiler rather than by a warning in this comment:
+    ///
+    /// - **`Fn` forbids a captured accumulator.** A closure that summed into a captured variable
+    ///   would have to be `FnMut`, and it will not compile here. That matters because floating-point
+    ///   addition is not associative — a parallel sum genuinely produces a different number, which
+    ///   is one of the three ways ADR 0041 found that parallelism destroys determinism.
+    /// - **`Sync` forbids the usual escape hatches.** `Cell` and `RefCell` are not `Sync`, so the
+    ///   easy ways to smuggle shared mutable state past `Fn` are also refused.
+    /// - **The closure sees one entity's `T` and nothing else.** No `&World`, so no cross-entity
+    ///   reads; no `Commands`, so no spawning or despawning. Every write is to a row this thread
+    ///   owns exclusively, so the result cannot depend on how the rows were divided.
+    ///
+    /// The one hole left is `Arc<Mutex<_>>`, which *is* `Sync`. Nothing can prevent that, and a
+    /// result accumulated through one would be nondeterministic. It is a deliberate, visible act
+    /// rather than something you do by accident, which is as far as a type system reaches.
+    ///
+    /// # When it is worth using
+    ///
+    /// Rarely. Splitting work across threads costs tens of microseconds, and the Atrium's entire
+    /// simulation tick is 8.3 µs (`docs/10-frame-budget.md`). This is for a system doing real
+    /// arithmetic over thousands of entities — sampling a noise field, integrating a particle
+    /// system — not for moving a hundred transforms.
+    ///
+    /// Below [`PARALLEL_THRESHOLD`] rows it runs sequentially without spawning anything, so calling
+    /// it on a small world is merely pointless rather than slow.
+    ///
+    /// ```
+    /// use amadeo_ecs::{Component, World};
+    /// # use amadeo_core::StableHash;
+    /// # use amadeo_reflect::Reflect;
+    /// #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+    /// struct Height(f32);
+    /// impl Component for Height {}
+    ///
+    /// let mut world = World::new();
+    /// for index in 0..1000 {
+    ///     let entity = world.spawn();
+    ///     world.insert(entity, Height(index as f32));
+    /// }
+    ///
+    /// // Each row's new value depends only on its own old value, which is what makes this safe.
+    /// world.par_for_each_mut::<Height>(4, |_entity, height| height.0 *= 2.0);
+    ///
+    /// assert_eq!(world.for_each_count::<Height>(), 1000);
+    /// ```
+    pub fn par_for_each_mut<T: Component>(
+        &mut self,
+        threads: usize,
+        f: impl Fn(Entity, &mut T) + Sync,
+    ) {
+        let tick = self.tick;
+        let threads = threads.max(1);
+
+        for archetype in &mut self.archetypes {
+            let Some((entities, values)) = archetype.entities_with_column_mut::<T>(tick) else {
+                continue;
+            };
+
+            // Not worth dividing. Spawning a thread costs far more than a few hundred rows of
+            // arithmetic, and this is the common case for every system that opts in "just in case".
+            if threads == 1 || values.len() < PARALLEL_THRESHOLD {
+                for (entity, value) in entities.iter().copied().zip(values.iter_mut()) {
+                    f(entity, value);
+                }
+                continue;
+            }
+
+            // `chunks_mut` hands each thread a disjoint slice, which is what lets this be safe with
+            // no `unsafe` at all (ADR 0008 forbids it here). `std::thread::scope` is what allows
+            // borrowing `entities` and `f` across threads: it guarantees every spawned thread has
+            // finished before it returns, so the borrows cannot outlive them.
+            let chunk = values.len().div_ceil(threads);
+            let shared = &f;
+            std::thread::scope(|scope| {
+                for (index, slice) in values.chunks_mut(chunk).enumerate() {
+                    // The matching entity ids for this slice. `chunks_mut` yields them in order and
+                    // the last chunk may be short, so the length comes from the slice rather than
+                    // from `chunk`.
+                    let start = index * chunk;
+                    let ids = &entities[start..start + slice.len()];
+                    scope.spawn(move || {
+                        for (entity, value) in ids.iter().copied().zip(slice.iter_mut()) {
+                            shared(entity, value);
+                        }
+                    });
+                }
+            });
+        }
+    }
+
+    /// How many entities carry `T`. A convenience for tests and for sizing work.
+    #[must_use]
+    pub fn for_each_count<T: Component>(&self) -> usize {
+        self.archetypes
+            .iter()
+            .filter_map(Archetype::len_with_column::<T>)
+            .sum()
     }
 
     /// Calls `f` for every entity that has both `A` and `B`, writing `A` and reading `B`.
