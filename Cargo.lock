@@ -171,6 +171,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "amadeo-jobs"
+version = "0.1.0"
+
+[[package]]
 name = "amadeo-physics"
 version = "0.1.0"
 dependencies = [

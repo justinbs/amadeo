@@ -74,6 +74,15 @@ crates/
                      as **quaternions**, deliberately: ADR 0018's Euler order belongs to
                      amadeo-transform, and a second implementation of it is the bug that reads as
                      "the imported model is rotated slightly wrong".
+✅ amadeo-jobs        background work: a `JobPool` of fixed worker threads and an `Inbox` whose
+                     results drain in **key order, never completion order** (ADR 0041). **No
+                     dependencies at all**, not even thiserror -- a work-stealing runtime underneath
+                     the one thing that must be reproducible is what ADR 0041 refuses. A job owns its
+                     inputs (`FnOnce + Send + 'static`) so it cannot borrow the world. Exactly two
+                     ways an answer may return: **wait at a barrier** (`wait_for_idle`, which makes
+                     parallelism a pure speedup nothing downstream can observe), or **deliver into a
+                     Service** that gameplay cannot see (ADR 0009). `pending()` is diagnostics only:
+                     a count that depends on machine speed is what makes a replay diverge.
 — amadeo-math        vectors, matrices, quaternions, rects, curves. No engine deps.
 ✅ amadeo-core        Tick, FIXED_DT, Rng (PCG32), StableHasher (FNV-1a), StableId/NetId/Authority
 ✅ amadeo-reflect     Value tree, TypeInfo schema, TypeRegistry. ADR 0012. Values include maps with

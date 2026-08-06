@@ -214,6 +214,63 @@ without eyes, the design is wrong and we find out before 3D and the editor pile 
 3. A physics-heavy replay (200+ bodies) reproduces bit-identically across runs and processes.
 4. Frame time within a declared budget at a declared scene complexity. Numbers written down.
 
+✅ **M2 is complete — all four gates met** (session 10).
+
+---
+
+## M2.5 — Worlds That Scale
+
+*Goal: the engine can carry a world rather than a room.*
+
+**Why this exists, and why it is numbered .5.** M2 proved 3D works at the scale of eleven boxes.
+Five of the eight target games — Palworld, Minecraft, Terraria, Project Zomboid, Stellaris — need
+something the Atrium says nothing about: a world larger than what is on screen, streamed, and cheap
+enough to draw when most of it is not visible. Building M3's game-feel polish on a renderer that
+draws every object every frame would be polishing the wrong layer.
+
+**Numbered 2.5 rather than renumbering M3 onward** because `docs/adr/` is immutable by this project's
+own rule and 24 references to M3–M7 live in decided ADRs. Renumbering would strand every one of them
+in documents nobody is allowed to correct.
+
+**Build**
+- ✅ **ADR 0041 settles the threading model, resolving Q9** — the oldest open architectural question,
+  and decided before the first background task exactly as Q9 demanded. Parallelism is allowed only in
+  shapes where determinism is structural: jobs that own their inputs and return through a barrier or
+  into a `Service`, and an `Inbox` that drains in **key order rather than completion order**.
+  `amadeo-jobs` is built and has no dependencies at all.
+- **Background asset loading.** The first consumer of `amadeo-jobs`. ADR 0021's load barrier already
+  forbids gameplay from observing load state, which is precisely what makes this safe — the
+  groundwork was laid three milestones early.
+- **`par_for_each_mut`** — within-system parallel iteration with a closure constrained to one
+  entity's components, so writes are provably disjoint. Needs one narrow follow-up decision: scoped
+  borrows across a persistent pool want either `rayon` or `unsafe`, and ADR 0008 forbids the second.
+- **Surface-nets terrain.** A signed-distance field becomes a mesh — the **fourth producer of
+  `MeshData`** after `BoxMesh`, `PlaneMesh` and `GltfPart`, which is ADR 0035's bet paying off again.
+  Smooth voxel terrain rather than blocky, and destructible by construction, which is what three of
+  the target games need.
+- **Chunked streaming.** Which chunks are active is decided **deterministically** from the player's
+  position; the work is parallel; the simulation blocks on colliders it needs. ADR 0041 §2 is the
+  rule, and it is the thing most likely to be got wrong.
+- **Frustum culling.** Every mesh is drawn every frame today. This is the single largest open-world
+  blocker, and `docs/04` already requires the design not to preclude streaming.
+- **Level of detail**, at least for terrain chunks.
+- **`amadeo-math` over glam.** `Mat4` is hand-written scalar — fine for eleven objects, not for
+  meshing a field. `docs/02` already specifies glam wrapped so the engine owns its surface.
+- **GPU timestamp queries.** Gate 4 could not measure GPU time at all. With terrain the GPU becomes
+  the bottleneck, and without this the engine is blind to it.
+- **More than one light**, and **textures on materials** — currently colours only, and an imported
+  model arrives untextured.
+
+**Exit gate**
+1. **A generated terrain world you can walk around**, streamed in chunks, with collision that works
+   and shadows that land on it.
+2. **A replay of that world reproduces bit-identically** across runs, processes, *and thread counts*
+   — the last being the one that proves ADR 0041 rather than assuming it.
+3. **Frustum culling demonstrably reduces draw calls**, measured through `render.describe` rather
+   than believed.
+4. Frame time within budget at open-world complexity, with GPU time measured this time. Numbers
+   appended to `docs/10-frame-budget.md`.
+
 ---
 
 ## M3 — Game Feel and Completeness

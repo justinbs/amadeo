@@ -1,0 +1,16 @@
+[package]
+name = "amadeo-jobs"
+description = "Background work for the Amadeo engine, shaped so results re-enter the simulation in a fixed order."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# **No dependencies at all, not even thiserror.** A job pool is `std::thread`, a channel and a mutex;
+# reaching for rayon or tokio here would put a work-stealing scheduler the engine does not control
+# underneath the one thing in this project that must be reproducible (invariant I3, ADR 0041).
+
+[lints]
+workspace = true

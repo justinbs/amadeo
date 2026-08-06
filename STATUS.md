@@ -1,7 +1,7 @@
 # Amadeo — Current Status
 
 **Last updated:** 2026-08-06 (end of session 10)
-**Current phase:** **M0 complete. M1 closed. M2 COMPLETE — all four exit gates met**, with every
+**Current phase:** **M0 complete. M1 closed. M2 COMPLETE — all four exit gates met. M2.5 under way**, with every
 expensive decision in it made before its code: ADR 0031 (2D/3D coexistence, and the camera becomes an
 entity), ADR 0033 (the material and shader model), ADR 0034 (the render graph is internal, and a look
 is an asset), ADR 0035 (a mesh is a procedural shape or vertex data), ADR 0036 (physics is
@@ -72,14 +72,14 @@ texture cache, and the wgpu texture path — **closed invariant I8**, making `Re
 compiler-enforced bound on resources and events and shipping `world.resources`, **shipped snapshots**,
 **built `games/vault` and closed M1**, and then **settled Q7 with prefabs**. ADRs 0022–0029.
 
-**Eighteen crates, one module, and three games**, all tested: `amadeo-derive`, `amadeo-image`,
+**Nineteen crates, one module, and three games**, all tested: `amadeo-derive`, `amadeo-image`,
 `amadeo-core`, `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`,
 `amadeo-input`, `amadeo-render`, `amadeo-physics`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`,
-`amadeo-gltf`,
+`amadeo-gltf`, `amadeo-jobs`,
 `amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
 reserved since session 1 — and `games/quad-demo`, `games/vault` and `games/atrium`.
-**1043 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
-7 shadow fitting, 12 the Atrium, 13 glTF, 5 profiling);
+**1052 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
+7 shadow fitting, 12 the Atrium, 13 glTF, 5 profiling, 8 jobs);
 fmt, clippy `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated
 determinism job.
 
@@ -265,8 +265,16 @@ the only evidence available was a push.
 
 ## The single most important thing to do next
 
-**M2 is complete — all four exit gates are met.** The next milestone is **M3**, and
-`docs/05-roadmap.md` is the thing to read before starting it.
+**Build M2.5 — `docs/05-roadmap.md` has the new milestone in full.** M2 is complete, and the roadmap
+gained a milestone between it and M3: **Worlds That Scale**. The threading model is decided
+(ADR 0041) and `amadeo-jobs` is built; the next concrete steps are **background asset loading** — the
+first consumer — then surface-nets terrain and chunked streaming.
+
+**The immediate next task is `par_for_each_mut`, and it has one narrow decision in it.** Scoped
+borrows across a *persistent* thread pool need either `rayon` or `unsafe`, and ADR 0008 forbids the
+second. `std::thread::scope` avoids both but spawns threads per call — tens of microseconds, which is
+fine for chunk meshing and too slow per tick. Worth putting to Justin when the code is written rather
+than deciding in the abstract.
 
 **Before that, one loose end worth closing early: export something from Blender and import it.** The
 whole glTF path is built and tested from both ends, but only against `.glb` fixtures constructed in
@@ -288,6 +296,51 @@ Then, in order:
 
 Two things the Atrium turned up that should be done before they bite again — both below: **authored
 ambient / sky light** on `Environment`, and **camera collision** for a third-person rig.
+
+## Q9 is resolved and M2.5 exists — ADR 0041
+
+**The oldest open architectural question is closed**, and it was closed the way it asked to be:
+*"Decide before adding the first background task, not after."* Justin asked for multithreaded asset
+loading and parallel ECS queries, which are the first background tasks.
+
+**The engine had no threading at all** — grepping for `std::thread` found only
+`thread::current().id()` inside error messages.
+
+**What the research found, and it is specific.** Three ways parallelism destroys determinism, all
+demonstrated in shipping engines: Bevy's own `ParallelCommands` docs admit command order depends on
+thread count; floating-point addition is not associative so parallel reduction changes results (the
+same problem ADR 0036 hit); and **whether a job finished by tick N depends on the wall clock**, which
+diverges a replay even though every computation was correct. Avian reaches rapier's conclusion —
+disable parallelism for strict determinism.
+
+**But ECS is a viable deterministic concurrency model, on a precise condition**: each parallel unit
+must write only its own entity's components, with no shared accumulator and no cross-entity reads.
+That is enforceable by API shape rather than by documentation.
+
+**And one measurement set the priority.** Gate 4 says the whole simulation tick is 8.3 µs — 0.05% of
+a frame. Parallel *system execution* would optimise something that costs nothing. What is expensive
+is asset loading and chunk meshing, and neither is a gameplay system: both are jobs.
+
+So: **parallelism is allowed only where determinism is structural, and the unsafe shapes are made
+unspellable** rather than discouraged — the same move as `Component: Reflect` and the
+Resource/Service split.
+
+`amadeo-jobs` is built, with **no dependencies at all**. A job owns its inputs so it cannot borrow
+the world, and there are exactly two ways an answer returns: wait at a barrier, or deliver into a
+Service gameplay cannot observe. An `Inbox` drains in **key order, never completion order** —
+`the_same_work_drains_identically_however_many_workers_run_it` runs the same jobs on a pool of 1 and
+a pool of 8 and requires identical output.
+
+### The rule most likely to be got wrong later
+
+**A streamed terrain chunk has two products and they have different rules.** Its *mesh* is drawn and
+nothing else, so it goes in a Service and may arrive whenever. Its *collider* is gameplay — a
+character stands on it — so when it arrives changes where the character is.
+
+Which chunks are active is therefore decided **deterministically** from the player's position, and
+the simulation **blocks** on colliders it needs. A slow machine gets a frame hitch and keeps its
+replay. ADR 0021 already established half of this for assets: gameplay may not ask "has this finished
+loading?" The generalisation is that gameplay may not observe *any* completion timing.
 
 ## Gate 4 closed, and M2 with it — ADR 0040
 

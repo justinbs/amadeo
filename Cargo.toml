@@ -24,6 +24,10 @@ amadeo-image = { path = "crates/amadeo-image", version = "0.1.0" }
 # Also no engine deps, for the same reason amadeo-image has none: it holds the glTF parser and
 # nothing else, so no `gltf::` type is visible above it (ADR 0039).
 amadeo-gltf = { path = "crates/amadeo-gltf", version = "0.1.0" }
+# Background work. No engine deps and no external ones either -- a job pool is std::thread, a
+# channel and a mutex, and ADR 0041 explains why a work-stealing runtime does not belong under the
+# one thing that must be reproducible.
+amadeo-jobs = { path = "crates/amadeo-jobs", version = "0.1.0" }
 amadeo-core = { path = "crates/amadeo-core", version = "0.1.0" }
 amadeo-reflect = { path = "crates/amadeo-reflect", version = "0.1.0" }
 amadeo-ecs = { path = "crates/amadeo-ecs", version = "0.1.0" }
