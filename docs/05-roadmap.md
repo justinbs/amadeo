@@ -250,11 +250,22 @@ in documents nobody is allowed to correct.
   `BoxMesh`, `PlaneMesh` and `GltfPart`, which is ADR 0035's bet paying off a third time.
   **ADR 0042** settles the data model: a generated base plus sparse **hashed** edits, so an untouched
   world costs nothing to hash and a save file is a seed plus a diff.
-- **Chunked streaming.** Which chunks are active is decided **deterministically** from the player's
-  position; the work is parallel; the simulation blocks on colliders it needs. ADR 0041 §2 is the
-  rule, and it is the thing most likely to be got wrong. **Q25 (level of detail) should be decided
-  here rather than before**, because whether a chunk's mesh may depend on its neighbours is the same
-  question both raise.
+- 🟡 **Chunked streaming.** Which chunks are active is decided **deterministically** from the
+  player's position; the work is parallel; the simulation blocks on colliders it needs. ADR 0041 §2
+  is the rule, and it is the thing most likely to be got wrong.
+  - ✅ **Residency** — `ChunkKey`, `Viewer`, `Residency`, integer boxes per viewer (**ADR 0043**).
+    Three nested sets, `collision ⊆ visual ⊆ data`, which turns the apron from something to remember
+    into something a test enforces.
+  - ✅ **The terrain source** — ADR 0042's generated base plus sparse edits, keyed by *world* sample
+    coordinate so two chunks cannot disagree about a sample they share, and per-chunk fill and mesh.
+  - ✅ **Static trimesh colliders** — geometry reaches the solver by **id**, not as a component,
+    because `Shape` is `Copy` and `StableHash` and ADR 0042 will not have vertices in the state hash.
+  - ✅ **ADR 0043 §4 amends ADR 0042 §2**: a chunk needs an apron on **both** sides, because the
+    quads bridging two chunks were being emitted by neither.
+  - **The pipeline** — generation and meshing as `amadeo-jobs` jobs, meshes into a `Service`,
+    colliders **blocking** the simulation. Not built.
+  - **Q25 is now better posed and still open**: may a chunk's mesh depend on its neighbours'
+    *resolutions*? ADR 0043 pinning colliders to one level made the seam a purely visual problem.
 - **Frustum culling.** Every mesh is drawn every frame today. This is the single largest open-world
   blocker, and `docs/04` already requires the design not to preclude streaming.
 - **Level of detail**, at least for terrain chunks — **Q25**, deliberately left open by ADR 0042

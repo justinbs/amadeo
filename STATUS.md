@@ -36,21 +36,48 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 | ✅ | **`par_for_each_mut`** — parallel iteration whose closure cannot be written unsafely |
 | ✅ | **Background asset loading** — byte-identical to the sequential path |
 | ✅ | **`amadeo-voxel`** — surface-nets meshing, and **ADR 0042** for the terrain data model |
-| → | **Chunked streaming** — the next thing, and the one with a trap in it (below) |
-| | Frustum culling, LOD, `amadeo-math` over glam, GPU timestamp queries |
+| ✅ | **Chunk residency** — `ChunkKey`, `Viewer`, `Residency`. Integer boxes, **ADR 0043** |
+| ✅ | **The terrain source** — ADR 0042's generated base plus sparse edits, and per-chunk meshing |
+| ✅ | **Static trimesh colliders** — geometry reaches the solver by **id**, not as a component |
+| → | **The streaming pipeline** — generation and meshing as jobs, meshes to a Service, colliders blocking |
+| | Frustum culling, LOD (**Q25**), `amadeo-math` over glam, GPU timestamp queries |
 | | More than one light, textures on materials |
 
-**The next task is chunked streaming, and ADR 0041 §2 is the rule it must obey.** A chunk has two
-products with different rules: its **mesh** is drawn and nothing else, so it may arrive whenever and
-lives in a `Service`; its **collider** is gameplay, because a character stands on it, so *when* it
-arrives changes where the character ends up. Which chunks are active is decided **deterministically**
-from the player's position, and the simulation **blocks** on colliders it needs. A slow machine gets
-a frame hitch and keeps its replay.
+**Session 12 built the foundation and the physics boundary; the pipeline that drives them is next.**
+Everything below the pipeline exists and is tested: which chunks are loaded, how one is filled and
+meshed so it meets its neighbours, and how its collider reaches rapier. What does not exist yet is
+the thing that runs generation and meshing as `amadeo-jobs` jobs, puts meshes in a `Service`, and
+**blocks** on the colliders the simulation needs.
 
-**And the apron constraint bites here.** `Field::new(n)` holds `(n+1)³` samples for `n³` cells,
-because meshing the last cell of a chunk needs the next chunk's data. A chunk that samples only its
-own volume cracks at every seam — and it reads as a rendering bug, not a data one. So chunk
-*generation* must run one chunk ahead of chunk *meshing*.
+**ADR 0041 §2 is still the rule it must obey**, and it is now half-enforced by types rather than by
+memory. A chunk has two products: its **mesh** is drawn and nothing else, so it may arrive whenever;
+its **collider** is gameplay, because a character stands on it, so *when* it arrives changes where the
+character ends up. `Residency` carries separate `visual` and `collision` sets for exactly that reason.
+
+### ⚠️ ADR 0042 described **half** the apron, and the other half cracks every chunk
+
+This is the single most important thing session 12 found, and it was found by meshing two adjacent
+chunks and looking — not by reading the ADR, which was written before anything meshed two chunks.
+
+- **Vertices** need the *high* apron: a cell's vertex comes from its eight corners, so a chunk's last
+  cell needs the next chunk's first sample. This is what ADR 0042 §2 says, and it is correct.
+- **Quads** need a *low* apron too. `surface_nets` emits a quad by looking at the four cells around a
+  grid edge, and at a chunk's **low** face two of them belong to the previous chunk. So the quads
+  *bridging* two chunks were emitted by neither, and every chunk had a one-cell gap around it.
+
+So a chunk of `n` cells fills an **`n + 2`** sample grid covering `n + 1` cells, starting one cell
+*below* its own origin. Every quad in the world is then emitted exactly once, by the chunk on its high
+side — no gaps and no duplicates. **ADR 0043 §4 amends ADR 0042 §2**; `ChunkShape::samples_per_axis`
+is the number, and `two_adjacent_chunks_have_no_gap_between_them` holds it.
+
+Verified by watching it fail: reverting to the high-apron-only scheme prints *"the right chunk does
+not reach back to the join at x = 8; its low apron is missing and the bridging quads belong to
+nobody"*.
+
+**And the apron is no longer something to remember.** `Residency` carries three nested sets —
+`collision ⊆ visual ⊆ data` — where `data` is `visual` grown by one chunk, so a drawn chunk always has
+loaded neighbours to mesh against by construction. Breaking it fails a test that names the chunk and
+the neighbour it is missing.
 
 **The agent can see.** `amadeo capture shot.png` launches a game headless, renders it on an offscreen
 GPU and writes a PNG. That closes ADR 0021's "agent's eyes" and gave the GPU path its first automated
@@ -75,7 +102,7 @@ first real case*, which is the state this project deliberately keeps them in:
 
 | | | |
 |---|---|---|
-| **Q25** | P1 | LOD across chunks at different resolutions — deferred by ADR 0042, decide **with** streaming |
+| **Q25** | P1 | LOD across chunks — **better posed** by ADR 0043 and still open: may a chunk's mesh depend on its neighbours' resolutions? |
 | **Q23** | P1 | One environment per frame, when a world may hold several cameras |
 | **Q15** | P1 | Modding, and whether ADR 0011 still holds |
 | **Q12** | P1 | `Service: Send + Sync` — ADR 0041 changed the argument without closing it |
@@ -86,15 +113,19 @@ first real case*, which is the state this project deliberately keeps them in:
 
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
 
-**Commits are waiting to be pushed** at the end of session 11 — check with
-`git log --oneline origin/main..HEAD`, and see the correction below for why that is the instruction
-rather than a list.
+**Five commits are waiting to be pushed** at the end of session 12 — always check with
+`git log --oneline origin/main..HEAD` rather than trusting this number, for the reason below.
 
-> **A correction to what this file said.** The previous version claimed two commits were waiting,
-> naming `3ea5794` and `c017854`. Both were already on `origin/main`; only `4cc03a1` was unpushed.
-> The claim was written before those pushes and never revised. **Check with
-> `git log --oneline origin/main..HEAD` rather than trusting this line** — that is why the previous
-> version told you to, and it was right.
+> **Session 12 opened by checking CI and found the previous session's push had not landed.**
+> `2aa232f`, `df6f245` and `c26601a` were believed pushed and were not: after a `git fetch`,
+> `origin/main` was still at `7dceed8`, and `gh run list` agreed — the newest CI run was on
+> `7dceed8`, green 5/5. So there is **no CI evidence at all** for background asset loading, surface
+> nets, or session 11's handoff docs, and none for session 12's two commits either.
+>
+> This is the mirror image of the correction the previous version of this file carried, which claimed
+> two commits were waiting that were already pushed. Both mistakes are the same mistake: **a claim
+> about the remote written from memory instead of from the remote.** `git log --oneline
+> origin/main..HEAD` after a `git fetch` is the only thing worth believing here.
 
 > ### ⚠️ Two working rules that changed in session 7 — read before doing anything
 >
@@ -123,9 +154,10 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-gltf`, `amadeo-jobs`, `amadeo-voxel`,
 `amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
 reserved since session 1 — and `games/quad-demo`, `games/vault` and `games/atrium`.
-**1072 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
+**1104 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
 7 shadow fitting, 12 the Atrium, 13 glTF, 5 profiling, 8 jobs, 6 parallel iteration,
-4 parallel loading, 8 surface nets);
+4 parallel loading, 8 surface nets, 13 chunk residency, 10 the terrain source,
+9 static trimesh colliders);
 fmt, clippy `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated
 determinism job.
 
@@ -369,6 +401,70 @@ Then, in order:
 Two things the Atrium turned up are now written down as **Q28** (authored ambient / sky light) and
 **Q27** (camera collision for a third-person rig), so they are decisions waiting rather than notes
 buried in a status file.
+
+## Chunk streaming's foundation — ADR 0043, session 12
+
+**Justin was given two decisions and took the recommendation on both.**
+
+**1. Colliders exist only at the finest detail level.** Distant chunks are drawn and are not solid.
+The reason is not cost: if a collider changed resolution, and resolution depends on viewer position,
+the ground under a character would change shape because *another player* walked toward it — gameplay
+state moving for a rendering reason, which is close to what ADR 0041 exists to prevent. Pinning it has
+a consequence worth having: **the seam question becomes purely visual** and leaves the state hash
+entirely. The cost is named rather than hidden — anything needing to interact with terrain far from a
+viewer falls through it, and that gets its own answer when a game needs one.
+
+**2. One resolution now, LOD decided against a running system.** Q25 stays open, which is what it
+asked for. What is *not* deferred is the level itself: `ChunkKey` carries `lod`, because a chunk's
+resolution is part of its **identity** — two chunks over the same volume at different resolutions are
+different chunks with different meshes, jobs and collider ids. Adding it later would change the key
+type that storage, jobs, colliders and residency are all built on. Same move as ADR 0038's
+`ShadowMode`.
+
+**Residency is integer arithmetic, and concentric boxes rather than an octree.** `godot_voxel` — the
+closest production analogue — migrated away from an octree to exactly this, for reasons that apply
+here: predictable loading, and several viewers without split/merge logic reconciling them. Six of the
+eight target games are co-op or multiplayer (ADR 0006). There is exactly **one** floating-point step
+in the whole module, turning a world position into a chunk coordinate, and it uses only division,
+`floor` and a saturating cast.
+
+**Research killed two of Q25's four options**, so they do not get re-investigated: Transvoxel is for
+marching cubes, a *primal* method, and surface nets is *dual*; and the seam-octree approach needs
+adaptive leaf nodes where `amadeo-voxel` is a uniform grid. What is left would be derived here rather
+than ported.
+
+### Terrain collision could not be a component, and that is the sixth time
+
+`Shape` is `Copy` and `StableHash`. A triangle mesh is neither cheap to copy nor something ADR 0042
+will allow into the state hash — the whole point of a generated base plus sparse edits is that an
+untouched world costs nothing to hash. It cannot go through `step` either: `BodyState` is handed over
+in full every tick, and a chunk is thousands of triangles.
+
+So it travels **the way a texture travels to the GPU: by id, uploaded once.**
+`PhysicsBackend::insert_static_mesh` / `remove_static_mesh` / `static_mesh_count`. The geometry is
+derived, so ADR 0019 puts it outside the hash; what *is* hashed is the seed and the edits that made
+it. And it knows nothing about terrain — a static trimesh is equally an imported level's collision, a
+bridge, or scenery too concave for a box. Same shape as `move_shape` knowing nothing about characters.
+
+**Three things in it worth not rediscovering:**
+
+- **Empty is the common case, not an edge case.** Most chunks of a real world are entirely air or
+  entirely rock and both mesh into nothing, and `ColliderBuilder::trimesh` returns a `Result` that
+  refuses no triangles. Rejected explicitly by **both** backends with the same error — a null backend
+  that accepted more than the real one would hide a missing filter until somebody enabled rapier.
+- **Inserting a known id replaces rather than accumulates.** Digging into a chunk re-meshes it under
+  the same id; leaving the old surface behind makes the tunnel you just dug still solid.
+- **Removing wakes the bodies resting on it.** Taking the ground from under a sleeping crate without
+  waking it leaves the crate hanging in mid-air until something else disturbs it, which reads as a
+  physics bug and is bookkeeping.
+
+`reset()` drops static geometry deliberately, per ADR 0028: restoring a snapshot must not leave the
+old world's ground standing in the new one. Terrain is derived, so rebuilding costs nothing.
+
+**Every collision claim is asserted twice**, per ADR 0037 §5. Against rapier a ball dropped on a
+two-triangle floor rests at 0.5; against `NullPhysics` the same ball falls through to below −1. **The
+control half is not gated on the feature**, so it is never the one that gets skipped — without it, a
+ball "resting" at 0.5 could just as well be a ball that never moved.
 
 ## Q9 is resolved and M2.5 exists — ADR 0041
 
@@ -1160,7 +1256,10 @@ Verified on this machine (2026-07-30):
 | **Gotcha — GPU tests in parallel** | Dropping a headless wgpu device **while another is alive** is `gfx-rs/wgpu#6571`: `STATUS_ACCESS_VIOLATION` on Windows, reported against exactly this (parallel tests, headless adapters). Cargo runs tests in parallel by default. `tests/capture.rs` takes a `static` mutex for each device's whole lifetime; CI passes `--test-threads=1` as well. **It only ever failed in CI, never locally** — a real GPU tolerates it and the runner's software adapter does not, so "it passes on my machine" proves nothing here. |
 | **Gotcha — feature unification** | `cargo test --workspace` builds *every* member, so a feature any one of them enables is on for the whole build. `quad-demo` and `vault` enable `amadeo-render/gpu`, which means **the GPU tests run even without `--all-features`** — a CI comment claimed otherwise for months and was wrong. The same rule is why ADR 0036 says physics determinism cannot be a per-game choice. |
 | **Gotcha — rapier 0.34 uses glam** | Not nalgebra. `Rotation` is a `glam::Quat`, and rapier's own `vector![]` macro still builds an **nalgebra** vector its API will not accept. Use `Vector::new`. Both are "a vector" and only the compiler notices. |
-| **Gotcha — a `Field` is sized in samples** | `Field::new(n)` holds `(n+1)³` samples and meshes `n³` cells. A chunk that fills only its own volume **cracks at every seam**, and the symptom points at the renderer rather than at the data. Chunk *generation* therefore has to run one chunk ahead of chunk *meshing*. |
+| **Gotcha — a `Field` is sized in samples** | `Field::new(n)` holds `(n+1)³` samples and meshes `n³` cells. A chunk that fills only its own volume **cracks at every seam**, and the symptom points at the renderer rather than at the data. |
+| **Gotcha — a chunk needs TWO aprons, not one** | The line above is about *vertices* and is only half the story. `surface_nets` also emits a quad by looking at the four cells around a grid edge, and at a chunk's **low** face two of them belong to the previous chunk — so the bridging quads are emitted by nobody and every chunk has a one-cell gap around it. A chunk of `n` cells fills **`n + 2`** samples covering `n + 1` cells, starting one cell *below* its origin. `ChunkShape::samples_per_axis` is the number; ADR 0043 §4 amends ADR 0042 §2. Use `mesh_chunk`, which gets it right, rather than calling `surface_nets` on a hand-built field. |
+| **Gotcha — an empty chunk is not an error** | Most chunks of a real world are entirely air or entirely rock and mesh into nothing. `ColliderBuilder::trimesh` returns a `Result` and refuses no triangles, so filter with `StaticMesh::is_empty` before inserting. Both backends reject it identically on purpose. |
+| **Gotcha — PowerShell `$?` after a pipe is not the exit code** | `cargo clippy ... \| Select-String "error"` sets `$?` from **`Select-String`**, which reports failure when it finds nothing — so a clean run looks like a failed one. Use `cmd *>$null; $LASTEXITCODE` when what you want is whether cargo succeeded. Cost real confusion in session 12. |
 | **Gotcha — an asset that will not parse is skipped in silence** | By design (ADR 0021): a missing asset must be survivable. So a `.material` with one field missing produces no error and a uniformly white scene. `amadeo check <file>` names the field — but only if you point it at the *asset* files, not just the level. CI does both games now. |
 | **Gotcha — `Grade::contrast` above 1.0 crushes shadows to black** | `(colour - 0.5) * contrast + 0.5` drives near-black values negative and they clamp to zero. Inherent to a pivot with no toe. Invisible before shadows existed, because nothing in a scene was ever that dark. |
 | **Gotcha — `amadeo check` and `fmt` need `--package`** | Both validate against a *game's* registered components (ADR 0016). Run without `--package` and they check against whatever `amadeo.toml` names, which will report every component of the game you meant as unregistered. |

@@ -1378,6 +1378,48 @@ a frame hitch and keeps its replay.
 ADR 0021 built half of this rule three milestones early by forbidding gameplay from asking "has this
 asset finished loading?" The general form is that **gameplay may not observe any completion timing.**
 
+### Big derived data reaches a backend by id, never through a component
+
+**The pattern:** when something is *large* and *derived*, it does not become a component and it does
+not travel through a per-tick function. It gets a name, is handed to the backend once, and stays
+there until removed.
+
+Terrain collision is the worked example. It looks like it wants `Shape::Trimesh`, and it cannot have
+one, for two independent reasons:
+
+```rust
+// Why not a component: both of these are true of Shape, and a triangle mesh breaks both.
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+pub enum Shape { /* Cuboid | Sphere | Capsule */ }
+//               ^ Copy: a Vec is not.   ^ StableHash: ADR 0042 says an untouched world
+//                                         must cost NOTHING to hash, and walking a world's
+//                                         worth of vertices is the exact opposite.
+```
+
+And it cannot go through `step` either, because `BodyState` is handed over **in full every tick** —
+that is what makes a step a pure function — and a chunk is thousands of triangles.
+
+So it works the way a texture works:
+
+```rust
+// Handed over once, by id, and held between steps.
+backend.insert_static_mesh(StaticMesh { id: StaticMeshId(key_as_number), .. })?;
+// ... many ticks later, when the chunk streams out:
+backend.remove_static_mesh(StaticMeshId(key_as_number));
+```
+
+**Why this is safe for determinism**, which is the part worth internalising: the geometry is
+*derived* — regenerable from a seed and a sparse list of edits — so ADR 0019's rule applies and it
+belongs outside the state hash. What *is* hashed is the seed and the edits that produced it. If you
+ever find yourself wanting to hash the derived thing, that is the signal you have the data model
+upside down.
+
+**And the mechanism stays ignorant of the use case.** `StaticMesh` knows nothing about terrain,
+chunks or ground — it is equally an imported level's collision geometry, a bridge, or scenery too
+concave for a box. That is the same discipline `PhysicsBackend::move_shape` follows by knowing
+nothing about characters (ADR 0037): the engine crate owns the *mechanism*, and the thing with an
+opinion about genre lives above it.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

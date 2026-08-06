@@ -83,15 +83,26 @@ crates/
                      parallelism a pure speedup nothing downstream can observe), or **deliver into a
                      Service** that gameplay cannot see (ADR 0009). `pending()` is diagnostics only:
                      a count that depends on machine speed is what makes a replay diverge.
-✅ amadeo-voxel       signed-distance `Field` -> mesh, by naive surface nets (ADR 0042). No deps at
-                     all. **Sized in samples, not cells** -- `Field::new(n)` holds (n+1)^3 samples
-                     and meshes n^3 cells, because a cell needs its eight corners and the last cell
-                     of a chunk needs the next chunk's data. A chunk without that apron cracks at
-                     every seam, and it reads as a rendering bug. Negative is inside; getting the
-                     sign backwards makes the mesh inside out and it reads as invisible terrain.
-                     Surface nets over marching cubes: fewer triangles, no TransVoxel needed for
-                     seams, and neither can do sharp corners anyway -- so buildings stay BoxMesh and
-                     glTF. **The fourth producer of mesh data**, and nothing above the loader knows.
+✅ amadeo-voxel       signed-distance `Field` -> mesh, by naive surface nets (ADR 0042), plus chunk
+                     residency and the terrain source (ADR 0043). No deps at all. Negative is inside;
+                     getting the sign backwards makes the mesh inside out and it reads as invisible
+                     terrain. Surface nets over marching cubes: fewer triangles, and neither can do
+                     sharp corners anyway -- so buildings stay BoxMesh and glTF. **The fourth
+                     producer of mesh data**, and nothing above the loader knows.
+                     **A chunk needs an apron on BOTH sides, and ADR 0042 only described one.**
+                     *Vertices* need the high one: a cell needs its eight corners, so a chunk's last
+                     cell needs the next chunk's first sample. *Quads* need a low one: `surface_nets`
+                     emits a quad from the four cells around a grid edge, and at a chunk's low face
+                     two of them belong to the previous chunk -- so the bridging quads were emitted
+                     by neither and every chunk had a one-cell gap around it. A chunk of n cells
+                     fills **n+2** samples over n+1 cells, starting one cell BELOW its origin
+                     (ADR 0043 §4). **Call `mesh_chunk`**, which gets this right, rather than
+                     `surface_nets` on a hand-built field.
+                     Residency is integer boxes per viewer, because which chunks exist is gameplay
+                     state (ADR 0041 §2). Three nested sets, `collision ⊆ visual ⊆ data`, where
+                     `data` is `visual` grown by one chunk -- so the apron is enforced by a test
+                     rather than remembered. `ChunkKey` carries `lod` although everything is level 0:
+                     resolution is part of a chunk's identity, and Q25 is still open.
 — amadeo-math        vectors, matrices, quaternions, rects, curves. No engine deps.
 ✅ amadeo-core        Tick, FIXED_DT, Rng (PCG32), StableHasher (FNV-1a), StableId/NetId/Authority
 ✅ amadeo-reflect     Value tree, TypeInfo schema, TypeRegistry. ADR 0012. Values include maps with
@@ -177,6 +188,14 @@ crates/
                      knows nothing about characters. It answers from an index `step` builds, so it
                      MUST be called after `step_physics` in the same tick -- asking first queries an
                      empty index and the shape passes through the level on tick 1 only.
+                     **`insert_static_mesh` is the third (ADR 0043)**: a triangle mesh handed over
+                     ONCE, by id, and held between steps -- because `Shape` is `Copy` and
+                     `StableHash` and a world's worth of vertices is exactly what ADR 0042 refuses to
+                     hash, and because `BodyState` travels in full every tick. The geometry is
+                     derived, so ADR 0019 puts it outside the hash; the seed and the edits that made
+                     it are what get hashed. Knows nothing about terrain. **An empty mesh is refused
+                     by both backends** and most chunks of a real world are empty, so filter with
+                     `StaticMesh::is_empty`. Inserting a known id REPLACES; `reset` drops them all.
 — amadeo-anim        sprite anim, skeletal, state machines, tweens
 — amadeo-ui          retained-mode game UI: layout, theming, focus navigation
 ✅ amadeo-snapshot    the .snapshot text format (ADR 0028): capture a whole world to a file and put
