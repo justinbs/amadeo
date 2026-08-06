@@ -63,17 +63,17 @@ texture cache, and the wgpu texture path — **closed invariant I8**, making `Re
 compiler-enforced bound on resources and events and shipping `world.resources`, **shipped snapshots**,
 **built `games/vault` and closed M1**, and then **settled Q7 with prefabs**. ADRs 0022–0029.
 
-**Seventeen crates, one module, and two games**, all tested: `amadeo-derive`, `amadeo-image`,
+**Seventeen crates, one module, and three games**, all tested: `amadeo-derive`, `amadeo-image`,
 `amadeo-core`, `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`,
 `amadeo-input`, `amadeo-render`, `amadeo-physics`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`,
 `amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
-reserved since session 1 — and `games/quad-demo` and `games/vault`.
-**1001 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
-7 shadow fitting);
+reserved since session 1 — and `games/quad-demo`, `games/vault` and `games/atrium`.
+**1008 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
+7 shadow fitting, 7 the Atrium);
 fmt, clippy `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated
 determinism job.
 
-Twenty-five things work end to end today:
+Twenty-six things work end to end today:
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -116,6 +116,11 @@ Twenty-five things work end to end today:
   that CI runs on Windows and Linux, so ADR 0036's cross-platform promise is checked rather than
   believed. Behind `--features rapier`, off by default. Verified the collision tests are evidence by
   pointing them at `NullPhysics`: the ball falls to −72 instead of resting at 0.5.
+- **There is a 3D room you can walk around in.** `cargo run -p atrium` — a floor, four walls, four
+  pillars, a plinth, a sun casting shadows, and an amber character steered with WASD, Q/E and Space.
+  Lighting, the character controller and shadow maps in one place for the first time. Everything in
+  it is text, including the six meshes, the three materials and the look; the follow camera is a
+  child entity of the player and nothing else. **Building it found five real defects** — see below.
 - **Things cast shadows.** A block above a floor darkens the floor beneath it — a real shadow map,
   drawn from the sun's point of view, sampled with hardware comparison filtering and softened over
   nine taps. Off by default; `ShadowMode::Orthogonal` on a `DirectionalLight` turns it on, and
@@ -239,30 +244,74 @@ the only evidence available was a push.
 
 ## The single most important thing to do next
 
-**A gate-1 demo — a small 3D room you can walk around in.** Three of gate 1's four parts are now
-built and *none of them have ever been seen together*: lighting (session 9), the character controller
-and shadows (session 10). Every claim below is asserted by headless tests and single-purpose GPU
-captures.
-
-This is the same bet the roadmap made in M1, and it paid: `games/vault` found things about the scene
-format that no amount of reasoning had. A room with a floor, walls, a light casting shadows and a
-character walking around is the cheapest way to find what this stack is actually awkward at — and it
-is also the only thing that will show whether the shadows *look* right, as opposed to being darker in
-the pixel a test samples.
+**glTF import** — the last unbuilt part of M2's exit gate 1. ADR 0035 made it a new *producer* of
+`MeshData`, so nothing above the loader changes, which is why it could wait this long.
 
 Then, in order:
 
-1. **glTF import**, the last part of gate 1. ADR 0035 made this a new *producer* of `MeshData`, so
-   nothing above the loader changes — which is why it could wait this long.
+1. **glTF import**, as above.
 2. **Gate 4: frame time within a declared budget, numbers written down.** Still nobody has looked at
    it, and it is now the only gate with no work against it at all. ADR 0036 says it must be measured
-   knowing physics uses one core.
+   knowing physics uses one core. **`games/atrium` is the obvious thing to measure** — it is the
+   first scene with real geometry, real physics and a shadow pass in it at once.
 3. **Collision events into `amadeo-events`**, which turns a sensor into a gameplay trigger. The
    Vault's sigils are exactly this shape, done by hand today. This is also what would let the
    character report what it bumped into: `move_shape` already receives per-collision callbacks from
    rapier and deliberately throws them away, because nothing consumes them yet.
 4. **PBR**, a normal matrix per instance, more than one light, transparency. All cheap, all isolated
    behind `RenderBackend`, none blocking a gate.
+
+Two things the Atrium turned up that should be done before they bite again — both below: **authored
+ambient / sky light** on `Environment`, and **camera collision** for a third-person rig.
+
+## `games/atrium` — M2's demo, and what building it found
+
+Three of gate 1's four parts had been built and **none of them had ever been seen together**:
+lighting (session 9), the character controller and shadows (session 10). Each was proved by headless
+tests and single-purpose GPU captures, and by nothing else.
+
+`cargo run -p atrium` is a lit 3D room — floor, four walls, four pillars, a plinth, a sun casting
+shadows, and an amber character steered with WASD, Q/E and Space. The room, its six meshes, its three
+materials and its look are **all text**, and `amadeo check --package atrium` validates every one of
+them. The follow camera is a **child entity of the player** in the scene file and nothing else, which
+is ADR 0031's "a camera parented to a character *is* a follow camera" cashed rather than repeated.
+
+**The bet paid, exactly as it did in M1.** Five things it found, none of which any test had:
+
+1. **Three materials were silently ignored and the whole room rendered default white.** They were
+   missing a required field, and `load_materials` skips an asset that will not parse — so eleven
+   meshes drew with the default material and the room looked like an untextured grey box. **`amadeo
+   check` names the missing field and the file exactly**; it had simply never been pointed at them,
+   because only the *level* was in CI's list. Both the level and every asset file are checked now.
+   A validator nobody runs is a validator that does not exist.
+2. **Contrast above 1.0 crushes shadows to pure black.** The grade is
+   `(colour - 0.5) * contrast + 0.5`, which drives near-black values *negative*, and they clamp to
+   zero. A contrast of 1.05 was enough to turn every shadowed pixel into a hole. Nothing in a scene
+   was ever that dark before shadows existed, so this could not have surfaced earlier.
+3. **The 0.03 ambient term was far too dark once anything could be in shadow**, and is now 0.12.
+   Before shadow maps the only ambient-only pixels were faces turned away from the light — small, and
+   fine as near-black. With shadows, whole areas of *floor* are ambient-only. **The real fix is an
+   authored sky colour on `Environment`**; the constant is a stand-in and now says so.
+4. **A GPU test was comparing against a clipped white.** Raising the ambient made
+   `a_face_turned_away_from_the_light_is_darker_than_one_facing_it` fail at a difference of 13,
+   because its square-on reading was already 255 and had no room left to move. Fixed by testing a
+   mid-grey box, which makes the assertion about the lighting rather than about where the clip lands.
+5. **`amadeo_character::install` must be called before `load_scene`**, since it is what registers
+   `CharacterController` and `CharacterMotion`. Written the wrong way round first — and the error
+   said so, including *"if it belongs to a module, that module may not be loaded"*, which is that
+   message earning its keep. Now documented on `install`.
+
+**Two limitations it also found, both real and neither fixed:**
+
+- **The third-person camera clips through walls.** It is a child entity at a fixed offset, so backing
+  the character into a wall pushes the camera outside the room. The fix is camera collision — a
+  spring arm that shortens the offset when something is in the way — and `PhysicsBackend::move_shape`
+  is already the right tool, since ADR 0037 explicitly names "a camera that must not clip through a
+  wall" as something the query describes.
+- **`render.describe` cannot see meshes.** Asked what the Atrium was drawing, it reported a default
+  orthographic camera and zero entities, because it only knows the 2D path. That made it useless for
+  the one debugging job it was reached for, and it is the agent's main way of seeing a frame without
+  a GPU. Worth fixing before the editor needs it in M4.
 
 ## Shadows landed — ADR 0038
 
@@ -393,9 +442,8 @@ rather than done once by hand.
 
 **Gate 1** — "an imported glTF level, dynamic lighting, shadows, and a physics-driven character
 controller you can walk around with". Lighting ✅ (session 9), character controller ✅ and shadows ✅
-(session 10), **glTF import remains**. **No demo scene exists yet, and none of the three built parts
-have ever been seen together** — see the note at the top, which is why that is now the next thing
-rather than the last part of the gate.
+(session 10), **glTF import remains**. All three built parts are now in one place and running —
+`games/atrium` — so what is left of gate 1 is the importer and a level that came through it.
 
 **Gate 2** — a 2D scene from M1 still renders unchanged. ✅ Holds: `games/vault` is untouched and its
 tests, replays and capture all still pass.

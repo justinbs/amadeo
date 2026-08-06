@@ -207,6 +207,12 @@ games/               actual games built with the engine
                      verified_without_eyes.rs checks the screen through render.describe.
                      NOTE it has two binaries, so it sets `default-run` — without that
                      `cargo run -p vault` is ambiguous and every CLI command against it fails.
+  atrium           M2's demo: a lit 3D room with shadows and a character you walk around in
+                   (`cargo run -p atrium`). The room, its meshes, its materials and its look are all
+                   text; the follow camera is a **child entity of the player** and nothing else,
+                   which is ADR 0031's claim cashed. **Enables `amadeo-physics/rapier`**, so feature
+                   unification turns rapier on for `cargo test --workspace` — deliberate, since a
+                   demo whose walls do not stop you is not a demo.
 docs/                design docs and ADRs
 spikes/              separate cargo workspaces holding the evidence behind an ADR. Frozen once
                      written; excluded from the engine workspace. See spikes/README.md.

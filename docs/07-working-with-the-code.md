@@ -1227,6 +1227,29 @@ grid must be anchored at the **world origin** — snapping relative to the camer
 something that moves, which is no snapping at all. That was got wrong once while deriving it, and
 `a_shadow_box_moves_in_whole_texels` is what pins it.
 
+### An asset that will not parse is skipped in silence — run `amadeo check` on all of them
+
+The single most expensive hour of building `games/atrium` went here, so it is worth knowing before
+you add an asset.
+
+`load_materials`, `load_meshes` and `load_environments` all **skip** an asset that does not resolve,
+does not parse, or does not hold the type they wanted. That is deliberate and ADR 0021 requires it —
+a missing asset must be survivable, not a crash. The consequence is that a material with one field
+missing produces no error, no warning, and a room where every surface is default white.
+
+`amadeo check` catches it exactly, naming the file, the line, the component and the missing field:
+
+```bash
+amadeo check games/atrium/assets/materials/stone.material --package atrium
+```
+
+**Check the asset files, not just the level.** A material, a mesh and an environment are all scene
+files with one root (ADRs 0033–0035), so `check` validates them the same way — but it only validates
+what you point it at. CI now runs it over every one of them for both games.
+
+Unlike the texture path, there is no `failures()` to ask at runtime. If a scene looks untextured or
+uniformly white, that is the first thing to suspect.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---
