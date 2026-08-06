@@ -165,13 +165,40 @@ pub struct MeshInstance {
 ///
 /// Direction rather than position is what makes it *directional*: every surface in the world is lit
 /// from the same angle, which is what distant light looks like and is far cheaper than a light that
-/// falls off with distance. Point lights arrive with shadows.
+/// falls off with distance. Point lights are still to come.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LightData {
     /// The direction the light **travels**, normalised. `[0, -1, 0]` is straight down.
     pub direction: [f32; 3],
     /// Linear RGB, already multiplied by intensity.
     pub colour: [f32; 3],
+    /// How this light casts shadows, if it does (ADR 0038).
+    ///
+    /// `None` for a light with [`ShadowMode::Off`](crate::ShadowMode), and also for one whose
+    /// direction and camera position could not produce a usable matrix. Both mean the same thing to
+    /// a backend — draw no shadow pass for this light — which is why they collapse into one
+    /// `Option` rather than being distinguished here.
+    pub shadow: Option<ShadowData>,
+}
+
+/// Everything a backend needs to render and sample one shadow map — ADR 0038.
+///
+/// The matrix is computed here rather than in the backend for the same reason a view's is: a backend
+/// should be handed everything it needs and never reach back into the world. It also means
+/// `NullBackend` can report what *would* have been rendered, so a shadow-fitting bug is catchable
+/// with no GPU.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShadowData {
+    /// World space to the light's clip space: what the shadow pass draws with, and what the mesh
+    /// pass transforms each pixel by to look its depth up.
+    pub view_projection: amadeo_transform::Mat4,
+    /// How many pixels across the shadow map is.
+    pub resolution: u32,
+    /// How far to push a depth comparison away from the surface, in the light's clip depth.
+    ///
+    /// Already converted out of world units by dividing through the depth range the light's
+    /// projection covers, because the shader compares clip depths and the author writes world ones.
+    pub bias: f32,
 }
 
 /// A run of sprites sharing one texture, drawn in one call.

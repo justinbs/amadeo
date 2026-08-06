@@ -96,8 +96,25 @@ pub(crate) enum TargetFormat {
     /// backend, where building one against the colour layout would fail at *creation* rather than at
     /// draw, and therefore look like an allocation bug rather than a layout one.
     ///
-    /// Shadow maps and fog are what will eventually read it.
+    /// Shadow maps have their own variant below; fog is what will eventually read this one.
     Depth32,
+    /// A depth buffer that a later pass **samples** — a shadow map (ADR 0038).
+    ///
+    /// # Why this is a separate variant rather than a flag on [`TargetFormat::Depth32`]
+    ///
+    /// The two are the same wgpu format and differ in what they are *for*, which turns out to be the
+    /// thing that matters:
+    ///
+    /// - A shadow map needs `TEXTURE_BINDING`, and asking for usages nothing needs is not free —
+    ///   some backends pick a less efficient memory layout to satisfy them. The scene depth buffer is
+    ///   only ever attached, so it should keep asking for nothing extra.
+    /// - `assign_transients` reuses one physical texture for two transients whose descriptions match.
+    ///   Matching on the format means a shadow map and a scene depth buffer can never be handed the
+    ///   same texture even at identical sizes, which they otherwise could — and one of them would
+    ///   then be missing the usage it needs.
+    ///
+    /// The same argument the enum's own doc makes: the tag is the load-bearing part.
+    ShadowMap32,
 }
 
 /// An image that exists only for the duration of one frame.
@@ -141,6 +158,15 @@ pub(crate) enum PassKind {
     /// turns "brighter than white" into pixels, so everything after it is in display range and
     /// everything before it is not.
     Post,
+    /// Draw the scene from a light's point of view, keeping only depth — a shadow map (ADR 0038).
+    ///
+    /// The only pass in this engine with **no colour attachment at all**: nothing is being painted,
+    /// only measured. What it writes is how far the light can see before something blocks it, which
+    /// the view pass then compares each pixel against.
+    Shadow {
+        /// Which view's light this belongs to, indexing [`FrameData::views`](crate::FrameData).
+        view: usize,
+    },
     /// Put a finished image onto the destination.
     ///
     /// A full-screen draw rather than a texture copy, because a surface texture is not guaranteed to
@@ -598,6 +624,33 @@ pub(crate) fn frame_graph(frame: &crate::FrameData, width: u32, height: u32) -> 
         graph.pass("clear", PassKind::Clear, &[], &[SCENE]);
     } else {
         for (index, view) in frame.views.iter().enumerate() {
+            // A shadow map is declared only when a light in this view actually casts one, on the
+            // same reasoning as the depth buffer above: a game with no shadows should allocate no
+            // shadow map and run no extra pass over its geometry.
+            let shadow = view.lights.iter().find_map(|light| light.shadow);
+            let shadow_name = format!("shadow {index}");
+            if let Some(shadow) = shadow {
+                graph.transient(
+                    &shadow_name,
+                    shadow.resolution,
+                    shadow.resolution,
+                    TargetFormat::ShadowMap32,
+                );
+                // Written by the shadow pass and read by the view pass, which is what puts them in
+                // that order -- the dependency is declared rather than the order being asserted.
+                graph.pass(
+                    &format!("shadow {index}"),
+                    PassKind::Shadow { view: index },
+                    &[],
+                    &[shadow_name.as_str()],
+                );
+            }
+
+            // Reading the shadow map is what orders this pass after the one that draws it.
+            let reads: Vec<&str> = match shadow {
+                Some(_) => vec![shadow_name.as_str()],
+                None => Vec::new(),
+            };
             graph.pass(
                 &format!("view {index}"),
                 PassKind::View {
@@ -606,7 +659,7 @@ pub(crate) fn frame_graph(frame: &crate::FrameData, width: u32, height: u32) -> 
                     // what makes a HUD camera compose over a world camera rather than erase it.
                     clears: index == 0,
                 },
-                &[],
+                &reads,
                 &[SCENE],
             );
             // Only a 3D view gets depth. A pipeline declaring no depth state cannot be used in a
@@ -1011,5 +1064,112 @@ mod tests {
         let graph = frame_graph(&frame, 64, 64);
         let plan = graph.compile().expect("a frame graph is always valid");
         assert_eq!(plan.destination_source(), Some(OUTPUT));
+    }
+    /// A 3D frame whose light casts a shadow.
+    fn frame_with_a_shadow() -> FrameData {
+        let mut frame = frame_in_3d();
+        frame.views[0].lights = vec![crate::LightData {
+            direction: [0.0, -1.0, 0.0],
+            colour: [1.0, 1.0, 1.0],
+            shadow: Some(crate::ShadowData {
+                view_projection: amadeo_transform::Mat4::IDENTITY,
+                resolution: 512,
+                bias: 0.001,
+            }),
+        }];
+        frame
+    }
+
+    #[test]
+    fn a_frame_with_no_shadow_casting_light_declares_no_shadow_map() {
+        // The same rule the depth buffer follows: a game that never asked for shadows must not
+        // allocate a shadow map or run an extra pass over all its geometry.
+        let frame = frame_in_3d();
+        let graph = frame_graph(&frame, 64, 64);
+
+        assert!(
+            graph
+                .transients()
+                .iter()
+                .all(|t| t.format != TargetFormat::ShadowMap32)
+        );
+        assert!(
+            graph
+                .passes()
+                .iter()
+                .all(|pass| !matches!(pass.kind, PassKind::Shadow { .. }))
+        );
+    }
+
+    #[test]
+    fn a_shadow_map_is_declared_at_the_resolution_the_light_asked_for() {
+        let frame = frame_with_a_shadow();
+        let graph = frame_graph(&frame, 64, 64);
+
+        let map = graph
+            .transients()
+            .iter()
+            .find(|t| t.format == TargetFormat::ShadowMap32)
+            .expect("a casting light needs somewhere to put its depths");
+        // Square, and at the light's resolution rather than the window's -- a shadow map is not a
+        // full-screen image and sizing it like one would tie shadow quality to window size.
+        assert_eq!((map.width, map.height), (512, 512));
+    }
+
+    #[test]
+    fn the_shadow_pass_is_ordered_before_the_view_that_reads_it() {
+        // **The property the whole graph exists for**, and the one that would be a mystery to debug
+        // if it were merely asserted by writing the passes in the right order. The view pass reads
+        // the shadow map, the shadow pass writes it, and the order falls out of that -- so it is
+        // checkable here with no GPU, which is exactly what ADR 0034 said an internal graph buys.
+        let frame = frame_with_a_shadow();
+        let graph = frame_graph(&frame, 64, 64);
+        let plan = graph.compile().expect("a valid frame");
+
+        let position = |predicate: &dyn Fn(&Pass) -> bool| {
+            plan.order()
+                .iter()
+                .position(|&index| predicate(&graph.passes()[index]))
+                .expect("present")
+        };
+
+        let shadow = position(&|pass| matches!(pass.kind, PassKind::Shadow { .. }));
+        let view = position(&|pass| matches!(pass.kind, PassKind::View { .. }));
+        assert!(
+            shadow < view,
+            "the shadow map has to be drawn before it is sampled; got shadow at {shadow}, view at {view}"
+        );
+    }
+
+    #[test]
+    fn a_shadow_map_and_the_scene_depth_buffer_never_share_a_texture() {
+        // They are the same wgpu format and differ in the usages they need, so a pool that matched
+        // them would hand one of them a texture missing `TEXTURE_BINDING`. The distinct format tag
+        // is what prevents it -- `assign_transients` matches on (width, height, format).
+        let mut frame = frame_with_a_shadow();
+        // Force the awkward case: a shadow map exactly the size of the window's depth buffer.
+        frame.views[0].lights[0].shadow = Some(crate::ShadowData {
+            view_projection: amadeo_transform::Mat4::IDENTITY,
+            resolution: 64,
+            bias: 0.001,
+        });
+        let graph = frame_graph(&frame, 64, 64);
+
+        let depth = graph
+            .transients()
+            .iter()
+            .find(|t| t.name == DEPTH)
+            .expect("declared");
+        let map = graph
+            .transients()
+            .iter()
+            .find(|t| t.format == TargetFormat::ShadowMap32)
+            .expect("declared");
+
+        assert_eq!((depth.width, depth.height), (map.width, map.height));
+        assert_ne!(
+            depth.format, map.format,
+            "same size, so only the format tag can keep them from sharing one texture"
+        );
     }
 }

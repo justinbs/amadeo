@@ -24,7 +24,7 @@
 use amadeo_ecs::World;
 use amadeo_render::{
     BoxMesh, Camera, DirectionalLight, Environment, EnvironmentCache, Material, MaterialCache,
-    Mesh, MeshCache, NullBackend, Quad, RenderBackend, Renderer, TextureData, Vignette,
+    Mesh, MeshCache, NullBackend, Quad, RenderBackend, Renderer, ShadowMode, TextureData, Vignette,
     WgpuBackend, render_quads,
 };
 use amadeo_transform::Transform;
@@ -618,5 +618,136 @@ fn capture_reports_why_it_cannot_when_it_cannot() {
     assert!(
         message.contains("render.describe"),
         "the message should point at what does work: {message}"
+    );
+}
+
+/// A floor with a box hanging above it, lit by a sun at an angle so the shadow lands beside the box
+/// rather than under it — ADR 0038.
+///
+/// # The geometry is arranged so the two samples cannot be confused
+///
+/// The sun travels along `(-1, -2, 0)` normalised, so anything drops half a unit sideways for every
+/// unit it is above the floor. The box sits at x = 2 and y = 4, which puts its shadow centred on
+/// x = 0 — well clear of the box itself, which is what lets the camera look straight down and see
+/// both at once without the box hiding its own shadow.
+fn a_floor_under_a_floating_box(shadows: ShadowMode) -> World {
+    let mut world = World::new();
+
+    // Straight down from fourteen units up. At a 60 degree vertical field of view that shows about
+    // eight world units either side, so the twenty-unit floor fills the frame.
+    let eye = world.spawn();
+    world.insert(
+        eye,
+        Transform {
+            translation: [0.0, 14.0, 0.0],
+            rotation: [-90.0, 0.0, 0.0],
+            ..Transform::default()
+        },
+    );
+    world.insert(eye, Camera::perspective(60.0));
+
+    // Pitch and yaw chosen so the light travels along (-1, -2, 0) normalised. A light aims like a
+    // camera -- along its own negative Z -- so this is "rotate it until it points there" rather than
+    // a direction typed in directly, which is the vocabulary a scene file has.
+    let sun = world.spawn();
+    world.insert(
+        sun,
+        Transform {
+            rotation: [-63.435, 90.0, 0.0],
+            ..Transform::default()
+        },
+    );
+    world.insert(
+        sun,
+        DirectionalLight {
+            shadows,
+            ..DirectionalLight::default()
+        },
+    );
+
+    let mut meshes = MeshCache::new();
+    meshes.insert(
+        "floor",
+        BoxMesh {
+            size: [20.0, 0.2, 20.0],
+        }
+        .tessellate(),
+    );
+    meshes.insert(
+        "block",
+        BoxMesh {
+            size: [2.0, 2.0, 2.0],
+        }
+        .tessellate(),
+    );
+    world.insert_service(meshes);
+
+    let mut materials = MaterialCache::new();
+    materials.insert(
+        "pale",
+        Material {
+            base_colour: [0.9, 0.9, 0.9, 1.0],
+            ..Material::default()
+        },
+    );
+    world.insert_service(materials);
+
+    let floor = world.spawn();
+    world.insert(floor, Transform::at_xyz(0.0, 0.0, 0.0));
+    world.insert(floor, Mesh::new("floor", "pale"));
+
+    let block = world.spawn();
+    world.insert(block, Transform::at_xyz(2.0, 4.0, 0.0));
+    world.insert(block, Mesh::new("block", "pale"));
+    world
+}
+
+#[test]
+fn a_shadow_actually_reaches_the_pixels() {
+    // **The whole of ADR 0038 in one assertion.** Every other shadow test checks a part -- where the
+    // box is fitted, that the pass is ordered before the view -- and this is the only one that can
+    // prove the shadow map is drawn, sampled, and applied to the light.
+    //
+    // The floor at screen centre is where the block's shadow lands; the floor at the left edge is
+    // five world units away from it and lit by the same light at the same angle, so the two pixels
+    // differ in exactly one thing.
+    let mut world = a_floor_under_a_floating_box(ShadowMode::Orthogonal);
+
+    let Some(image) = capture(&mut world, 64, 64) else {
+        return;
+    };
+
+    let shadowed = pixel_at(&image, 32, 32);
+    let lit = pixel_at(&image, 10, 32);
+
+    assert!(
+        lit[0] > 60,
+        "the far floor should be lit by the sun, got {lit:?}"
+    );
+    assert!(
+        shadowed[0] + 20 < lit[0],
+        "the floor under the block should be clearly darker than floor beside it; \
+         shadowed {shadowed:?}, lit {lit:?}"
+    );
+}
+
+#[test]
+fn the_same_scene_without_shadows_is_evenly_lit() {
+    // The control, and the reason the test above is evidence rather than decoration. Both floor
+    // pixels face the light identically, so with shadows off they must match -- if they differ here,
+    // the test above was measuring something other than a shadow and would have passed anyway.
+    //
+    // Session 9's lesson, applied: a test is not evidence until you have watched it fail.
+    let mut world = a_floor_under_a_floating_box(ShadowMode::Off);
+
+    let Some(image) = capture(&mut world, 64, 64) else {
+        return;
+    };
+
+    let centre = pixel_at(&image, 32, 32);
+    let edge = pixel_at(&image, 10, 32);
+    assert!(
+        centre[0].abs_diff(edge[0]) < 12,
+        "with shadows off, one flat floor should be evenly lit; centre {centre:?}, edge {edge:?}"
     );
 }

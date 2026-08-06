@@ -293,6 +293,39 @@ impl Mesh {
     }
 }
 
+/// How a light casts shadows, or whether it does — ADR 0038.
+///
+/// # An enum rather than a `bool`, and why it ships with two variants
+///
+/// The same argument [`PixelFormat`](amadeo_image::PixelFormat) shipped with under ADR 0026, and the
+/// render graph's own internal `TargetFormat` under ADR 0034: **the tag is the load-bearing part.**
+/// The
+/// expensive thing about shadows is not the algorithm — `RenderBackend` isolates that completely —
+/// it is the field on an authored, hashed component that scene files carry. Getting that shape right
+/// once means cascades arrive as a new variant rather than as a change to every scene that has a sun
+/// in it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub enum ShadowMode {
+    /// No shadows. Everything is lit purely by how it faces the light.
+    ///
+    /// The default, and not only to save the work: a scene lit with no shadows looks flat but
+    /// *correct*, where a scene with a badly-fitted shadow map looks broken. Opting in is the
+    /// safer direction.
+    #[default]
+    Off,
+    /// One shadow map covering a box centred on the camera.
+    ///
+    /// Godot calls this "Orthogonal" and ships it as a real mode rather than a stepping stone, which
+    /// is what this name follows. It is the cheapest directional shadow and the right one for
+    /// interiors and small scenes, where everything that matters is close by.
+    ///
+    /// Its limitation is inherent and worth stating plainly: one map stretched over a large outdoor
+    /// scene gives every shadow-map pixel a lot of ground to cover, and edges go visibly blocky.
+    /// That is what cascades — splitting the camera's range into slices with a map each — exist to
+    /// fix, and where they will arrive as a third variant.
+    Orthogonal,
+}
+
 /// A light shining from a direction rather than from a place — the sun, or the moon.
 ///
 /// **An entity, following ADR 0031's precedent for the camera**: a world holds any number, a scene
@@ -301,7 +334,8 @@ impl Mesh {
 /// does — a light points along its own **negative Z**, which is the same convention a camera looks
 /// along, so "aim it like a camera" is literally true.
 ///
-/// Point lights, which fall off with distance and need a position, arrive with shadows.
+/// Point lights, which fall off with distance and need a position, are still to come — M3's horror
+/// slice is what actually needs them.
 #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct DirectionalLight {
     /// Linear RGB. White is the neutral choice; warm and cool are what sell a time of day.
@@ -313,6 +347,29 @@ pub struct DirectionalLight {
     /// above it is what gives tonemapping something to compress.
     #[reflect(min = 0.0, max = 100.0)]
     pub intensity: f32,
+    /// Whether and how this light casts shadows (ADR 0038).
+    pub shadows: ShadowMode,
+    /// How far from the camera shadows are drawn, in world units.
+    ///
+    /// **The single most important shadow setting**, because it is a direct trade against quality:
+    /// the shadow map is a fixed number of pixels stretched over a box this big, so doubling the
+    /// distance halves the detail. Set it to roughly the distance a player can actually see
+    /// shadows at, rather than to the size of the level.
+    #[reflect(min = 0.1, max = 10000.0, unit = "world units")]
+    pub shadow_distance: f32,
+    /// How many pixels across the shadow map is.
+    ///
+    /// Powers of two, and the memory cost is the square of it — 4096 is four times 2048, not twice.
+    #[reflect(min = 16.0, max = 8192.0, unit = "px")]
+    pub shadow_resolution: u32,
+    /// How much to push a shadow test away from the surface, in world units.
+    ///
+    /// Fixes **shadow acne**: a lit surface shadowing itself in stripes, because the shadow map's
+    /// resolution means one stored depth stands for a small patch of a sloped surface and half that
+    /// patch is behind it. Too little leaves the stripes; too much makes a shadow detach from
+    /// whatever cast it, which is called peter-panning and looks exactly like it sounds.
+    #[reflect(min = 0.0, max = 10.0, unit = "world units")]
+    pub shadow_bias: f32,
 }
 
 impl Default for DirectionalLight {
@@ -320,6 +377,23 @@ impl Default for DirectionalLight {
         Self {
             colour: [1.0, 1.0, 1.0],
             intensity: 1.0,
+            shadows: ShadowMode::Off,
+            // Enough to cover a room or a small outdoor area at a 2048 map, which works out at
+            // about 33 shadow-map pixels per world unit.
+            shadow_distance: 30.0,
+            shadow_resolution: 2048,
+            shadow_bias: 0.02,
+        }
+    }
+}
+
+impl DirectionalLight {
+    /// A light that casts shadows, with the default distance, resolution and bias.
+    #[must_use]
+    pub fn casting_shadows() -> Self {
+        Self {
+            shadows: ShadowMode::Orthogonal,
+            ..Self::default()
         }
     }
 }

@@ -167,6 +167,7 @@ fn intensity_is_folded_into_the_colour() {
         DirectionalLight {
             colour: [1.0, 0.5, 0.25],
             intensity: 4.0,
+            ..DirectionalLight::default()
         },
     );
 

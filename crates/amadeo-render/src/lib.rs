@@ -53,7 +53,7 @@ mod textures;
 
 pub use backend::{
     FrameData, LightData, MeshInstance, NullBackend, QuadInstance, RenderBackend, RenderError,
-    SpriteBatch, SpriteInstance, View,
+    ShadowData, SpriteBatch, SpriteInstance, View,
 };
 pub use components::{Camera, Projection, Quad, SortOrder, Sprite};
 pub use describe::{
@@ -64,7 +64,7 @@ pub use environment::{Bloom, Environment, EnvironmentCache, Grade, Tonemap, Vign
 pub use gpu::WgpuBackend;
 pub use mesh::{
     BoxMesh, DirectionalLight, Material, MaterialCache, Mesh, MeshCache, MeshData, PlaneMesh,
-    Vertex,
+    ShadowMode, Vertex,
 };
 pub use sprites::{COLLECT_SPRITES, collect_sprites};
 pub use textures::{PLACEHOLDER_TEXTURE_ID, TextureCache, TextureFailure, decode_frame_textures};
@@ -329,8 +329,12 @@ fn active_cameras(world: &World) -> Vec<(Camera, [f32; 2], Mat4)> {
 ///
 /// A light's **direction** is its own negative Z axis, the same convention a camera looks along — so
 /// aiming a light is aiming a camera, and a scene file needs no separate vocabulary for it.
-fn active_lights(world: &World) -> Vec<LightData> {
-    let mut found: Vec<(amadeo_ecs::Entity, LightData)> = world
+///
+/// Returns the authored component alongside the frame data, because fitting a shadow box needs the
+/// authored distance and resolution and those are deliberately not carried on [`LightData`] — a
+/// backend is handed a finished matrix, not the settings it came from.
+fn active_lights(world: &World) -> Vec<(DirectionalLight, LightData)> {
+    let mut found: Vec<(amadeo_ecs::Entity, DirectionalLight, LightData)> = world
         .query::<(&DirectionalLight, &Transform, Option<&GlobalTransform>)>()
         .filter(|(_, (light, _, _))| light.intensity > 0.0)
         .map(|(entity, (light, transform, global))| {
@@ -350,6 +354,7 @@ fn active_lights(world: &World) -> Vec<LightData> {
             };
             (
                 entity,
+                *light,
                 LightData {
                     direction,
                     colour: [
@@ -357,14 +362,86 @@ fn active_lights(world: &World) -> Vec<LightData> {
                         light.colour[1] * light.intensity,
                         light.colour[2] * light.intensity,
                     ],
+                    // Filled in per camera by `fit_shadow`, because where the shadow map covers
+                    // depends on where the camera is and lights are collected once for the frame.
+                    shadow: None,
                 },
             )
         })
         .collect();
 
     // By entity, so the order is total and reproducible (I3) rather than whatever iteration gave.
-    found.sort_by_key(|(entity, _)| (entity.index(), entity.generation()));
-    found.into_iter().map(|(_, light)| light).collect()
+    found.sort_by_key(|(entity, ..)| (entity.index(), entity.generation()));
+    found
+        .into_iter()
+        .map(|(_, light, data)| (light, data))
+        .collect()
+}
+
+/// Works out the box one shadow map covers, for one light and one camera — ADR 0038.
+///
+/// Returns `None` when the light casts no shadows, which is what a backend reads as "draw no shadow
+/// pass for this light".
+///
+/// # The box follows the camera, and is snapped to a fixed world grid
+///
+/// A directional light has no position, so there is nothing to centre a shadow map on except what
+/// the viewer can see. Centring it on the camera is what keeps the resolution where it is looked at.
+///
+/// But a box that slides continuously with the camera makes every shadow edge **crawl**: each
+/// shadow-map pixel covers a slightly different patch of world every frame, so edges fizz and swim
+/// even when nothing in the scene is moving. The fix is to snap the box to a grid **anchored at the
+/// world origin** rather than at the camera — snapping relative to the camera would be snapping to
+/// something that moves, which is no snapping at all. A fixed world point then lands on exactly the
+/// same shadow-map pixel until the box jumps a whole pixel, which is what
+/// `a_shadow_box_moves_in_whole_texels` pins.
+fn fit_shadow(
+    light: &DirectionalLight,
+    direction: [f32; 3],
+    camera: [f32; 3],
+) -> Option<ShadowData> {
+    if light.shadows == ShadowMode::Off {
+        return None;
+    }
+
+    let half = light.shadow_distance.max(0.1);
+    let resolution = light.shadow_resolution.clamp(16, 8192);
+
+    // How far back along the light's own direction the light "stands". Enough that anything within
+    // the box's own radius above the camera still casts, which is the common case of a wall or a
+    // roof between the sun and the floor.
+    let back_off = half;
+    let near = 0.0;
+    let far = half + back_off;
+
+    // Light space anchored at the *world origin*, so the grid below does not move with the camera.
+    let anchored = Mat4::look_along([0.0, 0.0, 0.0], direction, [0.0, 1.0, 0.0]);
+    let centre = anchored.project_point(camera)?;
+
+    // One shadow-map pixel, in world units. Snapping the box's centre to a multiple of this is what
+    // stops the crawl.
+    let texel = (2.0 * half) / resolution as f32;
+    let snapped_x = (centre[0] / texel).round() * texel;
+    let snapped_y = (centre[1] / texel).round() * texel;
+
+    // The anchored view has its eye at the origin, so its translation column is empty and can simply
+    // be *set* rather than composed with another matrix. x and y move the box onto the snapped
+    // centre; z pulls the eye back so the whole box is in front of it.
+    let mut view = anchored;
+    view.columns[3][0] = -snapped_x;
+    view.columns[3][1] = -snapped_y;
+    view.columns[3][2] = -(centre[2] + back_off);
+
+    let projection = Mat4::orthographic(half, half, near, far);
+
+    Some(ShadowData {
+        view_projection: projection.mul(&view),
+        resolution,
+        // The author writes a world-unit offset because that is the unit everything else in the
+        // scene is in; the shader compares clip depths, which span `far - near` world units across
+        // 0 to 1. Converting here means the field keeps its honest unit.
+        bias: light.shadow_bias / (far - near).max(1e-6),
+    })
 }
 
 /// Every mesh worth drawing, in draw order.
@@ -517,6 +594,31 @@ pub fn render_quads(world: &mut World) {
                 // around: 2D over a 3D world is a *second* camera at a higher order, which is the
                 // answer ADR 0031 already gave and the mechanism a HUD already uses.
                 let flat = matches!(camera.projection, Projection::Orthographic { .. });
+
+                // Shadows are fitted per camera, because where the map covers depends on where the
+                // camera is. Only for a 3D camera: a 2D one draws no meshes, so a shadow map for it
+                // would be a full extra pass rendering nothing.
+                //
+                // **At most one light casts.** Every extra shadow-casting light is another full pass
+                // over the scene, and choosing between a loop in the shader and a pass per light is
+                // the same open question `amadeo-render` already has about lighting in general —
+                // answering it here, for shadows only, would be answering it in the wrong place.
+                let mut shadowed = false;
+                let view_lights: Vec<LightData> = lights
+                    .iter()
+                    .map(|(light, data)| {
+                        if flat || shadowed {
+                            return *data;
+                        }
+                        let fitted = fit_shadow(light, data.direction, eye_matrix.translation());
+                        shadowed |= fitted.is_some();
+                        LightData {
+                            shadow: fitted,
+                            ..*data
+                        }
+                    })
+                    .collect();
+
                 View {
                     environment: resolve(&camera),
                     camera,
@@ -525,7 +627,7 @@ pub fn render_quads(world: &mut World) {
                     quads: if flat { quads.clone() } else { Vec::new() },
                     batches: if flat { batches.clone() } else { Vec::new() },
                     meshes: if flat { Vec::new() } else { meshes.clone() },
-                    lights: lights.clone(),
+                    lights: view_lights,
                 }
             })
             .collect(),

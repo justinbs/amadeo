@@ -102,8 +102,18 @@ struct GpuMeshInstance {
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct GpuMeshView {
     view_projection: [[f32; 4]; 4],
+    /// World to the light's clip space (ADR 0038). Identity when nothing casts a shadow, which
+    /// costs a matrix multiply the shader then ignores — cheaper than a second pipeline variant.
+    light_view_projection: [[f32; 4]; 4],
     light_direction: [f32; 4],
     light_colour: [f32; 4],
+    /// x = depth bias, y = one shadow-map texel in UV, z = 1 when a shadow map is bound and 0 when
+    /// the placeholder is, w unused.
+    ///
+    /// `z` is what stops the placeholder being *sampled* as though it were real. It is a number
+    /// rather than a separate pipeline because a branch that every pixel takes the same way is
+    /// nearly free on a GPU, where a second pipeline is a real state change.
+    shadow_params: [f32; 4],
 }
 
 /// One uploaded mesh's buffers.
@@ -172,7 +182,9 @@ fn wgpu_format(format: TargetFormat) -> wgpu::TextureFormat {
     match format {
         TargetFormat::Srgb8 => OUTPUT_FORMAT,
         TargetFormat::Hdr16 => SCENE_FORMAT,
-        TargetFormat::Depth32 => DEPTH_FORMAT,
+        // The same wgpu format as the scene depth buffer. What differs is the usage it is created
+        // with and the layout it is bound through -- see `TargetFormat::ShadowMap32`.
+        TargetFormat::Depth32 | TargetFormat::ShadowMap32 => DEPTH_FORMAT,
     }
 }
 
@@ -249,13 +261,16 @@ struct PooledTexture {
     /// Built once at creation so a later pass can sample it, for the same reason an uploaded
     /// texture's bind group is: creating one is a driver-side allocation.
     ///
-    /// **`None` for a depth buffer.** `texture_layout` declares `TextureSampleType::Float`, which is
-    /// right for every colour transient and wrong for depth — whose sample type is `Depth`. Building
-    /// one anyway fails at bind-group *creation* rather than at draw, so it reads as an allocation
-    /// bug rather than a layout one.
+    /// **`None` for the scene depth buffer, which nothing samples.**
     ///
-    /// An `Option` rather than a second layout, because nothing samples the depth buffer yet. When
-    /// shadow maps or fog need to, the compiler will ask about every place that assumed it could.
+    /// This was written expecting shadow maps to be what finally read a depth texture, and that is
+    /// what happened (ADR 0038) — but the `Option` survives rather than going away, because it turned
+    /// out there are *two* kinds of depth texture and only one of them is sampled. A shadow map gets
+    /// a bind group built against `shadow_layout`, whose sample type is `Depth` and whose sampler
+    /// compares rather than filters; the scene depth buffer still gets none.
+    ///
+    /// Building a colour bind group against either would fail at bind-group *creation* rather than
+    /// at draw, so it reads as an allocation bug rather than a layout one.
     bind_group: Option<wgpu::BindGroup>,
 }
 
@@ -345,6 +360,18 @@ pub struct WgpuBackend {
     present_pipeline: wgpu::RenderPipeline,
     /// Draws 3D geometry with one directional light. See `mesh.wgsl`.
     mesh_pipeline: wgpu::RenderPipeline,
+    /// Draws the scene from a light's point of view, depth only (ADR 0038).
+    shadow_pipeline: wgpu::RenderPipeline,
+    /// The layout a shadow map is bound through: `Depth` sample type, comparison sampler.
+    shadow_layout: wgpu::BindGroupLayout,
+    shadow_sampler: wgpu::Sampler,
+    /// Bound when nothing casts a shadow, so there is one mesh pipeline rather than two.
+    shadow_placeholder_bind_group: wgpu::BindGroup,
+    #[allow(
+        dead_code,
+        reason = "held to keep the placeholder texture alive; its view and bind group borrow from it"
+    )]
+    shadow_placeholder: wgpu::Texture,
     /// Uploaded geometry, by asset id.
     meshes: BTreeMap<String, GpuMesh>,
     /// One aligned slot per 3D view, addressed by dynamic offset — the same arrangement the 2D
@@ -905,9 +932,165 @@ impl WgpuBackend {
             }],
         });
 
+        // --- Shadow maps (ADR 0038). ---
+        //
+        // A depth texture bound for *comparison*: the sampler is told what to compare against and
+        // returns how many of the neighbouring texels passed, rather than returning a depth. That is
+        // hardware PCF — a soft shadow edge for the price of one sample — and it is why this cannot
+        // reuse `texture_layout`, whose sample type is `Float` and whose sampler filters.
+        let shadow_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("amadeo shadow map layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                    count: None,
+                },
+            ],
+        });
+
+        let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("amadeo shadow sampler"),
+            // Clamped, so sampling just outside the map repeats its edge rather than wrapping to the
+            // far side — which would put a shadow from one corner of the map onto the opposite one.
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            // Linear here does not blur depths — with a comparison sampler it blends the *results*
+            // of the comparisons, which is exactly the softening wanted.
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            // `Less`: a fragment is lit when it is nearer to the light than what the map recorded.
+            // The same direction the depth test uses, and for the same reason.
+            compare: Some(wgpu::CompareFunction::Less),
+            ..Default::default()
+        });
+
+        // A 1×1 shadow map that is always available, so the mesh pipeline has something to bind when
+        // nothing casts shadows.
+        //
+        // The same argument as the placeholder texture in `TextureCache`: the last resort must be
+        // something that cannot itself be missing. Without it the mesh pipeline would need a second
+        // variant compiled without the shadow bindings, which means two pipelines, two shaders that
+        // can drift, and a 2D game paying for a distinction it cannot observe.
+        let shadow_placeholder = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("amadeo shadow placeholder"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: DEPTH_FORMAT,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let shadow_placeholder_view =
+            shadow_placeholder.create_view(&wgpu::TextureViewDescriptor::default());
+        let shadow_placeholder_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("amadeo shadow placeholder bind group"),
+            layout: &shadow_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&shadow_placeholder_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&shadow_sampler),
+                },
+            ],
+        });
+
+        let shadow_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("amadeo shadow shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shadow.wgsl").into()),
+        });
+
+        let shadow_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("amadeo shadow pipeline layout"),
+                bind_group_layouts: &[Some(&mesh_view_layout)],
+                immediate_size: 0,
+            });
+
+        let shadow_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("amadeo shadow pipeline"),
+            layout: Some(&shadow_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shadow_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: size_of::<GpuVertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &wgpu::vertex_attr_array![
+                            0 => Float32x3,
+                            1 => Float32x3,
+                            2 => Float32x2,
+                        ],
+                    }),
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: size_of::<GpuMeshInstance>() as u64,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &wgpu::vertex_attr_array![
+                            3 => Float32x4,
+                            4 => Float32x4,
+                            5 => Float32x4,
+                            6 => Float32x4,
+                            7 => Float32x4,
+                            8 => Float32x4,
+                        ],
+                    }),
+                ],
+            },
+            // No fragment stage: a shadow pass writes depth and nothing else, so there is no colour
+            // for one to return.
+            fragment: None,
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                // **Front** faces are culled here where the mesh pass culls back ones, which is
+                // deliberate and is the cheapest fix for shadow acne there is: recording the far
+                // side of each object moves the stored depth away from the surface being lit, so the
+                // surface stops shadowing itself. It costs correctness only for geometry with no
+                // thickness, which is what `shadow_bias` is still there for.
+                cull_mode: Some(wgpu::Face::Front),
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
         let mesh_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("amadeo mesh pipeline layout"),
-            bind_group_layouts: &[Some(&mesh_view_layout)],
+            bind_group_layouts: &[Some(&mesh_view_layout), Some(&shadow_layout)],
             immediate_size: 0,
         });
 
@@ -1083,6 +1266,11 @@ impl WgpuBackend {
             sprite_pipeline,
             present_pipeline,
             mesh_pipeline,
+            shadow_pipeline,
+            shadow_layout,
+            shadow_sampler,
+            shadow_placeholder_bind_group,
+            shadow_placeholder,
             meshes: BTreeMap::new(),
             mesh_view_buffer,
             mesh_view_bind_group,
@@ -1254,17 +1442,23 @@ impl WgpuBackend {
     /// back — which is the usage a window's own image can never have, and therefore the reason a
     /// windowed run can capture at all.
     fn create_transient(&self, width: u32, height: u32, format: TargetFormat) -> PooledTexture {
-        let depth = matches!(format, TargetFormat::Depth32);
-
-        // A depth buffer is only ever attached, never sampled or read back — so it asks for neither
-        // `TEXTURE_BINDING` nor `COPY_SRC`. Requesting usages nothing needs is not free: some
-        // backends choose a less efficient memory layout to satisfy them.
-        let usage = if depth {
-            wgpu::TextureUsages::RENDER_ATTACHMENT
-        } else {
-            wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC
+        // The scene depth buffer is only ever attached, never sampled or read back — so it asks for
+        // neither `TEXTURE_BINDING` nor `COPY_SRC`. Requesting usages nothing needs is not free:
+        // some backends choose a less efficient memory layout to satisfy them.
+        //
+        // A shadow map is the exception, and the *reason* the two depth formats are separate
+        // variants: it is drawn into and then sampled, so it needs the binding usage the scene depth
+        // buffer deliberately does without.
+        let usage = match format {
+            TargetFormat::Depth32 => wgpu::TextureUsages::RENDER_ATTACHMENT,
+            TargetFormat::ShadowMap32 => {
+                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING
+            }
+            TargetFormat::Srgb8 | TargetFormat::Hdr16 => {
+                wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_SRC
+            }
         };
 
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
@@ -1282,24 +1476,46 @@ impl WgpuBackend {
             view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        // See `PooledTexture::bind_group` for why depth gets none.
-        let bind_group = if depth {
-            None
-        } else {
-            Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("amadeo transient bind group"),
-                layout: &self.texture_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&self.sampler),
-                    },
-                ],
-            }))
+        // Three cases, and each is a different answer to "how would a later pass sample this".
+        // See `PooledTexture::bind_group`.
+        let bind_group = match format {
+            // Nothing samples the scene depth buffer, so it gets no bind group at all.
+            TargetFormat::Depth32 => None,
+            // A shadow map is sampled through the *comparison* layout, not the colour one: its
+            // sample type is `Depth`, and building a colour bind group against it fails at
+            // creation rather than at draw.
+            TargetFormat::ShadowMap32 => {
+                Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("amadeo shadow map bind group"),
+                    layout: &self.shadow_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(&view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&self.shadow_sampler),
+                        },
+                    ],
+                }))
+            }
+            TargetFormat::Srgb8 | TargetFormat::Hdr16 => {
+                Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("amadeo transient bind group"),
+                    layout: &self.texture_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(&view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&self.sampler),
+                        },
+                    ],
+                }))
+            }
         };
 
         PooledTexture {
@@ -1309,6 +1525,75 @@ impl WgpuBackend {
             texture,
             view,
             bind_group,
+        }
+    }
+
+    /// Draws the scene from a light's point of view into a shadow map — ADR 0038.
+    ///
+    /// The same geometry and the same instance buffer as the mesh pass, through a pipeline with no
+    /// fragment stage and no colour attachment. Nothing is painted; only how far the light can see
+    /// is recorded.
+    ///
+    /// Reuses the mesh pass's uniform at the same offset, so a view's light matrix is written once
+    /// per frame rather than into two buffers that could disagree.
+    fn run_shadow_pass(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        declared: &graph::Pass,
+        assigned: &BTreeMap<String, usize>,
+        view_index: usize,
+        draws: Option<&Vec<(&str, std::ops::Range<u32>)>>,
+    ) {
+        // The map it draws into is declared in `writes`, which is what orders this pass before the
+        // view pass that reads it — but it is bound as depth, not as colour.
+        let Some(pooled) = declared.writes.first().and_then(|name| assigned.get(name)) else {
+            return;
+        };
+        let map = &self.transients[*pooled].view;
+
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some(declared.label.as_str()),
+            color_attachments: &[],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: map,
+                depth_ops: Some(wgpu::Operations {
+                    // Cleared to the far plane, so anywhere no geometry covers reads as "the light
+                    // sees all the way", which is "nothing is shadowed here".
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            multiview_mask: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+
+        // A frame whose meshes have not uploaded still clears the map, which is why this returns
+        // after beginning the pass rather than before it: an uncleared shadow map holds the previous
+        // frame's depths, and would shadow the scene with geometry that is no longer there.
+        let Some(draws) = draws else {
+            return;
+        };
+        if draws.is_empty() {
+            return;
+        }
+
+        pass.set_pipeline(&self.shadow_pipeline);
+        pass.set_bind_group(
+            0,
+            &self.mesh_view_bind_group,
+            &[view_index as u32 * self.mesh_view_stride as u32],
+        );
+        pass.set_vertex_buffer(1, self.mesh_instance_buffer.slice(..));
+
+        for (mesh_id, range) in draws {
+            let Some(mesh) = self.meshes.get(*mesh_id) else {
+                continue;
+            };
+            pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+            pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
+            pass.draw_indexed(0..mesh.index_count, 0, range.clone());
         }
     }
 
@@ -1668,10 +1953,19 @@ impl RenderBackend for WgpuBackend {
             let light = view.lights.first().copied().unwrap_or(crate::LightData {
                 direction: [0.0, -1.0, 0.0],
                 colour: [0.0, 0.0, 0.0],
+                shadow: None,
             });
+
+            // The shadow the collection pass fitted for this view, if any (ADR 0038). Taken from
+            // whichever light carries one rather than only the first, so a scene whose first light
+            // is a fill light and whose second is the sun still gets its shadows.
+            let shadow = view.lights.iter().find_map(|light| light.shadow);
 
             let uniform = GpuMeshView {
                 view_projection: view_projection.columns,
+                light_view_projection: shadow
+                    .map_or(amadeo_transform::Mat4::IDENTITY, |s| s.view_projection)
+                    .columns,
                 light_direction: [
                     light.direction[0],
                     light.direction[1],
@@ -1679,6 +1973,16 @@ impl RenderBackend for WgpuBackend {
                     0.0,
                 ],
                 light_colour: [light.colour[0], light.colour[1], light.colour[2], 0.0],
+                shadow_params: match shadow {
+                    Some(shadow) => [
+                        shadow.bias,
+                        1.0 / shadow.resolution.max(1) as f32,
+                        // The flag the shader tests to tell a real shadow map from the placeholder.
+                        1.0,
+                        0.0,
+                    ],
+                    None => [0.0, 0.0, 0.0, 0.0],
+                },
             };
             let at = index * self.mesh_view_stride as usize;
             mesh_views[at..at + size_of::<GpuMeshView>()]
@@ -1830,9 +2134,25 @@ impl RenderBackend for WgpuBackend {
         for &pass_index in plan.order() {
             let declared = &graph.passes()[pass_index];
 
-            // Every pass this backend knows how to run writes exactly one image. A pass writing
-            // none has nothing to attach and is skipped rather than being a special case here — the
-            // graph would have to grow a compute pass before that is reachable.
+            // A shadow pass is the one pass with **no colour attachment**: it writes depth and
+            // nothing else, so what it declares as its target is bound where a depth buffer goes
+            // rather than where an image does (ADR 0038). Handled before the colour path below
+            // because that path would otherwise attach a depth texture as a colour target, which is
+            // a validation error a long way from its cause.
+            if let PassKind::Shadow { view: view_index } = declared.kind {
+                self.run_shadow_pass(
+                    &mut encoder,
+                    declared,
+                    &assigned,
+                    view_index,
+                    mesh_draws.get(view_index),
+                );
+                continue;
+            }
+
+            // Every other pass this backend knows how to run writes exactly one image. A pass
+            // writing none has nothing to attach and is skipped rather than being a special case
+            // here — the graph would have to grow a compute pass before that is reachable.
             let Some(target_name) = declared.writes.first() else {
                 continue;
             };
@@ -1855,6 +2175,8 @@ impl RenderBackend for WgpuBackend {
                 // is irrelevant — but a load of undefined contents is worse than a clear on some
                 // backends, and a clear of something about to be fully written costs nothing.
                 PassKind::Post | PassKind::Present => clear,
+                // Returned above, before any colour attachment is chosen.
+                PassKind::Shadow { .. } => continue,
             };
 
             // Only a 3D view pass declares one (see `Pass::depth`). Cleared to 1.0, the far plane,
@@ -1925,6 +2247,18 @@ impl RenderBackend for WgpuBackend {
                             &self.mesh_view_bind_group,
                             &[index as u32 * self.mesh_view_stride as u32],
                         );
+                        // The shadow map this view reads, or the 1×1 placeholder. Something must be
+                        // bound either way — the pipeline declares the binding, so leaving it empty
+                        // is a validation error rather than a shader that skips the lookup. What
+                        // makes the placeholder harmless is `shadow_params.z`, which the shader
+                        // tests before sampling at all.
+                        let shadow_binding = declared
+                            .reads
+                            .iter()
+                            .find_map(|name| assigned.get(name))
+                            .and_then(|pooled| self.transients[*pooled].bind_group.as_ref())
+                            .unwrap_or(&self.shadow_placeholder_bind_group);
+                        pass.set_bind_group(1, shadow_binding, &[]);
                         pass.set_vertex_buffer(1, self.mesh_instance_buffer.slice(..));
 
                         for (mesh_id, range) in draws {
@@ -2008,6 +2342,11 @@ impl RenderBackend for WgpuBackend {
                     // Three vertices, one instance, no buffers — see `present.wgsl`.
                     pass.draw(0..3, 0..1);
                 }
+
+                // Handled before this match, where it can be given a depth attachment and no colour
+                // one. Unreachable rather than ignored, so adding a pass kind here still has to
+                // think about it.
+                PassKind::Shadow { .. } => {}
             }
         }
 
