@@ -9,6 +9,9 @@ rust-version.workspace = true
 
 [dependencies]
 amadeo-ecs.workspace = true
+# Background file reads (ADR 0041). The pool is passed in by the caller rather than owned here --
+# one pool per process, not one per subsystem.
+amadeo-jobs.workspace = true
 thiserror.workspace = true
 
 [lints]

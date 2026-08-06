@@ -100,6 +100,10 @@ crates/
 🟡 amadeo-assets      AssetCatalogue (declared id -> file, ADR 0020), the .ama-meta sidecar format,
                      a sorted directory scan, sidecar generation on import, and byte loading behind
                      ADR 0021's barrier. Asset-root resolution is by marker file (ADR 0022).
+                     `load_all_in_parallel` reads files on a `JobPool` and fills the store in **key
+                     order at a barrier**, so it is byte-identical to the sequential path, failure
+                     messages included (ADR 0041). ADR 0021's rule -- gameplay may not ask whether an
+                     asset has loaded -- is what makes that safe.
                      Typed handles, the import/decode pipeline, and hot-reload still to come.
 ✅ amadeo-input       action mapping, InputState, recording/replay, the .replay text format
 🟡 amadeo-render      RenderBackend trait, NullBackend, Quad/Sprite/SortOrder, the Camera **component**

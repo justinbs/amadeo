@@ -78,8 +78,9 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-gltf`, `amadeo-jobs`,
 `amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
 reserved since session 1 — and `games/quad-demo`, `games/vault` and `games/atrium`.
-**1059 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
-7 shadow fitting, 12 the Atrium, 13 glTF, 5 profiling, 8 jobs, 6 parallel iteration);
+**1063 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
+7 shadow fitting, 12 the Atrium, 13 glTF, 5 profiling, 8 jobs, 6 parallel iteration,
+4 parallel loading);
 fmt, clippy `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated
 determinism job.
 
@@ -126,6 +127,10 @@ Twenty-eight things work end to end today:
   that CI runs on Windows and Linux, so ADR 0036's cross-platform promise is checked rather than
   believed. Behind `--features rapier`, off by default. Verified the collision tests are evidence by
   pointing them at `NullPhysics`: the ball falls to −72 instead of resting at 0.5.
+- **Assets load across threads, and the result is byte-identical.** `load_all_in_parallel` reads
+  files on a job pool and fills the store in **key order** at a barrier, so it produces exactly what
+  loading them one at a time produces — failure messages included. ADR 0021 forbidding gameplay from
+  asking "has this loaded?" is what made this safe, three milestones before anything needed it.
 - **The engine says where the frame goes.** `amadeo call profile.frame --package atrium --ticks 600`
   reports every system's mean and worst run against the 16.67 ms budget — which exists because an
   agent cannot *feel* a frame-rate problem and can only be told about one. The `Profiler` is a
@@ -277,8 +282,14 @@ on 8 threads. A persistent pool would only help the small end — which is the c
 not be used at all, since the whole simulation tick is 8.3 µs. `amadeo-jobs` already has a persistent
 pool for genuinely coarse work.
 
-**Next: background asset loading**, the first real consumer of `amadeo-jobs`, then surface-nets
-terrain.
+**Background asset loading is built** — `AssetStore::load_all_in_parallel`, the first real consumer
+of `amadeo-jobs`. It produces a store **byte-identical** to the sequential path, failure messages
+included, and `AssetStore` derives `PartialEq` so the test compares the whole store rather than a
+sample of it. Reading files parallelises better than arithmetic does, because it is mostly waiting on
+the operating system.
+
+**Next: surface-nets terrain**, then chunked streaming — which is where ADR 0041's visual/gameplay
+split gets its first real exercise.
 
 **Before that, one loose end worth closing early: export something from Blender and import it.** The
 whole glTF path is built and tested from both ends, but only against `.glb` fixtures constructed in

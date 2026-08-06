@@ -81,6 +81,7 @@ name = "amadeo-assets"
 version = "0.1.0"
 dependencies = [
  "amadeo-ecs",
+ "amadeo-jobs",
  "thiserror 2.0.19",
 ]
 

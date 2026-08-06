@@ -36,6 +36,7 @@
 //! a path, and a `Vec<u8>`.
 
 use crate::{AssetCatalogue, Assets};
+use amadeo_jobs::{Inbox, JobPool};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -190,6 +191,110 @@ impl AssetStore {
                             message: error.to_string(),
                         },
                     );
+                }
+            }
+        }
+    }
+
+    /// [`AssetStore::load_all`], reading the files across threads — ADR 0041.
+    ///
+    /// # It produces exactly what the sequential version produces
+    ///
+    /// Not "equivalent" or "the same set" — **identical**, including which failures are recorded and
+    /// what they say. `parallel_loading_matches_sequential_loading_exactly` asserts it, and that is
+    /// the only interesting claim here: if the two could differ, a game would behave differently
+    /// depending on how many cores it ran on.
+    ///
+    /// Three things make that true, and all three are ADR 0041's rules rather than luck:
+    ///
+    /// 1. **A job owns its inputs.** Each one gets an id and a path, reads the file, and returns
+    ///    bytes. It cannot see the store, the catalogue or the world.
+    /// 2. **Results come back through an [`Inbox`], which drains in key order.** The id is the key,
+    ///    so the store is filled in sorted order however the reads finished — which is the same
+    ///    order [`AssetStore::load_all`] fills it in.
+    /// 3. **There is a barrier.** Nothing returns until every read has finished, so from outside
+    ///    this is a slow function that got faster, and the simulation cannot tell it was threaded.
+    ///
+    /// ADR 0021's rule is what makes the whole thing safe to begin with: gameplay may not ask
+    /// whether an asset has loaded, so there is no way to observe *when* any of this happened.
+    ///
+    /// # When it is worth it
+    ///
+    /// When there are many files or big ones. Reading a file is mostly waiting on the operating
+    /// system, so this parallelises better than arithmetic does — but two small files are not worth
+    /// a barrier, and the sequential path stays the right default for a handful of assets.
+    pub fn load_all_in_parallel<'a>(
+        &mut self,
+        catalogue: &AssetCatalogue,
+        root: &Path,
+        ids: impl IntoIterator<Item = &'a str>,
+        pool: &JobPool,
+    ) {
+        let mut wanted: Vec<&str> = ids.into_iter().collect();
+        wanted.sort_unstable();
+        wanted.dedup();
+
+        // Catalogue lookups happen here, on the calling thread. A job cannot borrow the catalogue --
+        // it is `'static` by construction -- and resolving up front also means an unknown id is
+        // recorded in exactly the order and with exactly the wording the sequential path uses.
+        let inbox: Inbox<String, Result<Vec<u8>, String>> = Inbox::new();
+        let mut submitted = 0_usize;
+        let mut sources: BTreeMap<String, PathBuf> = BTreeMap::new();
+
+        for id in wanted {
+            if self.resident.contains_key(id) {
+                continue;
+            }
+            let Some(entry) = catalogue.get(id) else {
+                self.failures.insert(
+                    id.to_string(),
+                    LoadFailure::Unknown {
+                        id: id.to_string(),
+                        near: catalogue
+                            .similar_to(id)
+                            .into_iter()
+                            .map(str::to_string)
+                            .collect(),
+                    },
+                );
+                continue;
+            };
+
+            sources.insert(id.to_string(), entry.source.clone());
+            let owned_id = id.to_string();
+            let file = root.join(&entry.source);
+            let inbox = inbox.clone();
+            pool.submit(move || {
+                // `map_err` to a String rather than carrying `std::io::Error`, which is not `Send`
+                // in every form and would tie this crate's job type to one error representation.
+                let result = std::fs::read(&file).map_err(|error| error.to_string());
+                inbox.deliver(owned_id, result);
+            });
+            submitted += 1;
+        }
+
+        if submitted == 0 {
+            return;
+        }
+
+        // **The barrier.** After this every read has finished, so what follows is ordinary
+        // single-threaded code filling a map.
+        pool.wait_for_idle();
+
+        for (id, result) in inbox.drain() {
+            match result {
+                Ok(bytes) => {
+                    let source = sources.get(&id).cloned().unwrap_or_default();
+                    self.failures.remove(&id);
+                    self.resident.insert(id, LoadedAsset { source, bytes });
+                }
+                Err(message) => {
+                    let file = sources
+                        .get(&id)
+                        .map(|path| path.to_string_lossy().replace('\\', "/"))
+                        .unwrap_or_default();
+                    self.failures
+                        .insert(id.clone(), LoadFailure::Unreadable { id, file, message });
                 }
             }
         }
