@@ -1,0 +1,287 @@
+scene atrium
+version 1
+
+assets
+  amber
+  atrium_look
+  body
+  floor
+  pillar
+  plinth
+  slate
+  stone
+  wall_north
+  wall_side
+
+entity floor "Floor"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 20.0 0.5 20.0
+  Mesh
+    material "stone"
+    mesh "floor"
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 -0.25 0.0
+
+entity wall_north "North wall"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 20.0 4.0 0.5
+  Mesh
+    material "slate"
+    mesh "wall_north"
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 2.0 -10.0
+
+entity wall_south "South wall"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 20.0 4.0 0.5
+  Mesh
+    material "slate"
+    mesh "wall_north"
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 2.0 10.0
+
+entity wall_east "East wall"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 0.5 4.0 20.0
+  Mesh
+    material "slate"
+    mesh "wall_side"
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 10.0 2.0 0.0
+
+entity wall_west "West wall"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 0.5 4.0 20.0
+  Mesh
+    material "slate"
+    mesh "wall_side"
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -10.0 2.0 0.0
+
+entity pillar_nw "Pillar northwest"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 1.0 3.0 1.0
+  Mesh
+    material "stone"
+    mesh "pillar"
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -4.0 1.5 -4.0
+
+entity pillar_ne "Pillar northeast"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 1.0 3.0 1.0
+  Mesh
+    material "stone"
+    mesh "pillar"
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 4.0 1.5 -4.0
+
+entity pillar_sw "Pillar southwest"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 1.0 3.0 1.0
+  Mesh
+    material "stone"
+    mesh "pillar"
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -4.0 1.5 4.0
+
+entity pillar_se "Pillar southeast"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 1.0 3.0 1.0
+  Mesh
+    material "stone"
+    mesh "pillar"
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 4.0 1.5 4.0
+
+entity plinth "Plinth"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 3.0 1.0 3.0
+  Mesh
+    material "slate"
+    mesh "plinth"
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.5 -6.0
+
+entity sun "Sun"
+  DirectionalLight
+    colour 1.0 0.96 0.88
+    intensity 1.0
+    shadow_bias 0.03
+    shadow_distance 22.0
+    shadow_resolution 2048
+    shadows Orthogonal
+  Transform
+    rotation -48.0 34.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+entity player "Wanderer"
+  CharacterController
+    acceleration 45.0
+    jump_speed 5.5
+    max_slope_degrees 45.0
+    skin 0.02
+    snap_distance 0.2
+    speed 5.0
+    step_height 0.0
+    turn_speed 150.0
+  CharacterMotion
+    grounded false
+    velocity 0.0 0.0 0.0
+  Collider
+    friction 0.5
+    restitution 0.0
+    sensor false
+    shape Capsule
+      height 1.2
+      radius 0.4
+  Mesh
+    material "amber"
+    mesh "body"
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Kinematic
+    linear_damping 0.0
+    mass 80.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 1.0 2.0
+
+  entity eye "Follow camera"
+    Camera
+      active true
+      environment "atrium_look"
+      order 0
+      projection Perspective
+        far 200.0
+        fov 60.0
+        near 0.1
+      target ""
+      viewport 0.0 0.0 1.0 1.0
+    Transform
+      rotation -18.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.8 6.0

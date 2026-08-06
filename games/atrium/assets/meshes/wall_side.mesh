@@ -1,0 +1,6 @@
+scene wall_side
+version 1
+
+entity mesh "Side wall"
+  BoxMesh
+    size 0.5 4.0 20.0

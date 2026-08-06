@@ -1,0 +1,6 @@
+scene pillar
+version 1
+
+entity mesh "Pillar"
+  BoxMesh
+    size 1.0 3.0 1.0

@@ -1,0 +1,6 @@
+scene plinth
+version 1
+
+entity mesh "Plinth"
+  BoxMesh
+    size 3.0 1.0 3.0

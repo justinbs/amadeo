@@ -1,0 +1,10 @@
+scene stone
+version 1
+
+entity material "Pale stone"
+  Material
+    base_colour 0.72 0.7 0.66 1.0
+    base_colour_texture ""
+    emissive 0.0 0.0 0.0
+    metallic 0.0
+    roughness 0.9

@@ -1,0 +1,6 @@
+scene body
+version 1
+
+entity mesh "Character body"
+  BoxMesh
+    size 0.7 2.0 0.7

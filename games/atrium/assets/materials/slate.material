@@ -1,0 +1,10 @@
+scene slate
+version 1
+
+entity material "Dark slate"
+  Material
+    base_colour 0.3 0.31 0.34 1.0
+    base_colour_texture ""
+    emissive 0.0 0.0 0.0
+    metallic 0.0
+    roughness 0.8

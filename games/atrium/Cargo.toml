@@ -1,0 +1,40 @@
+[package]
+name = "atrium"
+description = "M2's demo: a lit 3D room with shadows and a character you walk around in."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+amadeo-app = { workspace = true, features = ["gpu"] }
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-input.workspace = true
+# The whole point of this game: the module walks, and the renderer draws its shadow.
+amadeo-character.workspace = true
+# `rapier` on, deliberately and not by default elsewhere. Against `NullPhysics` the character walks
+# through the walls -- which is a *useful* control case in a test and a broken one in a demo somebody
+# is looking at. Feature unification means this turns rapier on for `cargo test --workspace` too;
+# that is real CI build time, and it is the price of the demo being the thing it claims to be.
+amadeo-physics = { workspace = true, features = ["rapier"] }
+amadeo-reflect.workspace = true
+amadeo-render = { workspace = true, features = ["gpu"] }
+amadeo-scene.workspace = true
+amadeo-transform.workspace = true
+
+anyhow = "1"
+winit = "0.30"
+
+[lints]
+workspace = true
+
+[lib]
+name = "atrium"
+path = "src/lib.rs"
+
+[[bin]]
+name = "atrium"
+path = "src/main.rs"

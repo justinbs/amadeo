@@ -1,0 +1,17 @@
+scene atrium
+version 1
+
+entity look "Atrium"
+  Environment
+    bloom
+      intensity 0.0
+      threshold 1.0
+    exposure 1.0
+    grade
+      contrast 1.0
+      saturation 1.0
+      tint 1.0 1.0 1.0
+    tonemap AcesFilmic
+    vignette
+      intensity 0.25
+      radius 0.55
