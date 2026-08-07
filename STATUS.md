@@ -39,7 +39,9 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 | ✅ | **Chunk residency** — `ChunkKey`, `Viewer`, `Residency`. Integer boxes, **ADR 0043** |
 | ✅ | **The terrain source** — ADR 0042's generated base plus sparse edits, and per-chunk meshing |
 | ✅ | **Static trimesh colliders** — geometry reaches the solver by **id**, not as a component |
-| → | **The streaming pipeline** — generation and meshing as jobs, meshes to a Service, colliders blocking |
+| ✅ | **The streaming core** — `amadeo-terrain`. Colliders meshed **inline**, meshes on the job pool |
+| → | **The ECS layer** — turn a `TerrainUpdate` into entities, mesh uploads and `insert_static_mesh` calls. Mechanical |
+| → | **Authored edits** — ADR 0042 §4 wants them in a hashed component; today the overlay exists and nothing can write to it |
 | | Frustum culling, LOD (**Q25**), `amadeo-math` over glam, GPU timestamp queries |
 | | More than one light, textures on materials |
 
@@ -465,6 +467,31 @@ old world's ground standing in the new one. Terrain is derived, so rebuilding co
 two-triangle floor rests at 0.5; against `NullPhysics` the same ball falls through to below −1. **The
 control half is not gated on the feature**, so it is never the one that gets skipped — without it, a
 ball "resting" at 0.5 could just as well be a ball that never moved.
+
+### The streaming core is built, and breaking it exposed a weak test
+
+`amadeo-terrain` — `TerrainStreamer::update(viewers) -> TerrainUpdate`. Visual chunks go to a
+`JobPool` and are collected from an `Inbox` draining in key order; **collision chunks are meshed
+inline, on the calling thread, before the tick continues.** That asymmetry is the API:
+`TerrainUpdate::colliders` is complete every tick and gameplay may rely on it, `TerrainUpdate::meshes`
+is whatever finished and gameplay may not look at it.
+
+The crate depends on `amadeo-voxel` and `amadeo-jobs` and **nothing else** — no `World`, no renderer,
+no solver — so M2.5's exit gate 2 is testable with no engine at all. A streamed chunk also needs **no
+renderer change**: `MeshCache` is keyed by a plain string, so `chunk_mesh_id` names the geometry and
+everything above the loader is untouched. ADR 0035's bet, paying off a fourth time.
+
+**The finding worth keeping.** Breaking it on purpose — routing colliders through the pool, exactly
+what ADR 0041 §2 forbids — made two tests fail. But
+`the_thread_count_cannot_reach_the_colliders`, **the test named after the exit gate, did not.** It ran
+each worker count to completion separately, and a streamer running alone gets all the wall clock it
+needs, so even the slow configuration finished in time and the divergence never appeared. It now
+walks five streamers east **in lockstep** at 1, 2, 3, 5 and 8 workers, and the same break fails it
+with *"5 workers produced different colliders than 1 worker"*.
+
+So: **"watch it fail" is not only how you check the implementation — it is how you find out whether a
+test measures what its name claims.** That one would have sat in the suite looking like exit-gate
+evidence and proving nothing.
 
 ## Q9 is resolved and M2.5 exists — ADR 0041
 
