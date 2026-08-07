@@ -41,7 +41,8 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 | ✅ | **Static trimesh colliders** — geometry reaches the solver by **id**, not as a component |
 | ✅ | **The streaming core** — `amadeo-terrain`. Colliders meshed **inline**, meshes on the job pool |
 | ✅ | **The ECS layer** — `TerrainViewer`, `TerrainChunk`, `stream_terrain`, `install`. Behind the `engine` feature |
-| → | **Authored edits** — ADR 0042 §4 wants them in a hashed component; today the overlay exists and nothing can write to it |
+| ✅ | **Digging** — `TerrainStreamer::edit`. Invalidates up to eight chunks; jobs carry an edit version |
+| → | **Where edits live — Q29.** They are in a *service*, so **not hashed and not restored by a snapshot**: a dug world reloads undug |
 | → | **A game to walk around in** — exit gate 1. Every piece now exists; nothing has assembled them |
 | | Frustum culling, LOD (**Q25**), `amadeo-math` over glam, GPU timestamp queries |
 | | More than one light, textures on materials |
@@ -105,6 +106,7 @@ first real case*, which is the state this project deliberately keeps them in:
 
 | | | |
 |---|---|---|
+| **Q29** | P1 | **Where terrain edits live.** ADR 0042 §4 says a component on a chunk entity — but chunk entities are now despawned by streaming, which would take the edits with them. Today they are unhashed and a snapshot loses them |
 | **Q25** | P1 | LOD across chunks — **better posed** by ADR 0043 and still open: may a chunk's mesh depend on its neighbours' resolutions? |
 | **Q23** | P1 | One environment per frame, when a world may hold several cameras |
 | **Q15** | P1 | Modding, and whether ADR 0011 still holds |
@@ -157,10 +159,10 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-gltf`, `amadeo-jobs`, `amadeo-voxel`,
 `amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
 reserved since session 1 — and `games/quad-demo`, `games/vault` and `games/atrium`.
-**1104 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
+**1129 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
 7 shadow fitting, 12 the Atrium, 13 glTF, 5 profiling, 8 jobs, 6 parallel iteration,
 4 parallel loading, 8 surface nets, 13 chunk residency, 10 the terrain source,
-9 static trimesh colliders);
+9 static trimesh colliders, 16 the terrain streamer, 8 streaming into a world);
 fmt, clippy `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated
 determinism job.
 
@@ -525,7 +527,45 @@ Two things in it worth not rediscovering:
 Behind an `engine` feature, off by default, so the core keeps its no-engine-dependencies property and
 ADR 0041's claim stays testable with no `World` in the build. **CI runs `--all-features` in the `test`
 job** (both platforms), and the determinism job deliberately does not — which is the right split,
-since the determinism-critical core is not feature-gated.
+since the determinism-critical core is not feature-gated. That was **checked in `ci.yml` rather than
+assumed**, because a feature-gated test nobody runs is this project's most-repeated defect.
+
+### Digging works, and one race in it was worth closing carefully
+
+`TerrainStreamer::edit` changes a sample. Two things in it that would have been found the hard way:
+
+- **An edit invalidates up to eight chunks, not one.** A chunk of `n` cells covers samples
+  `[k*n - 1, k*n + n]`, overlapping its neighbours at both ends because of the two-sided apron. Mark
+  only the chunk that "owns" the sample and the neighbours keep geometry that disagrees with it —
+  so the crack opens exactly where somebody has been digging.
+- **A job that started before an edit finishes after it**, carrying geometry for a world that no
+  longer exists. Delivering it refills the hole milliseconds after it was dug: timing-dependent, and
+  close to unreproducible from a bug report. Every job now carries the **edit version** it was
+  submitted under and stale deliveries are discarded. Edits are copy-on-write behind an `Arc`, so
+  running jobs finish against the old data safely rather than being raced.
+
+### Four judgement calls made alone this session, flagged rather than buried
+
+All four are cheap to undo — `CLAUDE.md` §5 allows deciding those alone and saying so. If any looks
+wrong, say so and it changes.
+
+1. **`amadeo-terrain` is one crate with an `engine` feature**, rather than two crates. Precedent is
+   `gpu` and `rapier`. The consequence worth knowing: the crate's *position in the dependency graph*
+   is feature-dependent — above `amadeo-app` with it on, just above `amadeo-voxel` with it off.
+   Nothing depends on `amadeo-terrain`, so neither position can cycle. Undoing it is a file move.
+2. **`Physics` gained two narrow pass-throughs** (`insert_static_mesh`, `remove_static_mesh`) rather
+   than an exposed `backend_mut()`. Handing out `&mut dyn PhysicsBackend` would let any caller drive
+   `step` directly, and `step` must be fed from the world's components because they are the source of
+   truth (ADR 0036). Static geometry is the one thing that genuinely cannot travel that way, so it
+   gets its own door and nothing else does.
+3. **`removed` is keyed on the *visual* set, not the data set.** The data set is one ring wider and
+   exists so meshing can read into neighbours; since a chunk is sampled from the source on demand
+   rather than stored, nothing is held for it to release. The apron therefore has no runtime consumer
+   right now — it is enforced by a test and by `ChunkShape::samples_per_axis`, which is honest rather
+   than dead.
+4. **UVs on terrain are a flat planar projection from x and z.** There is no artist to author them.
+   It stretches on vertical faces, which is what triplanar mapping fixes and belongs with the
+   material work, not here.
 
 ## Q9 is resolved and M2.5 exists — ADR 0041
 

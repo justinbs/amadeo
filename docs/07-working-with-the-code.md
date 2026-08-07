@@ -1420,6 +1420,49 @@ concave for a box. That is the same discipline `PhysicsBackend::move_shape` foll
 nothing about characters (ADR 0037): the engine crate owns the *mechanism*, and the thing with an
 opinion about genre lives above it.
 
+### Never filter an output by "what does the caller already have"
+
+**The pattern, and it is a trap rather than a technique.** When a system produces work in the
+background and reports what changed, it is tempting to report only what the caller has not already
+been given. Do not — that filter reads background completion state, so the output silently inherits
+whatever the thread pool happened to finish.
+
+Session 12 shipped this bug twice in one file:
+
+```rust
+// WRONG. `known` is filled by background deliveries, so which branch a chunk takes -- and therefore
+// the ORDER of this list -- depends on how many worker threads there are.
+for key in &required.collision {
+    if !self.known.contains_key(key) { newly_meshed.push(...) } else { already_known.push(...) }
+}
+update.colliders = newly_meshed.into_iter().chain(already_known).collect();
+
+// WRONG, same shape. "Was the caller ever told about this?" is a question about delivery timing.
+if self.known.remove(&key).is_some() {
+    update.removed.push(key);
+}
+```
+
+```rust
+// RIGHT. Both come from set differences over residency, which is a pure function of where the
+// viewers are -- so contents AND order are identical on every machine at every thread count.
+for key in required.collision.difference(&self.required.collision) { ... }
+for key in self.required.visual.difference(&required.visual) { update.removed.push(*key); }
+```
+
+The second version reports removals for things the caller may never have had. **That is fine, and
+making it fine is part of the design**: every consumer's removal is idempotent on purpose — a mesh
+cache drops a missing key silently, and `PhysicsBackend::remove_static_mesh` documents that removing
+something absent is not an error, precisely because most chunks are empty and never had a collider.
+
+The general rule: **the deterministic outputs of a background system must be computed from
+deterministic inputs only.** If you find yourself consulting a cache, a completion set, or an
+"already sent" list to decide what to emit, the output now depends on machine speed. It will pass on
+your machine and fail on a loaded CI runner, which is exactly how both of these were found.
+
+A related corollary for tests: **anything asserting *which tick* background work landed on is
+asserting on machine speed.** Count across ticks instead.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

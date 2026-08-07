@@ -103,6 +103,30 @@ crates/
                      `data` is `visual` grown by one chunk -- so the apron is enforced by a test
                      rather than remembered. `ChunkKey` carries `lod` although everything is level 0:
                      resolution is part of a chunk's identity, and Q25 is still open.
+🟡 amadeo-terrain     chunked streaming (ADR 0043). `TerrainStreamer::update(viewers) -> TerrainUpdate`.
+                     **The core depends only on amadeo-voxel and amadeo-jobs** -- no World, no
+                     renderer, no solver -- because the hard part of streaming is *when* work happens
+                     and none of it needs an entity. That is what lets ADR 0041's claim be tested
+                     with no engine in the build.
+                     **Colliders are meshed INLINE and block the tick; meshes go to the job pool.**
+                     ADR 0041 §2 as two code paths. `colliders`, `colliders_removed`, `visible_added`
+                     and `removed` are all `BTreeSet` differences over residency, so contents AND
+                     order are identical at every thread count; `meshes` is the inbox drain and is
+                     timing-dependent by design. **Gameplay may read the first four and never the
+                     fifth.**
+                     **Entities are spawned from `visible_added`, never from mesh arrival** -- an
+                     entity is world state, so spawning on arrival puts the entity allocator and the
+                     state hash behind machine speed. A chunk with no mesh yet draws nothing.
+                     **The collider path must fill the mesh cache too**: a collision chunk is meshed
+                     inline and marked known, so the pool never touches it and it never reaches
+                     `meshes` -- miss this and the invisible terrain is the ground you stand on.
+                     `TerrainStreamer::edit` digs. An edit invalidates **up to eight** chunks (the
+                     two-sided apron) and jobs carry an edit **version**, so a mesh from before a dig
+                     cannot land after it and refill the hole.
+                     The ECS layer (`TerrainViewer`, `TerrainChunk`, `stream_terrain`, `install`) is
+                     behind the **`engine` feature**, off by default, which is what preserves the
+                     no-engine-deps property above. `stream_terrain` runs **before** `step_physics`.
+                     **Edits are NOT hashed and a snapshot does not restore them -- Q29.**
 — amadeo-math        vectors, matrices, quaternions, rects, curves. No engine deps.
 ✅ amadeo-core        Tick, FIXED_DT, Rng (PCG32), StableHasher (FNV-1a), StableId/NetId/Authority
 ✅ amadeo-reflect     Value tree, TypeInfo schema, TypeRegistry. ADR 0012. Values include maps with

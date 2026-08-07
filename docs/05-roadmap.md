@@ -262,8 +262,17 @@ in documents nobody is allowed to correct.
     because `Shape` is `Copy` and `StableHash` and ADR 0042 will not have vertices in the state hash.
   - ✅ **ADR 0043 §4 amends ADR 0042 §2**: a chunk needs an apron on **both** sides, because the
     quads bridging two chunks were being emitted by neither.
-  - **The pipeline** — generation and meshing as `amadeo-jobs` jobs, meshes into a `Service`,
-    colliders **blocking** the simulation. Not built.
+  - ✅ **The pipeline** — `amadeo-terrain`. Meshes on the job pool, colliders meshed **inline** so
+    the simulation blocks on ground it needs. Core has no engine dependencies at all.
+  - ✅ **The ECS layer** — `TerrainViewer`, `TerrainChunk`, `stream_terrain`, `install`, behind the
+    `engine` feature. Entities spawn from residency, never from mesh arrival.
+  - ✅ **Digging** — `TerrainStreamer::edit`, invalidating up to eight chunks, with an edit version
+    so a mesh from before a dig cannot land after it.
+  - **Where edits live — Q29.** They are unhashed today, so a snapshot loses them. ADR 0042 §4's
+    "component on a chunk entity" cannot be implemented as written, because chunk entities are now
+    despawned by streaming.
+  - **A game that assembles it.** Exit gate 1 needs a world to walk around in; every piece exists
+    and nothing has put them together.
   - **Q25 is now better posed and still open**: may a chunk's mesh depend on its neighbours'
     *resolutions*? ADR 0043 pinning colliders to one level made the seam a purely visual problem.
 - **Frustum culling.** Every mesh is drawn every frame today. This is the single largest open-world

@@ -149,6 +149,44 @@ Nothing is blocked: terrain at one resolution works today.
 
 ---
 
+## Q29 · P1 · Where terrain edits live, now that chunk entities are despawned
+
+**New in session 12, and found by building the thing ADR 0042 §4 describes rather than by reading
+it.**
+
+ADR 0042 §4 says: *"Edits are a reflected, hashed component on a chunk entity."* That was written
+before chunk entities existed. They exist now, and `stream_terrain` **despawns them when a chunk
+streams out** — so an edit stored on one would be destroyed by walking away from it.
+
+So the ADR's placement cannot be implemented as written. Today edits live in the `Terrain` service,
+which means **they are not in the state hash and a snapshot does not restore them**: a dug world
+saves and reloads undug. That is a real gap, not a subtlety — it breaks ADR 0042's central promise
+that a save file is a seed plus a diff.
+
+### The options
+
+- **An entity per *edited* chunk, whose existence is driven by having been edited rather than by
+  being loaded.** Closest to ADR 0042 §4's intent, sparse in the world exactly as the edits are
+  sparse in the field, and it survives streaming because nothing streams it. The likely answer.
+  Costs a second kind of chunk entity, and something has to keep the two from being confused.
+- **One hashed `TerrainEdits` resource holding every edit in the world.** Simplest, and it is a
+  single growing blob — every edit anywhere is in the state hash of every tick, and hashing walks all
+  of it. Fine for a small world, and the thing ADR 0042 §3 was explicitly avoiding for a large one.
+- **Edits as their own asset, written to a file.** Matches how the rest of the project treats
+  authored data (I1), and puts save/load in the asset layer rather than the snapshot layer. Awkward
+  because edits change every time somebody digs, which is not what an asset is.
+
+### Why it is not decided here
+
+It needs the snapshot round-trip to be exercised against a terrain world, and nothing has assembled
+one yet — exit gate 1 is still open. Deciding it against a running save/load is strictly better than
+deciding it against a design, which is the same reasoning Q25 gave and which held up.
+
+**Blocking for destructible terrain specifically** — Minecraft, Terraria and Project Zomboid all need
+it. Not blocking for a generated world you walk around in.
+
+---
+
 ## Q26 · P2 · `render.describe` cannot see meshes
 
 **Found in session 10 by reaching for it and getting nothing.** Asked what `games/atrium` was
