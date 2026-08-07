@@ -458,9 +458,25 @@ impl Component for DirectionalLight {}
 /// Filled from above, like [`TextureCache`](crate::TextureCache) and
 /// [`EnvironmentCache`](crate::EnvironmentCache): a mesh asset's file is a *scene* file and
 /// `amadeo-scene` sits above this crate, so by I6 the renderer cannot parse it.
+///
+/// # Geometry can change and can go away, and the version is how anyone finds out
+///
+/// Until terrain streaming, every mesh in this engine loaded once at startup and stayed forever, so
+/// "does the backend have this id" was a complete question. Streaming breaks both halves of that:
+/// a chunk that is dug re-meshes under the **same id**, and a chunk walked away from should stop
+/// costing video memory.
+///
+/// So each entry carries a **version**, bumped on every write. A backend that has uploaded version 3
+/// and sees version 4 knows to replace its copy — where `has_mesh` alone would answer "yes, I have
+/// that" and keep the pre-dig geometry on screen forever, over a collider that had already changed.
 #[derive(Debug, Clone, Default)]
 pub struct MeshCache {
-    loaded: BTreeMap<String, MeshData>,
+    loaded: BTreeMap<String, (u64, MeshData)>,
+    /// Bumped for every write, so no two versions of anything collide even across an id being
+    /// removed and re-added. One counter rather than one per entry: a per-entry counter would restart
+    /// at zero when an id came back, and a backend still holding the old version would decide it was
+    /// already up to date.
+    writes: u64,
 }
 
 impl Service for MeshCache {}
@@ -472,9 +488,29 @@ impl MeshCache {
         Self::default()
     }
 
-    /// Records geometry under an id, replacing any earlier one.
+    /// Records geometry under an id, replacing any earlier one and giving it a fresh version.
     pub fn insert(&mut self, id: impl Into<String>, data: MeshData) {
-        self.loaded.insert(id.into(), data);
+        self.writes += 1;
+        self.loaded.insert(id.into(), (self.writes, data));
+    }
+
+    /// Forgets an id's geometry. Removing something absent is not an error.
+    ///
+    /// Idempotent deliberately, and that is load-bearing rather than lenient: a terrain streamer
+    /// reports every chunk that leaves the drawn region, including ones whose geometry never arrived
+    /// or turned out to be empty. Filtering that list by "did the caller ever receive this" is the
+    /// mistake `docs/07` documents at length — it makes the output depend on what a thread pool
+    /// happened to finish. Removal being harmless is what lets the list stay honest.
+    pub fn remove(&mut self, id: &str) {
+        self.loaded.remove(id);
+    }
+
+    /// Which version of an id the cache currently holds, if it holds one.
+    ///
+    /// What a backend compares against to decide whether its copy is stale.
+    #[must_use]
+    pub fn version_of(&self, id: &str) -> Option<u64> {
+        self.loaded.get(id).map(|(version, _)| *version)
     }
 
     /// The geometry an id names, if it has loaded.
@@ -485,7 +521,7 @@ impl MeshCache {
     /// gap you can see through. The renderer draws nothing and reports the id.
     #[must_use]
     pub fn get(&self, id: &str) -> Option<&MeshData> {
-        self.loaded.get(id)
+        self.loaded.get(id).map(|(_, data)| data)
     }
 
     /// Every loaded id, in order.

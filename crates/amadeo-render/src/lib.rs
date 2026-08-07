@@ -74,7 +74,7 @@ pub use textures::{PLACEHOLDER_TEXTURE_ID, TextureCache, TextureFailure, decode_
 pub use amadeo_image::{EncodeError, PixelFormat, TextureData, encode_png};
 
 use amadeo_ecs::{Service, World};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 // Not re-exported: `Transform` belongs to `amadeo-transform` (ADR 0015), and two import paths to
 // one type is exactly the sort of thing that makes people wonder whether they are the same type.
 use amadeo_transform::{GlobalTransform, Mat4, Transform};
@@ -104,6 +104,13 @@ pub struct Renderer {
     /// frame one would keep its placeholder forever, since the backend would report it as present.
     /// Every id in here is re-checked each frame and re-uploaded the moment it really decodes.
     placeholders_uploaded: BTreeSet<String>,
+    /// Which version of each mesh the backend is holding — the renderer's mirror of what is resident
+    /// in video memory.
+    ///
+    /// Two jobs, and streaming needs both: spotting geometry that **changed** under a fixed id (a
+    /// chunk that was dug), and spotting geometry the cache has **let go of**, so its buffers can be
+    /// freed rather than accumulating for as long as the game runs.
+    uploaded_meshes: BTreeMap<String, u64>,
 }
 
 impl Service for Renderer {}
@@ -117,6 +124,7 @@ impl Renderer {
             clear_color: FrameData::default().clear_color,
             last_error: None,
             placeholders_uploaded: BTreeSet::new(),
+            uploaded_meshes: BTreeMap::new(),
         }
     }
 
@@ -216,25 +224,67 @@ impl Renderer {
         }
     }
 
-    /// Uploads any geometry this frame needs that the backend does not already hold.
+    /// Uploads any geometry this frame needs that the backend does not already hold *at the current
+    /// version*, and drops geometry the cache no longer has.
     ///
-    /// Simpler than [`Renderer::upload_frame_textures`] in one way that matters: geometry has no
-    /// placeholder and no late arrival. A mesh either loaded or it did not, and one that did not was
-    /// already dropped during collection — so there is no "uploaded a stand-in, replace it later"
-    /// state to track, which is the whole of what makes the texture version complicated.
+    /// # Why a version, when textures get by with a boolean
+    ///
+    /// Because geometry can now change under a fixed name. Every mesh in this engine used to be an
+    /// asset loaded once at startup, so [`RenderBackend::has_mesh`] was a complete question. Terrain
+    /// streaming broke that: **digging re-meshes a chunk under the same id**, and `has_mesh` would
+    /// answer "yes, I have that" and keep the pre-dig geometry on screen — over a collider that had
+    /// already changed. The player would walk into a tunnel that still looked like solid rock.
+    ///
+    /// [`MeshCache`] bumps a version on every write, so "is my copy stale" is two integers rather
+    /// than a comparison of megabytes.
     fn upload_frame_meshes(&mut self, frame: &FrameData, cache: &MeshCache) {
         for view in &frame.views {
             for instance in &view.meshes {
-                if self.backend.has_mesh(&instance.mesh) {
+                let Some(version) = cache.version_of(&instance.mesh) else {
+                    continue;
+                };
+                if self.uploaded_meshes.get(&instance.mesh) == Some(&version) {
                     continue;
                 }
                 let Some(data) = cache.get(&instance.mesh) else {
                     continue;
                 };
-                if let Err(error) = self.backend.upload_mesh(&instance.mesh, data) {
-                    self.last_error = Some(error);
+                match self.backend.upload_mesh(&instance.mesh, data) {
+                    Ok(()) => {
+                        self.uploaded_meshes.insert(instance.mesh.clone(), version);
+                    }
+                    Err(error) => self.last_error = Some(error),
                 }
             }
+        }
+
+        self.evict_departed_meshes(cache);
+    }
+
+    /// Frees geometry the backend holds that the cache has let go of.
+    ///
+    /// # Why this is driven from what the *renderer* uploaded
+    ///
+    /// This looks like the pattern `docs/07` forbids — filtering by "what does the caller already
+    /// have" — and it is worth saying why it is not the same thing. That rule governs the
+    /// **deterministic outputs of a background system**: a list gameplay reads must not depend on
+    /// what a thread pool finished. This is the renderer's private record of what is resident in
+    /// video memory, it reaches nothing but drawing, and ADR 0041 §2 explicitly permits drawing to
+    /// lag. A frame late in freeing a buffer is invisible; a frame late in a collider is not.
+    ///
+    /// The alternative — asking the backend to enumerate everything it holds — would allocate a list
+    /// of ids every frame to answer a question the renderer already knows the answer to.
+    fn evict_departed_meshes(&mut self, cache: &MeshCache) {
+        let departed: Vec<String> = self
+            .uploaded_meshes
+            .keys()
+            .filter(|id| cache.version_of(id).is_none())
+            .cloned()
+            .collect();
+
+        for id in departed {
+            self.backend.remove_mesh(&id);
+            self.uploaded_meshes.remove(&id);
         }
     }
 

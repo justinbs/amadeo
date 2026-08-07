@@ -1817,6 +1817,14 @@ impl RenderBackend for WgpuBackend {
         Ok(())
     }
 
+    /// Drops a mesh's buffers, and with them their video memory.
+    ///
+    /// `wgpu` frees a buffer when the last handle to it is dropped, so removing the map entry is the
+    /// whole of it — there is nothing to release explicitly and nothing that can be released twice.
+    fn remove_mesh(&mut self, id: &str) {
+        self.meshes.remove(id);
+    }
+
     fn upload_texture(&mut self, id: &str, texture: &TextureData) -> Result<(), RenderError> {
         let format = match texture.format {
             // `Srgb` here and an sRGB surface format together are what make colours come out right:

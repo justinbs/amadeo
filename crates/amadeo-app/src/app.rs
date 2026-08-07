@@ -259,6 +259,20 @@ impl App {
         self.registry = registry;
     }
 
+    /// Whether a system label is already registered in a stage.
+    ///
+    /// For **modules that share a prerequisite**. `amadeo_character::install` and
+    /// `amadeo_terrain::install` both need `step_physics` in the schedule, and both registering it
+    /// is a `DuplicateLabel` error — so a game with a character walking on streamed terrain, which is
+    /// the ordinary open-world case, refused to start. Each asks this first and registers only if
+    /// nobody has.
+    #[must_use]
+    pub fn has_system(&self, stage: Stage, label: &str) -> bool {
+        self.schedules
+            .get(&stage)
+            .is_some_and(|schedule| schedule.contains(label))
+    }
+
     /// Registers a system into a stage.
     pub fn add_system(&mut self, stage: Stage, config: SystemConfig) -> &mut Self {
         self.schedules
@@ -596,8 +610,40 @@ impl App {
     }
 
     /// Turns every material id a [`Mesh`] names into the material behind it — ADR 0033.
+    ///
+    /// **Only materials named by a `Mesh` that exists right now.** For anything spawned later, see
+    /// [`App::load_material`].
     pub fn load_materials(&mut self) -> &mut Self {
         let wanted = self.ids_named_by(|mesh: &Mesh| [mesh.material.clone()]);
+        self.load_material_ids(wanted)
+    }
+
+    /// Loads one material by id, whether or not anything names it yet.
+    ///
+    /// # Why this is needed at all
+    ///
+    /// [`App::load_materials`] scans the `Mesh` components in the world, which is complete for a
+    /// world built entirely from a scene file — and silently incomplete the moment anything spawns
+    /// at **runtime**. Terrain streaming is the first such thing: chunk entities appear as the
+    /// player approaches, long after loading is done, so the material they name was never read and
+    /// every chunk drew with [`Material::default`] — a plain white surface, over a world that was
+    /// otherwise entirely correct.
+    ///
+    /// That is the same failure `games/atrium` hit in session 9 from a different direction, and it
+    /// has the same shape both times: **a missing asset is survivable by design (ADR 0021), so the
+    /// only symptom is that something looks wrong.**
+    ///
+    /// Idempotent, and a miss is not an error: an id that does not resolve leaves the cache alone
+    /// and whatever names it draws with the default.
+    pub fn load_material(&mut self, id: &str) -> &mut Self {
+        if id.is_empty() {
+            return self;
+        }
+        self.load_material_ids(BTreeSet::from([id.to_string()]))
+    }
+
+    /// The shared half of [`App::load_materials`] and [`App::load_material`].
+    fn load_material_ids(&mut self, wanted: BTreeSet<String>) -> &mut Self {
         let found: Vec<(String, Material)> = self.read_component_assets(&wanted);
         if found.is_empty() {
             return self;

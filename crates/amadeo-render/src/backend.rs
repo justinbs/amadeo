@@ -421,6 +421,22 @@ pub trait RenderBackend: fmt::Debug + Send + Sync {
         Ok(())
     }
 
+    /// Drops the geometry held under `id`, freeing whatever it cost.
+    ///
+    /// # Why this exists at all, when [`RenderBackend::upload_texture`] has no counterpart
+    ///
+    /// Because geometry became *transient*. Every mesh in this engine used to be an asset loaded at
+    /// startup, so a backend accumulating them until exit was accumulating a fixed set. Chunked
+    /// terrain streaming (ADR 0043) is the first thing that produces geometry the world will later
+    /// stop wanting — walk far enough in one direction and, without this, video memory grows for as
+    /// long as the game runs.
+    ///
+    /// Removing an id the backend does not hold is **not an error**, and callers rely on that: the
+    /// terrain streamer reports every chunk leaving the drawn region, including ones whose mesh never
+    /// arrived and ones that were empty. Making that list conditional on what had been delivered is
+    /// the defect `docs/07` warns about, so the removal is made harmless instead.
+    fn remove_mesh(&mut self, _id: &str) {}
+
     /// Draws one frame.
     fn render(&mut self, frame: &FrameData) -> Result<(), RenderError>;
 
@@ -528,6 +544,23 @@ impl NullBackend {
         self.textures.keys().map(String::as_str)
     }
 
+    /// The geometry uploaded under an id, if any.
+    ///
+    /// The mesh counterpart of [`NullBackend::texture`], and it exists for a sharper reason than
+    /// symmetry: geometry is now *replaced* when a chunk is dug and *dropped* when one streams away,
+    /// and both are silent failures. A stale mesh looks like solid rock over a tunnel; a mesh never
+    /// dropped looks like nothing at all until video memory runs out. This is what lets a headless
+    /// test see the difference.
+    #[must_use]
+    pub fn mesh(&self, id: &str) -> Option<&crate::MeshData> {
+        self.meshes.get(id)
+    }
+
+    /// Every uploaded mesh id, in order.
+    pub fn mesh_ids(&self) -> impl Iterator<Item = &str> {
+        self.meshes.keys().map(String::as_str)
+    }
+
     /// The passes the last frame resolved to, by label, in the order they would have run.
     ///
     /// # Why a backend that draws nothing still builds a plan
@@ -578,6 +611,13 @@ impl RenderBackend for NullBackend {
     fn upload_mesh(&mut self, id: &str, mesh: &crate::MeshData) -> Result<(), RenderError> {
         self.meshes.insert(id.to_string(), mesh.clone());
         Ok(())
+    }
+
+    /// Implemented for real rather than left as the trait's no-op, so that a headless test can
+    /// assert geometry was actually released. A null backend that quietly kept everything would make
+    /// a leak invisible to every test that does not need a GPU — which is most of them.
+    fn remove_mesh(&mut self, id: &str) {
+        self.meshes.remove(id);
     }
 
     fn render(&mut self, frame: &FrameData) -> Result<(), RenderError> {
