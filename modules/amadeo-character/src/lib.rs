@@ -197,7 +197,13 @@ pub fn install(app: &mut App) -> Result<(), RegistryError> {
     app.register_component::<CharacterController>()?;
     app.register_component::<CharacterMotion>()?;
 
-    app.add_system(Stage::Simulation, system(STEP_PHYSICS, step_physics));
+    // Only if nobody else has. `amadeo_terrain::install` needs the same system, and a game with a
+    // character walking on streamed terrain calls both -- which used to fail at startup with
+    // `DuplicateLabel { label: "step_physics" }`. Neither module can be the one that owns it, and a
+    // game having to know which install to call first is exactly the coupling `install` removes.
+    if !app.has_system(Stage::Simulation, STEP_PHYSICS) {
+        app.add_system(Stage::Simulation, system(STEP_PHYSICS, step_physics));
+    }
     app.add_system(
         Stage::Simulation,
         system(DRIVE_CHARACTERS, drive_characters).after(STEP_PHYSICS),

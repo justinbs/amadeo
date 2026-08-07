@@ -494,6 +494,19 @@ impl TerrainStreamer {
     }
 }
 
+/// How many meshing workers to use on this machine, leaving a core for the simulation.
+///
+/// A convenience so a game does not have to depend on `amadeo-jobs` for one number, and so there is
+/// one answer to the question rather than one per caller.
+///
+/// **This number may not reach gameplay.** It varies by machine; it decides how *fast* chunks are
+/// meshed and never *what* comes out, which is ADR 0041's whole claim and what
+/// `the_thread_count_cannot_reach_the_colliders` holds.
+#[must_use]
+pub fn default_workers() -> usize {
+    JobPool::workers_for_this_machine()
+}
+
 /// The name a chunk's geometry is held under, for a mesh cache or a collider registry.
 ///
 /// A plain string because that is what `amadeo-render`'s cache and `Mesh` component already speak —

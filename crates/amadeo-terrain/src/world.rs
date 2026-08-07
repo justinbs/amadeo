@@ -34,7 +34,7 @@ use amadeo_core::StableHash;
 use amadeo_ecs::{Component, Entity, Service, World};
 use amadeo_physics::{Physics, STEP_PHYSICS, StaticMesh, StaticMeshId, step_physics};
 use amadeo_reflect::{Reflect, RegistryError};
-use amadeo_render::{Material, Mesh, MeshCache, MeshData, Vertex};
+use amadeo_render::{Mesh, MeshCache, MeshData, Vertex};
 use amadeo_transform::Transform;
 use amadeo_voxel::{ChunkKey, TerrainSource, Viewer};
 use std::sync::Arc;
@@ -123,20 +123,32 @@ impl TerrainChunk {
 pub struct Terrain {
     /// The streamer itself.
     pub streamer: TerrainStreamer,
-    /// The material every terrain chunk is drawn with.
-    pub material: Material,
+    /// The declared asset id of the material every terrain chunk is drawn with.
+    ///
+    /// An **id** rather than a [`Material`](amadeo_render::Material), matching how every other mesh
+    /// in the engine names one (ADR 0033): the material itself is an asset file a game authors and
+    /// `amadeo check` validates, and inlining a copy here would be a second place for it to live.
+    /// Empty means a plain white surface — which is what an unconfigured terrain draws as.
+    pub material: String,
 }
 
 impl Service for Terrain {}
 
 impl Terrain {
-    /// A terrain service over a generated world.
+    /// A terrain service over a generated world, drawn with the default material.
     #[must_use]
     pub fn new(source: Arc<dyn TerrainSource>, settings: TerrainSettings, workers: usize) -> Self {
         Self {
             streamer: TerrainStreamer::new(source, settings, workers),
-            material: Material::default(),
+            material: String::new(),
         }
+    }
+
+    /// The same, drawn with a named material asset.
+    #[must_use]
+    pub fn with_material(mut self, id: impl Into<String>) -> Self {
+        self.material = id.into();
+        self
     }
 }
 
@@ -155,12 +167,22 @@ pub fn install(app: &mut App, terrain: Terrain) -> Result<(), RegistryError> {
     app.register_component::<TerrainViewer>()?;
     app.register_component::<TerrainChunk>()?;
 
+    // **Loaded here, because nothing will ever name it in time.** `App::load_materials` scans the
+    // `Mesh` components that exist when a scene finishes loading, and a terrain chunk is spawned at
+    // runtime -- so the material would never be read and every chunk would draw plain white over an
+    // otherwise correct world. Found by looking at the first capture of `games/scarp`.
+    app.load_material(&terrain.material);
+
     app.insert_service(terrain);
     if !app.world.has_service::<MeshCache>() {
         app.insert_service(MeshCache::new());
     }
 
-    app.add_system(Stage::Simulation, system(STEP_PHYSICS, step_physics));
+    // Only if nobody else has -- `amadeo_character::install` needs the same system, and an open
+    // world is precisely the case that calls both. See that function for the failure this avoids.
+    if !app.has_system(Stage::Simulation, STEP_PHYSICS) {
+        app.add_system(Stage::Simulation, system(STEP_PHYSICS, step_physics));
+    }
     // **Before** physics, not after: a collider has to be in the solver on the tick a character
     // walks onto it. See the module docs.
     app.add_system(
@@ -218,6 +240,14 @@ pub fn stream_terrain(world: &mut World) {
         for chunk in update.meshes.iter().chain(&update.colliders) {
             cache.insert(chunk_mesh_id(chunk.key), mesh_data_of(chunk));
         }
+        // **Dropped as well as added**, which this system's own documentation claimed and its code
+        // did not do. Without it, geometry accumulates for every chunk ever visited: walk in one
+        // direction long enough and the cache holds the whole world, one chunk at a time, with
+        // nothing referring to any of it. The renderer frees the matching video memory by noticing
+        // the id has gone from here.
+        for key in &update.removed {
+            cache.remove(&chunk_mesh_id(*key));
+        }
     }
 
     // --- Colliders into the solver. ---
@@ -253,14 +283,12 @@ pub fn stream_terrain(world: &mut World) {
         world.insert(entity, TerrainChunk::of(*key));
         // The geometry may not exist yet. `MeshCache::get` returning `None` draws nothing and says
         // which id, which is exactly the right behaviour for a chunk still being meshed.
-        world.insert(entity, Mesh::new(chunk_mesh_id(*key), material_id()));
+        world.insert(entity, Mesh::new(chunk_mesh_id(*key), material.clone()));
     }
 
     if !update.removed.is_empty() {
         despawn_chunks(world, &update.removed);
     }
-
-    let _ = material;
 }
 
 /// The friction terrain colliders are given.
@@ -278,17 +306,17 @@ fn collider_id(key: ChunkKey) -> StaticMeshId {
     StaticMeshId(amadeo_core::stable_hash_of(&TerrainChunk::of(key)))
 }
 
-/// The asset id terrain chunks name for their material.
-fn material_id() -> String {
-    "terrain".to_string()
-}
-
 /// Converts a chunk's geometry into what the renderer holds.
 ///
-/// UVs are a flat planar projection from the chunk's own x and z. Terrain has no authored texture
-/// coordinates — there is no artist to make them — and a planar mapping is what every voxel terrain
-/// starts with. It stretches on vertical faces, which is a known limitation of the approach rather
-/// than a defect here; triplanar mapping is the usual fix and belongs with the material work.
+/// UVs are a flat planar projection from x and z. Terrain has no authored texture coordinates —
+/// there is no artist to make them — and a planar mapping is what every voxel terrain starts with.
+/// It stretches on vertical faces, which is a known limitation of the approach rather than a defect
+/// here; triplanar mapping is the usual fix and belongs with the material work.
+///
+/// **Projected from the chunk's *world* position, not its local one.** Vertices are stored relative
+/// to the chunk origin, so using them directly would restart the pattern at every chunk boundary and
+/// print a grid of seams across the landscape the moment a material carried a texture — visible
+/// nowhere today, since materials are colours only, and tedious to attribute once they are not.
 fn mesh_data_of(chunk: &ReadyChunk) -> MeshData {
     MeshData {
         vertices: chunk
@@ -299,7 +327,7 @@ fn mesh_data_of(chunk: &ReadyChunk) -> MeshData {
             .map(|(position, normal)| Vertex {
                 position: *position,
                 normal: *normal,
-                uv: [position[0], position[2]],
+                uv: [position[0] + chunk.origin[0], position[2] + chunk.origin[2]],
             })
             .collect(),
         indices: chunk.mesh.indices.clone(),

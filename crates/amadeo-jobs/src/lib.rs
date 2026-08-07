@@ -122,6 +122,23 @@ impl JobPool {
         }
     }
 
+    /// How many workers [`JobPool::for_this_machine`] would use.
+    ///
+    /// Separate from the constructor because a caller that builds its pool indirectly — a
+    /// `TerrainStreamer` takes a count rather than a pool — would otherwise have to guess the number
+    /// or duplicate this arithmetic, and two answers to "how many threads should this machine use"
+    /// is one too many.
+    ///
+    /// **Never let this reach gameplay.** It varies by machine, so branching on it is exactly the
+    /// divergence ADR 0041 forbids. It decides how *fast* work is done and may not decide *what*.
+    #[must_use]
+    pub fn workers_for_this_machine() -> usize {
+        let cores = std::thread::available_parallelism()
+            .map(std::num::NonZeroUsize::get)
+            .unwrap_or(2);
+        cores.saturating_sub(1).max(1)
+    }
+
     /// A pool sized to this machine, leaving one core for the simulation thread.
     ///
     /// The simulation is single-threaded permanently (ADR 0036 for physics, ADR 0041 for systems),
@@ -129,10 +146,7 @@ impl JobPool {
     /// have them competing with the thing they exist to keep fed.
     #[must_use]
     pub fn for_this_machine() -> Self {
-        let cores = std::thread::available_parallelism()
-            .map(std::num::NonZeroUsize::get)
-            .unwrap_or(2);
-        Self::new(cores.saturating_sub(1).max(1))
+        Self::new(Self::workers_for_this_machine())
     }
 
     /// How many workers this pool has.

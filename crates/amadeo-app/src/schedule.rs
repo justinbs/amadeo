@@ -232,6 +232,22 @@ impl Schedule {
         self.systems.is_empty()
     }
 
+    /// Whether a label is already registered in this stage.
+    ///
+    /// Exists for **shared prerequisites between modules**. `amadeo_character::install` and
+    /// `amadeo_terrain::install` both need `step_physics` to run, and both used to register it
+    /// unconditionally — so a game using a character *and* terrain, which is the ordinary case for an
+    /// open world, failed at startup with `DuplicateLabel`. Neither module can reasonably be the one
+    /// that owns it, and a game having to know which was which would be exactly the coupling
+    /// `install` exists to remove.
+    ///
+    /// So each asks first. Checking rather than making [`Schedule::add`] idempotent is deliberate: a
+    /// genuine label collision between two *different* systems is a real bug and must stay an error.
+    #[must_use]
+    pub fn contains(&self, label: &str) -> bool {
+        self.systems.iter().any(|config| config.label == label)
+    }
+
     /// The system labels in execution order, or an error if the constraints are unsatisfiable.
     ///
     /// Exposed for diagnostics and for the agent-facing schedule listing.
