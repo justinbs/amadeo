@@ -308,7 +308,7 @@ pub fn surface_nets(field: &Field) -> VoxelMesh {
                             cell_index(x, y, z),
                             cell_index(x, y - 1, z),
                         ],
-                        inside,
+                        !inside,
                     );
                 }
                 if x > 0 && z > 0 && field.at(x, y + 1, z).is_sign_negative() != inside {
@@ -321,7 +321,7 @@ pub fn surface_nets(field: &Field) -> VoxelMesh {
                             cell_index(x, y, z),
                             cell_index(x - 1, y, z),
                         ],
-                        !inside,
+                        inside,
                     );
                 }
                 if x > 0 && y > 0 && field.at(x, y, z + 1).is_sign_negative() != inside {
@@ -334,7 +334,7 @@ pub fn surface_nets(field: &Field) -> VoxelMesh {
                             cell_index(x, y, z),
                             cell_index(x - 1, y, z),
                         ],
-                        inside,
+                        !inside,
                     );
                 }
             }
@@ -347,8 +347,21 @@ pub fn surface_nets(field: &Field) -> VoxelMesh {
 /// Emits two triangles for one quad, skipping it if any corner cell has no vertex.
 ///
 /// `flip` reverses the winding. Which way round a quad goes depends on which side of the surface the
-/// edge's start is on — get it wrong and half the terrain is invisible under back-face culling,
-/// which looks like holes in the ground rather than like a winding bug.
+/// edge's start is on.
+///
+/// # This was wrong on all three axes, and the symptom was not "holes"
+///
+/// The comment that used to sit here predicted the failure as *half* the terrain going missing. It
+/// was worse and stranger than that: the flip was inverted on every axis, so **every mesh was
+/// uniformly inside-out** — visible from underneath and invisible from above. On a heightfield that
+/// reads as an empty world with a faint wisp at the horizon, which looks like a *streaming* bug, and
+/// three sessions of work went past it.
+///
+/// It survived because the mesher's own tests checked the **normals**, which come from the field's
+/// gradient and were always right, and the GPU decides which face you are seeing from the
+/// **winding**, which nothing checked. Nothing had ever drawn a surface-nets mesh either — the
+/// collider path has no winding at all. `triangles_are_wound_to_match_their_own_normals` compares
+/// the two against each other and is what closes that gap.
 fn push_quad(indices: &mut Vec<u32>, vertex_at: &[usize], cells: [usize; 4], flip: bool) {
     let mut corners = [0_u32; 4];
     for (slot, cell) in cells.iter().enumerate() {
@@ -478,6 +491,83 @@ mod tests {
             ];
             let dot = outward[0] * normal[0] + outward[1] * normal[1] + outward[2] * normal[2];
             assert!(dot > 0.0, "normal {normal:?} at {position:?} points inward");
+        }
+    }
+
+    #[test]
+    fn triangles_are_wound_to_match_their_own_normals() {
+        // **The test that was missing, and the defect it was written against was total.**
+        //
+        // `normals_point_away_from_the_inside` above checks the *normals*, which come from the
+        // field's gradient and were always right. The GPU does not use them to decide which side of
+        // a triangle you are looking at — it uses the **winding**, the order the three corners are
+        // listed in. Those were inverted on all three axes, so every surface-nets mesh ever produced
+        // was inside-out.
+        //
+        // Nothing caught it for two sessions because nothing had ever *drawn* one: the mesher's own
+        // tests assert on vertices and normals, the streamer's on which chunks exist, and the
+        // physics ones on a collider, which has no winding. It surfaced the first time terrain
+        // reached a camera -- as ground that is invisible from above and faintly visible at the
+        // horizon, which reads as a streaming bug rather than a geometry one.
+        //
+        // Comparing the geometric winding against the stored normal is what makes this checkable
+        // without a GPU, and it is the same check `amadeo-render`'s `every_box_triangle_faces_outward`
+        // makes for a box.
+        let mesh = surface_nets(&sphere(24, 8.0));
+        assert!(!mesh.indices.is_empty());
+
+        let mut wrong = 0;
+        for triangle in mesh.indices.chunks_exact(3) {
+            let corner = |slot: usize| mesh.positions[triangle[slot] as usize];
+            let (a, b, c) = (corner(0), corner(1), corner(2));
+            let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+            // The cross product is the direction the GPU considers "front" for this winding.
+            let facing = [
+                u[1] * v[2] - u[2] * v[1],
+                u[2] * v[0] - u[0] * v[2],
+                u[0] * v[1] - u[1] * v[0],
+            ];
+            let normal = mesh.normals[triangle[0] as usize];
+            let dot = facing[0] * normal[0] + facing[1] * normal[1] + facing[2] * normal[2];
+            if dot < 0.0 {
+                wrong += 1;
+            }
+        }
+
+        assert_eq!(
+            wrong,
+            0,
+            "{wrong} of {} triangles are wound against their own normals; \
+             the surface is inside-out and back-face culling will hide it",
+            mesh.indices.len() / 3
+        );
+    }
+
+    #[test]
+    fn flat_ground_faces_upward() {
+        // The heightfield case stated on its own, because it is the one a terrain game depends on
+        // and because it is unambiguous: ground is solid below and air above, so every triangle must
+        // face up. A sphere has every orientation at once, which makes a *uniform* inversion easy to
+        // misread there; here it is a single sign.
+        let cells = 12;
+        let mut field = Field::new(cells);
+        // Solid below the halfway line, air above it. Same convention as `FlatGround`.
+        field.fill(|_, y, _| y - cells as f32 / 2.0);
+        let mesh = surface_nets(&field);
+        assert!(!mesh.indices.is_empty(), "a plane through the field meshes");
+
+        for triangle in mesh.indices.chunks_exact(3) {
+            let corner = |slot: usize| mesh.positions[triangle[slot] as usize];
+            let (a, b, c) = (corner(0), corner(1), corner(2));
+            let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+            let facing_up = u[2] * v[0] - u[0] * v[2];
+            assert!(
+                facing_up > 0.0,
+                "a ground triangle at {a:?} faces downward; \
+                 seen from above it is a back face and is culled, so the world looks empty"
+            );
         }
     }
 
