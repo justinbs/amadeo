@@ -40,7 +40,13 @@ stop and raise it instead of working around it.
 
 - **Language:** Rust (2024 edition), `#![forbid(unsafe_code)]` outside explicitly audited modules.
 - **Graphics:** `wgpu` — one API over Vulkan/DX12/Metal, and it targets WebGPU, so a browser export
-  path stays open for free.
+  path stays open for free. **ADR 0045 settles the "should we write Vulkan directly" question and the
+  answer is no**: wgpu's native features are Vulkan's in practice (bindless, multi-draw indirect,
+  subgroups, ray query, mesh shaders, BC/ASTC), a wgpu game already looks far better than Amadeo
+  does, and **nothing on the list of things that would improve the picture is blocked by the API**.
+  The renderer's ceiling is its *feature set*; ADR 0045 orders that work by visual return. The one
+  real reason to go native is a **console** target, which is a business decision rather than a
+  graphics one.
 - **Windowing:** `winit`. **Math:** `glam`. **Physics:** `rapier` (2D+3D) behind engine-owned traits.
 - **Editor UI:** `egui` (immediate-mode, in-process, cheap to build). Game UI is a separate,
   retained-mode system — do not confuse the two.

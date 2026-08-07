@@ -108,6 +108,15 @@ An untextured material binds a 1×1 **white** placeholder, because white is the 
 multiply — so one pipeline serves both, and it is deliberately not the magenta "asset missing"
 placeholder.
 
+**And the bigger question that prompted, now decided — ADR 0045.** Justin asked whether the basic
+look means the engine should eventually write Vulkan directly rather than going through wgpu. The
+researched answer is **no, and the reason matters**: wgpu's native feature set is Vulkan's in practice
+(bindless, multi-draw indirect, subgroups, ray query, mesh shaders, BC/ASTC), **Tiny Glade** shipped
+on Bevy/wgpu in 2024 and is praised specifically for how it looks, and **not one item on the list of
+things that would improve Amadeo's picture is blocked by the API.** The renderer is six features deep
+where a shipping one is forty. ADR 0045 orders that work by visual return and names the only real
+trigger for going native: a **console** target.
+
 **Three things still stand between this and terrain that looks good, and none is small:**
 
 | | |

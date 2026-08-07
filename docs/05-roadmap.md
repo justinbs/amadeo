@@ -313,6 +313,24 @@ in documents nobody is allowed to correct.
 *Goal: the engine can produce a game you'd actually hand to someone.*
 
 **Build**
+- **The renderer grows up — ADR 0045.** M0–M2.5 built the renderer's *skeleton*: a graph, a depth
+  buffer, one light, one shadow map, a post chain, and as of session 13 a base-colour texture. That is
+  six features where a shipping renderer has forty, and it is why the M2.5 demo looks like a
+  prototype. **The backend is not the reason** — everything below is implementable on wgpu's stable
+  feature set today, and ADR 0045 has the evidence. In order of visual return:
+  1. **Mipmaps and anisotropic filtering** — without mip levels every texture shimmers at distance,
+     which currently caps how fine a texture is allowed to be.
+  2. **Normal mapping** — the largest perceived-detail gain per unit of cost in real-time graphics.
+  3. **Metallic-roughness PBR** — `Material` has carried the fields since ADR 0033 and the shader
+     reads neither, so every surface reads as coloured paint rather than as a material.
+  4. **Sky and image-based lighting** — replaces the hardcoded `0.12` ambient (**Q28**). Probably the
+     single biggest step towards looking like a real engine.
+  5. **Shadow cascades** — ADR 0038 reserved the enum variant. One map over an outdoor scene is
+     visibly blocky.
+  6. Then: more than one light, point and spot lights, anti-aliasing, transparency, fog and aerial
+     perspective, bloom (declared in `Environment`, never drawn), and ambient occlusion.
+
+  **This is what exit gate 5 below actually requires**, and it is the milestone's real renderer exam.
 - `amadeo-audio` — mixer, buses, 2D/3D spatialization, event-driven playback, null backend.
 - `amadeo-anim` — sprite animation, skeletal animation, blend trees, state machines, tweens.
 - `amadeo-ui` — retained-mode game UI: flex layout, theming, text rendering, focus navigation,
