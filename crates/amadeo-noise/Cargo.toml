@@ -1,0 +1,17 @@
+[package]
+name = "amadeo-noise"
+description = "Deterministic gradient noise, built only from operations IEEE 754 specifies exactly."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# No dependencies at all, deliberately, and for the same reason `amadeo-jobs` has none: this sits
+# under the thing that must be reproducible. A noise crate off the shelf would be faster and would
+# make the one property that matters here -- that the same coordinate gives the same bits on every
+# machine -- somebody else's promise rather than a test in this repository. ADR 0044.
+[dependencies]
+
+[lints]
+workspace = true
