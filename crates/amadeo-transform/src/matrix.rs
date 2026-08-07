@@ -173,6 +173,34 @@ impl Mat4 {
         Mat4 { columns: out }
     }
 
+    /// Transforms a point, keeping the fourth component.
+    ///
+    /// # Why `w` comes back rather than being divided out here
+    ///
+    /// Through a **projection** matrix, `w` is the view-space depth, and two things need it before it
+    /// is thrown away. Dividing by it is the perspective divide — that is what makes distant things
+    /// smaller — and its **sign** says whether the point is in front of the camera at all. A point
+    /// behind the eye comes back with `w <= 0`, and dividing anyway mirrors it onto the screen as a
+    /// plausible position that is completely wrong.
+    ///
+    /// So the caller divides, having first decided the point is in front of it. `render.describe`
+    /// is the caller that needs both (**Q26**).
+    ///
+    /// The four products are written out rather than summed in a loop, for the reason
+    /// [`Mat4::mul`] gives: float addition is not associative, and the order belongs to this source
+    /// rather than to how a compiler chooses to unroll it.
+    #[must_use]
+    pub fn transform_point4(&self, point: [f32; 3]) -> [f32; 4] {
+        let mut out = [0.0_f32; 4];
+        for (row, cell) in out.iter_mut().enumerate() {
+            *cell = self.columns[0][row] * point[0]
+                + self.columns[1][row] * point[1]
+                + self.columns[2][row] * point[2]
+                + self.columns[3][row];
+        }
+        out
+    }
+
     /// The translation this matrix applies — its fourth column.
     ///
     /// What a renderer or a "where is this actually" query wants, without decomposing the rest.

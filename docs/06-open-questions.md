@@ -220,7 +220,33 @@ exit gate asked for anyway. It becomes blocking the first time a game needs a re
 
 ---
 
-## Q26 · P2 · `render.describe` cannot see meshes
+## ~~Q26~~ · **CLOSED in session 13** · `render.describe` can see meshes
+
+**Resolved.** `describe_frame` picks the first active window camera of **either** projection
+(`primary_view`), projects through the same `view_projection` the backend builds, and reports a
+`DrawnKind::Mesh` per mesh entity with the screen rectangle its bounds project to.
+
+Asked about `games/scarp`, it now answers with the real perspective camera at `(0, 10.1, 7.0)`, its
+actual fov and clip planes, and **50 drawn, 20 visible, 30 off-screen** — which is exactly the
+baseline M2.5's exit gate 3 needs and could not previously obtain. Before this it reported a default
+orthographic camera nobody authored and zero entities.
+
+Three pieces, all of which turned out to matter:
+
+- **`Mat4::transform_point4` returns `w`** rather than dividing it out, because its *sign* says
+  whether a point is in front of the camera. Dividing regardless mirrors a point behind the eye onto
+  the screen as a perfectly ordinary-looking position.
+- **All eight corners of a mesh's bounding box are projected**, not two extremes: a rotated box's
+  image is not the image of its extremes, and under perspective the near face is larger than the far.
+- **`FrameDescription::eye` widened to three components**, and the reply's `camera.center` with it.
+  A 2D camera's z is zero so nothing that read the first two changes meaning. Widened now rather than
+  later because nothing outside this repository consumes the protocol yet, which is exactly when a
+  shape change is cheap.
+
+The original entry follows, because the *reason* it mattered is still the best statement of what this
+method is for.
+
+---
 
 **Found in session 10 by reaching for it and getting nothing.** Asked what `games/atrium` was
 drawing, it reported a default orthographic camera and zero entities — because it only knows the 2D

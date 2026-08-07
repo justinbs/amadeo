@@ -29,7 +29,9 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 **Exit gates 1 and 2 are met.** `cargo run -p scarp` is a generated world you walk on, streamed in
 chunks, with collision and shadows, and its replay reproduces at every thread count. What is left is
-gate 3 (frustum culling) and gate 4 (frame budget with GPU time) — plus **Q26 turns out to block
+gate 3 (frustum culling) and gate 4 (frame budget with GPU time). **Q26 blocked gate 3 and is now
+closed**, so gate 3's baseline is measured and waiting: the Scarp reports 50 meshes drawn, 20 visible,
+30 off-screen. Historical note follows — **Q26 turned out to block
 gate 3**, because `render.describe` cannot see meshes and the gate says to measure through it.
 
 ### Building the demo found five engine defects, and one of them had been wrong since session 12
@@ -198,7 +200,8 @@ A test holds that in place.
 | ✅ | **`amadeo-noise`** — deterministic gradient noise, **ADR 0044**. No transcendentals, literal hash pinned on both platforms |
 | ✅ | **`games/scarp`** — a generated world you walk on and dig into. **Exit gates 1 and 2 met** |
 | → | **Where edits live — Q29.** They are in a *service*, so **not hashed and not restored by a snapshot**: a dug world reloads undug. **The running world it was waiting for now exists** |
-| → | **Frustum culling** — gate 3. **Blocked on Q26**: the gate says to measure through `render.describe`, which cannot see meshes |
+| ✅ | **`render.describe` sees 3D — Q26 closed.** Real perspective projection, a `Mesh` kind, and the eye widened to three components |
+| → | **Frustum culling** — gate 3, now **unblocked**. Baseline measured: the Scarp reports **50 drawn, 20 visible, 30 off-screen** |
 | | LOD (**Q25**), `amadeo-math` over glam, GPU timestamp queries (gate 4) |
 | | More than one light, textures on materials |
 
@@ -267,7 +270,7 @@ first real case*, which is the state this project deliberately keeps them in:
 | **Q23** | P1 | One environment per frame, when a world may hold several cameras |
 | **Q15** | P1 | Modding, and whether ADR 0011 still holds |
 | **Q12** | P1 | `Service: Send + Sync` — ADR 0041 changed the argument without closing it |
-| **Q26** | P2 | `render.describe` cannot see meshes |
+| ~~Q26~~ | — | **Closed in session 13.** `render.describe` sees meshes through a real perspective projection |
 | **Q27** | P2 | A third-person camera clips through walls |
 | **Q28** | P2 | Ambient light is a hardcoded constant |
 | **Q6, Q8, Q11, Q18, Q20** | P2 | Editor process model, entity relations, netcode introspection, unreadable `ActionId`, gate 4's stronger test |
@@ -527,17 +530,17 @@ the only evidence available was a push.
 
 ## The single most important thing to do next
 
-**Finish M2.5's remaining two gates**, in this order, because the first is blocked on something small:
+**Finish M2.5's remaining two gates.** Q26 blocked gate 3 and is closed, so both are unobstructed:
 
-1. **Close Q26 — make `render.describe` see meshes.** It reports a default orthographic camera and
-   zero entities for any 3D world, because it only knows quads and sprites. **Gate 3 says to measure
-   frustum culling through it**, so the gate cannot be met until this is done. It also cost this
-   session a debugging detour: reached for while diagnosing the missing terrain, it answered about a
-   camera that does not exist.
-2. **Frustum culling** — gate 3. Every mesh is drawn every frame, and `games/scarp` now draws 343
-   chunk entities, so there is finally something to cull and a way to measure it.
-3. **GPU timestamp queries and a frame budget at open-world complexity** — gate 4. Numbers appended
-   to `docs/10-frame-budget.md`.
+1. **Frustum culling** — gate 3, and it has a **measured baseline waiting**:
+   `amadeo call render.describe --package scarp --ticks 200` reports **50 drawn, 20 visible, 30
+   off-screen**, so thirty chunks are submitted every frame that cannot be seen. `MeshData::bounds`
+   is the box to test, already built and already what `describe` reports through — so a culling bug
+   and a reporting bug cannot disagree about what is on screen. Culling has to move that number, and
+   the command that proves it already works.
+2. **GPU timestamp queries and a frame budget at open-world complexity** — gate 4. Numbers appended
+   to `docs/10-frame-budget.md`. Gate 4 last time could not measure GPU time at all, and with terrain
+   the GPU is where the cost moved.
 
 **Then Q29**, which is now ready in a way it was not: it was explicitly waiting for a running terrain
 world to be decided against, and `games/scarp` is one. Until it is closed, a dug world saves and

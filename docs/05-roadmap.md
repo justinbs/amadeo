@@ -301,8 +301,11 @@ in documents nobody is allowed to correct.
    lockstep**, comparing state hashes every tick for 480 ticks, over a walk with a turn and a dig in
    it. Watched failing against a deliberate ADR 0041 §2 violation.
 3. **Frustum culling demonstrably reduces draw calls**, measured through `render.describe` rather
-   than believed. **Note `render.describe` cannot see meshes at all yet — Q26** — so this gate needs
-   that closed first, which was not obvious when it was written.
+   than believed. **Unblocked in session 13 — Q26 is closed** and `render.describe` now reports
+   meshes through a real perspective projection. The baseline is measured and waiting:
+   `amadeo call render.describe --package scarp --ticks 200` reports **50 drawn, 20 visible, 30
+   off-screen**, so thirty chunks are being submitted every frame that cannot be seen. Culling has to
+   move that number and the command to prove it already works.
 4. Frame time within budget at open-world complexity, with GPU time measured this time. Numbers
    appended to `docs/10-frame-budget.md`.
 

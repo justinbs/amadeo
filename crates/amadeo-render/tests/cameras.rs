@@ -154,7 +154,7 @@ fn describe_answers_for_the_camera_that_draws_first() {
     add_camera(&mut world, Camera::orthographic(10.0), [0.0, 0.0]);
 
     let description = describe_frame(&world);
-    assert_eq!(description.eye, [0.0, 0.0]);
+    assert_eq!(description.eye, [0.0, 0.0, 0.0]);
     assert_eq!(description.camera.projection.height(), Some(10.0));
 }
 
@@ -165,7 +165,7 @@ fn describe_can_be_asked_about_a_different_camera() {
     let minimap = add_camera(&mut world, Camera::orthographic(50.0), [7.0, 0.0]);
 
     let description = describe_frame_through(&world, minimap).expect("that entity is a camera");
-    assert_eq!(description.eye, [7.0, 0.0]);
+    assert_eq!(description.eye, [7.0, 0.0, 0.0]);
     assert_eq!(description.camera.projection.height(), Some(50.0));
 
     // Asking about something that is not a camera answers `None` rather than quietly falling back
@@ -192,7 +192,7 @@ fn a_camera_can_target_a_texture_instead_of_the_window() {
     assert_eq!(last_frame(&world).views.len(), 2);
 
     // But `render.describe` answers for the window, even though the monitor sorts first.
-    assert_eq!(describe_frame(&world).eye, [0.0, 0.0]);
+    assert_eq!(describe_frame(&world).eye, [0.0, 0.0, 0.0]);
 }
 
 #[test]

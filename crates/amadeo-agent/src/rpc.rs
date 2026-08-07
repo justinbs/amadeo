@@ -464,6 +464,16 @@ pub fn dispatch_world(
                             members.push(("kind", Json::string("sprite")));
                             members.push(("texture", Json::string(texture)));
                         }
+                        // Q26. Before this, a 3D world reported zero drawn entities through a
+                        // default orthographic camera nobody authored — plausible and wrong, which
+                        // is worse than an error. `center` and `size` are the screen rectangle the
+                        // mesh's bounds project to, so "is it visible" means the same thing for a
+                        // mesh as it already did for a sprite.
+                        amadeo_render::DrawnKind::Mesh { mesh, material } => {
+                            members.push(("kind", Json::string("mesh")));
+                            members.push(("mesh", Json::string(mesh)));
+                            members.push(("material", Json::string(material)));
+                        }
                     }
 
                     Json::object(members)
@@ -483,14 +493,22 @@ pub fn dispatch_world(
                     Json::object([
                         // Named `center` rather than `eye` because that is what it means to a
                         // reader of a 2D description — the world point in the middle of the view.
-                        // It now comes from the camera entity's `Transform` rather than from the
+                        // It comes from the camera entity's `Transform` rather than from the
                         // camera itself (ADR 0031), which is an internal move a client should not
                         // have to care about.
+                        //
+                        // **Three components since Q26.** A 2D camera's z is zero, so nothing that
+                        // read the first two changes meaning; a 3D camera's height is most of what
+                        // decides its view, and dropping it silently was the same confidently-wrong
+                        // answer this whole method used to give a 3D world. Widened now rather than
+                        // later because nothing outside this repository consumes the protocol yet,
+                        // which is exactly when a shape change is cheap.
                         (
                             "center",
                             Json::Array(vec![
                                 Json::Float(f64::from(description.eye[0])),
                                 Json::Float(f64::from(description.eye[1])),
+                                Json::Float(f64::from(description.eye[2])),
                             ]),
                         ),
                         // Reported only for an orthographic camera, because since ADR 0032 that is

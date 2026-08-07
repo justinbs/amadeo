@@ -31,10 +31,10 @@
 //! position subtly wrong in a way that looks plausible, which is why
 //! `a_sprite_below_the_camera_reports_a_larger_screen_y` pins it.
 
-use crate::components::{Camera, Quad, SortOrder, Sprite};
+use crate::components::{Camera, Projection, Quad, SortOrder, Sprite};
 use crate::{Renderer, local_matrix};
 use amadeo_ecs::{Entity, World};
-use amadeo_transform::{GlobalTransform, Transform};
+use amadeo_transform::{GlobalTransform, Mat4, Transform};
 
 /// What kind of thing was drawn.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,6 +45,13 @@ pub enum DrawnKind {
     Sprite {
         /// The declared asset id (ADR 0020), as `amadeo assets` lists it.
         texture: String,
+    },
+    /// A piece of 3D geometry — **Q26**, and what M2.5's exit gate 3 measures culling through.
+    Mesh {
+        /// The declared asset id of the geometry.
+        mesh: String,
+        /// The declared asset id of the material. Empty means the default.
+        material: String,
     },
 }
 
@@ -106,7 +113,12 @@ pub struct FrameDescription {
     /// `describe_frame_through` asks about a different one.
     pub camera: Camera,
     /// That camera's world position, which lives on its `Transform` rather than on the camera.
-    pub eye: [f32; 2],
+    ///
+    /// **Three components since Q26**, and the widening was the point rather than a detail: a 2D
+    /// camera's z is zero and reporting two numbers was honest for it, but a 3D camera's height above
+    /// the ground is most of what decides its view. Dropping it silently would be the same class of
+    /// confidently-wrong answer that `render.describe` used to give a 3D world.
+    pub eye: [f32; 3],
     /// Every drawable entity, **sorted by draw order then entity** — so two descriptions of the
     /// same world are identical, and a diff of two ticks shows what actually moved (invariant I3).
     pub drawn: Vec<DrawnEntity>,
@@ -146,9 +158,14 @@ pub fn describe_frame(world: &World) -> FrameDescription {
     // world with no camera gets a default rather than an empty description: the entities and their
     // world positions are still real, and refusing to answer would make `render.describe` useless on
     // exactly the half-built world an agent most wants to look at.
-    let (camera, eye) =
-        crate::primary_camera(world).unwrap_or_else(|| (Camera::default(), [0.0; 2]));
-    describe_frame_with(world, camera, eye)
+    //
+    // **`primary_view` rather than `primary_camera`**, which is the whole of Q26 at this level: the
+    // latter filters to orthographic cameras, so asking a 3D world what was on screen used to return
+    // a *default* camera nobody authored, and zero entities. That is worse than an error, and it cost
+    // a debugging detour in session 13.
+    let (camera, eye_matrix) =
+        crate::primary_view(world).unwrap_or_else(|| (Camera::default(), Mat4::IDENTITY));
+    describe_frame_with(world, camera, &eye_matrix)
 }
 
 /// The same description, computed through one specific camera.
@@ -159,16 +176,16 @@ pub fn describe_frame(world: &World) -> FrameDescription {
 #[must_use]
 pub fn describe_frame_through(world: &World, entity: Entity) -> Option<FrameDescription> {
     let camera = world.get::<Camera>(entity)?.clone();
-    let eye = crate::camera_eye(world, entity);
-    Some(describe_frame_with(world, camera, eye))
+    let eye_matrix = crate::camera_matrix(world, entity);
+    Some(describe_frame_with(world, camera, &eye_matrix))
 }
 
-fn describe_frame_with(world: &World, camera: Camera, eye: [f32; 2]) -> FrameDescription {
+fn describe_frame_with(world: &World, camera: Camera, eye_matrix: &Mat4) -> FrameDescription {
     let viewport = world
         .service::<Renderer>()
         .map_or((1280, 720), Renderer::viewport);
 
-    let projection = ScreenProjection::new(&camera, eye, viewport);
+    let projection = ScreenProjection::new(&camera, eye_matrix, viewport);
     let mut drawn = Vec::new();
 
     for (entity, (transform, quad, order, global)) in world.query::<(
@@ -182,8 +199,7 @@ fn describe_frame_with(world: &World, camera: Camera, eye: [f32; 2]) -> FrameDes
             entity,
             DrawnKind::Quad,
             order.copied().unwrap_or_default().order,
-            center,
-            size,
+            &flat_corners(center, size),
         ));
     }
 
@@ -200,10 +216,11 @@ fn describe_frame_with(world: &World, camera: Camera, eye: [f32; 2]) -> FrameDes
                 texture: sprite.texture.clone(),
             },
             order.copied().unwrap_or_default().order,
-            center,
-            size,
+            &flat_corners(center, size),
         ));
     }
+
+    describe_meshes(world, &projection, &mut drawn);
 
     // Sorted so two descriptions of one world are identical, and a diff between ticks shows only
     // what moved. Entity is the tie-break because two things can share an order.
@@ -212,8 +229,87 @@ fn describe_frame_with(world: &World, camera: Camera, eye: [f32; 2]) -> FrameDes
     FrameDescription {
         viewport: [viewport.0, viewport.1],
         camera,
-        eye,
+        eye: eye_matrix.translation(),
         drawn,
+    }
+}
+
+/// The four corners of a flat, axis-aligned rectangle in the z = 0 plane, at a world centre.
+///
+/// Quads and sprites are flat and unrotated in the plane the 2D camera looks at, so four corners
+/// describe them exactly. Kept separate from the mesh path because a mesh's corners come from its
+/// geometry and its model matrix, which is a different question with a different answer.
+fn flat_corners(center: [f32; 2], size: [f32; 2]) -> [[f32; 3]; 4] {
+    let half = [size[0] / 2.0, size[1] / 2.0];
+    [
+        [center[0] - half[0], center[1] - half[1], 0.0],
+        [center[0] + half[0], center[1] - half[1], 0.0],
+        [center[0] + half[0], center[1] + half[1], 0.0],
+        [center[0] - half[0], center[1] + half[1], 0.0],
+    ]
+}
+
+/// Adds every mesh entity to the description — **Q26**.
+///
+/// # Why this needs the mesh cache
+///
+/// A `Mesh` component is two asset ids and says nothing about how big the geometry is. The size on
+/// screen is the whole point of the answer, so the bounds have to come from the loaded
+/// [`MeshCache`], via [`MeshData::bounds`](crate::MeshData::bounds) — the same box frustum culling
+/// will test, so the two cannot disagree about what is on screen.
+///
+/// A mesh whose geometry has not loaded is **skipped**, matching the collection pass exactly: the
+/// renderer draws nothing for it, so reporting it as on screen would be describing a frame that will
+/// not happen.
+fn describe_meshes(world: &World, projection: &ScreenProjection, drawn: &mut Vec<DrawnEntity>) {
+    let Some(meshes) = world.service::<crate::MeshCache>() else {
+        return;
+    };
+
+    for (entity, (transform, mesh, order, global)) in world.query::<(
+        &Transform,
+        &crate::Mesh,
+        Option<&SortOrder>,
+        Option<&GlobalTransform>,
+    )>() {
+        let Some(data) = meshes.get(&mesh.mesh) else {
+            continue;
+        };
+        let Some((min, max)) = data.bounds() else {
+            continue;
+        };
+
+        let model = match global {
+            Some(global) => global.to_mat4(),
+            None => local_matrix(transform),
+        };
+
+        // All eight, because a rotated box's image is not the image of its two extremes — and under
+        // perspective the near face is bigger than the far one, so the two that happen to be nearest
+        // do not bound the rest either.
+        let mut corners = [[0.0_f32; 3]; 8];
+        for (index, corner) in corners.iter_mut().enumerate() {
+            let pick = |axis: usize| {
+                if index & (1 << axis) == 0 {
+                    min[axis]
+                } else {
+                    max[axis]
+                }
+            };
+            let point = [pick(0), pick(1), pick(2)];
+            let transformed = model.transform_point4(point);
+            *corner = [transformed[0], transformed[1], transformed[2]];
+        }
+
+        drawn.push(projection.entry(
+            entity,
+            DrawnKind::Mesh {
+                mesh: mesh.mesh.clone(),
+                material: mesh.material.clone(),
+            },
+            order.copied().unwrap_or_default().order,
+            &corners,
+        ));
     }
 }
 
@@ -245,49 +341,98 @@ fn placement(
     )
 }
 
-/// World space to screen pixels, matching the shaders exactly.
+/// World space to screen pixels, through whatever projection the camera actually has.
+///
+/// # A matrix rather than the hand-rolled 2D projection this used to be
+///
+/// It was two divisions and a flip, which is all an orthographic camera needs and is exactly why
+/// `render.describe` could not see 3D (**Q26**). A perspective camera's answer needs the camera's
+/// *orientation* and a perspective divide, and neither exists in a pair of half-extents.
+///
+/// Building the same `view_projection` the backend builds — `projection * inverse(camera matrix)` —
+/// means the two cannot disagree about what is on screen, which matters because M2.5's exit gate 3
+/// measures frustum culling *through this*. A describe that projected differently from the renderer
+/// would report culling that did not happen, or miss culling that did.
 struct ScreenProjection {
-    /// Where the camera is, from the `Transform` on its entity.
-    eye: [f32; 2],
-    half_extents: [f32; 2],
+    view_projection: Mat4,
     viewport: (u32, u32),
 }
 
 impl ScreenProjection {
-    fn new(camera: &Camera, eye: [f32; 2], viewport: (u32, u32)) -> ScreenProjection {
-        // Width follows the aspect ratio, so resizing shows more world rather than stretching it.
-        // Identical to `WgpuBackend::render`; if that changes, this has to change with it.
+    fn new(camera: &Camera, eye_matrix: &Mat4, viewport: (u32, u32)) -> ScreenProjection {
         let aspect = viewport.0 as f32 / viewport.1.max(1) as f32;
-        let half_height = camera.projection.height().unwrap_or(2.0) / 2.0;
+
+        let projection = match camera.projection {
+            Projection::Perspective { fov, near, far } => Mat4::perspective(fov, aspect, near, far),
+            // Width follows the aspect ratio, so resizing shows more world rather than stretching
+            // it. The depth range is deliberately generous: a 2D world puts everything at z = 0 and
+            // only the x and y of the result are ever read, so near and far exist to contain the
+            // scene rather than to order it.
+            Projection::Orthographic { height } => {
+                let half_height = height / 2.0;
+                Mat4::orthographic(half_height * aspect, half_height, -1000.0, 1000.0)
+            }
+        };
+
+        // A camera's matrix places it in the world; looking *through* it is the inverse.
+        // `inverse_rigid` is enough because a camera is a rotation and a translation — a scaled
+        // camera is not a thing anything authors, and falling back to the identity for one would put
+        // the view at the origin, which is at least obvious rather than subtly skewed.
+        let camera_view = eye_matrix.inverse_rigid().unwrap_or(Mat4::IDENTITY);
+
         ScreenProjection {
-            eye,
-            half_extents: [half_height * aspect, half_height],
+            view_projection: projection.mul(&camera_view),
             viewport,
         }
     }
 
-    /// Builds one entry, projecting its centre and size into screen pixels.
+    /// Builds one entry from a set of world-space corners.
+    ///
+    /// **Corners rather than a centre and a size**, which is what a rotated box requires: the two
+    /// extremes of a box are not the extremes of its image once it is turned, and under perspective
+    /// the near face is larger than the far one. Projecting every corner and taking the screen
+    /// rectangle is correct for both and is eight multiplies.
     fn entry(
         &self,
         entity: Entity,
         kind: DrawnKind,
         order: i32,
-        world_center: [f32; 2],
-        world_size: [f32; 2],
+        corners: &[[f32; 3]],
     ) -> DrawnEntity {
-        let center = self.to_screen(world_center);
-        // A size is a length rather than a position, so it scales but does not translate — and it
-        // stays positive under the Y flip.
-        let size = [
-            world_size[0] / (self.half_extents[0] * 2.0) * self.viewport.0 as f32,
-            world_size[1] / (self.half_extents[1] * 2.0) * self.viewport.1 as f32,
-        ];
+        let projected: Vec<[f32; 2]> = corners
+            .iter()
+            .filter_map(|corner| self.to_screen(*corner))
+            .collect();
 
-        let half = [size[0] / 2.0, size[1] / 2.0];
-        let visible = center[0] + half[0] > 0.0
-            && center[0] - half[0] < self.viewport.0 as f32
-            && center[1] + half[1] > 0.0
-            && center[1] - half[1] < self.viewport.1 as f32;
+        // Every corner behind the camera. Reported as present but not visible rather than omitted:
+        // the entity *is* in the world and an agent asking "why can I not see it" deserves the
+        // entry, which is the same reason an off-screen entity is reported at all.
+        if projected.is_empty() {
+            return DrawnEntity {
+                entity,
+                kind,
+                order,
+                center: [0.0, 0.0],
+                size: [0.0, 0.0],
+                visible: false,
+            };
+        }
+
+        let mut min = projected[0];
+        let mut max = projected[0];
+        for point in &projected[1..] {
+            for axis in 0..2 {
+                min[axis] = min[axis].min(point[axis]);
+                max[axis] = max[axis].max(point[axis]);
+            }
+        }
+
+        let size = [max[0] - min[0], max[1] - min[1]];
+        let center = [(min[0] + max[0]) / 2.0, (min[1] + max[1]) / 2.0];
+        let visible = max[0] > 0.0
+            && min[0] < self.viewport.0 as f32
+            && max[1] > 0.0
+            && min[1] < self.viewport.1 as f32;
 
         DrawnEntity {
             entity,
@@ -299,17 +444,20 @@ impl ScreenProjection {
         }
     }
 
-    /// One world point in screen pixels, origin top-left.
-    fn to_screen(&self, world: [f32; 2]) -> [f32; 2] {
-        let ndc = [
-            (world[0] - self.eye[0]) / self.half_extents[0],
-            (world[1] - self.eye[1]) / self.half_extents[1],
-        ];
-        [
+    /// One world point in screen pixels, origin top-left. `None` if it is behind the camera.
+    fn to_screen(&self, world: [f32; 3]) -> Option<[f32; 2]> {
+        let clip = self.view_projection.transform_point4(world);
+        // Behind the eye under perspective, where w is the view-space depth. An orthographic
+        // projection always gives w = 1, so this costs a comparison and never fires.
+        if clip[3] <= 0.0 {
+            return None;
+        }
+        let ndc = [clip[0] / clip[3], clip[1] / clip[3]];
+        Some([
             (ndc[0] + 1.0) / 2.0 * self.viewport.0 as f32,
             // Flipped: world +Y is up, screen +Y is down.
             (1.0 - ndc[1]) / 2.0 * self.viewport.1 as f32,
-        ]
+        ])
     }
 }
 
@@ -535,6 +683,139 @@ mod tests {
             description.find(entity).expect("drawable").center,
             [640.0, 360.0]
         );
+    }
+
+    /// A world seen through a perspective camera five units back along +Z, looking at the origin.
+    fn world_with_a_3d_view() -> World {
+        let mut world = World::new();
+        world.insert_service(Renderer::new(Box::new(NullBackend::new(800, 600))));
+
+        let eye = world.spawn();
+        world.insert(
+            eye,
+            Transform {
+                translation: [0.0, 0.0, 5.0],
+                ..Transform::default()
+            },
+        );
+        world.insert(eye, Camera::perspective(60.0));
+
+        let mut meshes = crate::MeshCache::new();
+        meshes.insert("cube", crate::BoxMesh::default().tessellate());
+        world.insert_service(meshes);
+        world
+    }
+
+    fn add_mesh(world: &mut World, at: [f32; 3]) -> Entity {
+        let entity = world.spawn();
+        world.insert(
+            entity,
+            Transform {
+                translation: at,
+                ..Transform::default()
+            },
+        );
+        world.insert(entity, crate::Mesh::new("cube", "paint"));
+        entity
+    }
+
+    #[test]
+    fn a_mesh_is_reported_through_a_perspective_camera() {
+        // **Q26.** Before this, `describe_frame` filtered to orthographic cameras, so a 3D world got
+        // an answer about a *default* camera nobody authored and a count of zero drawn entities.
+        // Plausible and wrong, which is worse than an error — it sent session 13 looking for a
+        // streaming bug that did not exist.
+        let mut world = world_with_a_3d_view();
+        let entity = add_mesh(&mut world, [0.0, 0.0, 0.0]);
+
+        let description = describe_frame(&world);
+        assert_eq!(
+            description.eye,
+            [0.0, 0.0, 5.0],
+            "the camera's own position"
+        );
+
+        let drawn = description.find(entity).expect("a mesh is drawable");
+        assert_eq!(
+            drawn.kind,
+            DrawnKind::Mesh {
+                mesh: "cube".to_string(),
+                material: "paint".to_string(),
+            }
+        );
+        assert!(drawn.visible);
+        // Directly ahead of the camera, so its screen rectangle straddles the middle.
+        assert!((drawn.center[0] - 400.0).abs() < 0.01, "{:?}", drawn.center);
+        assert!((drawn.center[1] - 300.0).abs() < 0.01, "{:?}", drawn.center);
+        assert!(
+            drawn.size[0] > 1.0 && drawn.size[1] > 1.0,
+            "{:?}",
+            drawn.size
+        );
+    }
+
+    #[test]
+    fn something_behind_the_camera_is_not_visible() {
+        // The case an orthographic projection cannot express at all, and the one a perspective
+        // divide gets catastrophically wrong if the sign of w is ignored: a point behind the eye
+        // divides to a mirrored position that looks like a perfectly ordinary place on screen.
+        let mut world = world_with_a_3d_view();
+        // The camera is at z = 5 looking down -Z, so z = 20 is well behind it.
+        let behind = add_mesh(&mut world, [0.0, 0.0, 20.0]);
+        let ahead = add_mesh(&mut world, [0.0, 0.0, 0.0]);
+
+        let description = describe_frame(&world);
+        assert!(!description.find(behind).expect("still reported").visible);
+        assert!(description.find(ahead).expect("drawable").visible);
+        assert_eq!(description.visible_count(), 1);
+    }
+
+    #[test]
+    fn something_outside_the_frustum_is_reported_as_not_visible() {
+        // **What M2.5's exit gate 3 measures culling with.** The gate says frustum culling must be
+        // shown to reduce draw calls "through `render.describe` rather than believed", which needs
+        // this to have an opinion about a mesh that is off to one side.
+        let mut world = world_with_a_3d_view();
+        let ahead = add_mesh(&mut world, [0.0, 0.0, 0.0]);
+        let far_left = add_mesh(&mut world, [-60.0, 0.0, 0.0]);
+
+        let description = describe_frame(&world);
+        assert!(description.find(ahead).expect("drawable").visible);
+        assert!(!description.find(far_left).expect("drawable").visible);
+        assert_eq!(description.off_screen_count(), 1);
+    }
+
+    #[test]
+    fn a_nearer_mesh_covers_more_of_the_screen_than_a_further_one() {
+        // That the perspective divide is actually happening. Under an orthographic projection both
+        // would report the same size, which is exactly the wrong answer this used to give — and it
+        // would look entirely reasonable in a report.
+        let mut world = world_with_a_3d_view();
+        let near = add_mesh(&mut world, [0.0, 0.0, 3.0]);
+        let far = add_mesh(&mut world, [0.0, 0.0, -20.0]);
+
+        let description = describe_frame(&world);
+        let near_size = description.find(near).expect("drawable").size[1];
+        let far_size = description.find(far).expect("drawable").size[1];
+
+        assert!(
+            near_size > far_size * 4.0,
+            "near {near_size} should dwarf far {far_size}"
+        );
+    }
+
+    #[test]
+    fn a_mesh_whose_geometry_never_loaded_is_not_reported() {
+        // Matching the collection pass exactly: the renderer draws nothing for a mesh it does not
+        // have, so reporting it would describe a frame that will not happen. The same reasoning
+        // `a_mesh_whose_geometry_never_loaded_is_skipped_rather_than_substituted` gives for the
+        // frame itself.
+        let mut world = world_with_a_3d_view();
+        let entity = world.spawn();
+        world.insert(entity, Transform::at(0.0, 0.0));
+        world.insert(entity, crate::Mesh::new("no_such_mesh", ""));
+
+        assert!(describe_frame(&world).find(entity).is_none());
     }
 
     #[test]

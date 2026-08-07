@@ -329,15 +329,24 @@ impl Renderer {
 /// `[0, 0]` for an entity with no transform at all, which is a camera nobody finished setting up.
 #[must_use]
 pub fn camera_eye(world: &World, entity: amadeo_ecs::Entity) -> [f32; 2] {
-    let matrix = match world.get::<GlobalTransform>(entity) {
+    let at = camera_matrix(world, entity).translation();
+    [at[0], at[1]]
+}
+
+/// One camera entity's full world matrix, from `GlobalTransform` if propagation has run.
+///
+/// The identity for an entity with no transform at all, which is a camera nobody finished setting
+/// up. Where [`camera_eye`] answers "where is it", this also answers "where is it *pointing*" —
+/// which for a perspective camera decides what is on screen at least as much as its position does.
+#[must_use]
+pub fn camera_matrix(world: &World, entity: amadeo_ecs::Entity) -> Mat4 {
+    match world.get::<GlobalTransform>(entity) {
         Some(global) => global.to_mat4(),
         None => match world.get::<Transform>(entity) {
             Some(transform) => local_matrix(transform),
-            None => return [0.0, 0.0],
+            None => Mat4::IDENTITY,
         },
-    };
-    let at = matrix.translation();
-    [at[0], at[1]]
+    }
 }
 
 /// The camera that draws first to the window, with its world position.
@@ -345,10 +354,8 @@ pub fn camera_eye(world: &World, entity: amadeo_ecs::Entity) -> [f32; 2] {
 /// What `render.describe` answers for by default, and the nearest thing to "the camera" now that a
 /// world may hold several. `None` when a world has none — a state worth distinguishing from a
 /// default camera, which is why this returns an `Option` rather than falling back here.
-/// **Orthographic only**, which is a limitation of `render.describe` rather than of cameras.
-/// `describe` reports screen-space rectangles computed from an orthographic projection; a
-/// perspective camera's answer needs a depth per entity and a different notion of "bounds", so it
-/// reports nothing rather than a number that looks right and is not.
+/// **Orthographic only.** [`primary_view`] is the one that answers for either projection; this one
+/// remains because a caller wanting a 2D camera specifically should not have to filter for it.
 #[must_use]
 pub fn primary_camera(world: &World) -> Option<(Camera, [f32; 2])> {
     active_cameras(world)
@@ -357,6 +364,27 @@ pub fn primary_camera(world: &World) -> Option<(Camera, [f32; 2])> {
             camera.target.is_empty() && matches!(camera.projection, Projection::Orthographic { .. })
         })
         .map(|(camera, eye, _)| (camera, eye))
+}
+
+/// The camera that draws first to the window, whatever its projection, with its world matrix.
+///
+/// # Why the whole matrix rather than a position
+///
+/// A 2D camera's answer is a translation, and reporting where it *is* was enough while
+/// `render.describe` only knew quads and sprites. A perspective camera also has an **orientation** —
+/// where it is pointing decides what is on screen at least as much as where it stands — and a
+/// position alone cannot express that.
+///
+/// This is what closed **Q26**. Filtering by projection, as [`primary_camera`] does, is what made
+/// `render.describe` answer about a *default orthographic camera that did not exist* when asked
+/// about a 3D world: it reported a plausible camera and zero entities, which is worse than reporting
+/// nothing at all, and it cost a session-13 debugging detour.
+#[must_use]
+pub fn primary_view(world: &World) -> Option<(Camera, Mat4)> {
+    active_cameras(world)
+        .into_iter()
+        .find(|(camera, ..)| camera.target.is_empty())
+        .map(|(camera, _, matrix)| (camera, matrix))
 }
 
 fn active_cameras(world: &World) -> Vec<(Camera, [f32; 2], Mat4)> {
