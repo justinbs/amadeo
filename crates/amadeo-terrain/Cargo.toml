@@ -7,13 +7,40 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[features]
+# Off by default, like `gpu` and `rapier`, and for the same kind of reason. The core streamer needs
+# no engine at all, and keeping that true is what lets ADR 0041's claim -- that thread count cannot
+# reach the answer -- be tested with no World, no renderer and no solver in the build.
+#
+# `engine` adds the layer that turns a `TerrainUpdate` into entities, mesh-cache entries and
+# `insert_static_mesh` calls. A game wants it; a determinism test does not.
+default = []
+engine = [
+    "dep:amadeo-app",
+    "dep:amadeo-core",
+    "dep:amadeo-ecs",
+    "dep:amadeo-physics",
+    "dep:amadeo-reflect",
+    "dep:amadeo-render",
+    "dep:amadeo-transform",
+]
+
 [dependencies]
-# Only the two dependency-free crates. Deliberate: the hard part of streaming is *when* work happens
-# and whether the answer depends on that, and none of it needs a World, a renderer or a solver. Kept
-# free of those, the whole thing is testable with no engine -- including the claim that matters, that
-# thread count cannot reach the answer (ADR 0041).
+# The core needs only the two dependency-free crates. Deliberate: the hard part of streaming is
+# *when* work happens and whether the answer depends on that, and none of it needs a World.
 amadeo-voxel = { workspace = true }
 amadeo-jobs = { workspace = true }
+
+# Only under `engine`. Note what this means for the dependency graph (CLAUDE.md section 4): with the
+# feature on, this crate sits above amadeo-app; with it off, just above amadeo-voxel and
+# amadeo-jobs. Nothing depends on amadeo-terrain, so neither position can create a cycle.
+amadeo-app = { workspace = true, optional = true }
+amadeo-core = { workspace = true, optional = true }
+amadeo-ecs = { workspace = true, optional = true }
+amadeo-physics = { workspace = true, optional = true }
+amadeo-reflect = { workspace = true, optional = true }
+amadeo-render = { workspace = true, optional = true }
+amadeo-transform = { workspace = true, optional = true }
 
 [lints]
 workspace = true

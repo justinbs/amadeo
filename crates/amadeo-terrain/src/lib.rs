@@ -73,6 +73,12 @@
 //! assert!(!update.colliders.is_empty());
 //! ```
 
+#[cfg(feature = "engine")]
+pub mod world;
+
+#[cfg(feature = "engine")]
+pub use world::{STREAM_TERRAIN, Terrain, TerrainChunk, TerrainViewer, install, stream_terrain};
+
 use amadeo_jobs::{Inbox, JobPool};
 use amadeo_voxel::{ChunkKey, ChunkShape, Edits, Residency, TerrainSource, Viewer, VoxelMesh};
 use std::collections::{BTreeMap, BTreeSet};
@@ -133,7 +139,22 @@ pub struct TerrainUpdate {
     /// Distinct from `removed`: this geometry stays, only its collider goes. A viewer walking away
     /// from ground it can still see is the case, and missing it leaves invisible collision behind.
     pub colliders_removed: Vec<ChunkKey>,
-    /// Chunks that left the loaded region, in key order. Drop their geometry and their collider.
+    /// Chunks that **entered** the drawn region this tick, in key order.
+    ///
+    /// # This is what an entity is created from, and `meshes` is not
+    ///
+    /// A chunk entity is world state, so *when* it is spawned reaches the entity allocator and
+    /// therefore the state hash (ADR 0028). Spawning one when its geometry arrived would make the
+    /// hash depend on machine speed — the exact failure ADR 0041 §2 exists to prevent, arriving
+    /// through the back door.
+    ///
+    /// So an entity is created from **this** list, which is a residency diff, and its geometry is
+    /// filled in later from `meshes`. A chunk whose mesh has not landed yet is an entity that draws
+    /// nothing, which is correct and invisible.
+    pub visible_added: Vec<ChunkKey>,
+    /// Chunks that left the drawn region, in key order.
+    ///
+    /// Despawn the entity, drop the cached geometry, and remove any collider.
     pub removed: Vec<ChunkKey>,
 }
 
@@ -239,9 +260,13 @@ impl TerrainStreamer {
         //
         // First rather than last so that a viewer teleporting across the world does not hold both
         // regions in memory at once.
-        for key in required.no_longer_needed(&self.required) {
-            self.known.remove(&key);
-            self.in_flight.remove(&key);
+        // Keyed on the **visual** set rather than the data set, because that is what has consumers:
+        // an entity, a cache entry and possibly a collider. The `data` set is one ring wider and
+        // exists so that meshing a drawn chunk can read into its neighbours — and since a chunk is
+        // sampled from the source on demand rather than stored, nothing is held for it to release.
+        for key in self.required.visual.difference(&required.visual) {
+            self.known.remove(key);
+            self.in_flight.remove(key);
             // **Reported unconditionally**, including for chunks the caller was never given.
             //
             // The obvious version -- only report what was actually delivered -- makes this list
@@ -254,7 +279,13 @@ impl TerrainStreamer {
             // missing key silently, and `PhysicsBackend::remove_static_mesh` documents that
             // removing something absent is not an error -- precisely because most chunks are empty
             // and never had a collider.
-            update.removed.push(key);
+            update.removed.push(*key);
+        }
+
+        // What entered the drawn region. Entities are created from this, never from mesh arrival —
+        // see `TerrainUpdate::visible_added`.
+        for key in required.visual.difference(&self.required.visual) {
+            update.visible_added.push(*key);
         }
 
         // --- 2. Collision chunks, meshed inline. The simulation blocks here. ---
@@ -555,6 +586,34 @@ mod tests {
                 chunk.key
             );
         }
+    }
+
+    #[test]
+    fn what_becomes_visible_does_not_depend_on_what_finished_meshing() {
+        // **Entities are spawned from this list**, and an entity is world state, so if this
+        // followed job completion the entity allocator would follow machine speed and the state
+        // hash with it (ADR 0028). It has to be residency and nothing else.
+        //
+        // Includes empty chunks deliberately: an all-air chunk still gets an entity, because
+        // whether it turned out empty is geometry, and geometry must not decide what exists.
+        let counts = [1_usize, 8];
+        let mut streamers: Vec<TerrainStreamer> = counts.iter().map(|w| streamer(*w)).collect();
+        let mut seen: Vec<Vec<Vec<ChunkKey>>> = vec![Vec::new(); streamers.len()];
+
+        for step in 0..5 {
+            for (index, streamer) in streamers.iter_mut().enumerate() {
+                let update = streamer.update(&[viewer(step, 2, 1)]);
+                seen[index].push(update.visible_added);
+            }
+        }
+        assert_eq!(
+            seen[0], seen[1],
+            "visible_added must not follow thread count"
+        );
+        assert!(
+            seen[0].iter().any(|tick| !tick.is_empty()),
+            "walking east must bring new chunks into view"
+        );
     }
 
     #[test]

@@ -40,8 +40,9 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 | ✅ | **The terrain source** — ADR 0042's generated base plus sparse edits, and per-chunk meshing |
 | ✅ | **Static trimesh colliders** — geometry reaches the solver by **id**, not as a component |
 | ✅ | **The streaming core** — `amadeo-terrain`. Colliders meshed **inline**, meshes on the job pool |
-| → | **The ECS layer** — turn a `TerrainUpdate` into entities, mesh uploads and `insert_static_mesh` calls. Mechanical |
+| ✅ | **The ECS layer** — `TerrainViewer`, `TerrainChunk`, `stream_terrain`, `install`. Behind the `engine` feature |
 | → | **Authored edits** — ADR 0042 §4 wants them in a hashed component; today the overlay exists and nothing can write to it |
+| → | **A game to walk around in** — exit gate 1. Every piece now exists; nothing has assembled them |
 | | Frustum culling, LOD (**Q25**), `amadeo-math` over glam, GPU timestamp queries |
 | | More than one light, textures on materials |
 
@@ -492,6 +493,39 @@ with *"5 workers produced different colliders than 1 worker"*.
 So: **"watch it fail" is not only how you check the implementation — it is how you find out whether a
 test measures what its name claims.** That one would have sat in the suite looking like exit-gate
 evidence and proving nothing.
+
+**Then CI found a second class of the same bug, twice.** `colliders` came out with the right contents
+in the **wrong order**, and the order followed worker count: it was built as "meshed this tick" then
+"already known", and which group a chunk fell into depended on what the job pool had finished.
+Fixing it exposed the same shape in `removed`, which was filtered by *"was the caller ever told about
+this chunk"* — and what the caller has been told is exactly what delivery timing decides.
+
+> **The general form, worth carrying forward:** *anything filtered by "what does the caller already
+> have" inherits the nondeterminism of delivery.*
+
+Both looked like bookkeeping and both were ADR 0041 §2 violations. All four `TerrainUpdate` lists are
+now **structurally** deterministic or structurally not — three are `BTreeSet` differences over
+residency, `meshes` is the inbox drain and is timing-dependent by design.
+
+### The ECS layer — `stream_terrain`
+
+`TerrainViewer` on an entity loads terrain around it; `TerrainChunk` marks each streamed chunk and
+**carries its key on the entity rather than in a map on the service**, because a service is not
+restored by a snapshot and a lost map would leave chunks nothing could despawn (ADR 0028).
+
+Two things in it worth not rediscovering:
+
+- **Entities are spawned from `visible_added`, never from mesh arrival.** An entity is world state,
+  so spawning on arrival would make the entity allocator — and the state hash — follow machine speed.
+  A chunk whose mesh has not landed is an entity that draws nothing, which is correct and invisible.
+- **The collider path must fill the mesh cache too.** A collision chunk is meshed inline and recorded
+  as known, so the pool never touches it and it never appears in `meshes`. Miss this and the one
+  piece of terrain that is invisible is the ground you are standing on.
+
+Behind an `engine` feature, off by default, so the core keeps its no-engine-dependencies property and
+ADR 0041's claim stays testable with no `World` in the build. **CI runs `--all-features` in the `test`
+job** (both platforms), and the determinism job deliberately does not — which is the right split,
+since the determinism-critical core is not feature-gated.
 
 ## Q9 is resolved and M2.5 exists — ADR 0041
 

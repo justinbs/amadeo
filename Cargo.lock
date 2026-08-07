@@ -241,7 +241,14 @@ dependencies = [
 name = "amadeo-terrain"
 version = "0.1.0"
 dependencies = [
+ "amadeo-app",
+ "amadeo-core",
+ "amadeo-ecs",
  "amadeo-jobs",
+ "amadeo-physics",
+ "amadeo-reflect",
+ "amadeo-render",
+ "amadeo-transform",
  "amadeo-voxel",
 ]
 

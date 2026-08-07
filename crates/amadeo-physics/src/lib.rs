@@ -141,6 +141,36 @@ impl Physics {
         self.last_error.as_ref()
     }
 
+    /// Adds or replaces static collision geometry held between steps — see
+    /// [`PhysicsBackend::insert_static_mesh`].
+    ///
+    /// # Why this is a pass-through rather than an exposed backend
+    ///
+    /// The backend stays private. Handing out `&mut dyn PhysicsBackend` would let any caller drive
+    /// `step` directly, and the whole reason [`step_physics`] exists is that a step must be fed from
+    /// the world's components — which are the source of truth (ADR 0036). Static geometry is the one
+    /// thing that genuinely cannot travel that way, because it is far too large to hand over every
+    /// tick and ADR 0042 will not have vertices in the state hash, so it gets its own door.
+    ///
+    /// # Errors
+    ///
+    /// [`PhysicsError::BadGeometry`] if the mesh cannot be built. An empty mesh is rejected —
+    /// filter with [`StaticMesh::is_empty`] first.
+    pub fn insert_static_mesh(&mut self, mesh: StaticMesh) -> Result<(), PhysicsError> {
+        self.backend.insert_static_mesh(mesh)
+    }
+
+    /// Removes static collision geometry. Removing something absent is not an error.
+    pub fn remove_static_mesh(&mut self, id: StaticMeshId) {
+        self.backend.remove_static_mesh(id);
+    }
+
+    /// How many pieces of static geometry the backend holds. Diagnostics and tests.
+    #[must_use]
+    pub fn static_mesh_count(&self) -> usize {
+        self.backend.static_mesh_count()
+    }
+
     /// Moves one shape through the world, sliding along what it hits — ADR 0037.
     ///
     /// The gameplay-facing half of [`PhysicsBackend::move_shape`]. Reach it with

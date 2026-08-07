@@ -1,0 +1,339 @@
+//! Turning a [`TerrainUpdate`](crate::TerrainUpdate) into entities, geometry and colliders.
+//!
+//! Only compiled with the `engine` feature. The streamer in [`crate`] needs no engine at all, and
+//! keeping that true is what lets ADR 0041's claim be tested with no `World` in the build.
+//!
+//! # The ordering that is load-bearing
+//!
+//! [`stream_terrain`] is registered **before** `step_physics`, because a chunk's collider has to be
+//! in the solver on the tick the character walks onto it. The other way round, the character spends
+//! one tick standing on ground that does not exist yet — which is a fall through the world at the
+//! exact moment a new chunk streams in, and it looks like a physics bug rather than an ordering one.
+//!
+//! [`install`] sets that up so a game does not have to remember, exactly as
+//! `amadeo_character::install` does for its own `.after(STEP_PHYSICS)`.
+//!
+//! # Where each part of an update goes
+//!
+//! | Field | Effect |
+//! |---|---|
+//! | `visible_added` | **spawn** a chunk entity — deterministic, so the state hash is too |
+//! | `meshes` | fill the [`MeshCache`] — the entity already exists and starts drawing |
+//! | `colliders` | `PhysicsBackend::insert_static_mesh`, and fill the cache too |
+//! | `colliders_removed` | `remove_static_mesh`, geometry kept |
+//! | `removed` | despawn, drop the cache entry, remove the collider |
+//!
+//! **`colliders` fills the mesh cache as well**, which is easy to miss: a chunk meshed inline for
+//! collision is recorded as already known, so the job pool never meshes it and it never appears in
+//! `meshes`. Without this the ground you are standing on is the one piece of terrain that is
+//! invisible.
+
+use crate::{ReadyChunk, TerrainSettings, TerrainStreamer, chunk_mesh_id};
+use amadeo_app::{App, Stage, system};
+use amadeo_core::StableHash;
+use amadeo_ecs::{Component, Entity, Service, World};
+use amadeo_physics::{Physics, STEP_PHYSICS, StaticMesh, StaticMeshId, step_physics};
+use amadeo_reflect::{Reflect, RegistryError};
+use amadeo_render::{Material, Mesh, MeshCache, MeshData, Vertex};
+use amadeo_transform::Transform;
+use amadeo_voxel::{ChunkKey, TerrainSource, Viewer};
+use std::sync::Arc;
+
+/// The label [`stream_terrain`] is registered under.
+pub const STREAM_TERRAIN: &str = "stream_terrain";
+
+/// An entity that terrain is loaded around — a player, a spectator, a server's area of interest.
+///
+/// Position comes from the entity's [`Transform`], per ADR 0018's one-transform rule, exactly as a
+/// camera's and a light's do.
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+pub struct TerrainViewer {
+    /// How many chunks out, in every direction, are **drawn**.
+    #[reflect(min = 0.0, max = 64.0, unit = "chunks")]
+    pub visual_radius: i32,
+    /// How many chunks out are **solid**.
+    ///
+    /// Normally much smaller than `visual_radius`: every chunk with a collider is one the simulation
+    /// may have to block on (ADR 0041 §2), and collision only has to exist where something can
+    /// actually touch it.
+    #[reflect(min = 0.0, max = 64.0, unit = "chunks")]
+    pub collision_radius: i32,
+}
+
+impl Default for TerrainViewer {
+    fn default() -> Self {
+        Self {
+            visual_radius: 4,
+            collision_radius: 2,
+        }
+    }
+}
+
+impl Component for TerrainViewer {}
+
+/// Marks an entity as one streamed chunk, and says which.
+///
+/// # Why the key lives on the entity rather than in a map on the service
+///
+/// A service is not hashed and is not restored by a snapshot (ADR 0009). A `BTreeMap<ChunkKey,
+/// Entity>` kept there would be lost on a restore while the entities it named survived, leaving
+/// chunks nothing could ever despawn — which is ADR 0028's lesson exactly: hash equality after a
+/// restore is necessary and not sufficient.
+///
+/// Kept on the entity, the mapping is part of the world and comes back with it.
+#[derive(Debug, Clone, Copy, PartialEq, Default, StableHash, Reflect)]
+pub struct TerrainChunk {
+    /// Detail level.
+    pub lod: u8,
+    /// Chunk coordinate along x.
+    pub x: i32,
+    /// Chunk coordinate along y.
+    pub y: i32,
+    /// Chunk coordinate along z.
+    pub z: i32,
+}
+
+impl Component for TerrainChunk {}
+
+impl TerrainChunk {
+    /// The key this component names.
+    #[must_use]
+    pub fn key(&self) -> ChunkKey {
+        ChunkKey::at_lod(self.lod, self.x, self.y, self.z)
+    }
+
+    /// The component for a key.
+    #[must_use]
+    pub fn of(key: ChunkKey) -> Self {
+        Self {
+            lod: key.lod,
+            x: key.x,
+            y: key.y,
+            z: key.z,
+        }
+    }
+}
+
+/// The streamer, as a service.
+///
+/// A **service** rather than a resource, and that is ADR 0009 doing real work: everything in here is
+/// derived from the seed, the edits and where the viewers are, so none of it belongs in the state
+/// hash. It also holds a job pool, and a thread pool inside hashed state would be nonsense.
+#[derive(Debug)]
+pub struct Terrain {
+    /// The streamer itself.
+    pub streamer: TerrainStreamer,
+    /// The material every terrain chunk is drawn with.
+    pub material: Material,
+}
+
+impl Service for Terrain {}
+
+impl Terrain {
+    /// A terrain service over a generated world.
+    #[must_use]
+    pub fn new(source: Arc<dyn TerrainSource>, settings: TerrainSettings, workers: usize) -> Self {
+        Self {
+            streamer: TerrainStreamer::new(source, settings, workers),
+            material: Material::default(),
+        }
+    }
+}
+
+/// Registers the terrain components and the streaming system.
+///
+/// # Call this before loading a scene
+///
+/// It is what registers [`TerrainViewer`] and [`TerrainChunk`], and a scene file naming a component
+/// the registry has not been told about refuses to load. Same ordering `amadeo_character::install`
+/// needs, and for the same reason.
+///
+/// # Errors
+///
+/// [`RegistryError`] if a game has already registered a different type under one of these names.
+pub fn install(app: &mut App, terrain: Terrain) -> Result<(), RegistryError> {
+    app.register_component::<TerrainViewer>()?;
+    app.register_component::<TerrainChunk>()?;
+
+    app.insert_service(terrain);
+    if !app.world.has_service::<MeshCache>() {
+        app.insert_service(MeshCache::new());
+    }
+
+    app.add_system(Stage::Simulation, system(STEP_PHYSICS, step_physics));
+    // **Before** physics, not after: a collider has to be in the solver on the tick a character
+    // walks onto it. See the module docs.
+    app.add_system(
+        Stage::Simulation,
+        system(STREAM_TERRAIN, stream_terrain).before(STEP_PHYSICS),
+    );
+    Ok(())
+}
+
+/// Advances terrain streaming by one tick and applies the result to the world.
+///
+/// Does nothing if there is no [`Terrain`] service, so a world without terrain is untouched rather
+/// than half-driven — the same posture `drive_characters` takes.
+pub fn stream_terrain(world: &mut World) {
+    if !world.has_service::<Terrain>() {
+        return;
+    }
+
+    // --- Where the viewers are. ---
+    //
+    // `Residency::of` is asserted order-independent, so the order this query happens to yield
+    // cannot reach the answer -- which is why there is no sort here.
+    let Some(terrain) = world.service::<Terrain>() else {
+        return;
+    };
+    let shape = terrain.streamer.settings().shape;
+    let viewers: Vec<Viewer> = world
+        .query::<(&TerrainViewer, &Transform)>()
+        .map(|(_, (viewer, transform))| Viewer {
+            centre: ChunkKey::containing(transform.translation, shape.chunk_size_at(0)),
+            visual_radius: viewer.visual_radius,
+            collision_radius: viewer.collision_radius,
+        })
+        .collect();
+
+    // Nothing to load terrain around. Leaving what is loaded alone rather than unloading the world
+    // is the kinder failure: a game that forgot the component sees terrain that never grows, not
+    // terrain that vanishes.
+    if viewers.is_empty() {
+        return;
+    }
+
+    let (update, material) = {
+        let Some(terrain) = world.service_mut::<Terrain>() else {
+            return;
+        };
+        (terrain.streamer.update(&viewers), terrain.material.clone())
+    };
+
+    // --- Geometry into the cache. ---
+    //
+    // Colliders as well as meshes: a chunk meshed inline for collision never reaches the pool, so it
+    // never appears in `meshes`, and without this the ground underfoot is the one invisible thing.
+    if let Some(cache) = world.service_mut::<MeshCache>() {
+        for chunk in update.meshes.iter().chain(&update.colliders) {
+            cache.insert(chunk_mesh_id(chunk.key), mesh_data_of(chunk));
+        }
+    }
+
+    // --- Colliders into the solver. ---
+    if world.has_service::<Physics>() {
+        let friction = update_friction(world);
+        if let Some(physics) = world.service_mut::<Physics>() {
+            for chunk in &update.colliders {
+                let mesh = static_mesh_of(chunk, friction);
+                // An empty chunk never reaches here -- the streamer drops those -- but a degenerate
+                // one could, and a failed insert must not take the game down mid-tick. Terrain that
+                // is not solid is survivable; a panic is not.
+                let _ = physics.insert_static_mesh(mesh);
+            }
+            for key in update.colliders_removed.iter().chain(&update.removed) {
+                physics.remove_static_mesh(collider_id(*key));
+            }
+        }
+    }
+
+    // --- Entities. ---
+    //
+    // Spawned from `visible_added`, which is a residency diff, so the entity allocator -- and
+    // therefore the state hash -- cannot follow machine speed. See `TerrainUpdate::visible_added`.
+    for key in &update.visible_added {
+        let entity = world.spawn();
+        world.insert(
+            entity,
+            Transform {
+                translation: shape.origin_of(*key),
+                ..Transform::default()
+            },
+        );
+        world.insert(entity, TerrainChunk::of(*key));
+        // The geometry may not exist yet. `MeshCache::get` returning `None` draws nothing and says
+        // which id, which is exactly the right behaviour for a chunk still being meshed.
+        world.insert(entity, Mesh::new(chunk_mesh_id(*key), material_id()));
+    }
+
+    if !update.removed.is_empty() {
+        despawn_chunks(world, &update.removed);
+    }
+
+    let _ = material;
+}
+
+/// The friction terrain colliders are given.
+fn update_friction(world: &World) -> f32 {
+    world
+        .service::<Terrain>()
+        .map_or(0.5, |terrain| terrain.streamer.settings().friction)
+}
+
+/// The id a chunk's collider is held under.
+///
+/// A hash of the key rather than the key packed into bits: `StaticMeshId` is one `u64` and four
+/// fields do not fit in it without a range assumption that would silently wrap on a large world.
+fn collider_id(key: ChunkKey) -> StaticMeshId {
+    StaticMeshId(amadeo_core::stable_hash_of(&TerrainChunk::of(key)))
+}
+
+/// The asset id terrain chunks name for their material.
+fn material_id() -> String {
+    "terrain".to_string()
+}
+
+/// Converts a chunk's geometry into what the renderer holds.
+///
+/// UVs are a flat planar projection from the chunk's own x and z. Terrain has no authored texture
+/// coordinates — there is no artist to make them — and a planar mapping is what every voxel terrain
+/// starts with. It stretches on vertical faces, which is a known limitation of the approach rather
+/// than a defect here; triplanar mapping is the usual fix and belongs with the material work.
+fn mesh_data_of(chunk: &ReadyChunk) -> MeshData {
+    MeshData {
+        vertices: chunk
+            .mesh
+            .positions
+            .iter()
+            .zip(&chunk.mesh.normals)
+            .map(|(position, normal)| Vertex {
+                position: *position,
+                normal: *normal,
+                uv: [position[0], position[2]],
+            })
+            .collect(),
+        indices: chunk.mesh.indices.clone(),
+    }
+}
+
+/// Converts a chunk's geometry into what the solver holds.
+fn static_mesh_of(chunk: &ReadyChunk, friction: f32) -> StaticMesh {
+    StaticMesh {
+        id: collider_id(chunk.key),
+        translation: chunk.origin,
+        vertices: chunk.mesh.positions.clone(),
+        indices: chunk
+            .mesh
+            .indices
+            .chunks_exact(3)
+            .map(|triangle| [triangle[0], triangle[1], triangle[2]])
+            .collect(),
+        friction,
+    }
+}
+
+/// Despawns the entities for a set of chunks.
+///
+/// Collected before despawning rather than despawned during the query, because mutating the world
+/// while iterating it is what `Commands` exists to avoid.
+fn despawn_chunks(world: &mut World, removed: &[ChunkKey]) {
+    let doomed: Vec<Entity> = world
+        .query::<(&TerrainChunk,)>()
+        .filter(|(_, (chunk,))| removed.contains(&chunk.key()))
+        .map(|(entity, _)| entity)
+        .collect();
+
+    for entity in doomed {
+        world.despawn(entity);
+    }
+}
