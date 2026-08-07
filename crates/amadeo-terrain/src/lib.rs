@@ -15,8 +15,16 @@
 //! thread, before the tick continues** — the simulation blocks on ground it needs. A slow machine
 //! gets a frame hitch and keeps its replay, which is the trade ADR 0041 chose deliberately.
 //!
-//! That is why [`TerrainUpdate::colliders`] is a complete answer every tick and
-//! [`TerrainUpdate::meshes`] is not.
+//! Both lists report *changes*, and the difference between them is **what decides the change**.
+//! [`TerrainUpdate::colliders`] comes from the residency diff — where the viewers are, and nothing
+//! else — so its content and its order are the same on every machine at every worker count.
+//! [`TerrainUpdate::meshes`] is whatever the pool finished, so which tick a chunk lands on depends
+//! on machine speed. Gameplay may rely on the first and must never look at the second.
+//!
+//! Getting that distinction slightly wrong is easy and CI caught it once: an early version built
+//! `colliders` as "meshed this tick" followed by "already known", and which group a chunk fell into
+//! depended on whether the pool had already delivered it. The *set* was always right; the **order**
+//! followed thread count. See `update`.
 //!
 //! # Why this crate has no engine dependencies
 //!
@@ -60,7 +68,8 @@
 //! };
 //!
 //! let update = streamer.update(&[viewer]);
-//! // Colliders are complete on the tick they are asked for. Meshes may still be in flight.
+//! // Ground the viewer can stand on is ready on the tick it was asked for -- nothing was waited
+//! // for. The meshes to *draw* may still be in flight, and that is allowed.
 //! assert!(!update.colliders.is_empty());
 //! ```
 
@@ -95,21 +104,35 @@ pub struct ReadyChunk {
 
 /// What one tick of streaming decided.
 ///
-/// # The asymmetry between these two lists is the whole design
+/// # Every list here is a change list, and the asymmetry is what *decides* the change
 ///
-/// `colliders` is a **complete** answer: every chunk that must be solid this tick is in it, because
-/// they were meshed inline. `meshes` is **whatever finished**, which depends on machine speed and is
-/// therefore something gameplay must never look at.
+/// `colliders`, `colliders_removed` and `removed` come from the **residency diff** — where the
+/// viewers are and nothing else — so their contents and their order are identical on every machine
+/// at every worker count. `meshes` is **whatever the pool finished**, so which tick a chunk lands on
+/// depends on machine speed.
+///
+/// Gameplay may rely on the first three and must never look at the fourth. That is ADR 0041 §2
+/// expressed as four fields.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TerrainUpdate {
     /// Chunks whose geometry became available for **drawing** this tick, in key order.
     ///
     /// May arrive several ticks after the chunk became visible. That is allowed and is the point.
     pub meshes: Vec<ReadyChunk>,
-    /// Chunks that must be **solid** this tick, in key order.
+    /// Chunks that **became solid** this tick, in key order.
     ///
-    /// Complete every tick. Gameplay may rely on this and may not rely on `meshes`.
+    /// A *change* rather than a census: the caller holds what it has already been given, exactly as
+    /// it does for meshes. Reporting every solid chunk every tick would mean re-meshing the whole
+    /// collision region sixty times a second.
+    ///
+    /// Deterministic in content **and order**, because it comes from the residency diff and nothing
+    /// else. Gameplay may rely on this and may not rely on `meshes`.
     pub colliders: Vec<ReadyChunk>,
+    /// Chunks that stopped needing to be solid but are still drawn, in key order.
+    ///
+    /// Distinct from `removed`: this geometry stays, only its collider goes. A viewer walking away
+    /// from ground it can still see is the case, and missing it leaves invisible collision behind.
+    pub colliders_removed: Vec<ChunkKey>,
     /// Chunks that left the loaded region, in key order. Drop their geometry and their collider.
     pub removed: Vec<ChunkKey>,
 }
@@ -194,9 +217,15 @@ impl TerrainStreamer {
     ///
     /// # What is deterministic here, precisely
     ///
-    /// Given the same viewers, this returns the same `colliders` and the same `removed` on every
-    /// machine and at every worker count, because both are computed from integer set arithmetic and
-    /// collision chunks are meshed inline rather than waited for.
+    /// Given the same viewers, this returns the same `colliders`, `colliders_removed` and `removed`
+    /// — same contents **and same order** — on every machine at every worker count, because all
+    /// three come from integer set differences over `BTreeSet`s and collision chunks are meshed
+    /// inline rather than waited for.
+    ///
+    /// **Order is part of the claim, not a detail.** The first version of this got the *set* right
+    /// and the order wrong, by partitioning collision chunks into "meshed now" and "already known"
+    /// — a split that depends on what the job pool had finished. It passed on an 8-core developer
+    /// machine and failed on CI.
     ///
     /// `meshes` is **not** deterministic in *timing* — a faster machine gets a chunk sooner. It is
     /// deterministic in *content and order*: the same chunk always meshes to the same geometry, and
@@ -211,12 +240,21 @@ impl TerrainStreamer {
         // First rather than last so that a viewer teleporting across the world does not hold both
         // regions in memory at once.
         for key in required.no_longer_needed(&self.required) {
-            // Only report a removal for something the caller was actually told about. A chunk that
-            // was in flight and never delivered has nothing to remove.
-            if self.known.remove(&key).is_some() {
-                update.removed.push(key);
-            }
+            self.known.remove(&key);
             self.in_flight.remove(&key);
+            // **Reported unconditionally**, including for chunks the caller was never given.
+            //
+            // The obvious version -- only report what was actually delivered -- makes this list
+            // depend on what the job pool had finished, which is machine speed. That is the same
+            // defect the collider ordering had, in a second place, and it is the general shape to
+            // watch for: **anything filtered by "what does the caller already have" inherits the
+            // nondeterminism of delivery.**
+            //
+            // Safe because removal is idempotent by design at every consumer: a mesh cache drops a
+            // missing key silently, and `PhysicsBackend::remove_static_mesh` documents that
+            // removing something absent is not an error -- precisely because most chunks are empty
+            // and never had a collider.
+            update.removed.push(key);
         }
 
         // --- 2. Collision chunks, meshed inline. The simulation blocks here. ---
@@ -226,30 +264,32 @@ impl TerrainStreamer {
         // machine, which is the trade that keeps the replay.
         //
         // Done before the visual submissions so that a tick which is short of time spends it here.
-        for key in &required.collision {
-            if self.known.contains_key(key) {
-                continue;
-            }
+        //
+        // **Driven by the residency diff and nothing else**, which is the correction that matters.
+        // An earlier version reported "chunks meshed this tick" followed by "chunks already known",
+        // and *which group a chunk fell into* depended on whether the job pool had already delivered
+        // it as a visual chunk -- so the ORDER of this list depended on thread count. The set was
+        // always right and the order was not, which CI caught and this machine never did.
+        //
+        // `BTreeSet::difference` yields in key order, so the sequence is now a pure function of
+        // where the viewers are.
+        for key in required.collision.difference(&self.required.collision) {
             let mesh = self.mesh_one(*key);
             let empty = mesh.is_empty();
+            // Recorded so the pool is not asked to do the same work again. It may already be here
+            // from a visual delivery, which is fine -- meshing is a pure function, so doing it twice
+            // costs time and cannot change the answer.
             self.known.insert(*key, empty);
-            // Already meshed, so there is no reason for the pool to do it again.
             self.in_flight.remove(key);
             if !empty {
                 update.colliders.push(self.ready(*key, mesh));
             }
         }
 
-        // Every collision chunk that has geometry is reported every tick, not only the tick it was
-        // built. The caller is then free to be stateless about what the solver holds, and a chunk
-        // whose collider was dropped for any reason comes back rather than becoming a hole.
-        for key in &required.collision {
-            if self.known.get(key) == Some(&false)
-                && !update.colliders.iter().any(|c| c.key == *key)
-            {
-                let mesh = self.mesh_one(*key);
-                update.colliders.push(self.ready(*key, mesh));
-            }
+        // Chunks that stopped needing to be solid but are still drawn. Their collider goes; their
+        // mesh stays. Without this a viewer walking away would leave invisible ground behind it.
+        for key in self.required.collision.difference(&required.collision) {
+            update.colliders_removed.push(*key);
         }
 
         // --- 3. Visual chunks, submitted to the pool. These may arrive whenever. ---
@@ -478,13 +518,22 @@ mod tests {
     #[test]
     fn meshes_eventually_arrive_for_visible_chunks() {
         // The visual half. It is allowed to be late; it is not allowed to never come.
+        //
+        // **Counted across ticks rather than asserted on one**, and that is not defensive padding:
+        // an earlier version drained on the *second* update and assumed the first had delivered
+        // nothing. Jobs can finish between submission and collection inside a single call, so on a
+        // fast enough machine the first update took them all and the second was empty. It passed
+        // here and failed in CI. Anything that asserts on *which tick* work landed is asserting on
+        // machine speed, which is the whole thing ADR 0041 forbids gameplay from doing.
         let mut streamer = streamer(4);
-        streamer.update(&[viewer(0, 2, 0)]);
-        streamer.pool.wait_for_idle();
-        let update = streamer.update(&[viewer(0, 2, 0)]);
+        let mut delivered = 0;
+        for _ in 0..8 {
+            delivered += streamer.update(&[viewer(0, 2, 0)]).meshes.len();
+            streamer.pool.wait_for_idle();
+        }
 
         assert!(
-            !update.meshes.is_empty(),
+            delivered > 0,
             "visible chunks must eventually be delivered for drawing"
         );
     }
@@ -504,6 +553,66 @@ mod tests {
                 chunk.key.x > 40,
                 "{:?} is from the abandoned region and should not have been delivered",
                 chunk.key
+            );
+        }
+    }
+
+    #[test]
+    fn colliders_come_back_in_key_order_when_the_solid_region_grows() {
+        // **The regression guard for the bug CI found and this machine never did.**
+        //
+        // The old implementation reported every solid chunk every tick, in two passes: those meshed
+        // on this tick, then those already known. Growing the collision region put the new shell in
+        // the first pass and the existing centre in the second, so the output was
+        // [shell..., centre...] -- the right *set* in an order that is not sorted, and which shifted
+        // with thread count because the pool could move a chunk from one pass to the other.
+        //
+        // Asserting sorted order catches that without depending on timing at all, which is what
+        // makes this a test rather than a coin flip. The original failure needed a loaded CI runner
+        // to show up.
+        let mut streamer = streamer(4);
+        streamer.update(&[viewer(0, 3, 1)]);
+        let update = streamer.update(&[viewer(0, 3, 2)]);
+
+        let keys: Vec<ChunkKey> = update.colliders.iter().map(|c| c.key).collect();
+        assert!(
+            !keys.is_empty(),
+            "growing the solid region must produce colliders"
+        );
+
+        let mut sorted = keys.clone();
+        sorted.sort();
+        assert_eq!(
+            keys, sorted,
+            "colliders must be in key order however they came to be meshed"
+        );
+
+        // And a chunk that was already solid is not reported again -- it is a change list, not a
+        // census, or the whole collision region would be re-meshed every tick.
+        assert!(
+            !keys.contains(&ChunkKey::new(0, 0, 0)),
+            "the centre was already solid and must not be re-reported"
+        );
+    }
+
+    #[test]
+    fn ground_that_stops_being_solid_but_stays_visible_has_its_collider_dropped() {
+        // The case `removed` alone would miss. A viewer walking away from ground it can still see
+        // needs the collider gone and the mesh kept -- otherwise the world accumulates invisible
+        // collision, and the symptom is a player stopping dead in open terrain.
+        let mut streamer = streamer(2);
+        streamer.update(&[viewer(0, 4, 1)]);
+        // Same visual region, collision region moves with the viewer.
+        let update = streamer.update(&[viewer(2, 4, 1)]);
+
+        assert!(
+            !update.colliders_removed.is_empty(),
+            "chunks that stopped being solid must be reported"
+        );
+        for key in &update.colliders_removed {
+            assert!(
+                !update.removed.contains(key),
+                "{key:?} is still drawn, so it must not be in `removed`"
             );
         }
     }
