@@ -562,6 +562,15 @@ shipped build would report on a build nobody runs.
 - **The worst run matters as much as the mean, and `SystemTiming` keeps both.** `step_physics`
   averages 4.4 µs and its worst single run was 102.8 µs — 23× its own average. Still only 0.6% of a
   frame, so it is a fact rather than a problem, but an average alone would have hidden it entirely.
+- **A timing test went red in session 12, and the claim above was the reason it could.** The
+  frame-preparation test reused `CEILING_FRACTION` — a constant whose doc comment argues it is
+  "deliberately enormous… the only timing claim a shared CI runner can support". That argument is
+  true for the *tick* test it was written for (8.3 µs against an 8333 µs ceiling, 1000× headroom) and
+  **false** for frame preparation, which measures 130 µs on real hardware and **8764 µs** on a
+  runner's software adapter. One constant, two measurements three orders of magnitude apart, and
+  nobody checked which. Fixed by making the engine able to say what answered —
+  `WgpuBackend::adapter().software` — and asserting only on real hardware. Same class as the three
+  findings below: **a claim written down and never executed under the conditions it claims to cover.**
 - **Nothing fails CI on a timing regression, deliberately.** §6 forbids wall-clock tests, CI runners
   are variable, and a flaky performance gate is one people learn to ignore — which is worse than not
   having one. What *is* asserted: scene complexity, run counts, one enormous ceiling at half a frame,
@@ -1259,6 +1268,7 @@ Verified on this machine (2026-07-30):
 | **Gotcha — a `Field` is sized in samples** | `Field::new(n)` holds `(n+1)³` samples and meshes `n³` cells. A chunk that fills only its own volume **cracks at every seam**, and the symptom points at the renderer rather than at the data. |
 | **Gotcha — a chunk needs TWO aprons, not one** | The line above is about *vertices* and is only half the story. `surface_nets` also emits a quad by looking at the four cells around a grid edge, and at a chunk's **low** face two of them belong to the previous chunk — so the bridging quads are emitted by nobody and every chunk has a one-cell gap around it. A chunk of `n` cells fills **`n + 2`** samples covering `n + 1` cells, starting one cell *below* its origin. `ChunkShape::samples_per_axis` is the number; ADR 0043 §4 amends ADR 0042 §2. Use `mesh_chunk`, which gets it right, rather than calling `surface_nets` on a hand-built field. |
 | **Gotcha — an empty chunk is not an error** | Most chunks of a real world are entirely air or entirely rock and mesh into nothing. `ColliderBuilder::trimesh` returns a `Result` and refuses no triangles, so filter with `StaticMesh::is_empty` before inserting. Both backends reject it identically on purpose. |
+| **Gotcha — CI has no GPU, so `offscreen` gets a *software* adapter** | `WgpuBackend::offscreen` asks for an adapter with no compatible surface, which is what lets a CPU rasteriser (WARP on Windows, lavapipe on Linux) answer where there is no hardware — that is how CI captures images at all. It is **dozens of times slower, not slightly**: frame preparation measures 130 µs on this machine and **8764 µs** on a runner. Any test asserting a time bound must check `WgpuBackend::adapter().software` first and report rather than fail. Turned CI red once, in session 12. |
 | **Gotcha — PowerShell `$?` after a pipe is not the exit code** | `cargo clippy ... \| Select-String "error"` sets `$?` from **`Select-String`**, which reports failure when it finds nothing — so a clean run looks like a failed one. Use `cmd *>$null; $LASTEXITCODE` when what you want is whether cargo succeeded. Cost real confusion in session 12. |
 | **Gotcha — an asset that will not parse is skipped in silence** | By design (ADR 0021): a missing asset must be survivable. So a `.material` with one field missing produces no error and a uniformly white scene. `amadeo check <file>` names the field — but only if you point it at the *asset* files, not just the level. CI does both games now. |
 | **Gotcha — `Grade::contrast` above 1.0 crushes shadows to black** | `(colour - 0.5) * contrast + 0.5` drives near-black values negative and they clamp to zero. Inherent to a pivot with no toe. Invisible before shadows existed, because nothing in a scene was ever that dark. |

@@ -339,11 +339,52 @@ enum Target {
     Offscreen { texture: wgpu::Texture },
 }
 
+/// Turns wgpu's adapter info into the engine's own description.
+///
+/// `DeviceType::Cpu` is wgpu's tag for a software rasteriser — lavapipe on Linux, WARP on Windows.
+/// Both report themselves honestly, so this needs no name matching.
+fn describe_adapter(adapter: &wgpu::Adapter) -> AdapterDescription {
+    let info = adapter.get_info();
+    AdapterDescription {
+        software: info.device_type == wgpu::DeviceType::Cpu,
+        name: info.name,
+    }
+}
+
+/// Which GPU actually answered, and whether it is one.
+///
+/// # Why the engine reports this rather than assuming
+///
+/// `WgpuBackend::offscreen` deliberately asks for an adapter with no compatible surface, which is
+/// what lets a **software** adapter answer on a machine with no GPU — that is how CI captures images
+/// at all. But a software adapter is not slightly slower than hardware, it is *dozens of times*
+/// slower, and the difference is invisible from inside the engine.
+///
+/// That invisibility cost a red CI once: `games/atrium`'s frame-budget test measured 130 µs on a
+/// developer machine and **8764 µs** on a runner, against a tripwire of 8333 µs. Nothing was wrong
+/// with the engine; the number was measured on a CPU pretending to be a GPU. A timing claim that
+/// cannot tell those two apart is not a measurement.
+///
+/// An engine-owned type rather than `wgpu::AdapterInfo`, so no wgpu type crosses the boundary —
+/// the same rule ADR 0036 §4 states for rapier, applied here because the reason is identical.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdapterDescription {
+    /// The driver's name for the adapter, for diagnostics and error messages.
+    pub name: String,
+    /// Whether this is a CPU implementation rather than real hardware.
+    ///
+    /// **A performance number measured on one of these means nothing** about how the game runs. Any
+    /// test asserting a time bound must check this first and report rather than fail.
+    pub software: bool,
+}
+
 /// A wgpu-backed renderer drawing into a window surface or an offscreen texture.
 #[derive(Debug)]
 pub struct WgpuBackend {
     /// Where finished frames go, and the only thing that differs between the two constructors.
     target: Target,
+    /// Which adapter answered, and whether it is real hardware.
+    adapter: AdapterDescription,
     device: wgpu::Device,
     queue: wgpu::Queue,
     /// Drawable size in physical pixels.
@@ -511,6 +552,7 @@ impl WgpuBackend {
         Self::build(
             device,
             queue,
+            describe_adapter(&adapter),
             Target::Window { surface, config },
             width.max(1),
             height.max(1),
@@ -572,6 +614,7 @@ impl WgpuBackend {
         Self::build(
             device,
             queue,
+            describe_adapter(&adapter),
             Target::Offscreen { texture },
             width,
             height,
@@ -579,10 +622,20 @@ impl WgpuBackend {
         )
     }
 
+    /// Which adapter answered, and whether it is real hardware.
+    ///
+    /// **Check `software` before asserting any timing bound.** See [`AdapterDescription`] for the
+    /// red CI run that made this method exist.
+    #[must_use]
+    pub fn adapter(&self) -> &AdapterDescription {
+        &self.adapter
+    }
+
     /// Everything both constructors share: shaders, pipelines, buffers, samplers.
     fn build(
         device: wgpu::Device,
         queue: wgpu::Queue,
+        adapter: AdapterDescription,
         target: Target,
         width: u32,
         height: u32,
@@ -1257,6 +1310,7 @@ impl WgpuBackend {
 
         Ok(Self {
             target,
+            adapter,
             device,
             queue,
             width,

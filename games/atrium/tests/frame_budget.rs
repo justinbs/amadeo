@@ -175,6 +175,12 @@ fn preparing_a_frame_on_the_cpu_fits_inside_one_too() {
             return;
         }
     };
+    // **Whether this number means anything depends on what answered.** `offscreen` asks for an
+    // adapter with no compatible surface, which is what lets a *software* rasteriser answer on a
+    // machine with no GPU — and that is how CI captures images at all. But it is dozens of times
+    // slower than hardware, not slightly, so a time measured on one says nothing about the game.
+    let on_real_hardware = !backend.adapter().software;
+    let adapter = backend.adapter().name.clone();
     app.world.insert_service(Renderer::new(Box::new(backend)));
 
     app.run_ticks(WARM_UP).expect("warm-up runs");
@@ -191,14 +197,33 @@ fn preparing_a_frame_on_the_cpu_fits_inside_one_too() {
 
     println!(
         "\n--- games/atrium, CPU-side frame preparation, 1280x720, {FRAMES} frames ---\n\
+         adapter                             {adapter}{}\n\
          collect + graph + upload + submit   {mean:.3}µs   ({:.2}% of a 60 Hz frame)\n\
          GPU execution time is NOT included -- that needs timestamp queries.\n",
+        if on_real_hardware {
+            ""
+        } else {
+            "   (SOFTWARE -- timings below are not meaningful)"
+        },
         (mean / FRAME_BUDGET_US) * 100.0
     );
 
+    // The tripwire only applies where the measurement means something. This is the same posture the
+    // missing-device branch above already takes: a fact about the machine, reported rather than
+    // failed. `docs/10-frame-budget.md`'s numbers are regenerated on real hardware, and that is the
+    // only place a budget claim can honestly be made.
+    if !on_real_hardware {
+        println!(
+            "not asserting the {:.0} µs tripwire: a software adapter is dozens of times slower \
+             than hardware, so this number measures the runner rather than the engine.",
+            FRAME_BUDGET_US * CEILING_FRACTION
+        );
+        return;
+    }
+
     assert!(
         mean < FRAME_BUDGET_US * CEILING_FRACTION,
-        "preparing a frame took {mean:.1} µs, past the {:.0} µs tripwire",
+        "preparing a frame took {mean:.1} µs on {adapter}, past the {:.0} µs tripwire",
         FRAME_BUDGET_US * CEILING_FRACTION
     );
 }

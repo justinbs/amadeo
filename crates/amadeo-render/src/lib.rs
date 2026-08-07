@@ -61,7 +61,7 @@ pub use describe::{
 };
 pub use environment::{Bloom, Environment, EnvironmentCache, Grade, Tonemap, Vignette};
 #[cfg(feature = "gpu")]
-pub use gpu::WgpuBackend;
+pub use gpu::{AdapterDescription, WgpuBackend};
 pub use mesh::{
     BoxMesh, DirectionalLight, GltfPart, Material, MaterialCache, Mesh, MeshCache, MeshData,
     PlaneMesh, ShadowMode, Vertex,
