@@ -32,7 +32,7 @@ chunks, with collision and shadows, and its replay reproduces at every thread co
 gate 3 (frustum culling) and gate 4 (frame budget with GPU time) — plus **Q26 turns out to block
 gate 3**, because `render.describe` cannot see meshes and the gate says to measure through it.
 
-### Building the demo found four engine defects, and one of them had been wrong since session 12
+### Building the demo found five engine defects, and one of them had been wrong since session 12
 
 Every piece of streaming was tested and none of it had ever carried a player. The bet that a real
 game finds what tests do not paid for the third milestone running.
@@ -64,6 +64,34 @@ Plus one that is the Atrium's session-9 defect from a new direction: **`App::loa
 scans `Mesh` components that exist when a scene finishes loading**, so anything spawned at *runtime*
 gets `Material::default()`. Terrain drew plain white over an otherwise correct world.
 `App::load_material` loads one by id, and `amadeo_terrain::install` calls it.
+
+### CI found a fifth, and it is the third time delivery timing has decided something
+
+`4ea7eae` went **3/5** — both `test (ubuntu-latest)` and the determinism job failed
+`walking_brings_new_ground_in_and_lets_old_ground_go` with *"terrain/0/-1/0/2 was despawned but its
+geometry is still cached"*.
+
+**A real leak, not a flaky test.** Collection of finished meshes was gated on the `data` residency
+set, which is `visual` grown by one ring — the apron, which exists so meshing can read a neighbour's
+samples and which is never submitted, drawn or given an entity. So a chunk that had *left* the drawn
+region could still be delivered while it sat in that ring, after `removed` had told the caller to drop
+it. The caller re-cached geometry for an entity that no longer existed and nothing ever named that key
+again.
+
+Whether it happened depended on **when a job finished**: same tick as the removal and
+`stream_terrain`'s insert-then-remove ordering hid it; a tick later and the entry was orphaned for
+good. Gate is now `visual`, the set that actually has consumers, so delivery and residency agree by
+construction. **`Residency::data` now has no runtime consumer at all** — it is the statement of the
+apron constraint a test enforces, and Q25 is what will need it.
+
+Two regression tests, both watched failing against the old gate. The first **reproduces it
+deterministically by controlling when jobs land** — submit, move the viewer, and only *then* wait —
+rather than hoping for a slow machine, which is what made the game-level test a coin flip.
+
+> This is the third variant of one shape and `docs/07` now carries all three. The first two were about
+> *filtering* an output by what the caller already has; this one is about *admitting* a result the
+> caller has no consumer for. **When several sets are in scope, the correct one is the narrowest that
+> covers every consumer, not the widest that contains the key.**
 
 ### And one sharp edge that is NOT fixed — Q30
 

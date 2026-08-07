@@ -1463,6 +1463,32 @@ your machine and fail on a loaded CI runner, which is exactly how both of these 
 A related corollary for tests: **anything asserting *which tick* background work landed on is
 asserting on machine speed.** Count across ticks instead.
 
+### And its sibling: gate on the set that has consumers, not the widest one available
+
+Session 13 shipped a third variant of the same bug, and it is worth separating because the first two
+were about *filtering* and this one is about *admitting*.
+
+`TerrainStreamer` keeps three nested residency sets — `collision ⊆ visual ⊆ data`. Collection of
+finished meshes was gated on `data`, which is `visual` grown by one ring. That ring is the **apron**:
+it exists so meshing a drawn chunk can read its neighbours' samples, and nothing in it is ever
+submitted, drawn or given an entity.
+
+So a chunk that had left the drawn region could still be delivered while it sat in the apron — after
+`removed` had already told the caller to drop it. The caller cached geometry for an entity that no
+longer existed, and nothing would ever name that key again.
+
+**Whether it happened depended on when a job finished.** Land on the same tick as the removal and the
+caller's own insert-then-remove ordering hid it; land a tick later and the entry was orphaned
+permanently. Green on a developer machine, red on a loaded CI runner.
+
+> **The rule: a background result may only be admitted for something the caller still has a consumer
+> for.** When several sets are in scope, the correct one is the narrowest that covers every consumer
+> — not the widest that happens to contain the key.
+
+And the way to test it is to **control when the work lands** rather than hope for a slow machine:
+submit, change the state, and only *then* `wait_for_idle` and collect. That turns a coin flip into an
+assertion.
+
 ### A terrain generator may not use `sin`, `cos` or `powf`
 
 **The rule (ADR 0044):** anything that decides where the ground is may use only `+`, `-`, `*`, `/`,
