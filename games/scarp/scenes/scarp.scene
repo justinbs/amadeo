@@ -5,6 +5,7 @@ assets
   body
   scarp_look
   turf
+  turf_grass
   walker
 
 entity sun "Sun"

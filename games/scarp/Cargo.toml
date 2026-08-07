@@ -7,9 +7,14 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 publish = false
+# Two binaries, so `cargo run -p scarp` would otherwise be ambiguous and every CLI command against
+# this package would fail. The same trap `games/vault` hit.
+default-run = "scarp"
 
 [dependencies]
 amadeo-app = { workspace = true, features = ["gpu"] }
+# For the `turf` texture generator only.
+amadeo-image.workspace = true
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 amadeo-input.workspace = true
@@ -41,3 +46,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "scarp"
 path = "src/main.rs"
+
+[[bin]]
+name = "turf"
+path = "src/bin/turf.rs"

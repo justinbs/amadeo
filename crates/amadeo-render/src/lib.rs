@@ -200,10 +200,19 @@ impl Renderer {
     /// Failures are recorded, not propagated: a texture that will not fit in video memory should
     /// leave the game running and visibly wrong, not stop it.
     fn upload_frame_textures(&mut self, frame: &FrameData, cache: &TextureCache) {
-        // Across every view. Two cameras seeing one texture upload it once, because the check below
-        // is against what the backend already holds rather than against what this frame asked for.
-        for batch in frame.batches() {
-            let id = batch.texture.as_str();
+        // Across every view, and across sprites *and* surfaces. Two cameras seeing one texture
+        // upload it once, because the check below is against what the backend already holds rather
+        // than against what this frame asked for — and a texture shared between a sprite and a
+        // material is one upload for the same reason.
+        let sprite_textures = frame.batches().map(|batch| batch.texture.as_str());
+        let mesh_textures = frame
+            .views
+            .iter()
+            .flat_map(|view| view.meshes.iter())
+            .map(|instance| instance.material.base_colour_texture.as_str())
+            .filter(|id| !id.is_empty());
+
+        for id in sprite_textures.chain(mesh_textures).collect::<Vec<&str>>() {
             let decoded_for_real = cache.is_decoded(id);
             let needs_upload = !self.backend.has_texture(id)
                 || (decoded_for_real && self.placeholders_uploaded.contains(id));

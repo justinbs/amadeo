@@ -171,6 +171,20 @@ impl TextureCache {
         &self.built_in
     }
 
+    /// Records already-decoded pixels under an id, without going near a file.
+    ///
+    /// [`TextureCache::ensure`] is the ordinary path: an id names an asset, the bytes are read, and
+    /// `amadeo-image` decodes them. This is for pixels a *program* produced — a test that wants a
+    /// two-pixel image with known colours, or a game generating a texture at runtime — where there
+    /// is no file to point at and inventing one would test the asset layer rather than the thing
+    /// being asked about.
+    ///
+    /// Counts as decoded, so [`TextureCache::is_decoded`] is true and nothing treats it as a
+    /// placeholder that might be replaced later.
+    pub fn insert_decoded(&mut self, id: impl Into<String>, texture: TextureData) {
+        self.decoded.insert(id.into(), texture);
+    }
+
     /// Whether this id decoded successfully, as opposed to falling back.
     ///
     /// The question [`TextureCache::get`] deliberately does not answer, kept separate so the draw
@@ -266,7 +280,12 @@ fn built_in_placeholder() -> TextureData {
 /// Does nothing if either service is absent — a headless test that never installed an asset system
 /// still renders, drawing placeholders.
 pub fn decode_frame_textures(world: &mut amadeo_ecs::World, frame: &FrameData) {
-    if frame.batch_count() == 0 || !world.has_service::<TextureCache>() {
+    // **Meshes count, not only sprite batches.** This used to return early whenever there were no
+    // batches, which is true of every 3D-only scene — so a material's `base_colour_texture` was
+    // never decoded and every surface drew in flat colour. The field had existed since ADR 0033 and
+    // nothing had ever read it.
+    let wanted = frame.batch_count() > 0 || frame.views.iter().any(|view| !view.meshes.is_empty());
+    if !wanted || !world.has_service::<TextureCache>() {
         return;
     }
 
@@ -276,6 +295,15 @@ pub fn decode_frame_textures(world: &mut amadeo_ecs::World, frame: &FrameData) {
         };
         for batch in frame.batches() {
             cache.ensure(&batch.texture, assets);
+        }
+        // A material carries its texture by id exactly as a sprite does, so the same call serves
+        // both — and a texture shared between a sprite and a surface is decoded once.
+        for view in &frame.views {
+            for instance in &view.meshes {
+                if !instance.material.base_colour_texture.is_empty() {
+                    cache.ensure(&instance.material.base_colour_texture, assets);
+                }
+            }
         }
         // The game's own placeholder is decoded alongside, so step 2 of `get`'s fallback is
         // available the first time it is needed rather than the frame after.

@@ -39,6 +39,18 @@ struct MeshView {
 @group(1) @binding(0) var shadow_map: texture_depth_2d;
 @group(1) @binding(1) var shadow_sampler: sampler_comparison;
 
+// The material's base colour texture, multiplied into `base_colour` (ADR 0033).
+//
+// Always bound, like the shadow map above and for the same reason: a material naming no texture gets
+// a 1×1 opaque **white** placeholder, and white is the identity of the multiply — so binding it is
+// arithmetically the same as not sampling, and there is one pipeline rather than a textured one and
+// an untextured one that can drift apart.
+//
+// White rather than the magenta `TextureCache` placeholder, which means "an asset is missing and you
+// should notice". An untextured material is not missing anything.
+@group(2) @binding(0) var base_colour_map: texture_2d<f32>;
+@group(2) @binding(1) var base_colour_sampler: sampler;
+
 // How much light reaches this point: 1.0 in full light, 0.0 fully shadowed.
 fn shadow_factor(world: vec3<f32>, lambert: f32) -> f32 {
     if view.shadow_params.z < 0.5 {
@@ -110,6 +122,7 @@ struct VertexOutput {
     // rather than light-clip space: interpolating world position and transforming per pixel is one
     // matrix multiply, and it keeps the light matrix in exactly one place.
     @location(3) world_position: vec3<f32>,
+    @location(4) uv: vec2<f32>,
 };
 
 @vertex
@@ -141,6 +154,7 @@ fn vs_main(vertex: VertexInput, instance: InstanceInput) -> VertexOutput {
     out.base_colour = instance.base_colour;
     out.emissive = instance.emissive.rgb;
     out.world_position = world.xyz;
+    out.uv = vertex.uv;
     return out;
 }
 
@@ -172,8 +186,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // silhouette of pure black rather than something you can still see into.
     let shadow = shadow_factor(in.world_position, lambert);
 
-    let lit = in.base_colour.rgb * (view.light_colour.rgb * lambert * shadow + vec3<f32>(ambient));
+    // The material's base colour times its texture. Multiplied rather than replaced, which is what
+    // glTF's metallic-roughness model specifies and what ADR 0033 followed: the texture carries the
+    // pattern and `base_colour` tints it, so one stone texture serves grey stone and red stone
+    // without a second image. An untextured material samples white and is unchanged.
+    let sampled = textureSample(base_colour_map, base_colour_sampler, in.uv);
+    let albedo = in.base_colour * sampled;
+
+    let lit = albedo.rgb * (view.light_colour.rgb * lambert * shadow + vec3<f32>(ambient));
     // Emissive is added rather than multiplied, and is not affected by the light -- that is what
     // makes it emissive. Above 1.0 it pushes into the HDR range the post pass tonemaps (ADR 0034).
-    return vec4<f32>(lit + in.emissive, in.base_colour.a);
+    return vec4<f32>(lit + in.emissive, albedo.a);
 }

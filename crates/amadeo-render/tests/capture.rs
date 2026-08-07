@@ -466,6 +466,61 @@ fn a_mesh_actually_reaches_the_pixels() {
 }
 
 #[test]
+fn a_materials_texture_actually_reaches_the_pixels() {
+    // **What `base_colour_texture` was for.** The field had existed since ADR 0033 and was read by
+    // nothing — not the frame, not the shader — so every 3D surface in the engine was one flat
+    // colour and no test could tell.
+    //
+    // A white box wearing a texture that is pure blue on its left half and pure red on its right.
+    // Sampling at two points is what makes this a texture test rather than a tint test: a shader
+    // that ignored the image and used `base_colour` would give one colour in both places, and a
+    // shader that sampled with a broken UV would give the same colour twice as well.
+    let mut world = a_lit_box([1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 2.0]);
+
+    // Two by one pixels: blue, then red. Uploaded through the same path a sprite's would be.
+    let mut textures = amadeo_render::TextureCache::new();
+    textures.insert_decoded(
+        "halves",
+        TextureData {
+            width: 2,
+            height: 1,
+            format: amadeo_image::PixelFormat::Rgba8UnormSrgb,
+            pixels: vec![0, 0, 255, 255, 255, 0, 0, 255],
+        },
+    );
+    world.insert_service(textures);
+
+    if let Some(materials) = world.service_mut::<MaterialCache>() {
+        materials.insert(
+            "paint",
+            Material {
+                base_colour: [1.0, 1.0, 1.0, 1.0],
+                base_colour_texture: "halves".to_string(),
+                ..Material::default()
+            },
+        );
+    }
+
+    let Some(image) = capture(&mut world, 64, 64) else {
+        return;
+    };
+
+    // `BoxMesh` gives each face UVs running the full 0..1 across it, so the box's front face wears
+    // the whole image: blue on the left, red on the right.
+    let left = pixel_at(&image, 22, 32);
+    let right = pixel_at(&image, 42, 32);
+
+    assert!(
+        left[2] > left[0],
+        "the left of the box should be the texture's blue half, got {left:?}"
+    );
+    assert!(
+        right[0] > right[2],
+        "the right of the box should be the texture's red half, got {right:?}"
+    );
+}
+
+#[test]
 fn a_nearer_face_hides_a_further_one() {
     // What the depth buffer is *for*, and the one thing no amount of graph testing could show. A
     // box's back faces are behind its front ones; without depth testing whichever drew last would

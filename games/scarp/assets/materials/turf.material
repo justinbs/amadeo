@@ -3,8 +3,8 @@ version 1
 
 entity material "Turf"
   Material
-    base_colour 0.34 0.42 0.24 1.0
-    base_colour_texture ""
+    base_colour 1.0 1.0 1.0 1.0
+    base_colour_texture "turf_grass"
     emissive 0.0 0.0 0.0
     metallic 0.0
     roughness 0.9
