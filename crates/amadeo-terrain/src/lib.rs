@@ -465,7 +465,30 @@ impl TerrainStreamer {
             }
             // A chunk that left the region while its job was running. Its result is thrown away
             // rather than delivered, or the caller would be handed geometry it just removed.
-            if !required.data.contains(&key) {
+            //
+            // **Gated on `visual`, not `data`, and the difference is a leak.** `data` is `visual`
+            // grown by one ring, and that ring exists so meshing a drawn chunk can read its
+            // neighbours' samples — nothing in it is ever submitted, drawn, or given an entity.
+            // Gating here on `data` therefore let a chunk that had *left* the drawn region still be
+            // delivered, one ring later, after `removed` had already told the caller to drop it. The
+            // caller re-cached geometry for an entity that no longer existed, and nothing would ever
+            // report it again.
+            //
+            // Whether that happened depended on **when a job finished**: land on the same tick as the
+            // removal and the caller's own remove-after-insert ordering hid it; land a tick later and
+            // the entry was orphaned for good. So it passed here and failed on a loaded CI runner —
+            // the third time this session's shape of bug has been decided by delivery timing.
+            //
+            // `visual` is exactly the set that has consumers, so gating on it makes delivery and
+            // residency agree by construction rather than by ordering.
+            //
+            // With this, **`Residency::data` now has no runtime consumer in this crate at all** — it
+            // is the apron, and since a chunk is sampled from the source on demand rather than
+            // stored, nothing is ever held for it to release. It stays because it is the *statement*
+            // of the apron constraint that `the_data_box_always_exceeds_the_visual_box` enforces, and
+            // because LOD (Q25) is the thing likely to need it. Using it here was reaching for the
+            // widest set available rather than the correct one.
+            if !required.visual.contains(&key) {
                 continue;
             }
             let empty = mesh.is_empty();
@@ -715,6 +738,66 @@ mod tests {
                 "{:?} is from the abandoned region and should not have been delivered",
                 chunk.key
             );
+        }
+    }
+
+    #[test]
+    fn nothing_is_delivered_for_a_chunk_that_is_no_longer_drawn() {
+        // **The regression guard for the leak CI found and this machine did not.**
+        //
+        // Delivery used to be gated on the `data` set, which is `visual` grown by one ring so that
+        // meshing can read a neighbour's samples. Nothing in that ring is submitted, drawn or given
+        // an entity — so a chunk that left the drawn region could still be delivered one ring later,
+        // *after* `removed` had told the caller to drop it. The caller re-cached geometry for an
+        // entity that no longer existed, and nothing would ever mention it again.
+        //
+        // Reproduced deterministically rather than hoped for, by controlling when the jobs finish:
+        // submit, move the viewer, and only *then* wait. Left to chance this needs a slow machine,
+        // which is exactly why the game-level test failed on CI and passed here.
+        let mut streamer = streamer(1);
+        streamer.update(&[viewer(0, 2, 0)]);
+
+        // Move one chunk east *before* anything has been collected. Chunks on the far west edge
+        // leave `visual` and stay in `data`, which is the ring the bug lived in.
+        let moved = streamer.update(&[viewer(1, 2, 0)]);
+        let departed: BTreeSet<ChunkKey> = moved.removed.iter().copied().collect();
+        assert!(
+            !departed.is_empty(),
+            "moving east must drop the western edge, or this test proves nothing"
+        );
+
+        // Now let every in-flight job land, and collect.
+        streamer.pool.wait_for_idle();
+        let after = streamer.update(&[viewer(1, 2, 0)]);
+
+        for chunk in &after.meshes {
+            assert!(
+                !departed.contains(&chunk.key),
+                "{:?} was reported in `removed` and then delivered anyway; \
+                 its geometry is now cached for an entity that does not exist",
+                chunk.key
+            );
+        }
+    }
+
+    #[test]
+    fn every_delivered_mesh_is_one_the_caller_still_draws() {
+        // The same invariant stated in general, over a walk: a chunk may only be delivered while it
+        // is in the *drawn* set, because that is the only set with an entity, a cache entry and a
+        // consumer. Holds whatever the job pool happens to finish, which is what makes it an
+        // invariant rather than a timing assertion.
+        let mut streamer = streamer(3);
+        for step in 0..8 {
+            let viewers = [viewer(step, 2, 1)];
+            let update = streamer.update(&viewers);
+            let drawn = Residency::of(&viewers).visual;
+            for chunk in update.meshes.iter().chain(&update.colliders) {
+                assert!(
+                    drawn.contains(&chunk.key),
+                    "step {step}: {:?} was delivered but is not in the drawn set",
+                    chunk.key
+                );
+            }
         }
     }
 
