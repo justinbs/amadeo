@@ -66,6 +66,40 @@ impl MeshData {
         self.indices.len() / 3
     }
 
+    /// The smallest axis-aligned box containing every vertex, as `(min, max)`.
+    ///
+    /// `None` for a mesh with no vertices, because an empty box has no honest corners — returning
+    /// zeros would put a degenerate box at the origin and quietly claim something is there.
+    ///
+    /// # What needs this, and why it lives on the data rather than in a caller
+    ///
+    /// Two things, and both would otherwise compute it themselves and drift:
+    ///
+    /// - **Frustum culling** (M2.5 gate 3) tests this box against the camera's frustum to decide
+    ///   whether a mesh can be skipped. Every mesh, every frame, so it must be exactly the bounds the
+    ///   renderer draws — a box that is too small culls things that are on screen, which is a
+    ///   flickering disappearance rather than an error.
+    /// - **`render.describe`** (**Q26**) projects it to report what a mesh covers on screen, which is
+    ///   how an agent answers "is it visible" for 3D without a picture.
+    ///
+    /// In mesh space, before any transform: the same space `vertices` is in. A caller with a model
+    /// matrix transforms the eight corners, which is correct under rotation where transforming the
+    /// two extremes alone is not.
+    #[must_use]
+    pub fn bounds(&self) -> Option<([f32; 3], [f32; 3])> {
+        let first = self.vertices.first()?.position;
+        let mut min = first;
+        let mut max = first;
+
+        for vertex in &self.vertices[1..] {
+            for axis in 0..3 {
+                min[axis] = min[axis].min(vertex.position[axis]);
+                max[axis] = max[axis].max(vertex.position[axis]);
+            }
+        }
+        Some((min, max))
+    }
+
     /// Whether every index names a vertex that exists.
     ///
     /// Cheap, and worth having: an out-of-range index is a GPU validation error at draw time, which
@@ -686,6 +720,55 @@ mod tests {
                 "triangle {triangle} should be wound counter-clockwise seen from above"
             );
         }
+    }
+
+    #[test]
+    fn bounds_cover_every_vertex_and_nothing_more() {
+        // A box of a known size, so the answer is arithmetic rather than an approximation. Too small
+        // a box culls things that are on screen — a flicker rather than an error — and too large a
+        // box culls nothing and makes the whole exercise pointless.
+        let data = BoxMesh {
+            size: [2.0, 4.0, 6.0],
+        }
+        .tessellate();
+        let (min, max) = data.bounds().expect("a box has vertices");
+
+        // `BoxMesh` is centred on its own origin, so the extremes are half the size either way.
+        assert_eq!(min, [-1.0, -2.0, -3.0]);
+        assert_eq!(max, [1.0, 2.0, 3.0]);
+
+        for vertex in &data.vertices {
+            for axis in 0..3 {
+                assert!(
+                    vertex.position[axis] >= min[axis] && vertex.position[axis] <= max[axis],
+                    "{:?} falls outside {min:?}..{max:?}",
+                    vertex.position
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn an_empty_mesh_has_no_bounds_rather_than_a_box_at_the_origin() {
+        // Zeros would be a degenerate box quietly claiming something is at the origin — which a
+        // frustum test would then dutifully decide is on screen. Most chunks of a streamed world are
+        // empty, so this is the common case rather than an edge one.
+        assert_eq!(MeshData::default().bounds(), None);
+    }
+
+    #[test]
+    fn bounds_are_not_fooled_by_a_vertex_order() {
+        // Whichever vertex happens to be first must not decide the answer. Written because the
+        // implementation seeds min and max from `vertices[0]`, which is correct and is exactly the
+        // shape that is wrong if the loop skips it or starts in the wrong place.
+        let mut data = MeshData::default();
+        for position in [[5.0, 5.0, 5.0], [-3.0, 0.0, 1.0], [0.0, 9.0, -7.0]] {
+            data.vertices.push(Vertex {
+                position,
+                ..Vertex::default()
+            });
+        }
+        assert_eq!(data.bounds(), Some(([-3.0, 0.0, -7.0], [5.0, 9.0, 5.0])));
     }
 
     #[test]

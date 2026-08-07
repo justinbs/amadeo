@@ -238,6 +238,36 @@ id, the resolved material and the model matrix. What needs thought is what "on s
 perspective camera, since the existing `visible` / `off_screen` split is computed against a 2D
 viewport rectangle.
 
+### Raised in priority to P1 in session 13, because it blocks a gate
+
+**M2.5 exit gate 3 says frustum culling must be "measured through `render.describe` rather than
+believed".** It cannot be, while `render.describe` cannot see a mesh. The gate was written before
+anyone noticed, and closing this is now a prerequisite rather than a nicety.
+
+It also cost a real debugging detour in session 13: reached for while diagnosing terrain that would
+not draw, it answered about a **default orthographic camera that does not exist in that world** and
+reported zero entities. Confidently wrong is worse than absent, which is worth weighing when
+deciding what a 3D-blind describe should do about a 3D world.
+
+### What is already built for it
+
+`MeshData::bounds()` (session 13) returns the axis-aligned box containing a mesh's vertices, in mesh
+space, and `None` for an empty mesh. Both this and frustum culling need exactly that box, and having
+two of them would let a culling bug and a reporting bug disagree about what is on screen.
+
+### What is left, and why it was not just done
+
+Three things, and the third is why it needs a decision rather than an afternoon:
+
+1. **`DrawnKind::Mesh { mesh, material }`** — additive, and one new match arm in `rpc.rs`.
+2. **Project the eight corners of the transformed box** and take the screen-space rectangle. Eight
+   corners rather than two extremes, because under rotation the two extremes of a box are not the
+   extremes of its image.
+3. **`FrameDescription::eye` is `[f32; 2]`**, and a 3D camera's eye is not. Widening it changes a
+   public struct *and* the `render.describe` reply shape, which is the agent protocol — so it wants
+   the same care ADR 0030 gave `describe`. The alternative, reporting a 3D camera's position with its
+   z silently dropped, is the same class of confidently-wrong answer that caused the detour above.
+
 ---
 
 ## Q27 · P2 · A third-person camera clips through walls
