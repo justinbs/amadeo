@@ -93,6 +93,31 @@ rather than hoping for a slow machine, which is what made the game-level test a 
 > caller has no consumer for. **When several sets are in scope, the correct one is the narrowest that
 > covers every consumer, not the widest that contains the key.**
 
+### Materials can carry a texture now, and what still stands between that and good-looking terrain
+
+`Material::base_colour_texture` had existed since ADR 0033 and was read by **nothing** — not the
+frame builder, not the shader — so every 3D surface in the engine was one flat colour. Four things
+stood between the field and a pixel: `decode_frame_textures` returned early whenever there were no
+*sprite* batches (true of every 3D-only scene), the upload path walked sprite batches only, mesh
+draws were grouped by mesh id alone so a bind group could not vary, and the backend's only sampler is
+clamped and unfiltered — correct for a sprite region inside a sheet, wrong for a surface whose UVs
+run past 1.0. Surfaces now get their own repeating, filtered sampler and a second bind group per
+texture.
+
+An untextured material binds a 1×1 **white** placeholder, because white is the identity of the
+multiply — so one pipeline serves both, and it is deliberately not the magenta "asset missing"
+placeholder.
+
+**Three things still stand between this and terrain that looks good, and none is small:**
+
+| | |
+|---|---|
+| **Mipmaps** | The backend generates none — `mipmap_filter` is `Nearest` over a single level. A tiling texture without mips shimmers at distance, which is why the terrain tile is a coarse **8 m** rather than something finer. This is the one that most limits texture quality right now |
+| **Triplanar mapping** | Terrain UVs are a planar projection from world x/z, so anything steep stretches. The usual fix samples on all three axes and blends by the normal — and it wants a `Material` field to opt in, which is a schema change to every `.material` file |
+| **Ambient / sky light** | Still the hardcoded `0.12` constant (**Q28**). No ambient occlusion, no bounce, no sky colour. Flat lighting is the other half of why a scene reads as a prototype, and no amount of texture fixes it |
+
+The visual gap is now overwhelmingly **shading**, not geometry.
+
 ### And one sharp edge that is NOT fixed — Q30
 
 **Writing a `Transform` to move a physics body does nothing, silently.** `step_physics` prefers
