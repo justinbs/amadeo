@@ -1463,6 +1463,86 @@ your machine and fail on a loaded CI runner, which is exactly how both of these 
 A related corollary for tests: **anything asserting *which tick* background work landed on is
 asserting on machine speed.** Count across ticks instead.
 
+### A terrain generator may not use `sin`, `cos` or `powf`
+
+**The rule (ADR 0044):** anything that decides where the ground is may use only `+`, `-`, `*`, `/`,
+`sqrt`, `floor`, comparison and integer arithmetic. No trigonometry, no `exp`, no `powf`, no `powi`.
+
+**Why**, and it is not fussiness about the last decimal place. Rust's own documentation says of
+`f32::sin`, `f32::cos` and `f32::powf`:
+
+> The precision of this function is non-deterministic. This means it varies by platform, Rust
+> version, and can even differ within the same execution from one invocation to the next.
+
+`f32::sqrt` carries the opposite note and is guaranteed exact, because IEEE 754 *requires* correct
+rounding for `+ - * / sqrt` and lists the transcendentals as merely recommended.
+
+ADR 0043 made a chunk's **collider** gameplay state. `TerrainSource::sample` decides where that
+collider is. So the obvious way to write rolling hills — a sum of sines — puts Windows and Linux on
+different ground, and the bug report reads *"the replay does not reproduce on Linux"*, pointing at
+physics, at the scheduler, at the job pool, at everything except a trigonometric function inside a
+terrain generator.
+
+**This is a fifth entry for trap 2**, alongside `HashMap` iteration, `Instant::now()` in gameplay,
+unsorted parallel writes and uninitialised floats. It is the least visible of the five: the offending
+code looks like ordinary mathematics and every test on one machine passes.
+
+Use [`amadeo_noise`], which is built entirely from the permitted set:
+
+```rust
+let hills = Fbm { frequency: 0.012, octaves: 4, ..Fbm::new(seed) };
+let height = 6.0 + hills.sample_2d(x, z) * 11.0;
+```
+
+`mul_add` is permitted and deliberately unused: it is correctly rounded and it is *a different
+number* from `a * b + c`, because it rounds once instead of twice.
+
+### Two things that look right about a mesh and are independent
+
+A mesh carries **normals** and a **winding**, and they answer different questions:
+
+| | Comes from | Decides |
+|---|---|---|
+| Normal | the field's gradient, or the shape's own maths | how brightly a surface is lit |
+| Winding | the order a triangle's three corners are listed in | which side of it the GPU considers the front |
+
+**Getting one right does not check the other.** Session 13 found that every mesh `surface_nets` had
+ever produced was wound against its own normals — all three axes, uniformly — so every voxel surface
+was inside-out. The mesher's own tests asserted that normals point away from the inside, and they
+passed, because normals were never the broken part.
+
+Two things kept it hidden for two sessions. Nothing had ever *drawn* a surface-nets mesh: the
+collider path has no winding at all, so physics was correct throughout. And the symptom does not look
+like geometry — a heightfield that is inside-out is **invisible from above** and faintly visible at
+the horizon, which reads as chunks that failed to stream in.
+
+The check that catches it needs no GPU, and every mesh producer should have one:
+
+```rust
+// The direction the GPU treats as "front" for this winding, against the normal we claim.
+let facing = cross(b - a, c - a);
+assert!(dot(facing, normal) > 0.0, "wound against its own normal");
+```
+
+`amadeo-render` has had `every_box_triangle_faces_outward` for `BoxMesh` since ADR 0035;
+`amadeo-voxel` now has `triangles_are_wound_to_match_their_own_normals`. If you add a fifth producer
+of `MeshData`, write this one first.
+
+### Moving a physics body by writing its `Transform` does not work
+
+**A sharp edge, not yet a decision.** `step_physics` reads `GlobalTransform` in preference to
+`Transform`, and `propagate_transforms` runs in `PostSimulation` — at the *end* of the tick. So a
+`Transform` written from outside the tick is read back stale on the next one: physics steps from the
+old position and writes it straight back over the new one.
+
+It is **silent**. The entity does not move, nothing errors, and the only sign is that whatever you
+expected to happen at the new position did not. A test that teleported a character to check terrain
+streaming spent a debug cycle on exactly this.
+
+What to do today: move a character by *driving* it — input, or its `CharacterMotion` — rather than by
+assignment. There is no supported teleport, which is a real gap for respawns and fast travel and is
+recorded as **Q30**.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

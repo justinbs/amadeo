@@ -1,8 +1,8 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-07 (end of session 11)
-**Current phase:** **M0 complete. M1 closed. M2 COMPLETE — all four exit gates met. M2.5 under way and
-about half built.**
+**Last updated:** 2026-08-07 (end of session 13)
+**Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 — exit gates 1 and 2 MET, gates 3 and
+4 open.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
 built: ADR 0031 (2D/3D coexistence, camera becomes an entity), 0033 (material and shader model), 0034
@@ -27,6 +27,97 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 ## ⚠️ Start here — where M2.5 actually is
 
+**Exit gates 1 and 2 are met.** `cargo run -p scarp` is a generated world you walk on, streamed in
+chunks, with collision and shadows, and its replay reproduces at every thread count. What is left is
+gate 3 (frustum culling) and gate 4 (frame budget with GPU time) — plus **Q26 turns out to block
+gate 3**, because `render.describe` cannot see meshes and the gate says to measure through it.
+
+### Building the demo found four engine defects, and one of them had been wrong since session 12
+
+Every piece of streaming was tested and none of it had ever carried a player. The bet that a real
+game finds what tests do not paid for the third milestone running.
+
+1. **Every surface-nets mesh was inside out.** All three axes passed the wrong `flip` to `push_quad`,
+   so every quad ever emitted was wound against its own normal. **It hid behind a gap between two
+   true things**: the mesher's tests check *normals*, which come from the field's gradient and were
+   always right, and the GPU decides which face you see from the *winding*, which nothing checked.
+   Nothing had ever drawn one either — a collider has no winding, so physics was correct throughout.
+   The symptom is the worst part: a heightfield that is inside out is **invisible from above** and
+   faintly visible at the horizon, which reads as *chunks that failed to stream in*. Found by
+   `amadeo capture` and a photograph, not by reasoning. `triangles_are_wound_to_match_their_own_normals`
+   reported **2316 of 2316** triangles wrong on its first run.
+2. **Digging changed the collider and not the picture.** A dug chunk re-meshes under the same asset
+   id; the renderer asked `has_mesh`, got yes, and skipped the upload forever. The player walks into a
+   tunnel that still looks like solid rock, and no simulation test can see it because the simulation
+   is right. `MeshCache` now carries a version per entry.
+3. **Nothing ever freed a chunk's geometry.** `stream_terrain`'s own docs said `removed` drops the
+   cache entry; the code despawned the entity, removed the collider and left the mesh. Both the cache
+   and video memory grow for as long as you walk in one direction, with **no wrong picture** — the
+   frame stays correct until the allocation fails. `RenderBackend::remove_mesh` closes it.
+4. **A character on terrain would not start.** `amadeo_character::install` and
+   `amadeo_terrain::install` both registered `step_physics`, and duplicate labels are a hard error —
+   so the ordinary open-world case failed with `DuplicateLabel`. Each now asks `App::has_system`
+   first. Checking rather than making `add` idempotent, because a collision between two *different*
+   systems is still a real bug.
+
+Plus one that is the Atrium's session-9 defect from a new direction: **`App::load_materials` only
+scans `Mesh` components that exist when a scene finishes loading**, so anything spawned at *runtime*
+gets `Material::default()`. Terrain drew plain white over an otherwise correct world.
+`App::load_material` loads one by id, and `amadeo_terrain::install` calls it.
+
+### And one sharp edge that is NOT fixed — Q30
+
+**Writing a `Transform` to move a physics body does nothing, silently.** `step_physics` prefers
+`GlobalTransform`, and `propagate_transforms` runs at the *end* of the tick, so the write is read back
+stale and physics puts the body straight back. A test that teleported a character to check streaming
+spent a debug cycle on it. Preferring `GlobalTransform` is *correct* for a parented body, so this is a
+missing capability rather than an inversion — there is no supported teleport, and respawns and fast
+travel both need one.
+
+### ADR 0044 — a terrain generator may not use `sin`
+
+The demo needed hills, and the obvious way to write them would have been a **latent I3 violation with
+no symptom on any one machine**. Rust documents `f32::sin`, `f32::cos` and `f32::powf` as having
+non-deterministic precision — varying by platform, by Rust version, *and between two calls in one
+execution* — while `sqrt` is guaranteed exact, because IEEE 754 requires correct rounding only for
+`+ - * / sqrt` and lists the transcendentals as recommended.
+
+ADR 0043 made a chunk's collider gameplay state and a `TerrainSource` decides where it is, so a sine
+in a generator puts Windows and Linux on different ground. The report would read *"the replay does not
+reproduce on Linux"* and point at physics, the scheduler and the job pool long before anyone suspected
+trigonometry. **This is a fifth entry for trap 2, and the least visible of the five.**
+
+`amadeo-noise` is built from `+ - * /`, `floor` and integer hashing. **Justin was given two decisions
+and took the recommendation on both**: its own crate (so a 2D heightmap does not depend on a 3D
+mesher — trap 9), and a per-entry version number for mesh updates.
+
+Its literal-hash test **has already earned its keep**: `SCALE_2D` was written as `1.414_213_6` and
+replaced with `std::f32::consts::SQRT_2`, which reads better and looks like the same number. It is
+not — they differ in the last bit, every 2D sample moved, and that assertion was the only thing in the
+workspace that noticed.
+
+### What `games/scarp` is, in one paragraph
+
+`cargo run -p scarp`. WASD to walk, Q/E to turn, Space to jump, **F to dig**. Nothing is authored but
+the player, the camera and the sun — the ground is a function of the seed, sampled into chunks as you
+approach, dropped as you leave, meshed on a job pool, made solid on the tick you need it. Gate 2 is
+`a_walk_reproduces_at_every_thread_count`: five worlds at 1, 2, 3, 5 and 8 workers, advanced **in
+lockstep** a tick at a time, state hashes compared every tick for 480 ticks, over a walk with a turn
+and a dig in it. It was **watched failing** — spawning chunk entities from mesh arrival instead of
+from residency diverges it on tick 1.
+
+That test is worth more than the two it appears to duplicate. Those drive a `Viewer` along a straight
+line *by setting its coordinate*, so a divergence in the terrain cannot feed back into where the
+viewer goes next. Here it can: a collider differing by one chunk moves the character, which moves the
+viewer, which loads different chunks, and the worlds separate for good.
+
+**The spawn height is authored in the scene**, which looked like it had to break I1 on a generated
+world. It does not: gradient noise is exactly zero at every lattice point whatever the seed, and the
+origin is one for both octaves — so the ground there is the base height on the nose for every seed.
+A test holds that in place.
+
+---
+
 `docs/05-roadmap.md` has the milestone in full. Built so far:
 
 | | |
@@ -42,16 +133,18 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 | ✅ | **The streaming core** — `amadeo-terrain`. Colliders meshed **inline**, meshes on the job pool |
 | ✅ | **The ECS layer** — `TerrainViewer`, `TerrainChunk`, `stream_terrain`, `install`. Behind the `engine` feature |
 | ✅ | **Digging** — `TerrainStreamer::edit`. Invalidates up to eight chunks; jobs carry an edit version |
-| → | **Where edits live — Q29.** They are in a *service*, so **not hashed and not restored by a snapshot**: a dug world reloads undug |
-| → | **A game to walk around in** — exit gate 1. Every piece now exists; nothing has assembled them |
-| | Frustum culling, LOD (**Q25**), `amadeo-math` over glam, GPU timestamp queries |
+| ✅ | **`amadeo-noise`** — deterministic gradient noise, **ADR 0044**. No transcendentals, literal hash pinned on both platforms |
+| ✅ | **`games/scarp`** — a generated world you walk on and dig into. **Exit gates 1 and 2 met** |
+| → | **Where edits live — Q29.** They are in a *service*, so **not hashed and not restored by a snapshot**: a dug world reloads undug. **The running world it was waiting for now exists** |
+| → | **Frustum culling** — gate 3. **Blocked on Q26**: the gate says to measure through `render.describe`, which cannot see meshes |
+| | LOD (**Q25**), `amadeo-math` over glam, GPU timestamp queries (gate 4) |
 | | More than one light, textures on materials |
 
-**Session 12 built the foundation and the physics boundary; the pipeline that drives them is next.**
-Everything below the pipeline exists and is tested: which chunks are loaded, how one is filled and
-meshed so it meets its neighbours, and how its collider reaches rapier. What does not exist yet is
-the thing that runs generation and meshing as `amadeo-jobs` jobs, puts meshes in a `Service`, and
-**blocks** on the colliders the simulation needs.
+**Session 13 assembled the pieces and the assembly is what found the bugs.** Everything below the
+demo existed and was tested; putting a player on it exposed four defects and one missing capability,
+listed above. The most valuable single act of the session was **taking a photograph** — `amadeo
+capture` plus actually looking at the PNG — which is how a two-session-old winding inversion surfaced
+after every headless test had passed.
 
 **ADR 0041 §2 is still the rule it must obey**, and it is now half-enforced by types rather than by
 memory. A chunk has two products: its **mesh** is drawn and nothing else, so it may arrive whenever;
@@ -106,7 +199,8 @@ first real case*, which is the state this project deliberately keeps them in:
 
 | | | |
 |---|---|---|
-| **Q29** | P1 | **Where terrain edits live.** ADR 0042 §4 says a component on a chunk entity — but chunk entities are now despawned by streaming, which would take the edits with them. Today they are unhashed and a snapshot loses them |
+| **Q29** | P1 | **Where terrain edits live.** ADR 0042 §4 says a component on a chunk entity — but chunk entities are now despawned by streaming, which would take the edits with them. Today they are unhashed and a snapshot loses them. **Ready to decide: it was waiting on a running terrain world, and `games/scarp` is one** |
+| **Q30** | P2 | **No way to move a physics body from outside the tick.** Writing a `Transform` is silently reverted — `step_physics` prefers `GlobalTransform` and propagation runs last. Blocks respawns and fast travel |
 | **Q25** | P1 | LOD across chunks — **better posed** by ADR 0043 and still open: may a chunk's mesh depend on its neighbours' resolutions? |
 | **Q23** | P1 | One environment per frame, when a world may hold several cameras |
 | **Q15** | P1 | Modding, and whether ADR 0011 still holds |
@@ -118,9 +212,13 @@ first real case*, which is the state this project deliberately keeps them in:
 
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
 
-**Five commits are waiting to be pushed** at the end of session 12 — always check with
+**Six commits are waiting to be pushed** at the end of session 13 — always check with
 `git log --oneline origin/main..HEAD` rather than trusting this number, for the reason below.
 
+> **Session 13 opened by checking CI and it was clean:** `cc32d7a` went 5/5 green on both platforms
+> and `origin/main..HEAD` was empty, so session 12's work is genuinely on the remote. The habit below
+> is what made that a fact rather than an assumption, and it stays.
+>
 > **Session 12 opened by checking CI and found the previous session's push had not landed.**
 > `2aa232f`, `df6f245` and `c26601a` were believed pushed and were not: after a `git fetch`,
 > `origin/main` was still at `7dceed8`, and `gh run list` agreed — the newest CI run was on
@@ -153,20 +251,29 @@ texture cache, and the wgpu texture path — **closed invariant I8**, making `Re
 compiler-enforced bound on resources and events and shipping `world.resources`, **shipped snapshots**,
 **built `games/vault` and closed M1**, and then **settled Q7 with prefabs**. ADRs 0022–0029.
 
-**Twenty crates, one module, and three games**, all tested: `amadeo-derive`, `amadeo-image`,
+**Twenty-two crates, one module, and four games**, all tested: `amadeo-derive`, `amadeo-image`,
 `amadeo-core`, `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`,
 `amadeo-input`, `amadeo-render`, `amadeo-physics`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`,
-`amadeo-gltf`, `amadeo-jobs`, `amadeo-voxel`,
+`amadeo-gltf`, `amadeo-jobs`, `amadeo-noise`, `amadeo-voxel`, `amadeo-terrain`,
 `amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
-reserved since session 1 — and `games/quad-demo`, `games/vault` and `games/atrium`.
-**1129 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
-7 shadow fitting, 12 the Atrium, 13 glTF, 5 profiling, 8 jobs, 6 parallel iteration,
-4 parallel loading, 8 surface nets, 13 chunk residency, 10 the terrain source,
+reserved since session 1 — and `games/quad-demo`, `games/vault`, `games/atrium` and `games/scarp`.
+**1154 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
+7 shadow fitting, 12 the Atrium, 9 the Scarp, 9 deterministic noise, 13 glTF, 5 profiling, 8 jobs,
+6 parallel iteration, 4 parallel loading, 10 surface nets, 13 chunk residency, 10 the terrain source,
 9 static trimesh colliders, 16 the terrain streamer, 8 streaming into a world);
 fmt, clippy `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated
 determinism job.
 
-Twenty-eight things work end to end today:
+Twenty-nine things work end to end today:
+
+- **There is a world, and it is not in any file.** `cargo run -p scarp` — rolling hills to the
+  horizon, streamed in chunks around the player, solid underfoot, casting and receiving shadows, and
+  diggable with F. The only authored entities are the player, the camera and the sun; the ground is a
+  pure function of the seed, generated by `amadeo-noise` from arithmetic IEEE 754 specifies exactly
+  (ADR 0044), so two machines agree about it bit for bit. **A replay of a walk through it reproduces
+  at 1, 2, 3, 5 and 8 meshing threads**, compared every tick for 480 ticks — which is ADR 0041's
+  central claim proved rather than assumed, in the one place where the answer could feed back into
+  itself. Building it found four engine defects and one missing capability.
 
 - **The engine runs.** `cargo run -p quad-demo` opens a window with a quad you steer with WASD.
   Deterministic at a fixed 60 Hz, records to a hand-editable `.replay` file, and replays against
@@ -358,10 +465,21 @@ the only evidence available was a push.
 
 ## The single most important thing to do next
 
-**Build M2.5 — `docs/05-roadmap.md` has the new milestone in full.** M2 is complete, and the roadmap
-gained a milestone between it and M3: **Worlds That Scale**. The threading model is decided
-(ADR 0041) and `amadeo-jobs` is built; the next concrete steps are **background asset loading** — the
-first consumer — then surface-nets terrain and chunked streaming.
+**Finish M2.5's remaining two gates**, in this order, because the first is blocked on something small:
+
+1. **Close Q26 — make `render.describe` see meshes.** It reports a default orthographic camera and
+   zero entities for any 3D world, because it only knows quads and sprites. **Gate 3 says to measure
+   frustum culling through it**, so the gate cannot be met until this is done. It also cost this
+   session a debugging detour: reached for while diagnosing the missing terrain, it answered about a
+   camera that does not exist.
+2. **Frustum culling** — gate 3. Every mesh is drawn every frame, and `games/scarp` now draws 343
+   chunk entities, so there is finally something to cull and a way to measure it.
+3. **GPU timestamp queries and a frame budget at open-world complexity** — gate 4. Numbers appended
+   to `docs/10-frame-budget.md`.
+
+**Then Q29**, which is now ready in a way it was not: it was explicitly waiting for a running terrain
+world to be decided against, and `games/scarp` is one. Until it is closed, a dug world saves and
+reloads undug.
 
 **`par_for_each_mut` is built, and the `rayon` question is answered by measurement rather than
 argument** — no dependency. `std::thread::scope` spawns threads per call and that cost is real, but

@@ -271,10 +271,14 @@ in documents nobody is allowed to correct.
   - **Where edits live — Q29.** They are unhashed today, so a snapshot loses them. ADR 0042 §4's
     "component on a chunk entity" cannot be implemented as written, because chunk entities are now
     despawned by streaming.
-  - **A game that assembles it.** Exit gate 1 needs a world to walk around in; every piece exists
-    and nothing has put them together.
+  - ✅ **A game that assembles it** — `games/scarp`. Nothing is authored but the player, the camera
+    and the sun; the ground is a function of the seed. **Exit gates 1 and 2 are met.**
   - **Q25 is now better posed and still open**: may a chunk's mesh depend on its neighbours'
     *resolutions*? ADR 0043 pinning colliders to one level made the seam a purely visual problem.
+- ✅ **ADR 0044 — generated terrain uses exactly-specified arithmetic.** `f32::sin`, `cos` and `powf`
+  are documented as non-deterministic across platforms *and across calls*, and a `TerrainSource`
+  decides where a collider is. `amadeo-noise` is built from `+ - * /` and `floor` over integer
+  hashing, with a literal sample hash CI checks on both platforms.
 - **Frustum culling.** Every mesh is drawn every frame today. This is the single largest open-world
   blocker, and `docs/04` already requires the design not to preclude streaming.
 - **Level of detail**, at least for terrain chunks — **Q25**, deliberately left open by ADR 0042
@@ -287,12 +291,18 @@ in documents nobody is allowed to correct.
   model arrives untextured.
 
 **Exit gate**
-1. **A generated terrain world you can walk around**, streamed in chunks, with collision that works
-   and shadows that land on it.
-2. **A replay of that world reproduces bit-identically** across runs, processes, *and thread counts*
-   — the last being the one that proves ADR 0041 rather than assuming it.
+1. ✅ **A generated terrain world you can walk around**, streamed in chunks, with collision that
+   works and shadows that land on it. `cargo run -p scarp`. Confirmed headlessly by
+   `walks_on_generated_ground.rs` and visually by `amadeo capture`, which is what found the
+   surface-nets winding defect.
+2. ✅ **A replay of that world reproduces bit-identically** across runs, processes, *and thread
+   counts* — the last being the one that proves ADR 0041 rather than assuming it.
+   `a_walk_reproduces_at_every_thread_count` advances five worlds at 1, 2, 3, 5 and 8 workers **in
+   lockstep**, comparing state hashes every tick for 480 ticks, over a walk with a turn and a dig in
+   it. Watched failing against a deliberate ADR 0041 §2 violation.
 3. **Frustum culling demonstrably reduces draw calls**, measured through `render.describe` rather
-   than believed.
+   than believed. **Note `render.describe` cannot see meshes at all yet — Q26** — so this gate needs
+   that closed first, which was not obvious when it was written.
 4. Frame time within budget at open-world complexity, with GPU time measured this time. Numbers
    appended to `docs/10-frame-budget.md`.
 

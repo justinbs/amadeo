@@ -83,6 +83,15 @@ crates/
                      parallelism a pure speedup nothing downstream can observe), or **deliver into a
                      Service** that gameplay cannot see (ADR 0009). `pending()` is diagnostics only:
                      a count that depends on machine speed is what makes a replay diverge.
+✅ amadeo-noise       deterministic gradient noise (ADR 0044). No deps. **`sin`, `cos` and `powf` are
+                     forbidden in anything that decides where the ground is** -- Rust documents their
+                     precision as varying by platform, by version, and between two calls in one
+                     execution, and ADR 0043 made a chunk's collider gameplay state. Built from
+                     `+ - * /`, `floor` and integer hashing, all exactly specified by IEEE 754.
+                     Its own crate rather than part of amadeo-voxel because noise is not
+                     three-dimensional and a 2D heightmap must not need a mesher (trap 9).
+                     `a_grid_of_samples_hashes_to_a_known_number` pins a **literal** hash CI runs on
+                     both platforms; it caught a one-ULP constant change nothing else noticed.
 ✅ amadeo-voxel       signed-distance `Field` -> mesh, by naive surface nets (ADR 0042), plus chunk
                      residency and the terrain source (ADR 0043). No deps at all. Negative is inside;
                      getting the sign backwards makes the mesh inside out and it reads as invisible
@@ -98,6 +107,14 @@ crates/
                      fills **n+2** samples over n+1 cells, starting one cell BELOW its origin
                      (ADR 0043 §4). **Call `mesh_chunk`**, which gets this right, rather than
                      `surface_nets` on a hand-built field.
+                     **A mesh's normals and its winding are independent, and getting one right does
+                     not check the other.** Every quad this emitted was wound against its own normal
+                     until session 13 -- all three axes, uniformly -- so every voxel surface was
+                     inside out. It hid because the tests checked *normals* (from the gradient, always
+                     correct) and because nothing had ever *drawn* one: a collider has no winding.
+                     A heightfield that is inside out is **invisible from above**, which reads as
+                     chunks that failed to stream. `triangles_are_wound_to_match_their_own_normals`
+                     compares the two against each other; write that test for any new mesh producer.
                      Residency is integer boxes per viewer, because which chunks exist is gameplay
                      state (ADR 0041 §2). Three nested sets, `collision ⊆ visual ⊆ data`, where
                      `data` is `visual` grown by one chunk -- so the apron is enforced by a test
@@ -281,6 +298,13 @@ games/               actual games built with the engine
                      verified_without_eyes.rs checks the screen through render.describe.
                      NOTE it has two binaries, so it sets `default-run` — without that
                      `cargo run -p vault` is ambiguous and every CLI command against it fails.
+  scarp            M2.5's exit gate: a generated world you walk on and dig into
+                   (`cargo run -p scarp`). **Nothing is authored but the player, the camera and the
+                   sun** -- the ground is a function of the seed, streamed in chunks. `Highlands` is
+                   its `TerrainSource` and lives here rather than in the engine because a world's
+                   *shape* is content (ADR 0044 §2). Gate 2 is
+                   `a_walk_reproduces_at_every_thread_count`, five worlds in **lockstep** at 1/2/3/5/8
+                   workers. Building it found four engine defects; see STATUS.
   atrium           M2's demo: a lit 3D room with shadows and a character you walk around in
                    (`cargo run -p atrium`). The room, its meshes, its materials and its look are all
                    text; the follow camera is a **child entity of the player** and nothing else,

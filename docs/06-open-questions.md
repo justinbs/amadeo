@@ -178,12 +178,45 @@ that a save file is a seed plus a diff.
 
 ### Why it is not decided here
 
-It needs the snapshot round-trip to be exercised against a terrain world, and nothing has assembled
-one yet — exit gate 1 is still open. Deciding it against a running save/load is strictly better than
-deciding it against a design, which is the same reasoning Q25 gave and which held up.
+It needs the snapshot round-trip to be exercised against a terrain world. **That world now exists** —
+`games/scarp`, session 13 — so the condition this question was waiting on is met and it is ready to
+be decided against something running rather than against a design.
 
 **Blocking for destructible terrain specifically** — Minecraft, Terraria and Project Zomboid all need
-it. Not blocking for a generated world you walk around in.
+it. Not blocking for a generated world you walk around in, which is why exit gate 1 could close
+without it.
+
+---
+
+## Q30 · P2 · There is no way to move a physics body from outside the simulation
+
+**New in session 13, found by a test that teleported a character and silently did nothing.**
+
+`step_physics` reads `GlobalTransform` in preference to `Transform`, and `propagate_transforms` runs
+in `PostSimulation` — at the end of the tick. So writing a `Transform` from outside the tick is read
+back **stale** on the next one: physics steps from the old position and writes it straight back over
+the new one. The entity does not move, nothing errors, and the only symptom is that whatever you
+expected at the new position did not happen.
+
+Preferring `GlobalTransform` is *correct* — a body parented to something needs its world position —
+so this is not simply a bug to invert. What is missing is any supported way to say "this body is now
+somewhere else", which respawns, fast travel, level transitions and editor drag-and-drop all need,
+and four of the eight target games have at least one of those.
+
+### The options
+
+- **A `Teleport` component the physics step consumes**, clearing it after applying. Explicit, hashed,
+  replays for free, and it reads as an intent rather than as a mutation. Costs a component whose
+  whole life is one tick.
+- **Run `propagate_transforms` before physics as well as after.** Makes a written `Transform` take
+  effect next tick with no new API. Doubles the propagation cost and makes "when is `GlobalTransform`
+  current" a subtler question than it is now.
+- **A method on `Physics` that moves a body by entity**, alongside `insert_static_mesh`. Matches the
+  precedent for things that genuinely cannot travel through components — but a position *can*, which
+  is the argument against.
+
+**Not blocking.** `games/scarp` walks its character rather than teleporting it, which is what its
+exit gate asked for anyway. It becomes blocking the first time a game needs a respawn point.
 
 ---
 
