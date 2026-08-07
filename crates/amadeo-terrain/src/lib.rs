@@ -41,13 +41,27 @@
 //! The layer that turns a [`TerrainUpdate`] into entities, mesh uploads and
 //! `PhysicsBackend::insert_static_mesh` calls sits above this and is mechanical.
 //!
-//! # What is not here yet
+//! # Editing, and the half of ADR 0042 §4 that is still open
 //!
-//! **Authored edits.** ADR 0042 §3 makes terrain a generated base plus a sparse overlay of *hashed*
-//! edits, and §4 puts those edits in a component so they survive a snapshot. This crate carries an
-//! [`Edits`] overlay and passes it to every chunk, but nothing can write to it yet — there is no
-//! digging API, and the overlay lives here rather than on an entity. **Wiring edits to hashed
-//! component state is the next thing**, and until it happens a terrain world is generated-only.
+//! [`TerrainStreamer::edit`] changes one sample: digging, or building. That is ADR 0042's other
+//! half — the base is generated and an edit is authored, so a save file is a seed plus a list of
+//! changed samples rather than a world of voxels.
+//!
+//! An edit invalidates **every chunk whose field reads that sample**, which is up to eight, because
+//! a chunk samples one cell beyond its own volume on both sides (ADR 0043 §4). Marking only the
+//! chunk that "owns" it leaves the neighbours holding geometry that disagrees, and the crack opens
+//! exactly where somebody has been digging.
+//!
+//! **What is still missing is where the edits live.** ADR 0042 §4 says they belong in a reflected,
+//! hashed component so a snapshot restores them. They are currently held here, in a service, which
+//! means **they are not in the state hash and a snapshot does not restore them** — so a dug world
+//! saves and reloads undug.
+//!
+//! That is not simply unfinished: §4 says "a component on a chunk entity", and this crate now
+//! **despawns chunk entities when they stream out**, which would take the edits with them. The
+//! resolution is probably an entity per *edited* chunk whose existence is driven by having been
+//! edited rather than by being loaded — but it is a real design question rather than wiring, and it
+//! is written up as **Q29** rather than guessed at.
 //!
 //! ```
 //! use amadeo_terrain::{TerrainSettings, TerrainStreamer};
@@ -170,7 +184,16 @@ pub struct TerrainStreamer {
     pool: JobPool,
     /// Where finished visual chunks land. Drains in **key order, never completion order** (ADR
     /// 0041), which is what stops two machines seeing chunks appear in different orders.
-    inbox: Arc<Inbox<ChunkKey, VoxelMesh>>,
+    inbox: Arc<Inbox<ChunkKey, (u64, VoxelMesh)>>,
+    /// How many times the edits have changed.
+    ///
+    /// A job carries the version it was submitted under, and a delivery whose version is stale is
+    /// thrown away. Without it, digging a hole and getting the pre-dig mesh back a few milliseconds
+    /// later would fill the hole in again — a race that depends on machine speed and would therefore
+    /// be almost impossible to reproduce.
+    edit_version: u64,
+    /// Chunks whose geometry an edit invalidated, waiting to be redone.
+    dirty: BTreeSet<ChunkKey>,
     /// What was required last tick, so this tick can diff against it.
     required: Residency,
     /// Chunks whose geometry the caller has already been given, and whether it was empty.
@@ -216,7 +239,76 @@ impl TerrainStreamer {
             required: Residency::default(),
             known: BTreeMap::new(),
             in_flight: BTreeSet::new(),
+            edit_version: 0,
+            dirty: BTreeSet::new(),
         }
+    }
+
+    /// Changes one sample of the world — digging, or building.
+    ///
+    /// This is ADR 0042's other half made usable: the base is generated and **an edit is authored**,
+    /// so a save file is a seed plus this list rather than a world of voxels.
+    ///
+    /// # It invalidates more than one chunk, and that is the apron again
+    ///
+    /// A sample near a boundary belongs to every chunk whose field reaches it — up to eight, because
+    /// a chunk samples one cell beyond its own volume on both sides (ADR 0043 §4). Marking only the
+    /// chunk that "owns" the sample leaves the neighbours holding geometry that disagrees with it,
+    /// and the seam opens exactly where somebody has been digging.
+    ///
+    /// # Determinism
+    ///
+    /// An edit is a gameplay action, so it happens at a definite tick on every machine. What it
+    /// invalidates is integer arithmetic over the same coordinate. Nothing here depends on what the
+    /// job pool had finished.
+    pub fn edit(&mut self, sample: [i32; 3], value: f32) {
+        // Copy-on-write: jobs already running hold an `Arc` to the *old* edits and will finish
+        // against them. Their results are discarded by the version check rather than raced against.
+        Arc::make_mut(&mut self.edits).set(sample, value);
+        self.edit_version += 1;
+
+        for key in self.chunks_sampling(sample) {
+            self.known.remove(&key);
+            self.in_flight.remove(&key);
+            self.dirty.insert(key);
+        }
+    }
+
+    /// How many samples have been changed. What a save file's terrain section costs.
+    #[must_use]
+    pub fn edit_count(&self) -> usize {
+        self.edits.len()
+    }
+
+    /// Every chunk whose field reads a given world sample.
+    ///
+    /// Up to eight, because a chunk of `n` cells covers samples `[k*n - 1, k*n + n]` — overlapping
+    /// its neighbours by one at each end, which is the two-sided apron.
+    fn chunks_sampling(&self, sample: [i32; 3]) -> Vec<ChunkKey> {
+        let cells = self.settings.shape.cells as i32;
+        let candidates = |value: i32| {
+            let base = value.div_euclid(cells);
+            // The chunk the sample sits in, and the ones on either side, filtered by whether their
+            // field actually reaches it.
+            [base - 1, base, base + 1]
+                .into_iter()
+                .filter(move |k| {
+                    let low = k * cells - 1;
+                    let high = k * cells + cells;
+                    value >= low && value <= high
+                })
+                .collect::<Vec<i32>>()
+        };
+
+        let mut keys = Vec::new();
+        for x in candidates(sample[0]) {
+            for y in candidates(sample[1]) {
+                for z in candidates(sample[2]) {
+                    keys.push(ChunkKey::new(x, y, z));
+                }
+            }
+        }
+        keys
     }
 
     /// How big chunks are.
@@ -304,7 +396,21 @@ impl TerrainStreamer {
         //
         // `BTreeSet::difference` yields in key order, so the sequence is now a pure function of
         // where the viewers are.
-        for key in required.collision.difference(&self.required.collision) {
+        // Taken rather than borrowed, so a chunk is redone once per edit rather than every tick
+        // after one. Anything still dirty at the end of this call is put back below.
+        let dirty = std::mem::take(&mut self.dirty);
+
+        // Chunks that must be solid and are not already: the ones entering the collision region,
+        // plus the ones an edit invalidated. A `BTreeSet` so the union is in key order however the
+        // two sets overlap -- the ordering lesson from the last round, applied rather than relearnt.
+        let solid_now: BTreeSet<ChunkKey> = required
+            .collision
+            .difference(&self.required.collision)
+            .chain(dirty.intersection(&required.collision))
+            .copied()
+            .collect();
+
+        for key in &solid_now {
             let mesh = self.mesh_one(*key);
             let empty = mesh.is_empty();
             // Recorded so the pool is not asked to do the same work again. It may already be here
@@ -312,7 +418,12 @@ impl TerrainStreamer {
             // costs time and cannot change the answer.
             self.known.insert(*key, empty);
             self.in_flight.remove(key);
-            if !empty {
+            if empty {
+                // An edit can dig a chunk away entirely. The caller is still holding the collider
+                // it was given before, so it has to be told -- otherwise the tunnel you just dug
+                // stays solid and nothing says why.
+                update.colliders_removed.push(*key);
+            } else {
                 update.colliders.push(self.ready(*key, mesh));
             }
         }
@@ -337,15 +448,21 @@ impl TerrainStreamer {
             let inbox = Arc::clone(&self.inbox);
             let shape = self.settings.shape;
             let key = *key;
+            let version = self.edit_version;
             self.pool.submit(move || {
                 let mesh = amadeo_voxel::mesh_chunk(source.as_ref(), &edits, shape, key);
-                inbox.deliver(key, mesh);
+                inbox.deliver(key, (version, mesh));
             });
         }
 
         // --- 4. Collect whatever finished, in key order. ---
-        for (key, mesh) in self.inbox.drain() {
+        for (key, (version, mesh)) in self.inbox.drain() {
             self.in_flight.remove(&key);
+            // Meshed against edits that have since changed. Discarding it is what stops a dug hole
+            // filling itself back in when a job that started before the dig lands after it.
+            if version != self.edit_version {
+                continue;
+            }
             // A chunk that left the region while its job was running. Its result is thrown away
             // rather than delivered, or the caller would be handed geometry it just removed.
             if !required.data.contains(&key) {
@@ -674,6 +791,115 @@ mod tests {
                 "{key:?} is still drawn, so it must not be in `removed`"
             );
         }
+    }
+
+    #[test]
+    fn digging_changes_the_ground_you_are_standing_on() {
+        // ADR 0042's destructibility claim, end to end: the base is generated, an edit is authored,
+        // and the collider the character stands on reflects it on the tick it was made.
+        let mut streamer = streamer(4);
+        let before = streamer.update(&[viewer(0, 1, 1)]);
+        let centre = before
+            .colliders
+            .iter()
+            .find(|c| c.key == ChunkKey::new(0, 0, 0))
+            .expect("the chunk under the viewer is solid")
+            .clone();
+
+        // Carve a hole through the surface. The ground is at y = 4 and cells are 1 unit.
+        for y in 3..6 {
+            streamer.edit([4, y, 4], -4.0);
+        }
+        let after = streamer.update(&[viewer(0, 1, 1)]);
+
+        let dug = after
+            .colliders
+            .iter()
+            .find(|c| c.key == ChunkKey::new(0, 0, 0))
+            .expect("the edited chunk must be re-reported as solid");
+        assert_ne!(
+            dug.mesh, centre.mesh,
+            "digging must change the collider, not just the visual mesh"
+        );
+        assert_eq!(streamer.edit_count(), 3);
+    }
+
+    #[test]
+    fn an_edit_near_a_seam_invalidates_every_chunk_that_reads_it() {
+        // **The apron, one more time.** A sample on a boundary is read by chunks on both sides, so
+        // marking only the one that "owns" it leaves the neighbour holding geometry that disagrees
+        // -- and the crack opens exactly where somebody has been digging.
+        let streamer = streamer(1);
+        // Sample 8 with 8-cell chunks is the plane shared by chunk 0 and chunk 1.
+        let touched = streamer.chunks_sampling([8, 4, 4]);
+        assert!(
+            touched.contains(&ChunkKey::new(0, 0, 0)),
+            "the low side reads it"
+        );
+        assert!(
+            touched.contains(&ChunkKey::new(1, 0, 0)),
+            "the high side reads it"
+        );
+
+        // And a sample well inside a chunk is read by that chunk alone on the x axis.
+        let inner = streamer.chunks_sampling([4, 4, 4]);
+        assert!(inner.iter().all(|key| key.x == 0));
+    }
+
+    #[test]
+    fn a_stale_mesh_cannot_fill_in_a_hole_that_was_just_dug() {
+        // The race the version counter exists for. A job submitted before an edit finishes after it,
+        // and its geometry describes a world that no longer exists. Delivering it would refill the
+        // hole a few milliseconds after digging -- timing-dependent, so nearly unreproducible.
+        let mut streamer = streamer(4);
+        streamer.update(&[viewer(0, 2, 0)]);
+        // Edit while jobs from that update are still in flight.
+        streamer.edit([4, 4, 4], -4.0);
+        streamer.pool.wait_for_idle();
+
+        let update = streamer.update(&[viewer(0, 2, 0)]);
+        for chunk in &update.meshes {
+            assert!(
+                !streamer.dirty.contains(&chunk.key),
+                "{:?} was delivered from a stale job",
+                chunk.key
+            );
+        }
+        // The edited chunk must still come back, meshed against the new edits.
+        streamer.pool.wait_for_idle();
+        let recovered = streamer.update(&[viewer(0, 2, 0)]);
+        // Through `colliders`, not `meshes`: `collision_radius: 0` still makes the chunk the viewer
+        // stands in solid, so an edit to it is redone inline rather than on the pool. Worth stating,
+        // because looking only at `meshes` here is what made this test fail the first time.
+        let seen_again = update
+            .meshes
+            .iter()
+            .chain(&recovered.meshes)
+            .chain(&update.colliders)
+            .chain(&recovered.colliders)
+            .any(|c| c.key == ChunkKey::new(0, 0, 0));
+        assert!(
+            seen_again,
+            "the edited chunk must be re-meshed, not dropped"
+        );
+    }
+
+    #[test]
+    fn editing_does_not_depend_on_thread_count() {
+        // Same claim as the residency one, now that gameplay can change the world. An edit is a
+        // gameplay action at a definite tick, so what it invalidates must be identical everywhere.
+        let counts = [1_usize, 8];
+        let mut streamers: Vec<TerrainStreamer> = counts.iter().map(|w| streamer(*w)).collect();
+        let mut seen: Vec<Vec<Vec<ChunkKey>>> = vec![Vec::new(); streamers.len()];
+
+        for step in 0..4 {
+            for (index, streamer) in streamers.iter_mut().enumerate() {
+                streamer.edit([4 + step, 4, 4], -4.0);
+                let update = streamer.update(&[viewer(0, 2, 1)]);
+                seen[index].push(update.colliders.iter().map(|c| c.key).collect());
+            }
+        }
+        assert_eq!(seen[0], seen[1]);
     }
 
     #[test]
