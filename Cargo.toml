@@ -31,6 +31,10 @@ amadeo-jobs = { path = "crates/amadeo-jobs", version = "0.1.0" }
 # Signed-distance fields and surface-nets meshing (ADR 0042). No deps: it is a function from a
 # field to a mesh and knows nothing about worlds, assets or rendering.
 amadeo-voxel = { path = "crates/amadeo-voxel", version = "0.1.0" }
+# Chunked streaming (ADR 0043). Depends on amadeo-voxel and amadeo-jobs and nothing else: the hard
+# part of streaming is *when* work happens, and none of it needs a World, a renderer or a solver --
+# so the claim that thread count cannot reach the answer is testable with no engine at all.
+amadeo-terrain = { path = "crates/amadeo-terrain", version = "0.1.0" }
 amadeo-core = { path = "crates/amadeo-core", version = "0.1.0" }
 amadeo-reflect = { path = "crates/amadeo-reflect", version = "0.1.0" }
 amadeo-ecs = { path = "crates/amadeo-ecs", version = "0.1.0" }

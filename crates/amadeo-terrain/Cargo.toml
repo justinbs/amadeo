@@ -1,0 +1,19 @@
+[package]
+name = "amadeo-terrain"
+description = "Chunked terrain streaming: which chunks are loaded, generated and meshed, and when."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Only the two dependency-free crates. Deliberate: the hard part of streaming is *when* work happens
+# and whether the answer depends on that, and none of it needs a World, a renderer or a solver. Kept
+# free of those, the whole thing is testable with no engine -- including the claim that matters, that
+# thread count cannot reach the answer (ADR 0041).
+amadeo-voxel = { workspace = true }
+amadeo-jobs = { workspace = true }
+
+[lints]
+workspace = true
