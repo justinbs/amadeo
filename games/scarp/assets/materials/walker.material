@@ -1,0 +1,10 @@
+scene walker
+version 1
+
+entity material "Walker"
+  Material
+    base_colour 0.78 0.36 0.2 1.0
+    base_colour_texture ""
+    emissive 0.0 0.0 0.0
+    metallic 0.0
+    roughness 0.6

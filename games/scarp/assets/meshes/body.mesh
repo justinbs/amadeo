@@ -1,0 +1,6 @@
+scene body
+version 1
+
+entity mesh "Walker body"
+  BoxMesh
+    size 0.8 1.8 0.8

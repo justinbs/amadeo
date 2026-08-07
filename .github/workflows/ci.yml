@@ -145,6 +145,18 @@ jobs:
             ./target/debug/amadeo.exe check "$asset" --package atrium
           done
 
+      # The Scarp, on the same terms. Its level authors only a sun, a player and a camera -- the
+      # ground is generated -- so the asset files carry proportionally more of it than the scene does.
+      - name: Validate the Scarp's level and every asset it ships
+        shell: bash
+        run: |
+          ./target/debug/amadeo.exe check games/scarp/scenes/scarp.scene --package scarp
+          for asset in games/scarp/assets/meshes/*.mesh \
+                       games/scarp/assets/materials/*.material \
+                       games/scarp/assets/looks/*.environment; do
+            ./target/debug/amadeo.exe check "$asset" --package scarp
+          done
+
       # The first automated coverage the GPU path has ever had. `render.describe` checks what *should*
       # be drawn; this renders offscreen and asserts on the pixels that came back.
       #
@@ -192,7 +204,11 @@ jobs:
             games/atrium/scenes/atrium.scene \
             games/atrium/assets/looks/atrium.environment \
             games/atrium/assets/meshes/*.mesh \
-            games/atrium/assets/materials/*.material
+            games/atrium/assets/materials/*.material \
+            games/scarp/scenes/scarp.scene \
+            games/scarp/assets/looks/scarp.environment \
+            games/scarp/assets/meshes/*.mesh \
+            games/scarp/assets/materials/*.material
 
   docs:
     name: docs build without warnings

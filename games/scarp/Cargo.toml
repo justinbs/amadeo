@@ -1,0 +1,43 @@
+[package]
+name = "scarp"
+description = "M2.5's demo: a generated terrain world, streamed in chunks, that you can walk on and dig into."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+amadeo-app = { workspace = true, features = ["gpu"] }
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-input.workspace = true
+# The whole point of this game.
+amadeo-character.workspace = true
+amadeo-noise.workspace = true
+# `engine` is what brings in `TerrainViewer`, `stream_terrain` and `install`. Off by default so the
+# streaming core stays testable with no World in the build (ADR 0043); a game wants it on.
+amadeo-terrain = { workspace = true, features = ["engine"] }
+amadeo-voxel.workspace = true
+# rapier on, for the reason `games/atrium` gives: against `NullPhysics` there is no collision, so a
+# character does not stand on terrain -- and terrain you fall through is not a demo of terrain.
+amadeo-physics = { workspace = true, features = ["rapier"] }
+amadeo-reflect.workspace = true
+amadeo-render = { workspace = true, features = ["gpu"] }
+amadeo-scene.workspace = true
+amadeo-transform.workspace = true
+
+anyhow = "1"
+winit = "0.30"
+
+[lints]
+workspace = true
+
+[lib]
+name = "scarp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "scarp"
+path = "src/main.rs"
