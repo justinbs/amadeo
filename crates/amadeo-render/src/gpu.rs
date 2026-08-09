@@ -2145,6 +2145,11 @@ impl RenderBackend for WgpuBackend {
         let mut mesh_instances: Vec<GpuMeshInstance> = Vec::new();
         let mut mesh_draws: Vec<Vec<(&str, &str, std::ops::Range<u32>)>> =
             Vec::with_capacity(frame.views.len());
+        // The shadow pass's own ranges, over the same instance buffer. Kept in step with
+        // `mesh_draws`: every path that pushes to one pushes to the other, so one `view_index`
+        // addresses both and they cannot drift out of alignment.
+        let mut shadow_draws: Vec<Vec<(&str, &str, std::ops::Range<u32>)>> =
+            Vec::with_capacity(frame.views.len());
 
         for (index, view) in frame.views.iter().enumerate() {
             let (px_width, px_height) = self.viewport_pixels(view);
@@ -2157,6 +2162,7 @@ impl RenderBackend for WgpuBackend {
                 crate::Projection::Perspective { fov, near, far } => (fov, near, far),
                 crate::Projection::Orthographic { .. } => {
                     mesh_draws.push(Vec::new());
+                    shadow_draws.push(Vec::new());
                     continue;
                 }
             };
@@ -2166,6 +2172,7 @@ impl RenderBackend for WgpuBackend {
             // it draws nothing rather than filling the screen with NaN.
             let Some(camera_view) = view.eye_matrix.inverse_rigid() else {
                 mesh_draws.push(Vec::new());
+                shadow_draws.push(Vec::new());
                 continue;
             };
             let projection = amadeo_transform::Mat4::perspective(fov, aspect, near, far);
@@ -2219,6 +2226,10 @@ impl RenderBackend for WgpuBackend {
             // The texture joins the key because a bind group is set per draw, so two instances of
             // one mesh wearing different textures cannot share a call. Two instances of one mesh
             // wearing the *same* texture still do, which is the common case by a wide margin.
+            // Two runs over the same buffer: what the colour pass draws, then what the shadow pass
+            // draws. They overlap, and the overlap is written twice — a matrix and two colours per
+            // repeat, which is cheaper than the second buffer and the second resize path that
+            // avoiding it would cost. See `View::shadow_casters` for why they are different lists.
             let mut draws: Vec<(&str, &str, std::ops::Range<u32>)> = Vec::new();
             for instance in &view.meshes {
                 let first = mesh_instances.len() as u32;
@@ -2245,6 +2256,33 @@ impl RenderBackend for WgpuBackend {
                 }
             }
             mesh_draws.push(draws);
+
+            let mut casters: Vec<(&str, &str, std::ops::Range<u32>)> = Vec::new();
+            for instance in &view.shadow_casters {
+                let first = mesh_instances.len() as u32;
+                mesh_instances.push(GpuMeshInstance {
+                    model: instance.model.columns,
+                    base_colour: instance.material.base_colour,
+                    emissive: [
+                        instance.material.emissive[0],
+                        instance.material.emissive[1],
+                        instance.material.emissive[2],
+                        0.0,
+                    ],
+                });
+                let last = mesh_instances.len() as u32;
+
+                let texture = instance.material.base_colour_texture.as_str();
+                match casters.last_mut() {
+                    Some((mesh, bound, range))
+                        if *mesh == instance.mesh.as_str() && *bound == texture =>
+                    {
+                        range.end = last;
+                    }
+                    _ => casters.push((instance.mesh.as_str(), texture, first..last)),
+                }
+            }
+            shadow_draws.push(casters);
         }
 
         let mut cameras: Vec<u8> = vec![0; self.camera_stride as usize * frame.views.len()];
@@ -2377,7 +2415,7 @@ impl RenderBackend for WgpuBackend {
                     declared,
                     &assigned,
                     view_index,
-                    mesh_draws.get(view_index),
+                    shadow_draws.get(view_index),
                 );
                 continue;
             }

@@ -279,8 +279,13 @@ in documents nobody is allowed to correct.
   are documented as non-deterministic across platforms *and across calls*, and a `TerrainSource`
   decides where a collider is. `amadeo-noise` is built from `+ - * /` and `floor` over integer
   hashing, with a literal sample hash CI checks on both platforms.
-- **Frustum culling.** Every mesh is drawn every frame today. This is the single largest open-world
-  blocker, and `docs/04` already requires the design not to preclude streaming.
+- ✅ **Frustum culling.** `Frustum` extracts six planes from a view-projection matrix and tests a
+  mesh's world box against them. **One implementation, used by both the collection pass and
+  `render.describe`**, so what is culled and what is reported cannot drift apart.
+  **Two lists, not one**: the colour pass draws what the camera can see, the shadow pass what the
+  light can. The first attempt kept a single list holding the union and culled *nothing* — a shadow
+  box is `shadow_distance` in every direction, which in the Scarp is 140 units across a world 112
+  wide, so every mesh was inside it.
 - **Level of detail**, at least for terrain chunks — **Q25**, deliberately left open by ADR 0042
   because the honest options depend on how streaming ends up shaped.
 - **`amadeo-math` over glam.** `Mat4` is hand-written scalar — fine for eleven objects, not for
@@ -300,12 +305,11 @@ in documents nobody is allowed to correct.
    `a_walk_reproduces_at_every_thread_count` advances five worlds at 1, 2, 3, 5 and 8 workers **in
    lockstep**, comparing state hashes every tick for 480 ticks, over a walk with a turn and a dig in
    it. Watched failing against a deliberate ADR 0041 §2 violation.
-3. **Frustum culling demonstrably reduces draw calls**, measured through `render.describe` rather
-   than believed. **Unblocked in session 13 — Q26 is closed** and `render.describe` now reports
-   meshes through a real perspective projection. The baseline is measured and waiting:
-   `amadeo call render.describe --package scarp --ticks 200` reports **50 drawn, 20 visible, 30
-   off-screen**, so thirty chunks are being submitted every frame that cannot be seen. Culling has to
-   move that number and the command to prove it already works.
+3. ✅ **Frustum culling demonstrably reduces draw calls**, measured through `render.describe` rather
+   than believed. The Scarp: **50 meshes exist, 20 are in view, 20 are submitted** — thirty fewer
+   draw calls, a 60% reduction. `culling_reduces_draw_calls.rs` measures both numbers from one
+   running world, and the rendered PNG is **byte-identical** to the pre-culling one, which is what
+   correct culling looks like.
 4. Frame time within budget at open-world complexity, with GPU time measured this time. Numbers
    appended to `docs/10-frame-budget.md`.
 

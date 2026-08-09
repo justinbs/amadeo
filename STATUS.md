@@ -1,8 +1,8 @@
 # Amadeo — Current Status
 
 **Last updated:** 2026-08-07 (end of session 13)
-**Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 — exit gates 1 and 2 MET, gates 3 and
-4 open.**
+**Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 — exit gates 1, 2 and 3 MET. Only
+gate 4 (frame budget with GPU time) is open.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
 built: ADR 0031 (2D/3D coexistence, camera becomes an entity), 0033 (material and shader model), 0034
@@ -201,7 +201,7 @@ A test holds that in place.
 | ✅ | **`games/scarp`** — a generated world you walk on and dig into. **Exit gates 1 and 2 met** |
 | → | **Where edits live — Q29.** They are in a *service*, so **not hashed and not restored by a snapshot**: a dug world reloads undug. **The running world it was waiting for now exists** |
 | ✅ | **`render.describe` sees 3D — Q26 closed.** Real perspective projection, a `Mesh` kind, and the eye widened to three components |
-| → | **Frustum culling** — gate 3, now **unblocked**. Baseline measured: the Scarp reports **50 drawn, 20 visible, 30 off-screen** |
+| ✅ | **Frustum culling — exit gate 3 MET.** 50 meshes exist, 20 in view, **20 submitted**, and the picture is byte-identical |
 | | LOD (**Q25**), `amadeo-math` over glam, GPU timestamp queries (gate 4) |
 | | More than one light, textures on materials |
 
@@ -329,7 +329,18 @@ reserved since session 1 — and `games/quad-demo`, `games/vault`, `games/atrium
 fmt, clippy `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated
 determinism job.
 
-Twenty-nine things work end to end today:
+Thirty things work end to end today:
+
+- **The renderer only draws what can be seen.** `Frustum` extracts six planes from a view-projection
+  matrix — Gribb–Hartmann, and the depth convention matters: wgpu clips z to `0..w`, so the near
+  plane is one row rather than a sum, and the OpenGL form would cull things just in front of the
+  camera. In the Scarp, **50 meshes exist, 20 are in view, and 20 are submitted**, with the rendered
+  PNG byte-identical to the pre-culling one.
+  **One implementation, two callers** — the collection pass and `render.describe` — so what is culled
+  and what is reported cannot disagree, which matters because the gate is measured *through*
+  `describe`. And **two lists, not one**: the colour pass draws what the camera sees, the shadow pass
+  what the light sees. A single list holding the union is correct and culls nothing useful, because a
+  shadow box is `shadow_distance` in every direction and the Scarp's is wider than its whole world.
 
 - **There is a world, and it is not in any file.** `cargo run -p scarp` — rolling hills to the
   horizon, streamed in chunks around the player, solid underfoot, casting and receiving shadows, and
@@ -530,17 +541,20 @@ the only evidence available was a push.
 
 ## The single most important thing to do next
 
-**Finish M2.5's remaining two gates.** Q26 blocked gate 3 and is closed, so both are unobstructed:
+**M2.5 has one gate left.**
 
-1. **Frustum culling** — gate 3, and it has a **measured baseline waiting**:
-   `amadeo call render.describe --package scarp --ticks 200` reports **50 drawn, 20 visible, 30
-   off-screen**, so thirty chunks are submitted every frame that cannot be seen. `MeshData::bounds`
-   is the box to test, already built and already what `describe` reports through — so a culling bug
-   and a reporting bug cannot disagree about what is on screen. Culling has to move that number, and
-   the command that proves it already works.
-2. **GPU timestamp queries and a frame budget at open-world complexity** — gate 4. Numbers appended
-   to `docs/10-frame-budget.md`. Gate 4 last time could not measure GPU time at all, and with terrain
-   the GPU is where the cost moved.
+**Gate 4 — GPU timestamp queries and a frame budget at open-world complexity.** Numbers appended to
+`docs/10-frame-budget.md`. Gate 4 last time could not measure GPU time *at all*, and with terrain the
+GPU is where the cost moved — so this is the gate that needs a new capability rather than a new
+measurement. `Profiler` (ADR 0040) already covers the CPU side.
+
+**Then Q29**, which is ready in a way it was not: it was explicitly waiting for a running terrain
+world to be decided against, and `games/scarp` is one. Until it is closed, a dug world saves and
+reloads undug — which is ADR 0042's central promise unkept.
+
+**Then M3**, whose Build list now carries the renderer's feature work in order (ADR 0045). That is
+where "it looks like a prototype" stops being true, and its exit gate — a dark corridor with a moving
+flashlight that reads as genuinely atmospheric — was always the renderer's real exam.
 
 **Then Q29**, which is now ready in a way it was not: it was explicitly waiting for a running terrain
 world to be decided against, and `games/scarp` is one. Until it is closed, a dug world saves and

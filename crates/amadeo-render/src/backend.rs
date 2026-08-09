@@ -253,7 +253,27 @@ pub struct View {
     /// Textured sprites, grouped into draw calls and ordered by [`SpriteBatch::order`].
     pub batches: Vec<SpriteBatch>,
     /// Meshes to draw, already sorted by [`SortOrder`](crate::SortOrder).
+    ///
+    /// **Culled to this camera's frustum** (M2.5 exit gate 3), so a mesh behind or beside the camera
+    /// is not here at all.
     pub meshes: Vec<MeshInstance>,
+    /// Meshes the shadow pass must draw, culled to the **light's** box rather than the camera's.
+    ///
+    /// # Why this is a second list rather than the one above
+    ///
+    /// A mesh behind or beside the camera can still cast a shadow *into* view, so the shadow pass
+    /// cannot draw from a camera-culled list — its shadows would vanish, which reads as a
+    /// shadow-mapping bug and is a culling one.
+    ///
+    /// The first attempt kept **one** list holding the union of both, which is correct and culls
+    /// nothing useful: a shadow box is `shadow_distance` in every direction, and in `games/scarp`
+    /// that is 140 world units across a streamed region only 112 wide — so every mesh was inside the
+    /// light's box and the union was everything. Measured: 50 meshes in the world, 20 in view, 50
+    /// submitted.
+    ///
+    /// Two lists, each culled to what actually needs it. The overlap between them is duplicated in
+    /// the instance buffer, which is a matrix and two colours per repeat and is not worth avoiding.
+    pub shadow_casters: Vec<MeshInstance>,
     /// Directional lights affecting this view.
     ///
     /// On the view rather than the frame because a camera rendering to a texture may one day want
@@ -652,6 +672,7 @@ mod tests {
                 eye: [0.0, 0.0],
                 eye_matrix: amadeo_transform::Mat4::IDENTITY,
                 meshes: Vec::new(),
+                shadow_casters: Vec::new(),
                 lights: Vec::new(),
                 quads: vec![QuadInstance {
                     center: [1.0, 2.0],

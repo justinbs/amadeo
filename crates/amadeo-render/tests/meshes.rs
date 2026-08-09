@@ -11,10 +11,23 @@ use amadeo_render::{
 };
 use amadeo_transform::Transform;
 
+/// A world whose camera is **standing back far enough to see the origin**.
+///
+/// It used to sit at the origin, which was harmless while every mesh reached the frame regardless of
+/// where it was. Frustum culling (M2.5 exit gate 3) made camera placement load-bearing: a camera at
+/// the origin has everything at the origin either behind its near plane or far outside a 60° cone,
+/// so a correctly-culled frame came back empty and two tests failed. Ten units back puts a band about
+/// eleven units wide in view, which covers everything these tests place.
 fn world_with_a_3d_camera() -> World {
     let mut world = World::new();
     let eye = world.spawn();
-    world.insert(eye, Transform::at(0.0, 0.0));
+    world.insert(
+        eye,
+        Transform {
+            translation: [0.0, 0.0, 10.0],
+            ..Transform::default()
+        },
+    );
     world.insert(eye, Camera::perspective(60.0));
     world.insert_service(Renderer::new(Box::new(NullBackend::new(64, 64))));
     world
@@ -248,6 +261,110 @@ fn meshes_come_back_in_sort_order() {
         .map(|instance| instance.order)
         .collect();
     assert_eq!(orders, [-3, 0, 5]);
+}
+
+#[test]
+fn a_mesh_the_camera_cannot_see_is_never_submitted() {
+    // **M2.5's exit gate 3.** Every mesh in the world used to reach the backend every frame; in
+    // `games/scarp` that is fifty chunks of which thirty are behind or beside the camera.
+    let mut world = world_with_a_3d_camera();
+    world.insert_service(cache_with_a_box());
+
+    let ahead = world.spawn();
+    world.insert(ahead, Transform::at(0.0, 0.0));
+    world.insert(ahead, Mesh::new("panel", ""));
+
+    // Far off to the side, and well outside a 60-degree cone.
+    let aside = world.spawn();
+    world.insert(
+        aside,
+        Transform {
+            translation: [500.0, 0.0, 0.0],
+            ..Transform::default()
+        },
+    );
+    world.insert(aside, Mesh::new("panel", ""));
+
+    // Behind the camera, which sits at z = 10 looking down -Z.
+    let behind = world.spawn();
+    world.insert(
+        behind,
+        Transform {
+            translation: [0.0, 0.0, 60.0],
+            ..Transform::default()
+        },
+    );
+    world.insert(behind, Mesh::new("panel", ""));
+
+    let frame = frame(&mut world);
+    let meshes = &frame.primary().expect("one view").meshes;
+    assert_eq!(
+        meshes.len(),
+        1,
+        "only the mesh in front of the camera should be submitted, got {meshes:?}"
+    );
+    assert_eq!(meshes[0].model.translation(), [0.0, 0.0, 0.0]);
+}
+
+#[test]
+fn a_shadow_caster_outside_the_view_is_still_submitted() {
+    // **The bug the obvious implementation ships.** Culling on the camera's frustum alone removes
+    // meshes that are behind or beside the camera — and one of those can still cast a shadow *into*
+    // view. The shadow pass draws from this same list, so culling it makes its shadow vanish, which
+    // reads as a shadow-mapping bug and is a culling one.
+    //
+    // So a mesh survives if the camera can see it **or** a shadow-casting light can.
+    let mut world = world_with_a_3d_camera();
+    world.insert_service(cache_with_a_box());
+
+    let sun = world.spawn();
+    world.insert(sun, Transform::at(0.0, 0.0));
+    world.insert(sun, DirectionalLight::casting_shadows());
+
+    // Beside the camera and outside its cone, but well inside the shadow box, which is centred on
+    // the camera and is `shadow_distance` across.
+    let caster = world.spawn();
+    world.insert(
+        caster,
+        Transform {
+            translation: [9.0, 0.0, 11.0],
+            ..Transform::default()
+        },
+    );
+    world.insert(caster, Mesh::new("panel", ""));
+
+    let frame = frame(&mut world);
+    let view = frame.primary().expect("one view");
+
+    assert!(
+        view.meshes.is_empty(),
+        "the caster is outside the camera's cone, so the colour pass should not draw it: {:?}",
+        view.meshes
+    );
+    assert_eq!(
+        view.shadow_casters.len(),
+        1,
+        "but the shadow pass must, or its shadow vanishes: {:?}",
+        view.shadow_casters
+    );
+}
+
+#[test]
+fn a_world_with_no_shadows_has_nothing_for_the_shadow_pass_to_draw() {
+    // The other half of the split. Without a casting light there is no shadow map, so the second
+    // list is empty rather than a duplicate of the first — which is what stops every mesh being
+    // written into the instance buffer twice for a scene that has no shadows at all.
+    let mut world = world_with_a_3d_camera();
+    world.insert_service(cache_with_a_box());
+
+    let entity = world.spawn();
+    world.insert(entity, Transform::at(0.0, 0.0));
+    world.insert(entity, Mesh::new("panel", ""));
+
+    let frame = frame(&mut world);
+    let view = frame.primary().expect("one view");
+    assert_eq!(view.meshes.len(), 1);
+    assert!(view.shadow_casters.is_empty());
 }
 
 #[test]

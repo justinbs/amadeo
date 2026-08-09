@@ -897,6 +897,7 @@ mod tests {
                     quads: Vec::new(),
                     batches: Vec::new(),
                     meshes: Vec::new(),
+                    shadow_casters: Vec::new(),
                     lights: Vec::new(),
                 })
                 .collect(),

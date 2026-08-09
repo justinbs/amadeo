@@ -44,6 +44,7 @@ mod backend;
 mod components;
 mod describe;
 mod environment;
+mod frustum;
 #[cfg(feature = "gpu")]
 mod gpu;
 mod graph;
@@ -60,6 +61,7 @@ pub use describe::{
     DrawnEntity, DrawnKind, FrameDescription, describe_frame, describe_frame_through,
 };
 pub use environment::{Bloom, Environment, EnvironmentCache, Grade, Tonemap, Vignette};
+pub use frustum::{Frustum, transformed_bounds};
 #[cfg(feature = "gpu")]
 pub use gpu::{AdapterDescription, WgpuBackend};
 pub use mesh::{
@@ -531,48 +533,84 @@ fn fit_shadow(
     })
 }
 
+/// One mesh instance, with the world-space box that decides whether it can be seen.
+///
+/// The box is kept beside the instance rather than inside it because [`MeshInstance`] travels to the
+/// backend, which has no use for it — culling has already happened by then. Private for the same
+/// reason.
+struct Drawable {
+    instance: MeshInstance,
+    min: [f32; 3],
+    max: [f32; 3],
+}
+
 /// Every mesh worth drawing, in draw order.
 ///
 /// An entity whose mesh id has not loaded is **skipped and not substituted** — see
 /// [`MeshCache::get`](crate::MeshCache::get) for why a missing mesh has no honest stand-in where a
 /// missing texture does.
-fn collect_meshes(world: &World) -> Vec<MeshInstance> {
+fn collect_meshes(world: &World) -> Vec<Drawable> {
     let materials = world.service::<MaterialCache>();
     let meshes = world.service::<MeshCache>();
 
-    let mut found: Vec<MeshInstance> = world
+    let mut found: Vec<Drawable> = world
         .query::<(
             &Mesh,
             &Transform,
             Option<&SortOrder>,
             Option<&GlobalTransform>,
         )>()
-        .filter(|(_, (mesh, ..))| {
+        .filter_map(|(_entity, (mesh, transform, order, global))| {
             // Nothing to draw without geometry. Checked here rather than in the backend so that a
             // frame carries only what can actually be drawn, and `render.describe` agrees with it.
-            !mesh.mesh.is_empty() && meshes.is_some_and(|cache| cache.get(&mesh.mesh).is_some())
-        })
-        .map(|(_entity, (mesh, transform, order, global))| {
+            let bounds = meshes?.get(&mesh.mesh)?.bounds()?;
+
             let model = match global {
                 Some(global) => global.to_mat4(),
                 None => local_matrix(transform),
             };
-            MeshInstance {
-                mesh: mesh.mesh.clone(),
-                model,
-                material: match materials {
-                    Some(cache) => cache.get(&mesh.material),
-                    None => Material::default(),
+            let (min, max) = frustum::transformed_bounds(&model, bounds.0, bounds.1);
+
+            Some(Drawable {
+                instance: MeshInstance {
+                    mesh: mesh.mesh.clone(),
+                    model,
+                    material: match materials {
+                        Some(cache) => cache.get(&mesh.material),
+                        None => Material::default(),
+                    },
+                    order: order.copied().unwrap_or_default().order,
                 },
-                order: order.copied().unwrap_or_default().order,
-            }
+                min,
+                max,
+            })
         })
         .collect();
 
     // Stable, so entities sharing an order keep their (reproducible) iteration order — the same
     // rule quads and sprites follow.
-    found.sort_by_key(|instance| instance.order);
+    found.sort_by_key(|drawable| drawable.instance.order);
     found
+}
+
+/// The meshes one view can actually see — **M2.5's exit gate 3**.
+///
+/// # Why a shadow-casting light gets a vote
+///
+/// The obvious implementation tests the camera's frustum and nothing else, and it is **wrong in a way
+/// that is easy to ship**: a mesh behind or beside the camera can still cast a shadow *into* view. Cull
+/// it and its shadow disappears, which looks like a shadow-mapping bug and is a culling one.
+///
+/// The shadow pass draws from this same list (it is the same instance buffer with a different
+/// pipeline), so anything inside the light's box has to survive. Keeping the union costs a few extra
+/// meshes in the colour pass — they are off-screen, so they rasterise to nothing — and it keeps the
+/// picture correct, which is the trade this makes deliberately.
+fn visible_meshes(drawables: &[Drawable], frustum: &Frustum) -> Vec<MeshInstance> {
+    drawables
+        .iter()
+        .filter(|drawable| frustum.intersects_aabb(drawable.min, drawable.max))
+        .map(|drawable| drawable.instance.clone())
+        .collect()
 }
 
 /// Collects every drawable entity and hands the frame to the backend.
@@ -668,6 +706,13 @@ pub fn render_quads(world: &mut World) {
     let meshes = collect_meshes(world);
     let lights = active_lights(world);
 
+    // The aspect ratio the frustum is built with has to be the one the backend draws with, or
+    // culling and drawing disagree about where the left and right planes are — which trims a strip
+    // off one edge of the screen and looks like a clipping bug.
+    let viewport = world
+        .service::<Renderer>()
+        .map_or((1280, 720), Renderer::viewport);
+
     let frame = FrameData {
         clear_color,
         views: active_cameras(world)
@@ -706,6 +751,44 @@ pub fn render_quads(world: &mut World) {
                     })
                     .collect();
 
+                // Culled per camera, because what can be seen depends entirely on who is looking.
+                // A 2D camera draws no meshes at all, so it skips the work rather than culling
+                // everything away one box at a time.
+                // Two lists, each culled against what actually needs it: the colour pass draws what
+                // the camera can see, the shadow pass draws what the light can. See
+                // `View::shadow_casters` for why one list holding the union does not work.
+                let (visible, casters) = if flat {
+                    (Vec::new(), Vec::new())
+                } else {
+                    let aspect = viewport.0 as f32 / viewport.1.max(1) as f32;
+                    let projection = match camera.projection {
+                        Projection::Perspective { fov, near, far } => {
+                            Mat4::perspective(fov, aspect, near, far)
+                        }
+                        Projection::Orthographic { height } => {
+                            let half = height / 2.0;
+                            Mat4::orthographic(half * aspect, half, -1000.0, 1000.0)
+                        }
+                    };
+                    let view_projection =
+                        projection.mul(&eye_matrix.inverse_rigid().unwrap_or(Mat4::IDENTITY));
+
+                    let casters = view_lights
+                        .iter()
+                        .find_map(|light| light.shadow)
+                        .map(|shadow| {
+                            let box_of_light =
+                                Frustum::from_view_projection(&shadow.view_projection);
+                            visible_meshes(&meshes, &box_of_light)
+                        })
+                        .unwrap_or_default();
+
+                    (
+                        visible_meshes(&meshes, &Frustum::from_view_projection(&view_projection)),
+                        casters,
+                    )
+                };
+
                 View {
                     environment: resolve(&camera),
                     camera,
@@ -713,7 +796,8 @@ pub fn render_quads(world: &mut World) {
                     eye_matrix,
                     quads: if flat { quads.clone() } else { Vec::new() },
                     batches: if flat { batches.clone() } else { Vec::new() },
-                    meshes: if flat { Vec::new() } else { meshes.clone() },
+                    meshes: visible,
+                    shadow_casters: casters,
                     lights: view_lights,
                 }
             })
