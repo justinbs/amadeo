@@ -69,7 +69,13 @@ crates/
 ✅ amadeo-derive      proc macros: #[derive(Reflect)], #[derive(StableHash)]. No engine deps, so it
                      sits below even amadeo-core. Re-exported next to each trait; never used directly.
 ✅ amadeo-image       decodes PNG (via the `png` crate) and PPM (hand-written) into TextureData, and
-                     encodes PNG for `render.capture` --
+                     encodes PNG for `render.capture`. **`mip_chain` builds a texture's mip levels**,
+                     and the one subtle thing about it is that averaging happens in **linear light**:
+                     sRGB bytes are a perceptual curve, so averaging them directly makes every level
+                     too dark -- the classic mipmap bug, seen as a texture that dims as it recedes.
+                     Half black and half white is ~188, not 128. Alpha is coverage, not light, and
+                     averages as it is. Uses `powf`, which ADR 0044 bans in a `TerrainSource` -- safe
+                     here because it runs at load and its output is pixels, not gameplay state. --
                      width, height, an explicit PixelFormat, and flat pixels. Also no engine deps.
                      ADR 0026: decoding happens at load time *for now*, and the format tag is what
                      makes the eventual import pipeline an addition rather than a rewrite. Holds one
@@ -191,6 +197,27 @@ crates/
                      it owns instead of a window, and RenderBackend::capture reads it back -- which
                      is what `render.capture` uses and what gave the GPU path its first tests
                      (tests/capture.rs).
+                     **Textures on materials landed in session 13**: `Material::base_colour_texture`
+                     had existed since ADR 0033 and was read by *nothing*. Surfaces get their own
+                     **repeating, filtered, 16x-anisotropic** sampler and a second bind group per
+                     texture; sprites keep the clamped nearest one and are **pinned to mip level 0**
+                     so hand-authored pixel art stays crisp. An untextured material binds a 1x1
+                     **white** placeholder -- white is the identity of the multiply, so one pipeline
+                     serves both, and it is deliberately not the magenta "asset missing" one.
+                     **Frustum culling (M2.5 gate 3)**: `Frustum::from_view_projection` extracts six
+                     planes by Gribb-Hartmann, and the depth convention is load-bearing -- wgpu clips
+                     z to `0..w`, so the near plane is one matrix row rather than a sum, and OpenGL's
+                     form would cull things just in front of the camera. **One implementation, used
+                     by both the collection pass and `render.describe`**, so what is culled and what
+                     is reported cannot drift. **TWO lists, not one**: `View::meshes` is culled to the
+                     camera and `View::shadow_casters` to the light, because a mesh behind the camera
+                     can still cast a shadow into view -- a single list holding the union is correct
+                     and culls nothing, since a shadow box is `shadow_distance` in every direction.
+                     **GPU timestamp queries (gate 4)**: every pass is timed and attributed by label
+                     behind `WgpuBackend::set_gpu_timing`, **off by default** because reading the
+                     results stalls the pipeline. `TIMESTAMP_QUERY` is requested by intersecting with
+                     `adapter.features()`, never demanded -- at **both** device sites, and the
+                     offscreen one is the one measurement actually uses.
                      **The render graph (ADR 0034) is internal and stays that way**: declared passes
                      with reads and writes, order derived from the dependencies, transient targets
                      pooled across frames, one pass per camera. It knows nothing about wgpu, so

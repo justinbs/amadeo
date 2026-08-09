@@ -1581,6 +1581,29 @@ assert!(dot(facing, normal) > 0.0, "wound against its own normal");
 `amadeo-voxel` now has `triangles_are_wound_to_match_their_own_normals`. If you add a fifth producer
 of `MeshData`, write this one first.
 
+### Anything that averages colour must do it in linear light
+
+**The rule:** before averaging, blending or interpolating sRGB pixel values, decode them to linear;
+re-encode afterwards. Alpha is the exception — it is coverage, not light, and is never gamma-encoded.
+
+`PixelFormat::Rgba8UnormSrgb` means the stored bytes sit on a **perceptual curve**. They are not a
+measurement of light, so their arithmetic mean is not the mean brightness. Half black and half white
+is `0.5` in light, which sRGB encodes as about **188** — averaging the bytes gives **128**, a
+noticeably darker colour.
+
+The symptom is indirect and easy to misattribute: textures that **dim as they recede**, because each
+mip level is a little darker than the one above it. It reads as a lighting or fog problem.
+
+`amadeo_image::mip_chain` does this correctly and
+`black_and_white_average_to_the_perceptual_middle_not_the_byte_middle` pins it. The same rule will
+apply to any future blur, bloom downsample, or texture blend.
+
+> `powf` appears in the sRGB curve, and ADR 0044 **bans transcendentals** from anything deciding
+> gameplay state. It is safe in this class of code and the distinction is worth internalising: this
+> runs at **load**, its output is *pixels*, and nothing in a simulation depends on it. A mip level
+> differing in its last bit between two machines changes a shade of green, not where the ground is.
+> `games/scarp`'s `turf` generator carries the same note for the same reason.
+
 ### Moving a physics body by writing its `Transform` does not work
 
 **A sharp edge, not yet a decision.** `step_physics` reads `GlobalTransform` in preference to

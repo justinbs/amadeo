@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-07 (end of session 13)
+**Last updated:** 2026-08-09 (end of session 13)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE — all four exit gates met.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
@@ -286,7 +286,8 @@ first real case*, which is the state this project deliberately keeps them in:
 
 **Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
 
-**Six commits are waiting to be pushed** at the end of session 13 — always check with
+**Session 13 pushed as it went, in eleven commits.** At the very end one was still local
+(`6d6993f`, mipmaps) and its CI result was not seen — always check with
 `git log --oneline origin/main..HEAD` rather than trusting this number, for the reason below.
 
 > **Session 13 opened by checking CI and it was clean:** `cc32d7a` went 5/5 green on both platforms
@@ -331,10 +332,11 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-gltf`, `amadeo-jobs`, `amadeo-noise`, `amadeo-voxel`, `amadeo-terrain`,
 `amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
 reserved since session 1 — and `games/quad-demo`, `games/vault`, `games/atrium` and `games/scarp`.
-**1154 tests passing with `--all-features`** (15 of them GPU capture tests, 7 rapier, 9 character,
-7 shadow fitting, 12 the Atrium, 9 the Scarp, 9 deterministic noise, 13 glTF, 5 profiling, 8 jobs,
-6 parallel iteration, 4 parallel loading, 10 surface nets, 13 chunk residency, 10 the terrain source,
-9 static trimesh colliders, 16 the terrain streamer, 8 streaming into a world);
+**1192 tests passing with `--all-features`** (16 of them GPU capture tests, 7 rapier, 9 character,
+7 shadow fitting, 12 the Atrium, 15 the Scarp, 9 deterministic noise, 7 frustum culling, 6 mip
+chains, 13 glTF, 5 profiling, 8 jobs, 6 parallel iteration, 4 parallel loading, 10 surface nets,
+13 chunk residency, 10 the terrain source, 9 static trimesh colliders, 18 the terrain streamer,
+5 terrain edits, 8 streaming into a world);
 fmt, clippy `-D warnings`, and rustdoc all clean. CI runs on Windows and Linux with a dedicated
 determinism job.
 
