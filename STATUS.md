@@ -131,7 +131,7 @@ trigger for going native: a **console** target.
 
 | | |
 |---|---|
-| **Mipmaps** | The backend generates none — `mipmap_filter` is `Nearest` over a single level. A tiling texture without mips shimmers at distance, which is why the terrain tile is a coarse **8 m** rather than something finer. This is the one that most limits texture quality right now |
+| ~~Mipmaps~~ | ✅ **Done — M3's first renderer item.** `amadeo_image::mip_chain`, averaged in linear light, with 16× anisotropic filtering on surfaces and sprites pinned to level 0. The terrain tile went from 8 m to **4 m** as a direct result |
 | **Triplanar mapping** | Terrain UVs are a planar projection from world x/z, so anything steep stretches. The usual fix samples on all three axes and blends by the normal — and it wants a `Material` field to opt in, which is a schema change to every `.material` file |
 | **Ambient / sky light** | Still the hardcoded `0.12` constant (**Q28**). No ambient occlusion, no bounce, no sky colour. Flat lighting is the other half of why a scene reads as a prototype, and no amount of texture fixes it |
 
@@ -550,14 +550,17 @@ the only evidence available was a push.
 
 ## The single most important thing to do next
 
-**M2.5 is complete, and so is Q29** — the last hole in its subject matter. A dug world now saves and
-reloads dug (ADR 0046). **M3 is next.**
+**M2.5 is complete, and so is Q29.** A dug world now saves and reloads dug (ADR 0046). **M3 has
+started**, with the renderer work ADR 0045 ordered — **mipmaps and anisotropic filtering are done**.
 
-**M3's Build list carries the renderer's feature work in order (ADR 0045):**
-mipmaps and anisotropic filtering, normal mapping, metallic-roughness PBR, sky/image-based lighting,
-shadow cascades. That is where "it looks like a prototype" stops being true, and M3's exit gate — a
-dark corridor with a moving flashlight that reads as genuinely atmospheric — was always the
-renderer's real exam.
+**Next on that list:** **normal mapping** (the largest perceived-detail gain per unit of cost in
+real-time graphics), then **metallic-roughness PBR** — `Material` has carried `metallic` and
+`roughness` since ADR 0033 and the shader reads neither, so every surface still shades as coloured
+paint — then **sky/image-based lighting**, which replaces the hardcoded `0.12` ambient (**Q28**) and
+is probably the single biggest step towards looking like a real engine, then **shadow cascades**.
+
+That is where "it looks like a prototype" stops being true, and M3's exit gate — a dark corridor with
+a moving flashlight that reads as genuinely atmospheric — was always the renderer's real exam.
 
 Worth saying plainly at the milestone boundary: **M2.5 was about worlds that scale, and it scaled
 them.** It was never about how they look, and the demo looks accordingly. ADR 0045 is the evidence

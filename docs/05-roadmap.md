@@ -328,8 +328,12 @@ in documents nobody is allowed to correct.
   six features where a shipping renderer has forty, and it is why the M2.5 demo looks like a
   prototype. **The backend is not the reason** — everything below is implementable on wgpu's stable
   feature set today, and ADR 0045 has the evidence. In order of visual return:
-  1. **Mipmaps and anisotropic filtering** — without mip levels every texture shimmers at distance,
-     which currently caps how fine a texture is allowed to be.
+  1. ✅ **Mipmaps and anisotropic filtering.** `amadeo_image::mip_chain` builds the levels on the
+     CPU — averaging in **linear light**, not in sRGB, which is the classic mipmap bug and shows as
+     textures that dim as they recede. Surfaces sample with `mipmap_filter: Linear` and 16× aniso;
+     sprites are pinned to level 0 so hand-authored pixel art stays crisp. The payoff was immediate
+     and measurable elsewhere: `games/scarp`'s texture tile was **8 m only because there were no
+     mipmaps**, and is 4 m now.
   2. **Normal mapping** — the largest perceived-detail gain per unit of cost in real-time graphics.
   3. **Metallic-roughness PBR** — `Material` has carried the fields since ADR 0033 and the shader
      reads neither, so every surface reads as coloured paint rather than as a material.

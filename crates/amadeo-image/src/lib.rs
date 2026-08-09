@@ -236,6 +236,149 @@ const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
 /// # Errors
 ///
 /// [`DecodeError`], always naming `file`.
+/// Builds the full chain of progressively halved copies of an image — its **mip levels**.
+///
+/// Level 0 is the original; each level after it is half the width and half the height, rounded down
+/// and never below one pixel, ending at 1×1. A 256×256 image gives nine levels.
+///
+/// # What this is for
+///
+/// A texture drawn smaller than its pixel count **shimmers**: as the camera moves, each screen pixel
+/// lands on a different, unrelated texel, and the surface crawls with noise. Mip levels are the
+/// standard fix — the GPU picks a level roughly matching how small the surface is on screen and
+/// samples that instead.
+///
+/// Until this existed the backend uploaded one level, so `games/scarp`'s terrain tile had to be a
+/// coarse eight metres to keep the noise tolerable. ADR 0045 puts this first on M3's renderer list
+/// for that reason: it is what caps how fine any texture is allowed to be.
+///
+/// # Averaging happens in linear light, and that is the whole subtlety
+///
+/// [`PixelFormat::Rgba8UnormSrgb`] means the stored bytes are **sRGB-encoded** — a perceptual curve,
+/// not a measurement of light. Averaging those bytes directly is averaging the wrong quantity, and
+/// the result is visibly too dark: it is the classic mipmap bug, and it shows as a texture that
+/// darkens as it recedes.
+///
+/// So each level decodes to linear, averages four pixels, and re-encodes. Alpha is **not** encoded
+/// that way — it is already linear coverage — so it is averaged directly.
+///
+/// # `powf` is used here and is forbidden in a `TerrainSource`
+///
+/// ADR 0044 bans transcendentals from anything deciding gameplay state, because their precision
+/// varies by platform. The sRGB curve needs one, and it is safe *here* for the same reason the
+/// `turf` generator's is: this runs at load, its output is pixels, and nothing about a simulation
+/// depends on it. A mip level differing in its last bit between two machines changes a shade of
+/// green, not where the ground is.
+#[must_use]
+pub fn mip_chain(texture: &TextureData) -> Vec<TextureData> {
+    let mut levels = vec![texture.clone()];
+
+    while let Some(previous) = levels.last() {
+        if previous.width == 1 && previous.height == 1 {
+            break;
+        }
+        levels.push(halve(previous));
+    }
+    levels
+}
+
+/// One level of [`mip_chain`]: half the size, averaged in linear light.
+fn halve(source: &TextureData) -> TextureData {
+    let width = (source.width / 2).max(1);
+    let height = (source.height / 2).max(1);
+    let srgb = source.format == PixelFormat::Rgba8UnormSrgb;
+    let mut pixels = Vec::with_capacity((width * height * 4) as usize);
+
+    for y in 0..height {
+        for x in 0..width {
+            // The four source pixels this one covers. `min` rather than an assumption, because an
+            // odd-sized level has a last row and column with no partner — sampling the same pixel
+            // twice is a better answer than reading past the edge.
+            let x0 = x * 2;
+            let y0 = y * 2;
+            let x1 = (x0 + 1).min(source.width - 1);
+            let y1 = (y0 + 1).min(source.height - 1);
+
+            let corners = [
+                source.pixel(x0, y0),
+                source.pixel(x1, y0),
+                source.pixel(x0, y1),
+                source.pixel(x1, y1),
+            ];
+
+            let mut total = [0.0_f32; 4];
+            let mut counted = 0.0_f32;
+            for corner in corners.into_iter().flatten() {
+                for channel in 0..3 {
+                    let value = f32::from(corner[channel]) / 255.0;
+                    total[channel] += if srgb { srgb_to_linear(value) } else { value };
+                }
+                // Alpha is coverage, never gamma-encoded, so it averages as it is.
+                total[3] += f32::from(corner[3]) / 255.0;
+                counted += 1.0;
+            }
+
+            let scale = if counted == 0.0 { 1.0 } else { counted };
+            for colour in &total[..3] {
+                let average = colour / scale;
+                let encoded = if srgb {
+                    linear_to_srgb(average)
+                } else {
+                    average
+                };
+                pixels.push(to_byte(encoded));
+            }
+            pixels.push(to_byte(total[3] / scale));
+        }
+    }
+
+    TextureData {
+        width,
+        height,
+        format: source.format,
+        pixels,
+    }
+}
+
+/// The sRGB transfer curve, decoding a stored value to linear light.
+fn srgb_to_linear(value: f32) -> f32 {
+    if value <= 0.040_45 {
+        value / 12.92
+    } else {
+        ((value + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+/// The same curve in the other direction.
+fn linear_to_srgb(value: f32) -> f32 {
+    if value <= 0.003_130_8 {
+        value * 12.92
+    } else {
+        1.055 * value.powf(1.0 / 2.4) - 0.055
+    }
+}
+
+/// Rounds a 0..1 value to a byte, clamped so a rounding overshoot cannot wrap to zero.
+fn to_byte(value: f32) -> u8 {
+    (value.clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
+/// Decodes an image, choosing the format from its leading bytes.
+///
+/// `file` is used only for error messages, and should be whatever the reader would recognise — an
+/// asset id or a path.
+///
+/// # Why the format comes from the bytes and not the extension
+///
+/// A file's name is a claim; its contents are a fact. Sniffing means a `.png` that is secretly a
+/// JPEG produces "this is not a format I can read" rather than "invalid PNG", and it means the
+/// decoder does not need the filename to be correct in order to work. Both matter more here than in
+/// most engines, because assets are addressed by **id** (ADR 0020) and the path is bookkeeping that
+/// an author is explicitly allowed to change.
+///
+/// # Errors
+///
+/// [`DecodeError`], always naming `file`.
 pub fn decode(bytes: &[u8], file: &str) -> Result<TextureData, DecodeError> {
     if bytes.starts_with(&PNG_SIGNATURE) {
         return decode_png(bytes, file);
@@ -366,5 +509,107 @@ mod tests {
     #[test]
     fn a_format_knows_its_own_stride() {
         assert_eq!(PixelFormat::Rgba8UnormSrgb.bytes_per_pixel(), 4);
+    }
+
+    /// A solid image of one colour, at a given size.
+    fn solid(width: u32, height: u32, colour: [u8; 4]) -> TextureData {
+        TextureData {
+            width,
+            height,
+            format: PixelFormat::Rgba8UnormSrgb,
+            pixels: colour.repeat((width * height) as usize),
+        }
+    }
+
+    #[test]
+    fn a_chain_halves_all_the_way_down_to_one_pixel() {
+        let levels = mip_chain(&solid(256, 256, [10, 20, 30, 255]));
+
+        // 256, 128, 64, 32, 16, 8, 4, 2, 1.
+        assert_eq!(levels.len(), 9);
+        assert_eq!((levels[0].width, levels[0].height), (256, 256));
+        assert_eq!((levels[8].width, levels[8].height), (1, 1));
+        for level in &levels {
+            assert_eq!(
+                level.pixels.len(),
+                (level.width * level.height * 4) as usize,
+                "level {}x{} has the wrong number of bytes",
+                level.width,
+                level.height
+            );
+        }
+    }
+
+    #[test]
+    fn a_non_square_image_still_reaches_one_by_one() {
+        // Each axis halves independently and stops at 1, so a wide image keeps halving its width
+        // after its height has bottomed out. Getting this wrong produces a chain that never
+        // terminates, which is an infinite loop rather than a wrong picture.
+        let levels = mip_chain(&solid(8, 2, [255, 255, 255, 255]));
+        let sizes: Vec<(u32, u32)> = levels.iter().map(|l| (l.width, l.height)).collect();
+        assert_eq!(sizes, vec![(8, 2), (4, 1), (2, 1), (1, 1)]);
+    }
+
+    #[test]
+    fn a_solid_colour_survives_being_halved() {
+        // The sharpest check that the sRGB round trip is not drifting: averaging four identical
+        // pixels must give that pixel back. A decode/encode pair that disagreed would show here as
+        // a colour that slides a little darker at every level.
+        let levels = mip_chain(&solid(64, 64, [200, 100, 50, 255]));
+        for level in &levels {
+            assert_eq!(
+                level.pixel(0, 0),
+                Some([200, 100, 50, 255]),
+                "a {}x{} level drifted off the original colour",
+                level.width,
+                level.height
+            );
+        }
+    }
+
+    #[test]
+    fn black_and_white_average_to_the_perceptual_middle_not_the_byte_middle() {
+        // **The whole reason this is not four lines.** Half black and half white is, in *light*,
+        // 0.5 linear — which sRGB encodes as about 188, not 128. Averaging the stored bytes gives
+        // 128, a colour noticeably darker than the surface it came from, and that is the classic
+        // mipmap bug: textures that dim as they recede.
+        let mut checker = solid(2, 1, [0, 0, 0, 255]);
+        checker.pixels[4..8].copy_from_slice(&[255, 255, 255, 255]);
+
+        let levels = mip_chain(&checker);
+        let averaged = levels[1].pixel(0, 0).expect("a 1x1 level");
+
+        assert!(
+            (186..=190).contains(&averaged[0]),
+            "expected about 188 (linear 0.5 re-encoded), got {}; \
+             averaging sRGB bytes directly would give 128",
+            averaged[0]
+        );
+        assert_eq!(
+            averaged[3], 255,
+            "alpha is linear already and must not shift"
+        );
+    }
+
+    #[test]
+    fn alpha_averages_without_the_curve() {
+        // Alpha is coverage, not light, and is never gamma-encoded. Half opaque and half clear is
+        // exactly half — 128, the byte middle — which is the one channel where that *is* right.
+        let mut half = solid(2, 1, [255, 255, 255, 0]);
+        half.pixels[4..8].copy_from_slice(&[255, 255, 255, 255]);
+
+        let levels = mip_chain(&half);
+        let averaged = levels[1].pixel(0, 0).expect("a 1x1 level");
+        assert!(
+            (126..=130).contains(&averaged[3]),
+            "alpha should average to about 128, got {}",
+            averaged[3]
+        );
+    }
+
+    #[test]
+    fn a_one_pixel_image_is_its_own_only_level() {
+        let levels = mip_chain(&solid(1, 1, [1, 2, 3, 4]));
+        assert_eq!(levels.len(), 1);
     }
 }

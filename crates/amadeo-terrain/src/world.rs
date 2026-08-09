@@ -45,15 +45,18 @@ pub const STREAM_TERRAIN: &str = "stream_terrain";
 /// How many world units one repeat of a terrain texture covers.
 ///
 /// Terrain UVs are projected straight from world coordinates, so without this a texture would tile
-/// once per **metre** — which at any distance is finer than a pixel and, with no mipmaps in the
-/// backend yet, shimmers badly. Eight metres is coarse enough to be stable and fine enough to read
-/// as ground.
+/// once per **metre**, which at any distance is finer than a pixel.
+///
+/// **Was eight metres, and is four now that the backend has mipmaps** (ADR 0045). Eight was chosen
+/// to keep the shimmer tolerable when every texture had a single level, and it is a good example of
+/// what a missing renderer feature costs elsewhere: the fix was not in the terrain at all, and the
+/// terrain was carrying the compromise.
 ///
 /// A constant rather than a field on `Material`, deliberately: a tile size is one number and adding
 /// it to the material schema would change every `.material` file in the repository to express
 /// something only terrain currently varies. The moment a second surface wants its own, that is the
 /// change to make.
-const TEXTURE_TILE: f32 = 8.0;
+const TEXTURE_TILE: f32 = 4.0;
 
 /// An entity that terrain is loaded around — a player, a spectator, a server's area of interest.
 ///

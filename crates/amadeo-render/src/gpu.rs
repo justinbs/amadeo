@@ -959,9 +959,13 @@ impl WgpuBackend {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
-            // A separate enum from the min/mag filters in wgpu 30, and only relevant once textures
-            // carry mip levels -- which they do not until the import pipeline generates them.
             mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            // **Pinned to level 0**, now that textures carry mip levels. A sprite is pixel art drawn
+            // at roughly its own size and wants to stay crisp; letting it drop to a smaller level
+            // would blur exactly the art `games/vault` hand-authored. Surfaces get the opposite
+            // treatment below, which is the point of there being two samplers.
+            lod_min_clamp: 0.0,
+            lod_max_clamp: 0.0,
             ..Default::default()
         });
 
@@ -977,7 +981,20 @@ impl WgpuBackend {
             address_mode_w: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            // **Linear between mip levels, not nearest** (ADR 0045). Nearest snaps from one level to
+            // the next, and the snap is visible as a band sliding across the ground as the camera
+            // moves — "mip banding". Blending across the boundary is what makes the transition
+            // invisible, and it is the cheap half of the fix.
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            // **Anisotropic filtering**, the other half, and the single most visible texture setting
+            // there is. A surface seen at a glancing angle — which is most of a landscape — is
+            // squashed far more along one axis than the other, so any single mip level is either too
+            // blurry across it or too noisy along it. Sampling several times along the direction of
+            // the squash is what keeps ground sharp into the distance.
+            //
+            // 16 is the conventional maximum. wgpu requires all three filters to be `Linear` for it,
+            // which is why this sampler exists separately from the sprite one at all.
+            anisotropy_clamp: 16,
             ..Default::default()
         });
 
@@ -2103,10 +2120,18 @@ impl RenderBackend for WgpuBackend {
             depth_or_array_layers: 1,
         };
 
+        // **Mip levels — ADR 0045's first renderer item.** A texture drawn smaller than its pixel
+        // count shimmers, because each screen pixel lands on a different unrelated texel as the
+        // camera moves. Generated on the CPU rather than with a GPU blit chain: it happens once per
+        // texture at upload, it is a dozen lines instead of a pipeline, and doing it in `amadeo-image`
+        // is what lets it be tested with no GPU — including the part that is actually subtle, which
+        // is averaging in linear light rather than in sRGB.
+        let levels = amadeo_image::mip_chain(texture);
+
         let gpu_texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some(id),
             size,
-            mip_level_count: 1,
+            mip_level_count: levels.len() as u32,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format,
@@ -2114,19 +2139,30 @@ impl RenderBackend for WgpuBackend {
             view_formats: &[],
         });
 
-        self.queue.write_texture(
-            gpu_texture.as_image_copy(),
-            &texture.pixels,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                // `TextureData` guarantees tightly packed rows with no padding, which is why this is
-                // a plain multiply and not a round-up to 256. That guarantee is checked once, in
-                // `TextureData::new`, rather than here.
-                bytes_per_row: Some(texture.width * texture.format.bytes_per_pixel()),
-                rows_per_image: Some(texture.height),
-            },
-            size,
-        );
+        for (level, image) in levels.iter().enumerate() {
+            self.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &gpu_texture,
+                    mip_level: level as u32,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &image.pixels,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    // `TextureData` guarantees tightly packed rows with no padding, which is why this
+                    // is a plain multiply and not a round-up to 256. That guarantee is checked once,
+                    // in `TextureData::new`, rather than here.
+                    bytes_per_row: Some(image.width * image.format.bytes_per_pixel()),
+                    rows_per_image: Some(image.height),
+                },
+                wgpu::Extent3d {
+                    width: image.width,
+                    height: image.height,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
 
         let view = gpu_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
