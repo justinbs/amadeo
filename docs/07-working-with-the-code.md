@@ -1489,6 +1489,33 @@ And the way to test it is to **control when the work lands** rather than hope fo
 submit, change the state, and only *then* `wait_for_idle` and collect. That turns a coin flip into an
 assertion.
 
+### The fourth variant was in a test's setup, which is where nobody looks
+
+Session 13 hit this shape a fourth time, after documenting the first three above, and the place it
+landed is the lesson: **the guard clause of the test that proves an exit gate.**
+
+The culling test ran 200 ticks and then checked `meshes > 20` before measuring — a sanity check that
+the world was big enough to be worth measuring. On this machine 50 chunks had geometry by then; on a
+CI runner, 17. The test failed on all three CI jobs.
+
+**Every assertion that actually measured culling passed there** — 17 in the world, 8 in view, 8
+submitted. Only the setup was wrong, and it was wrong in the same way as the other three: *how many
+chunks have geometry after N ticks* is how fast the machine is.
+
+> **The rule, generalised: a test may not assume background work has finished. Make it finish.**
+> Advance until the pool is idle *and* the count has stopped moving, then measure. `run_ticks(n)`
+> for a big `n` is not that — the main thread outruns the workers, and at one worker six hundred
+> ticks were not enough.
+
+`TerrainStreamer::wait_for_idle` exists for this. It is ADR 0041's **barrier** — shape one of the two
+allowed ways for an answer to come back — so it cannot change what the streamer produces, only when.
+Gameplay has no reason to call it, because ADR 0021 and ADR 0041 §2 together forbid gameplay from
+observing delivery timing at all.
+
+**And run the slow case locally.** `build_with_workers(1)` is the closest thing to a loaded CI runner
+a fast machine can produce, and `once_the_pool_is_quiet_the_count_is_the_same_at_every_thread_count`
+is what would have caught this before pushing.
+
 ### A terrain generator may not use `sin`, `cos` or `powf`
 
 **The rule (ADR 0044):** anything that decides where the ground is may use only `+`, `-`, `*`, `/`,

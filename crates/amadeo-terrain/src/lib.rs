@@ -326,6 +326,28 @@ impl TerrainStreamer {
         self.in_flight.len()
     }
 
+    /// Blocks until every submitted chunk has finished meshing.
+    ///
+    /// # For tests and tools, and why exposing it is principled rather than a leak
+    ///
+    /// This is **shape one** of ADR 0041's two allowed ways for an answer to come back: waiting at a
+    /// barrier, which makes parallelism a pure speedup nothing downstream can observe. So calling it
+    /// cannot change *what* the streamer produces, only when — the opposite of the danger
+    /// [`TerrainStreamer::in_flight`] carries.
+    ///
+    /// What it buys is a test that can say "and now everything has arrived". Without it the only way
+    /// to reach a settled world is to run ticks and hope, and hoping is precisely how the culling
+    /// test came to assert on how fast the machine was: a fixed tick count settled fifty chunks here
+    /// and seventeen on a CI runner.
+    ///
+    /// **Gameplay has no reason to call this**, and that is a stronger statement than "should not":
+    /// ADR 0021 and ADR 0041 §2 together forbid gameplay from observing load or delivery timing at
+    /// all, so there is nothing for it to wait *for*. A game that wants to block until the world is
+    /// ready wants a loading screen, which is a different thing built on residency.
+    pub fn wait_for_idle(&self) {
+        self.pool.wait_for_idle();
+    }
+
     /// Advances streaming by one tick and reports what changed.
     ///
     /// # What is deterministic here, precisely
