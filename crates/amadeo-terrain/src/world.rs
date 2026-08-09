@@ -31,12 +31,12 @@
 use crate::{ReadyChunk, TerrainSettings, TerrainStreamer, chunk_mesh_id};
 use amadeo_app::{App, Stage, system};
 use amadeo_core::StableHash;
-use amadeo_ecs::{Component, Entity, Service, World};
+use amadeo_ecs::{Component, Entity, Resource, Service, World};
 use amadeo_physics::{Physics, STEP_PHYSICS, StaticMesh, StaticMeshId, step_physics};
 use amadeo_reflect::{Reflect, RegistryError};
 use amadeo_render::{Mesh, MeshCache, MeshData, Vertex};
 use amadeo_transform::Transform;
-use amadeo_voxel::{ChunkKey, TerrainSource, Viewer};
+use amadeo_voxel::{ChunkKey, Edits, TerrainSource, Viewer};
 use std::sync::Arc;
 
 /// The label [`stream_terrain`] is registered under.
@@ -83,6 +83,105 @@ impl Default for TerrainViewer {
 }
 
 impl Component for TerrainViewer {}
+
+/// One sample of the world a player has changed — digging, or building.
+#[derive(Debug, Clone, Copy, PartialEq, Default, StableHash, Reflect)]
+pub struct TerrainEdit {
+    /// Sample coordinate along x. **World** sample, not an offset within a chunk.
+    pub x: i32,
+    /// Sample coordinate along y.
+    pub y: i32,
+    /// Sample coordinate along z.
+    pub z: i32,
+    /// The signed distance this sample now holds. Negative is inside the surface.
+    pub value: f32,
+}
+
+/// Every sample the world has had changed — **ADR 0042's authored half, made durable (Q29)**.
+///
+/// # Why a resource, when ADR 0042 §4 said a component on a chunk entity
+///
+/// That was written before chunk entities existed. They exist now and **streaming despawns them**,
+/// so an edit stored on one would be destroyed by walking away from the hole you had just dug. The
+/// placement cannot be implemented as written, and ADR 0046 supersedes it.
+///
+/// A [`Resource`] is what the engine already has that satisfies every requirement at once: it is in
+/// the **state hash**, so a replay of a dig reproduces; it is captured and restored by a
+/// **snapshot** (ADR 0028), so a dug world reloads dug; and it belongs to no entity, so nothing
+/// streaming does can take it away.
+///
+/// # Flat, keyed by world sample, and this is load-bearing
+///
+/// Not grouped by chunk, even though "which chunk changed" is the question a network delta would
+/// want. A sample near a boundary is read by **up to eight chunks** (the two-sided apron, ADR 0043
+/// §4), so storing it under one owning chunk would leave the other seven meshing that point
+/// differently — and the crack would open exactly where somebody had been digging. That is the
+/// specific bug `amadeo_voxel::Edits` is keyed by world sample to avoid, and this mirrors it rather
+/// than reinventing it.
+///
+/// Per-chunk deltas are derivable when something needs them: which chunks read a sample is integer
+/// division, and [`TerrainStreamer::edit`](crate::TerrainStreamer::edit) already computes it.
+///
+/// # The streamer is a cache of this, not the other way round
+///
+/// Gameplay writes **here**. `stream_terrain` pushes what changed into the streamer, whose own
+/// `Edits` live in a service and are therefore *not* restored by a snapshot. That is the same
+/// asymmetry ADR 0036 gives physics — components are the truth and the solver's world is a cache
+/// rebuilt from them — and it is what makes a dug world survive a save.
+#[derive(Debug, Clone, Default, PartialEq, StableHash, Reflect)]
+pub struct TerrainEdits {
+    /// How many times an edit has been made, ever.
+    ///
+    /// What `stream_terrain` compares against to notice it is out of date, including after a
+    /// snapshot restore has replaced this wholesale. A count of *changes* rather than of entries,
+    /// because digging the same sample twice must still count as something having happened.
+    pub revision: u64,
+    /// Every changed sample, in sample-coordinate order.
+    ///
+    /// Sorted, because `CLAUDE.md` trap 2 names unordered iteration as a determinism leak and both
+    /// the state hash and the snapshot walk this.
+    pub samples: Vec<TerrainEdit>,
+}
+
+impl Resource for TerrainEdits {}
+
+impl TerrainEdits {
+    /// Changes one sample, or returns it to the generated value.
+    ///
+    /// Keeps `samples` sorted so two worlds that made the same edits in a different order still hash
+    /// identically — which is exactly the case a replay and a live game are in.
+    pub fn set(&mut self, sample: [i32; 3], value: f32) {
+        let key = (sample[0], sample[1], sample[2]);
+        let found = self
+            .samples
+            .binary_search_by_key(&key, |edit| (edit.x, edit.y, edit.z));
+        match found {
+            Ok(index) => self.samples[index].value = value,
+            Err(index) => self.samples.insert(
+                index,
+                TerrainEdit {
+                    x: sample[0],
+                    y: sample[1],
+                    z: sample[2],
+                    value,
+                },
+            ),
+        }
+        self.revision += 1;
+    }
+
+    /// How many samples have been changed. What a save file's terrain section costs.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.samples.len()
+    }
+
+    /// Whether the world is exactly as generated.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.samples.is_empty()
+    }
+}
 
 /// Marks an entity as one streamed chunk, and says which.
 ///
@@ -136,6 +235,12 @@ impl TerrainChunk {
 pub struct Terrain {
     /// The streamer itself.
     pub streamer: TerrainStreamer,
+    /// Which [`TerrainEdits::revision`] the streamer has been brought up to date with.
+    ///
+    /// The streamer's own edits live in a service, so a snapshot restores the *resource* and leaves
+    /// this stale — which is precisely how `stream_terrain` notices it has to re-apply them. Starts
+    /// at zero, so a world restored with any edits at all resyncs on its first tick.
+    applied_revision: u64,
     /// The declared asset id of the material every terrain chunk is drawn with.
     ///
     /// An **id** rather than a [`Material`](amadeo_render::Material), matching how every other mesh
@@ -153,6 +258,7 @@ impl Terrain {
     pub fn new(source: Arc<dyn TerrainSource>, settings: TerrainSettings, workers: usize) -> Self {
         Self {
             streamer: TerrainStreamer::new(source, settings, workers),
+            applied_revision: 0,
             material: String::new(),
         }
     }
@@ -186,6 +292,13 @@ pub fn install(app: &mut App, terrain: Terrain) -> Result<(), RegistryError> {
     // otherwise correct world. Found by looking at the first capture of `games/scarp`.
     app.load_material(&terrain.material);
 
+    // The authored edits, empty to begin with. Inserted here rather than left to the game because a
+    // resource that does not exist is not in the state hash and not in a snapshot — so a game that
+    // forgot it would dig a world that saves undug, which is the exact defect Q29 closed.
+    if app.world.resource::<TerrainEdits>().is_none() {
+        app.insert_resource(TerrainEdits::default());
+    }
+
     app.insert_service(terrain);
     if !app.world.has_service::<MeshCache>() {
         app.insert_service(MeshCache::new());
@@ -213,6 +326,8 @@ pub fn stream_terrain(world: &mut World) {
     if !world.has_service::<Terrain>() {
         return;
     }
+
+    apply_edits(world);
 
     // --- Where the viewers are. ---
     //
@@ -302,6 +417,62 @@ pub fn stream_terrain(world: &mut World) {
     if !update.removed.is_empty() {
         despawn_chunks(world, &update.removed);
     }
+}
+
+/// Brings the streamer's edits up to date with the [`TerrainEdits`] resource — **Q29**.
+///
+/// # Why this is a diff rather than a replay of everything
+///
+/// `TerrainStreamer::edit` invalidates every chunk that reads the sample — up to eight. Re-applying
+/// the whole edit list would therefore mark *every* edited chunk dirty on every dig, and a world
+/// with a thousand holes in it would re-mesh all of them because somebody dug a thousand-and-first.
+/// Only samples that actually differ are pushed through.
+///
+/// # Cost, stated honestly
+///
+/// The comparison is `O(total edits)` and runs **only on a tick where the revision moved** — so
+/// nothing at all on a tick where nobody dug, which is nearly all of them. For a world dug to
+/// Minecraft's scale that becomes the wrong shape and the fix is to carry a small change list on the
+/// resource rather than diffing. Not built now, because it would be machinery for a problem no game
+/// here has.
+///
+/// # After a snapshot restore this does the whole job
+///
+/// A snapshot restores the resource and cannot restore a service (ADR 0009), so the streamer comes
+/// back with no edits and `applied_revision` at zero while the resource's revision is whatever it
+/// was saved at. They disagree, every restored sample reads as changed, and the world is dug again
+/// before the first frame is drawn. That is ADR 0028's lesson — hash equality after a restore is
+/// necessary and not sufficient — handled rather than rediscovered.
+fn apply_edits(world: &mut World) {
+    let revision = world
+        .resource::<TerrainEdits>()
+        .map_or(0, |edits| edits.revision);
+    let applied = world
+        .service::<Terrain>()
+        .map_or(0, |terrain| terrain.applied_revision);
+
+    // The common case, and it costs one comparison: nobody has dug since last tick.
+    if revision == applied {
+        return;
+    }
+
+    let Some(authored) = world.resource::<TerrainEdits>().cloned() else {
+        return;
+    };
+
+    // The reflected form above becomes the plain one `amadeo-voxel` meshes against. Two types for
+    // one idea is the price of that crate having no dependencies and therefore no `Reflect` — the
+    // same split `amadeo-image` and `TextureData` already live with.
+    let mut wanted = Edits::new();
+    for edit in &authored.samples {
+        wanted.set([edit.x, edit.y, edit.z], edit.value);
+    }
+
+    let Some(terrain) = world.service_mut::<Terrain>() else {
+        return;
+    };
+    terrain.streamer.replace_edits(&wanted);
+    terrain.applied_revision = authored.revision;
 }
 
 /// The friction terrain colliders are given.

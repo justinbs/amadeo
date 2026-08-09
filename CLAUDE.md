@@ -149,7 +149,14 @@ crates/
                      The ECS layer (`TerrainViewer`, `TerrainChunk`, `stream_terrain`, `install`) is
                      behind the **`engine` feature**, off by default, which is what preserves the
                      no-engine-deps property above. `stream_terrain` runs **before** `step_physics`.
-                     **Edits are NOT hashed and a snapshot does not restore them -- Q29.**
+                     **Edits are authored in the `TerrainEdits` RESOURCE, and the streamer is a cache
+                     of it** (ADR 0046, closing Q29). Gameplay writes the resource -- writing the
+                     streamer directly puts the hole where neither the state hash nor a save file can
+                     see it. Stored flat by **world sample**, not grouped by chunk: a sample near a
+                     boundary is read by up to eight chunks, and an owning chunk would leave the other
+                     seven meshing it differently. `stream_terrain` syncs when the revision moves, and
+                     that is also what re-digs the world after a snapshot restore -- a snapshot
+                     restores resources and never services (ADR 0009).
 — amadeo-math        vectors, matrices, quaternions, rects, curves. No engine deps.
 ✅ amadeo-core        Tick, FIXED_DT, Rng (PCG32), StableHasher (FNV-1a), StableId/NetId/Authority
 ✅ amadeo-reflect     Value tree, TypeInfo schema, TypeRegistry. ADR 0012. Values include maps with

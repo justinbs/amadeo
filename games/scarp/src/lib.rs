@@ -41,7 +41,7 @@ use amadeo_render::{
     BoxMesh, Camera, DirectionalLight, Environment, Material, Mesh, PlaneMesh, SortOrder,
     TextureCache,
 };
-use amadeo_terrain::{STREAM_TERRAIN, Terrain, TerrainSettings, TerrainViewer};
+use amadeo_terrain::{STREAM_TERRAIN, Terrain, TerrainEdits, TerrainSettings, TerrainViewer};
 use amadeo_transform::{
     GlobalTransform, PROPAGATE_TRANSFORMS, Parent, Transform, propagate_transforms,
 };
@@ -288,16 +288,18 @@ pub fn build_headless() -> anyhow::Result<App> {
 /// different game would want a pickaxe with a reach, a bomb with a radius, or a terraforming brush
 /// with a falloff. None of that belongs below `games/`.
 ///
+/// # It writes the resource, never the streamer
+///
+/// [`TerrainEdits`] is the authored truth and the streamer is a cache of it (ADR 0046). Writing the
+/// streamer directly would put the hole somewhere the state hash and the save file cannot see, which
+/// is exactly the defect **Q29** closed — a dug world used to reload undug.
+///
 /// # Determinism
 ///
 /// An edit is a gameplay action and happens at a definite tick on every machine: the action comes
 /// from [`InputState`], which is recorded and replayed, and the position comes from a `Transform`,
 /// which is hashed. Turning that into sample coordinates is `floor` and integer arithmetic. Nothing
-/// here consults the job pool, so a replay of a dig reproduces.
-///
-/// **What does not yet survive is a snapshot** — the edits live in a service, so they are outside the
-/// state hash and a saved world reloads undug. That is **Q29** and is a decision rather than an
-/// omission; see `docs/06-open-questions.md`.
+/// here consults the job pool, so a replay of a dig reproduces — and now so does a save of one.
 pub fn dig_terrain(world: &mut World) {
     let digging = world
         .resource::<InputState>()
@@ -313,10 +315,13 @@ pub fn dig_terrain(world: &mut World) {
         .map(|(_, (_, transform))| transform.translation)
         .collect();
 
-    let Some(terrain) = world.service_mut::<Terrain>() else {
+    let cell = match world.service::<Terrain>() {
+        Some(terrain) => terrain.streamer.settings().shape.cell_size,
+        None => return,
+    };
+    let Some(edits) = world.resource_mut::<TerrainEdits>() else {
         return;
     };
-    let cell = terrain.streamer.settings().shape.cell_size;
 
     for position in feet {
         // The sample the player is standing on. `floor` before the cast so a negative coordinate
@@ -337,9 +342,7 @@ pub fn dig_terrain(world: &mut World) {
                     }
                     // Set rather than added to, so digging the same spot twice is a no-op instead of
                     // burrowing steadily further into a value nothing reads.
-                    terrain
-                        .streamer
-                        .edit([centre[0] + dx, centre[1] + dy, centre[2] + dz], DUG);
+                    edits.set([centre[0] + dx, centre[1] + dy, centre[2] + dz], DUG);
                 }
             }
         }

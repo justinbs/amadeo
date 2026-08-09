@@ -52,16 +52,18 @@
 //! chunk that "owns" it leaves the neighbours holding geometry that disagrees, and the crack opens
 //! exactly where somebody has been digging.
 //!
-//! **What is still missing is where the edits live.** ADR 0042 §4 says they belong in a reflected,
-//! hashed component so a snapshot restores them. They are currently held here, in a service, which
-//! means **they are not in the state hash and a snapshot does not restore them** — so a dug world
-//! saves and reloads undug.
+//! **The edits held here are a cache, not the truth** (ADR 0046, closing Q29). The authored set is
+//! the reflected, hashed [`TerrainEdits`] resource in [`world`], so it is in the state hash and is
+//! captured and restored by a snapshot; what this streamer holds is derived from it, exactly as a
+//! physics solver's world is derived from components (ADR 0036).
 //!
-//! That is not simply unfinished: §4 says "a component on a chunk entity", and this crate now
-//! **despawns chunk entities when they stream out**, which would take the edits with them. The
-//! resolution is probably an entity per *edited* chunk whose existence is driven by having been
-//! edited rather than by being loaded — but it is a real design question rather than wiring, and it
-//! is written up as **Q29** rather than guessed at.
+//! ADR 0042 §4 said the edits belonged in a component on a chunk entity. That cannot be implemented
+//! as written, because this crate **despawns chunk entities when they stream out** — walking away
+//! from a hole would delete it. A resource belongs to no entity and so cannot be taken away.
+//!
+//! [`TerrainStreamer::replace_edits`] is how the authored set reaches this one, and it diffs in
+//! **both** directions: restoring an earlier save means *fewer* edits, and only walking the new set
+//! would leave the extra digging in place forever.
 //!
 //! ```
 //! use amadeo_terrain::{TerrainSettings, TerrainStreamer};
@@ -91,7 +93,10 @@
 pub mod world;
 
 #[cfg(feature = "engine")]
-pub use world::{STREAM_TERRAIN, Terrain, TerrainChunk, TerrainViewer, install, stream_terrain};
+pub use world::{
+    STREAM_TERRAIN, Terrain, TerrainChunk, TerrainEdit, TerrainEdits, TerrainViewer, install,
+    stream_terrain,
+};
 
 use amadeo_jobs::{Inbox, JobPool};
 use amadeo_voxel::{ChunkKey, ChunkShape, Edits, Residency, TerrainSource, Viewer, VoxelMesh};
@@ -278,6 +283,55 @@ impl TerrainStreamer {
     #[must_use]
     pub fn edit_count(&self) -> usize {
         self.edits.len()
+    }
+
+    /// Replaces every edit at once, invalidating exactly the chunks that changed — **Q29**.
+    ///
+    /// # Why this exists rather than a loop of [`TerrainStreamer::edit`]
+    ///
+    /// Because the authored edits live *above* this crate now, in a hashed resource, and this
+    /// streamer is a **cache** of them — the same asymmetry ADR 0036 gives physics, where components
+    /// are the truth and the solver's world is rebuilt from them. Something has to bring the cache
+    /// into line, and it has to do so without re-invalidating the world.
+    ///
+    /// **Removals matter as much as additions**, which is the half a loop of `edit` cannot express.
+    /// Restoring an *older* snapshot means the authored set has **fewer** edits than this one, and a
+    /// diff that only looked at what the new set contains would leave the extra holes dug forever.
+    ///
+    /// Chunks are invalidated only for samples that actually differ in either direction, so bringing
+    /// a thousand-hole world into line after one more dig re-meshes eight chunks rather than eight
+    /// thousand.
+    pub fn replace_edits(&mut self, wanted: &Edits) {
+        let mut changed: Vec<[i32; 3]> = Vec::new();
+
+        for (sample, value) in wanted.iter() {
+            if self.edits.get(sample) != Some(value) {
+                changed.push(sample);
+            }
+        }
+        // The other direction: a sample this holds that the authored set does not.
+        for (sample, _) in self.edits.iter() {
+            if wanted.get(sample).is_none() {
+                changed.push(sample);
+            }
+        }
+
+        if changed.is_empty() {
+            return;
+        }
+
+        // Copy-on-write, exactly as `edit` does: jobs already running hold an `Arc` to the old edits
+        // and finish against them, and the version bump below is what discards their results.
+        *Arc::make_mut(&mut self.edits) = wanted.clone();
+        self.edit_version += 1;
+
+        for sample in changed {
+            for key in self.chunks_sampling(sample) {
+                self.known.remove(&key);
+                self.in_flight.remove(&key);
+                self.dirty.insert(key);
+            }
+        }
     }
 
     /// Every chunk whose field reads a given world sample.

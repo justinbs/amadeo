@@ -207,7 +207,7 @@ A test holds that in place.
 | ✅ | **Digging** — `TerrainStreamer::edit`. Invalidates up to eight chunks; jobs carry an edit version |
 | ✅ | **`amadeo-noise`** — deterministic gradient noise, **ADR 0044**. No transcendentals, literal hash pinned on both platforms |
 | ✅ | **`games/scarp`** — a generated world you walk on and dig into. **Exit gates 1 and 2 met** |
-| → | **Where edits live — Q29.** They are in a *service*, so **not hashed and not restored by a snapshot**: a dug world reloads undug. **The running world it was waiting for now exists** |
+| ✅ | **Where edits live — Q29 closed (ADR 0046).** `TerrainEdits` is a hashed resource; the streamer is a cache of it. A dug world saves and reloads dug |
 | ✅ | **`render.describe` sees 3D — Q26 closed.** Real perspective projection, a `Mesh` kind, and the eye widened to three components |
 | ✅ | **Frustum culling — exit gate 3 MET.** 50 meshes exist, 20 in view, **20 submitted**, and the picture is byte-identical |
 | ✅ | **GPU timestamp queries — exit gate 4 MET.** The Scarp at 640×360 costs **61 µs of GPU time**, 0.4% of a 60 Hz budget |
@@ -273,7 +273,7 @@ first real case*, which is the state this project deliberately keeps them in:
 
 | | | |
 |---|---|---|
-| **Q29** | P1 | **Where terrain edits live.** ADR 0042 §4 says a component on a chunk entity — but chunk entities are now despawned by streaming, which would take the edits with them. Today they are unhashed and a snapshot loses them. **Ready to decide: it was waiting on a running terrain world, and `games/scarp` is one** |
+| ~~Q29~~ | — | **Closed in session 13 by ADR 0046.** Terrain edits are a hashed resource; the streamer is a cache of them, and a dug world saves and reloads dug |
 | **Q30** | P2 | **No way to move a physics body from outside the tick.** Writing a `Transform` is silently reverted — `step_physics` prefers `GlobalTransform` and propagation runs last. Blocks respawns and fast travel |
 | **Q25** | P1 | LOD across chunks — **better posed** by ADR 0043 and still open: may a chunk's mesh depend on its neighbours' resolutions? |
 | **Q23** | P1 | One environment per frame, when a world may hold several cameras |
@@ -550,14 +550,10 @@ the only evidence available was a push.
 
 ## The single most important thing to do next
 
-**M2.5 is complete.** Two things stand between here and starting M3.
+**M2.5 is complete, and so is Q29** — the last hole in its subject matter. A dug world now saves and
+reloads dug (ADR 0046). **M3 is next.**
 
-**1. Q29 — where terrain edits live.** Ready in a way it was not: it was explicitly waiting for a
-running terrain world to be decided against, and `games/scarp` is one. Until it is closed, a dug world
-saves and reloads undug, which is ADR 0042's central promise unkept. **This is the last real hole in
-M2.5's subject matter** even though no gate names it.
-
-**2. Then M3**, whose Build list now carries the renderer's feature work in order (ADR 0045):
+**M3's Build list carries the renderer's feature work in order (ADR 0045):**
 mipmaps and anisotropic filtering, normal mapping, metallic-roughness PBR, sky/image-based lighting,
 shadow cascades. That is where "it looks like a prototype" stops being true, and M3's exit gate — a
 dark corridor with a moving flashlight that reads as genuinely atmospheric — was always the
@@ -566,10 +562,6 @@ renderer's real exam.
 Worth saying plainly at the milestone boundary: **M2.5 was about worlds that scale, and it scaled
 them.** It was never about how they look, and the demo looks accordingly. ADR 0045 is the evidence
 that this is a feature-set gap rather than a backend one.
-
-**Then Q29**, which is now ready in a way it was not: it was explicitly waiting for a running terrain
-world to be decided against, and `games/scarp` is one. Until it is closed, a dug world saves and
-reloads undug.
 
 **`par_for_each_mut` is built, and the `rayon` question is answered by measurement rather than
 argument** — no dependency. `std::thread::scope` spawns threads per call and that cost is real, but

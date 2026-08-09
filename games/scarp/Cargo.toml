@@ -50,3 +50,9 @@ path = "src/main.rs"
 [[bin]]
 name = "turf"
 path = "src/bin/turf.rs"
+
+[dev-dependencies]
+# The save/reload round trip for terrain edits (Q29). A dev-dependency of the *game* rather than of
+# amadeo-terrain, because amadeo-snapshot sits above that crate and depending on it from there would
+# invert the DAG invariant I6 keeps strict. A game depending on the save system is the normal way up.
+amadeo-snapshot.workspace = true

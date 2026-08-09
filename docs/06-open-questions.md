@@ -149,7 +149,34 @@ Nothing is blocked: terrain at one resolution works today.
 
 ---
 
-## Q29 · P1 · Where terrain edits live, now that chunk entities are despawned
+## ~~Q29~~ · **CLOSED in session 13** · Terrain edits are a hashed resource
+
+**Resolved by ADR 0046.** `TerrainEdits` is a reflected, hashed `Resource`, so it is in the state
+hash and is captured and restored by a snapshot; gameplay writes it and the streamer is a **cache**
+rebuilt from it, the same asymmetry ADR 0036 gives physics. A hole dug in `games/scarp` now survives
+a save and a reload, and `a_dug_world_reloads_dug.rs` is the test.
+
+Two things changed from the analysis below during implementation, both worth knowing:
+
+- **The locality argument for per-entity storage does not survive contact with the code.**
+  `World::state_hash` walks every entity *and* every resource regardless, so the two placements cost
+  the same to hash. What was left was a multiplayer advantage against a second kind of chunk entity
+  sitting next to the streamed one — a confusion that would have been paid for repeatedly.
+- **Storage is flat, keyed by world sample, not grouped by chunk** — the opposite of what "keyed by
+  chunk" suggested when the option was chosen. A sample near a boundary is read by up to eight chunks
+  (ADR 0043 §4), so an owning chunk would leave the other seven meshing it differently, which is the
+  exact seam bug `amadeo_voxel::Edits` is keyed by world sample to avoid. Per-chunk deltas stay
+  derivable by integer division.
+
+It also closed a gap nobody had noticed: **a game could not save or load at all**, because the
+component registry a snapshot needs is crate-private. `App::capture_snapshot` and
+`App::restore_snapshot` exist now.
+
+The original entry follows.
+
+---
+
+## Q29 (original) · Where terrain edits live, now that chunk entities are despawned
 
 **New in session 12, and found by building the thing ADR 0042 §4 describes rather than by reading
 it.**

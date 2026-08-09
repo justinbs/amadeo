@@ -248,8 +248,9 @@ impl App {
     /// so the borrow checker refuses the obvious spelling; this is the same take-and-put-back shape
     /// `World::with_service_taken` uses, and it must always be paired with [`App::put_registry`].
     ///
-    /// Deliberately not public API for games: nothing a game does needs it, and an unpaired call
-    /// would leave the app unable to describe its own components.
+    /// Deliberately not public API for games: an unpaired call would leave the app unable to
+    /// describe its own components. [`App::capture_snapshot`] and [`App::restore_snapshot`] are the
+    /// paired forms a game actually wants.
     pub(crate) fn take_registry(&mut self) -> ComponentRegistry {
         std::mem::take(&mut self.registry)
     }
@@ -257,6 +258,47 @@ impl App {
     /// Puts a registry taken by [`App::take_registry`] back.
     pub(crate) fn put_registry(&mut self, registry: ComponentRegistry) {
         self.registry = registry;
+    }
+
+    /// Captures the whole world to a snapshot (ADR 0028).
+    ///
+    /// # Why this is on `App` rather than called directly
+    ///
+    /// `amadeo_snapshot::capture` needs the component registry, and `App` owns it — so every caller
+    /// outside this crate had to build an empty registry — which silently produces a snapshot that
+    /// restores to a *different* world and then fails its own hash check — because the registry
+    /// accessor is crate-private, an unpaired call to it leaving the app unable to describe itself.
+    ///
+    /// Found by writing a game test for terrain edits surviving a save: there was no supported way
+    /// for a **game** to save or load at all, which is a gap worth closing on its own — M3's build
+    /// list has "save/load built on snapshots" and this is what it stands on.
+    #[must_use]
+    pub fn capture_snapshot(&self) -> amadeo_snapshot::Snapshot {
+        amadeo_snapshot::capture(&self.world, &self.registry)
+    }
+
+    /// Puts a captured world back.
+    ///
+    /// **A snapshot restores components and resources, never services** (ADR 0009), so a subsystem
+    /// caching derived state has to notice and rebuild. `PhysicsBackend::reset` exists for exactly
+    /// that reason, and terrain streaming does the same by comparing
+    /// `TerrainEdits::revision` — hash equality after a restore is necessary and not sufficient.
+    ///
+    /// # Errors
+    ///
+    /// [`amadeo_snapshot::RestoreError`] if the snapshot names a component this build does not have,
+    /// holds a value that will not fit its type, or does not hash to what it recorded — the last
+    /// being the check that catches a restore into a world that was not what the snapshot expected.
+    pub fn restore_snapshot(
+        &mut self,
+        snapshot: &amadeo_snapshot::Snapshot,
+    ) -> Result<(), amadeo_snapshot::RestoreError> {
+        // Taken and put back, because `restore` needs the world mutably and the registry shared and
+        // this type owns both — the same shape `World::with_service_taken` uses.
+        let registry = self.take_registry();
+        let result = amadeo_snapshot::restore(&mut self.world, &registry, snapshot);
+        self.put_registry(registry);
+        result
     }
 
     /// Whether a system label is already registered in a stage.
