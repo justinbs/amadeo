@@ -148,9 +148,75 @@ can find a performance problem it cannot feel:
 amadeo call profile.frame --package atrium --ticks 600
 ```
 
-## What this gate does not answer
+---
 
-1. **GPU execution time**, as above. Needs timestamp queries in the wgpu backend.
+# M2.5 exit gate 4 — an open world, with GPU time this time
+
+**The thing M2's gate could not answer.** Item 1 below said GPU execution time "needs timestamp
+queries in the wgpu backend", and now it has them.
+
+```bash
+cargo test -p scarp --release --test frame_budget -- --nocapture
+```
+
+## The scene
+
+`games/scarp` — a streamed terrain world. Nothing in it is authored but the player, the camera and
+the sun; the ground is generated and streamed in chunks. Measured after the streamer has gone quiet,
+so the numbers are about a settled world rather than a half-built one.
+
+| | |
+|---|---|
+| Meshes in the world | 50 |
+| Meshes in view | 20 |
+| Meshes submitted | **20** — the other 30 are frustum-culled (gate 3) |
+| Target | 640×360 offscreen |
+
+## GPU time: 61 µs per frame
+
+| Pass | GPU time |
+|---|---:|
+| `shadow 0` | 9.2 µs |
+| `view 0` | 24.6 µs |
+| `post` | 4.1 µs |
+| `present` | 4.1 µs |
+| **Total** | **61.4 µs** |
+
+Against a 16.67 ms budget, that is **0.4%**.
+
+**The passes sum to 42 µs and the total is 61 µs**, and the gap is not an error — the total is wall
+time on the GPU from the first pass beginning to the last one ending, so it includes the gaps
+*between* passes. A frame that is mostly gap is a frame whose bottleneck is elsewhere, which is
+exactly what this one is: the GPU spends more time waiting to be given the next pass than drawing.
+
+> **The shadow pass was invisible in the first version of this measurement.** It takes a different
+> code path — it is the one pass with no colour attachment — and so it was never given timestamps.
+> The breakdown summed to 27 µs of a 37 µs frame with nothing accounting for the difference. A
+> profiler that silently loses a pass is worse than one that reports only a total.
+
+## What these numbers are worth
+
+The target is small and the world is one material with no textures beyond a single ground image, so
+**this is a measurement of draw submission rather than of shading**. A real scene moves the cost into
+`view 0` by orders of magnitude, and the passes that would grow — more lights, more shadow cascades,
+bloom's blur chain — are exactly the ones ADR 0045 puts on M3's list.
+
+What is worth keeping is the **shape**: with culling on and a modest scene, the GPU is nowhere near
+the bottleneck, and the frame is dominated by per-pass overhead rather than by pixels.
+
+## Measuring is not free, and is off by default
+
+Reading the timestamps back means waiting for the GPU to finish — a full pipeline stall, which is
+what a real frame loop exists to avoid. `WgpuBackend::set_gpu_timing(true)` is a thing a measurement
+harness does and nothing else. `supports_gpu_timing()` is `false` on an adapter without
+`TIMESTAMP_QUERY`, and the engine renders identically there and reports nothing, because ADR 0002's
+argument for wgpu is that the engine runs broadly.
+
+---
+
+## What M2's gate did not answer
+
+1. ✅ **GPU execution time** — answered above by M2.5's gate 4.
 2. **A scene with real art in it.** Eleven boxes is not a level; a real one has thousands of
    triangles per mesh, textures, and enough draw calls to make batching matter. glTF import landed
    in the same session as this measurement and nothing has been through Blender yet.

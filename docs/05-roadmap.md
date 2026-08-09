@@ -290,8 +290,9 @@ in documents nobody is allowed to correct.
   because the honest options depend on how streaming ends up shaped.
 - **`amadeo-math` over glam.** `Mat4` is hand-written scalar — fine for eleven objects, not for
   meshing a field. `docs/02` already specifies glam wrapped so the engine owns its surface.
-- **GPU timestamp queries.** Gate 4 could not measure GPU time at all. With terrain the GPU becomes
-  the bottleneck, and without this the engine is blind to it.
+- ✅ **GPU timestamp queries.** M2's gate 4 could not measure GPU time at all. Now every render pass
+  is timed and attributed by label, behind `set_gpu_timing` — off by default, because reading the
+  results stalls the pipeline and a profiler may stall where a game may not.
 - **More than one light**, and **textures on materials** — currently colours only, and an imported
   model arrives untextured.
 
@@ -310,8 +311,10 @@ in documents nobody is allowed to correct.
    draw calls, a 60% reduction. `culling_reduces_draw_calls.rs` measures both numbers from one
    running world, and the rendered PNG is **byte-identical** to the pre-culling one, which is what
    correct culling looks like.
-4. Frame time within budget at open-world complexity, with GPU time measured this time. Numbers
-   appended to `docs/10-frame-budget.md`.
+4. ✅ **Frame time within budget at open-world complexity, with GPU time measured this time.**
+   `TIMESTAMP_QUERY` in the wgpu backend, requested only where the adapter offers it. The Scarp at
+   640×360: **61 µs of GPU time** — shadow 9.2, view 24.6, post 4.1, present 4.1 — against a 16.67 ms
+   budget, which is 0.4%. Appended to `docs/10-frame-budget.md`.
 
 ---
 

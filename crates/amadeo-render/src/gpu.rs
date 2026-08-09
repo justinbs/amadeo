@@ -308,6 +308,99 @@ fn offscreen_texture(
 ///
 /// The `wgpu::Texture` is held alongside the view purely to keep it alive — dropping it would
 /// invalidate the view and the bind group that reference it.
+/// How many passes a frame can time. Beyond this, later passes are simply not measured.
+///
+/// A frame is one pass per camera plus post and present, so a scene would need a dozen cameras to
+/// reach this. Fixed rather than grown because a query set cannot be resized and reallocating one
+/// per frame would cost more than the thing being measured.
+const MAX_TIMED_PASSES: usize = 16;
+
+/// The GPU-side machinery for timing passes — **M2.5's exit gate 4**.
+///
+/// # Why this is optional at every level
+///
+/// `TIMESTAMP_QUERY` is not a feature every adapter advertises, and ADR 0002's whole argument for
+/// wgpu is that the engine runs broadly. So it is requested **only if the adapter offers it**, the
+/// whole struct is an `Option`, and a machine without it renders exactly as before and reports no
+/// timings rather than refusing to start.
+#[derive(Debug)]
+struct GpuTiming {
+    /// Two timestamps per pass: one at the start, one at the end.
+    queries: wgpu::QuerySet,
+    /// Where `resolve_query_set` writes the raw tick counts.
+    resolved: wgpu::Buffer,
+    /// A mappable copy of the above, because a `QUERY_RESOLVE` buffer cannot also be `MAP_READ`.
+    readback: wgpu::Buffer,
+    /// Nanoseconds per tick, which is a property of the queue rather than of the query.
+    period: f32,
+    /// Whether to actually time the next frame.
+    ///
+    /// **Off by default, and that is not caution.** Reading the results back means waiting for the
+    /// GPU to finish, which is a full pipeline stall — the exact thing a real frame loop exists to
+    /// avoid. A profiler may stall; a game may not. So a measurement harness turns this on and
+    /// nothing else does.
+    enabled: bool,
+}
+
+impl GpuTiming {
+    /// Builds the query machinery, or `None` if this device cannot time anything.
+    fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Option<GpuTiming> {
+        if !device.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
+            return None;
+        }
+
+        let count = (MAX_TIMED_PASSES * 2) as u32;
+        // Eight bytes per timestamp, which is what `resolve_query_set` writes.
+        let size = u64::from(count) * 8;
+
+        Some(GpuTiming {
+            queries: device.create_query_set(&wgpu::QuerySetDescriptor {
+                label: Some("amadeo pass timings"),
+                ty: wgpu::QueryType::Timestamp,
+                count,
+            }),
+            resolved: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("amadeo timing resolve"),
+                size,
+                usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
+                mapped_at_creation: false,
+            }),
+            readback: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("amadeo timing readback"),
+                size,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            }),
+            period: queue.get_timestamp_period(),
+            enabled: false,
+        })
+    }
+
+    /// Where in the query set a given pass writes its two timestamps.
+    fn writes(&self, pass: usize) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
+        if !self.enabled || pass >= MAX_TIMED_PASSES {
+            return None;
+        }
+        Some(wgpu::RenderPassTimestampWrites {
+            query_set: &self.queries,
+            beginning_of_pass_write_index: Some((pass * 2) as u32),
+            end_of_pass_write_index: Some((pass * 2 + 1) as u32),
+        })
+    }
+}
+
+/// What one frame cost on the GPU.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct GpuFrameTiming {
+    /// Wall time on the GPU from the first pass beginning to the last one ending.
+    ///
+    /// Larger than the sum of the passes below when the GPU idled between them, which is itself
+    /// worth seeing: it means the bottleneck is elsewhere.
+    pub total: std::time::Duration,
+    /// Each timed pass, by the label the render graph gave it, in the order they ran.
+    pub passes: Vec<(String, std::time::Duration)>,
+}
+
 #[derive(Debug)]
 struct GpuTexture {
     #[allow(
@@ -401,6 +494,11 @@ pub struct WgpuBackend {
     adapter: AdapterDescription,
     device: wgpu::Device,
     queue: wgpu::Queue,
+    /// GPU pass timing, when the adapter supports it (exit gate 4). `None` is a machine that cannot
+    /// measure, which renders identically and reports nothing.
+    timing: Option<GpuTiming>,
+    /// What the last timed frame cost, or `None` if timing is off or nothing has been drawn yet.
+    last_timing: Option<GpuFrameTiming>,
     /// Drawable size in physical pixels.
     width: u32,
     /// Drawable size in physical pixels.
@@ -541,7 +639,11 @@ impl WgpuBackend {
             label: Some("amadeo device"),
             // Defaults keep compatibility broad. Raise these only when a feature actually needs it,
             // since every requirement added here is a machine the engine stops running on.
-            required_features: wgpu::Features::empty(),
+            //
+            // `TIMESTAMP_QUERY` is asked for **only if this adapter already has it** (exit gate 4).
+            // Intersecting with `adapter.features()` is what keeps that true: requiring it outright
+            // would turn "cannot measure GPU time here" into "cannot run here".
+            required_features: adapter.features() & wgpu::Features::TIMESTAMP_QUERY,
             required_limits: wgpu::Limits::default(),
             ..Default::default()
         }))
@@ -622,7 +724,10 @@ impl WgpuBackend {
 
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("amadeo offscreen device"),
-            required_features: wgpu::Features::empty(),
+            // Same as the windowed path: ask for timestamps only if this adapter already has them
+            // (exit gate 4). **This is the one that matters for measurement** — the frame budget is
+            // taken offscreen, so an offscreen device without the feature can time nothing.
+            required_features: adapter.features() & wgpu::Features::TIMESTAMP_QUERY,
             required_limits: wgpu::Limits::default(),
             ..Default::default()
         }))
@@ -1449,6 +1554,10 @@ impl WgpuBackend {
         Ok(Self {
             target,
             adapter,
+            // Built before the device is moved into the struct. `None` on an adapter without
+            // `TIMESTAMP_QUERY`, which is the whole graceful-degradation story in one line.
+            timing: GpuTiming::new(&device, &queue),
+            last_timing: None,
             device,
             queue,
             width,
@@ -1738,6 +1847,7 @@ impl WgpuBackend {
         assigned: &BTreeMap<String, usize>,
         view_index: usize,
         draws: Option<&Vec<(&str, &str, std::ops::Range<u32>)>>,
+        timestamp_writes: Option<wgpu::RenderPassTimestampWrites<'_>>,
     ) {
         // The map it draws into is declared in `writes`, which is what orders this pass before the
         // view pass that reads it — but it is bound as depth, not as colour.
@@ -1760,7 +1870,7 @@ impl WgpuBackend {
                 stencil_ops: None,
             }),
             multiview_mask: None,
-            timestamp_writes: None,
+            timestamp_writes,
             occlusion_query_set: None,
         });
 
@@ -1959,7 +2069,6 @@ impl RenderBackend for WgpuBackend {
         );
         Ok(())
     }
-
     /// Drops a mesh's buffers, and with them their video memory.
     ///
     /// `wgpu` frees a buffer when the last handle to it is dropped, so removing the map entry is the
@@ -2401,6 +2510,11 @@ impl RenderBackend for WgpuBackend {
             a: f64::from(frame.clear_color[3]),
         });
 
+        // Which pass slot each timed pass took, and what it was called. Recorded in execution order
+        // rather than declaration order, because that is the order the timestamps come back in and
+        // the order a reader wants to see a frame broken down.
+        let mut timed: Vec<(usize, String)> = Vec::new();
+
         for &pass_index in plan.order() {
             let declared = &graph.passes()[pass_index];
 
@@ -2410,12 +2524,22 @@ impl RenderBackend for WgpuBackend {
             // because that path would otherwise attach a depth texture as a colour target, which is
             // a validation error a long way from its cause.
             if let PassKind::Shadow { view: view_index } = declared.kind {
+                // Timed like any other pass. It used to be skipped simply because it takes a
+                // different code path, and the omission showed: the per-pass breakdown summed to
+                // 27 µs of a 37 µs frame with nothing accounting for the difference. A profiler
+                // that silently loses a pass is worse than one that reports only a total.
+                let slot = timed.len();
+                let writes = self.timing.as_ref().and_then(|timing| timing.writes(slot));
+                if writes.is_some() {
+                    timed.push((slot, declared.label.clone()));
+                }
                 self.run_shadow_pass(
                     &mut encoder,
                     declared,
                     &assigned,
                     view_index,
                     shadow_draws.get(view_index),
+                    writes,
                 );
                 continue;
             }
@@ -2466,6 +2590,15 @@ impl RenderBackend for WgpuBackend {
                 stencil_ops: None,
             });
 
+            // Timed through the pass descriptor rather than by writing into the encoder, because
+            // `TIMESTAMP_QUERY` covers this form on every adapter that has it at all — the encoder
+            // form needs a second feature that fewer machines advertise.
+            let slot = timed.len();
+            let timestamp_writes = self.timing.as_ref().and_then(|timing| timing.writes(slot));
+            if timestamp_writes.is_some() {
+                timed.push((slot, declared.label.clone()));
+            }
+
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some(declared.label.as_str()),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -2479,7 +2612,7 @@ impl RenderBackend for WgpuBackend {
                 })],
                 depth_stencil_attachment: depth_attachment,
                 multiview_mask: None,
-                timestamp_writes: None,
+                timestamp_writes,
                 occlusion_query_set: None,
             });
 
@@ -2639,7 +2772,30 @@ impl RenderBackend for WgpuBackend {
             .and_then(|name| assigned.get(name))
             .copied();
 
+        // Copy the tick counts out of the query set while the encoder is still open. A
+        // `QUERY_RESOLVE` buffer cannot also be `MAP_READ`, so this is two hops: resolve into one
+        // buffer, copy that into a mappable one.
+        let timing_slots = timed.len();
+        if timing_slots > 0
+            && let Some(timing) = self.timing.as_ref()
+            && timing.enabled
+        {
+            let count = (timing_slots * 2) as u32;
+            encoder.resolve_query_set(&timing.queries, 0..count, &timing.resolved, 0);
+            encoder.copy_buffer_to_buffer(
+                &timing.resolved,
+                0,
+                &timing.readback,
+                0,
+                u64::from(count) * 8,
+            );
+        }
+
         self.queue.submit(std::iter::once(encoder.finish()));
+
+        if timing_slots > 0 {
+            self.last_timing = self.read_timings(&timed);
+        }
         // Presentation moved onto the queue in wgpu 30; it used to be a method on the texture.
         // An offscreen frame is not presented — it stays in its texture, which is the point.
         if let Some(texture) = surface_texture {
@@ -2749,5 +2905,96 @@ impl RenderBackend for WgpuBackend {
             format: PixelFormat::Rgba8UnormSrgb,
             pixels,
         })
+    }
+}
+
+/// GPU timing — **exit gate 4**. Inherent rather than part of [`RenderBackend`], because a null
+/// backend has no GPU to time and a future backend may measure differently; a measurement harness
+/// reaches for the concrete backend it installed.
+impl WgpuBackend {
+    /// Reads back what the frame just submitted cost, in GPU time.
+    ///
+    /// # This blocks, and that is why it is off by default
+    ///
+    /// Getting the numbers means waiting for the GPU to finish the frame — a full pipeline stall,
+    /// which is precisely what a real frame loop exists to avoid. A profiler may stall; a game may
+    /// not. So `set_gpu_timing(true)` is something a measurement harness does and nothing else, and
+    /// the alternative — reading last frame's numbers this frame — buys a non-stalling profiler at
+    /// the cost of every reported number being about a frame nobody asked about.
+    ///
+    /// Returns `None` rather than an error if anything goes wrong: a profiler that takes the game
+    /// down is worse than one that says nothing.
+    fn read_timings(&self, timed: &[(usize, String)]) -> Option<GpuFrameTiming> {
+        let timing = self.timing.as_ref()?;
+        if !timing.enabled {
+            return None;
+        }
+
+        let slice = timing.readback.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |_| {});
+        self.device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: None,
+            })
+            .ok()?;
+
+        let mapped = slice.get_mapped_range().ok()?;
+        let ticks: Vec<u64> = mapped
+            .chunks_exact(8)
+            .map(|bytes| u64::from_le_bytes(bytes.try_into().unwrap_or([0; 8])))
+            .collect();
+        drop(mapped);
+        timing.readback.unmap();
+
+        let to_duration = |ticks: u64| {
+            // The period is nanoseconds per tick and is a property of the queue.
+            std::time::Duration::from_nanos((ticks as f64 * f64::from(timing.period)) as u64)
+        };
+
+        let mut passes = Vec::with_capacity(timed.len());
+        let mut first_begin = u64::MAX;
+        let mut last_end = 0_u64;
+
+        for (slot, label) in timed {
+            let begin = *ticks.get(slot * 2)?;
+            let end = *ticks.get(slot * 2 + 1)?;
+            // A pass whose timestamps came back out of order is a driver quirk rather than a
+            // negative duration; reporting zero is the honest reading of "too fast to measure".
+            passes.push((label.clone(), to_duration(end.saturating_sub(begin))));
+            first_begin = first_begin.min(begin);
+            last_end = last_end.max(end);
+        }
+
+        Some(GpuFrameTiming {
+            total: to_duration(last_end.saturating_sub(first_begin)),
+            passes,
+        })
+    }
+
+    /// Turns GPU pass timing on or off — **exit gate 4**.
+    ///
+    /// **Off by default**, and not out of caution: reading the results means waiting for the GPU to
+    /// finish the frame, which is a full pipeline stall. A profiler may stall; a game may not. So a
+    /// measurement harness turns this on and nothing else does.
+    ///
+    /// Does nothing on an adapter without `TIMESTAMP_QUERY`, where
+    /// [`WgpuBackend::supports_gpu_timing`] is `false` and timings are always `None`.
+    pub fn set_gpu_timing(&mut self, on: bool) {
+        if let Some(timing) = self.timing.as_mut() {
+            timing.enabled = on;
+        }
+    }
+
+    /// Whether this adapter can time GPU work at all.
+    #[must_use]
+    pub fn supports_gpu_timing(&self) -> bool {
+        self.timing.is_some()
+    }
+
+    /// What the last drawn frame cost on the GPU, if timing was on for it.
+    #[must_use]
+    pub fn last_gpu_timing(&self) -> Option<&GpuFrameTiming> {
+        self.last_timing.as_ref()
     }
 }

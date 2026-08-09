@@ -1,8 +1,7 @@
 # Amadeo — Current Status
 
 **Last updated:** 2026-08-07 (end of session 13)
-**Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 — exit gates 1, 2 and 3 MET. Only
-gate 4 (frame budget with GPU time) is open.**
+**Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE — all four exit gates met.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
 built: ADR 0031 (2D/3D coexistence, camera becomes an entity), 0033 (material and shader model), 0034
@@ -25,7 +24,16 @@ always on), **0041** (parallelism is deterministic by construction or absent —
    8.3 µs per simulation tick, 125 µs of CPU-side frame preparation, and 2.7% of a frame at gate 3's
    200-body complexity.
 
-## ⚠️ Start here — where M2.5 actually is
+## ⚠️ Start here — M2.5 is complete
+
+**All four exit gates are met.** A generated world you walk on and dig into (`cargo run -p scarp`),
+reproducing at every thread count, drawing only what can be seen, at 61 µs of GPU time.
+
+The detail below is session 13's, and the findings are worth reading before touching the renderer or
+the terrain crate — five engine defects, one sharp edge that is still open (Q30), and the graphics
+direction settled in ADR 0045.
+
+## Where M2.5 got to
 
 **Exit gates 1 and 2 are met.** `cargo run -p scarp` is a generated world you walk on, streamed in
 chunks, with collision and shadows, and its replay reproduces at every thread count. What is left is
@@ -202,6 +210,7 @@ A test holds that in place.
 | → | **Where edits live — Q29.** They are in a *service*, so **not hashed and not restored by a snapshot**: a dug world reloads undug. **The running world it was waiting for now exists** |
 | ✅ | **`render.describe` sees 3D — Q26 closed.** Real perspective projection, a `Mesh` kind, and the eye widened to three components |
 | ✅ | **Frustum culling — exit gate 3 MET.** 50 meshes exist, 20 in view, **20 submitted**, and the picture is byte-identical |
+| ✅ | **GPU timestamp queries — exit gate 4 MET.** The Scarp at 640×360 costs **61 µs of GPU time**, 0.4% of a 60 Hz budget |
 | | LOD (**Q25**), `amadeo-math` over glam, GPU timestamp queries (gate 4) |
 | | More than one light, textures on materials |
 
@@ -541,20 +550,22 @@ the only evidence available was a push.
 
 ## The single most important thing to do next
 
-**M2.5 has one gate left.**
+**M2.5 is complete.** Two things stand between here and starting M3.
 
-**Gate 4 — GPU timestamp queries and a frame budget at open-world complexity.** Numbers appended to
-`docs/10-frame-budget.md`. Gate 4 last time could not measure GPU time *at all*, and with terrain the
-GPU is where the cost moved — so this is the gate that needs a new capability rather than a new
-measurement. `Profiler` (ADR 0040) already covers the CPU side.
+**1. Q29 — where terrain edits live.** Ready in a way it was not: it was explicitly waiting for a
+running terrain world to be decided against, and `games/scarp` is one. Until it is closed, a dug world
+saves and reloads undug, which is ADR 0042's central promise unkept. **This is the last real hole in
+M2.5's subject matter** even though no gate names it.
 
-**Then Q29**, which is ready in a way it was not: it was explicitly waiting for a running terrain
-world to be decided against, and `games/scarp` is one. Until it is closed, a dug world saves and
-reloads undug — which is ADR 0042's central promise unkept.
+**2. Then M3**, whose Build list now carries the renderer's feature work in order (ADR 0045):
+mipmaps and anisotropic filtering, normal mapping, metallic-roughness PBR, sky/image-based lighting,
+shadow cascades. That is where "it looks like a prototype" stops being true, and M3's exit gate — a
+dark corridor with a moving flashlight that reads as genuinely atmospheric — was always the
+renderer's real exam.
 
-**Then M3**, whose Build list now carries the renderer's feature work in order (ADR 0045). That is
-where "it looks like a prototype" stops being true, and its exit gate — a dark corridor with a moving
-flashlight that reads as genuinely atmospheric — was always the renderer's real exam.
+Worth saying plainly at the milestone boundary: **M2.5 was about worlds that scale, and it scaled
+them.** It was never about how they look, and the demo looks accordingly. ADR 0045 is the evidence
+that this is a feature-set gap rather than a backend one.
 
 **Then Q29**, which is now ready in a way it was not: it was explicitly waiting for a running terrain
 world to be decided against, and `games/scarp` is one. Until it is closed, a dug world saves and

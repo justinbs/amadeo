@@ -183,7 +183,21 @@ impl Renderer {
     /// `None` for a real backend, which has nothing equivalent to offer.
     #[must_use]
     pub fn null_backend(&self) -> Option<&NullBackend> {
-        self.backend.as_any().downcast_ref::<NullBackend>()
+        self.backend_as::<NullBackend>()
+    }
+
+    /// The backend as a concrete type, if that is what is installed.
+    ///
+    /// The general form of [`Renderer::null_backend`], for the cases where a caller needs something
+    /// only one backend can offer. GPU pass timing is the first: a null backend has no GPU to time,
+    /// so the numbers live on `WgpuBackend` rather than on the trait, and a measurement harness has
+    /// to be able to ask the thing it installed.
+    ///
+    /// `None` for any other backend, which is a caller asking a question that backend cannot answer
+    /// rather than an error.
+    #[must_use]
+    pub fn backend_as<T: RenderBackend + 'static>(&self) -> Option<&T> {
+        self.backend.as_any().downcast_ref::<T>()
     }
 
     /// Uploads any texture this frame needs that the backend does not already hold.
