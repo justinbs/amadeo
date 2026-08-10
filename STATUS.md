@@ -658,8 +658,39 @@ the only evidence available was a push.
 started**, with the renderer work ADR 0045 ordered — **mipmaps and anisotropic filtering are done**,
 and **normal mapping landed in session 14 (ADR 0047)**.
 
-**Next on that list, and it is now the one that matters: sky and image-based lighting** — which
-replaces the hardcoded `0.12` ambient (**Q28**). ADR 0045 called it "probably the single biggest step
+## 🚧 IN PROGRESS — image-based lighting, about half built
+
+**Justin chose full IBL over the cheaper hemisphere-gradient option**, having been given both with
+costs. What is built and committed is the half that needs no GPU:
+
+| | |
+|---|---|
+| ✅ | **Radiance `.hdr` decode and encode** — `amadeo-image`. An ordinary `.png` clips the sun and the sky to the same white; RGBE holds about `10^38` in four bytes |
+| ✅ | **Equirectangular → cube map** — `amadeo_render::Cubemap::from_equirectangular` |
+| ✅ | **Diffuse irradiance convolution** — `irradiance`, exhaustive rather than sampled, so it has no noise at all |
+| ✅ | **Specular prefilter chain** — `prefilter_specular`, GGX importance sampling, Karis's split-sum |
+| | **GPU cube textures** — the backend has only 2D textures today. Needs `Rgba16Float` (which is filterable in the base feature set where `Rgba32Float` is not, so an f32→f16 conversion is needed), a cube view, and a sampler |
+| | **Bind group 3** — the last free slot, which is the right home: 0, 1 and 2 are the view, the shadow map and the material |
+| | **The shader's ambient half** — irradiance for diffuse, the prefiltered chain plus an analytic environment BRDF for specular. Karis's `EnvBRDFApprox` avoids needing a lookup texture |
+| | **Where an environment map is named** — Q28's second half: on the `Environment` asset, or on a light? |
+| | **A sky to look at** — the Scarp's "sky" is currently just the clear colour. A generated `.hdr`, the way `bin/turf` and `bin/pix` already generate their textures |
+| | **Tonemapping on the demos** — decided, not yet done: the engine default stays a no-op, the two demos get an environment that tonemaps |
+
+**Two things settled while building it, both following existing precedent.** Prefiltering runs on the
+**CPU at load** — invariant I7 requires headless capability and a GPU-only prefilter could not run in
+a headless test; `mip_chain` is the precedent. And the transcendentals it uses are covered by
+ADR 0044's existing carve-out: banned in anything deciding gameplay state, fine at load when the
+output is pixels.
+
+**One finding worth keeping.** A test asserting "a rough surface is blurrier than a mirror" failed for
+a *correct* reason: this prefilter assumes a head-on viewer, so it gathers only from the hemisphere
+around the normal, and a downward-facing surface therefore sees nothing of the sky at any roughness.
+That is the split-sum approximation behaving as designed, not a bug. The test now measures the blur
+where the blur actually is.
+
+---
+
+**Why it is the one that matters:** it replaces the hardcoded `0.12` ambient (**Q28**). ADR 0045 called it "probably the single biggest step
 towards looking like a real engine", and building PBR has made that *more* true rather than less.
 
 **Three things now converge on it, which is why it is unambiguously next:**
