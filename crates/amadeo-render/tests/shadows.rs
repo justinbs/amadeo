@@ -150,6 +150,84 @@ fn the_shadow_box_covers_the_distance_it_was_asked_for() {
 }
 
 #[test]
+fn cascade_radii_grow_and_end_exactly_at_the_shadow_distance() {
+    // The two properties every split scheme must have whatever its blend: each cascade reaches
+    // further than the last, and the furthest covers exactly what the light asked for. A scheme that
+    // overshot would draw shadows past where anything samples them; one that undershot would leave a
+    // ring of unshadowed ground inside the declared distance.
+    for blend in [0.0, 0.25, 0.5, 0.75, 1.0] {
+        let radii = amadeo_render::cascade_radii(80.0, blend);
+
+        for pair in radii.windows(2) {
+            assert!(
+                pair[1] > pair[0],
+                "cascades must grow outward, got {radii:?} at blend {blend}"
+            );
+        }
+        assert!(
+            (radii[radii.len() - 1] - 80.0).abs() < 1e-3,
+            "the last cascade must land on the shadow distance, got {radii:?} at blend {blend}"
+        );
+    }
+}
+
+#[test]
+fn the_blend_moves_between_even_slices_and_perspective_ones() {
+    // **What the blend is for**, and the reason neither extreme is the answer.
+    //
+    // Uniform splits cut distance evenly, which starves the near cascade — where detail is actually
+    // looked at. Logarithmic splits match how perspective compresses distance and pull every cascade
+    // in tight, which starves the far one. The blend interpolates, so this checks it really does move
+    // between the two rather than favouring one and ignoring the parameter.
+    let uniform = amadeo_render::cascade_radii(80.0, 0.0);
+    let middle = amadeo_render::cascade_radii(80.0, 0.5);
+    let logarithmic = amadeo_render::cascade_radii(80.0, 1.0);
+
+    // The first cascade is where the schemes disagree most.
+    assert!(
+        logarithmic[0] < uniform[0],
+        "logarithmic splits pull the near cascade in tighter: {logarithmic:?} against {uniform:?}"
+    );
+    assert!(
+        middle[0] > logarithmic[0] && middle[0] < uniform[0],
+        "a half blend must land between the two, got {middle:?}"
+    );
+
+    // Uniform means literally even, which is the one value that can be checked against arithmetic
+    // rather than against the other scheme.
+    let step = uniform[1] - uniform[0];
+    assert!(
+        (uniform[2] - uniform[1] - step).abs() < 1e-3,
+        "blend 0.0 must give even slices, got {uniform:?}"
+    );
+}
+
+#[test]
+fn every_cascade_snaps_to_its_own_texel_grid_rather_than_a_shared_one() {
+    // **The property most likely to be got wrong when this reaches the GPU**, and the reason
+    // `fit_cascade` takes a radius rather than sharing one snap.
+    //
+    // The grid a box snaps to is one shadow-map texel wide, and a cascade covering a quarter of the
+    // distance at the same resolution has texels a quarter the size. Snapping them all to the largest
+    // cascade's grid would compile, look right in a still, and leave the near cascades crawling as
+    // the camera moves — which is the exact artefact snapping exists to remove.
+    //
+    // Checked through the radii rather than the matrices: a cascade's texel size is its radius over
+    // its resolution, so four different radii is four different grids by construction.
+    let radii = amadeo_render::cascade_radii(80.0, 0.5);
+    let resolution = 2048.0;
+
+    let texels: Vec<f32> = radii.iter().map(|r| 2.0 * r / resolution).collect();
+    for pair in texels.windows(2) {
+        assert!(
+            pair[1] > pair[0] * 1.2,
+            "each cascade's texels must be meaningfully larger than the last, got {texels:?} — \
+             if these were equal the cascades would all be covering the same ground"
+        );
+    }
+}
+
+#[test]
 fn a_shadow_box_moves_in_whole_texels() {
     // **The anti-shimmer property, and the reason the snap grid is anchored at the world origin
     // rather than at the camera.**

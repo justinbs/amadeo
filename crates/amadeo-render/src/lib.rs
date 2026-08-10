@@ -545,8 +545,83 @@ fn fit_shadow(
     if light.shadows == ShadowMode::Off {
         return None;
     }
+    fit_cascade(light, direction, camera, light.shadow_distance)
+}
 
-    let half = light.shadow_distance.max(0.1);
+/// How many shadow maps a cascaded light uses.
+///
+/// **Four, fixed rather than authored.** Four is what nearly every engine ships. Making it a field
+/// would mean a variable-length texture array and a variable loop bound in the shader, to buy
+/// flexibility nothing has asked for — and adding a `cascade_count` defaulting to four later changes
+/// no existing file, so this is not a door being closed.
+pub const CASCADE_COUNT: usize = 4;
+
+/// Where each cascade's coverage ends, nearest first, as radii around the camera.
+///
+/// # The two obvious schemes are both wrong, and the fix is to mix them
+///
+/// **Uniform** splits — equal slices — give the distant cascade a sensible share and starve the near
+/// one, which is where detail is actually looked at. **Logarithmic** splits do the opposite: they
+/// match how perspective actually compresses distance, and spend so little on the far cascade that it
+/// covers almost nothing useful.
+///
+/// The standard answer, from NVIDIA's parallel-split shadow map work, is to compute both and
+/// interpolate between them. `blend` is the weight, conventionally called lambda: `0.0` is purely
+/// uniform, `1.0` purely logarithmic, and around `0.5` is the usual choice.
+///
+/// # Concentric, rather than fitted to the camera's frustum
+///
+/// Each cascade is a box **centred on the camera**, like the single-map case, just smaller for the
+/// nearer ones. A tighter implementation fits each cascade to its slice of the view frustum, which
+/// wastes less resolution — a concentric box covers the space *behind* the viewer too, which is
+/// roughly half of it.
+///
+/// Concentric is chosen for the same reason ADR 0043 chose concentric boxes over an octree for chunk
+/// residency: it is predictable, it needs no fitting logic, and it does not change when the camera
+/// turns. A shadow scheme that reshapes itself as the viewer looks around is one where edges shift
+/// for a reason nobody can see. The wasted resolution is a real cost and is the first thing to
+/// revisit if cascades are not sharp enough.
+#[must_use]
+pub fn cascade_radii(shadow_distance: f32, blend: f32) -> [f32; CASCADE_COUNT] {
+    // The near distance the splits are measured from. Not the camera's own near plane, which is
+    // centimetres — a cascade that small would cover a few square metres and waste a whole map.
+    const NEAR: f32 = 1.0;
+
+    let far = shadow_distance.max(NEAR * 2.0);
+    let blend = blend.clamp(0.0, 1.0);
+    let mut radii = [0.0f32; CASCADE_COUNT];
+
+    for (index, radius) in radii.iter_mut().enumerate() {
+        // Fraction of the way through the cascades, 1-based: the last one always lands exactly on
+        // `far`, whatever the blend does in between.
+        let fraction = (index + 1) as f32 / CASCADE_COUNT as f32;
+
+        // Even slices of distance.
+        let uniform = NEAR + (far - NEAR) * fraction;
+        // Even slices of *ratio*, which is what perspective actually compresses by. `powf` is a
+        // transcendental and is fine here for ADR 0044's usual reason: this decides where a shadow
+        // map goes, which is pixels, not where the ground is.
+        let logarithmic = NEAR * (far / NEAR).powf(fraction);
+
+        *radius = uniform + (logarithmic - uniform) * blend;
+    }
+    radii
+}
+
+/// Fits one shadow box of a given radius, snapped to its own texel grid.
+///
+/// Split out of [`fit_shadow`] because cascades need it four times at four radii. **The snapping has
+/// to be per cascade and cannot be shared**: the grid it snaps to is one shadow-map texel wide, and a
+/// cascade covering a quarter of the distance at the same resolution has texels a quarter the size.
+/// Snapping every cascade to the largest one's grid would leave the near cascades crawling, which is
+/// the exact artefact the snapping exists to remove.
+fn fit_cascade(
+    light: &DirectionalLight,
+    direction: [f32; 3],
+    camera: [f32; 3],
+    radius: f32,
+) -> Option<ShadowData> {
+    let half = radius.max(0.1);
     let resolution = light.shadow_resolution.clamp(16, 8192);
 
     // How far back along the light's own direction the light "stands". Enough that anything within
