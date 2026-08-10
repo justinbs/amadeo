@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-09 (end of session 13)
+**Last updated:** 2026-08-10 (session 14)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE — all four exit gates met.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
@@ -24,14 +24,32 @@ always on), **0041** (parallelism is deterministic by construction or absent —
    8.3 µs per simulation tick, 125 µs of CPU-side frame preparation, and 2.7% of a frame at gate 3's
    200-body complexity.
 
-## ⚠️ Start here — M2.5 is complete
+## ⚠️ Start here — M2.5 is complete, and M3's renderer work is two items in
 
-**All four exit gates are met.** A generated world you walk on and dig into (`cargo run -p scarp`),
-reproducing at every thread count, drawing only what can be seen, at 61 µs of GPU time.
+**M2.5's four exit gates are all met.** A generated world you walk on and dig into
+(`cargo run -p scarp`), reproducing at every thread count, drawing only what can be seen, at 61 µs of
+GPU time.
 
-The detail below is session 13's, and the findings are worth reading before touching the renderer or
-the terrain crate — five engine defects, one sharp edge that is still open (Q30), and the graphics
-direction settled in ADR 0045.
+**Session 14 landed normal mapping — ADR 0047**, the second item on ADR 0045's list. Three things
+from it are worth knowing before touching the renderer:
+
+1. **A mesh now has three independent properties, not two.** `docs/07` paired *normals* and *winding*
+   after session 13's inside-out mesher; **tangents** are the third, and they fail the same silent
+   way. The nastiest case passes every validity check: an orthonormal frame rotated 90° is perfectly
+   valid and slides the normal map sideways across the surface. Any new `MeshData` producer needs all
+   three checks.
+2. **`PixelFormat` now distinguishes colour from data**, and a normal map is data. A `.png` cannot
+   say which it holds — the bytes are identical — so the `.ama-meta` sidecar declares it with
+   `color_space = "linear"`. **Forgetting it is silent and subtly wrong (Q31)**, which is the sharpest
+   edge this feature ships with.
+3. **Terrain is the one surface that did not really get normal mapping.** Its planar UV projection
+   gives a vertical face zero UV area, so those tangents fall back to an arbitrary axis — valid rather
+   than `NaN`, and wrong rather than right. Triplanar mapping is the fix for that *and* for the UV
+   stretching that shares its cause, and it needs no vertex tangents at all.
+
+The session 13 detail below is still worth reading before touching the renderer or the terrain
+crate — five engine defects, one sharp edge that is still open (Q30), and the graphics direction
+settled in ADR 0045.
 
 ## Where M2.5 got to
 
@@ -132,10 +150,60 @@ trigger for going native: a **console** target.
 | | |
 |---|---|
 | ~~Mipmaps~~ | ✅ **Done — M3's first renderer item.** `amadeo_image::mip_chain`, averaged in linear light, with 16× anisotropic filtering on surfaces and sprites pinned to level 0. The terrain tile went from 8 m to **4 m** as a direct result |
-| **Triplanar mapping** | Terrain UVs are a planar projection from world x/z, so anything steep stretches. The usual fix samples on all three axes and blends by the normal — and it wants a `Material` field to opt in, which is a schema change to every `.material` file |
+| ~~Normal mapping~~ | ✅ **Done — M3's second (ADR 0047).** Tangents read from glTF when the file has them, generated at load when it does not. **Terrain is the exception and still needs triplanar**, below |
+| **Triplanar mapping** | Terrain UVs are a planar projection from world x/z, so anything steep stretches — *and* has zero UV area, so its tangent frame falls back to an arbitrary axis. One fix for both. Wants a `Material` field to opt in, which is another schema change to every `.material` file (**Q32**) |
 | **Ambient / sky light** | Still the hardcoded `0.12` constant (**Q28**). No ambient occlusion, no bounce, no sky colour. Flat lighting is the other half of why a scene reads as a prototype, and no amount of texture fixes it |
 
 The visual gap is now overwhelmingly **shading**, not geometry.
+
+### Session 14: normal mapping, and the dependency it did not need — ADR 0047
+
+A normal map stores which way a surface leans, per pixel, so a flat wall lights as though it had
+grooves in it. ADR 0045 ranked it second by visual return, after mipmaps.
+
+**The decision was about tangents, and it turned on something the codebase was throwing away.** A
+normal map's directions are relative to *the surface*, which is what lets one image tile across a
+curved wall — but converting one to a world direction needs to know which way "left" points at each
+vertex. The normal does not say: it fixes which way is *out* and leaves the surface free to spin
+around it. That missing piece is the tangent.
+
+The industry standard is **MikkTSpace**, and it matters for a concrete reason rather than a purist
+one: a normal map is *baked* against a particular frame, and a renderer computing a different one
+lights every bump slightly wrong. The reference implementation is ~1900 lines of dense C. Bevy vendors
+a Rust port and has since added a **faster approximate path beside it**, because the real one is slow
+enough to be a filed bug.
+
+**Amadeo needed neither, because glTF can carry `TANGENT` directly and `amadeo-gltf` was discarding
+it.** The case where MikkTSpace correctness actually matters is imported art with a baked map — which
+is exactly the case where *the file already holds the right answer*. So: read the file's tangents when
+it has them, generate a Gram-Schmidt frame when it does not, and take no dependency. Generation then
+only ever runs on procedural shapes, whose UVs are flat and axis-aligned and where the two algorithms
+agree exactly.
+
+**The test that matters is not the obvious one.** A tangent frame can be wrong in three ways and only
+the first is loud: zero-length gives a `NaN` and a black surface; not-perpendicular shears the frame;
+and **orthonormal but rotated 90° passes every validity check** and slides the map sideways across the
+surface. So `a_tangent_points_the_way_the_texture_grows` compares against a direction worked out by
+hand — a plane's `u` axis runs along +x, so its tangent must too — and was watched failing against a
+deliberately flipped tangent.
+
+**Verified on a real GPU, not only headlessly**, which is session 13's lesson applied rather than
+recited: a surface leaning 45° off the light is measurably darker than one facing it square, and
+`normal_strength 0.0` is byte-identical to naming no map at all — which is what attributes the
+difference to *the map* rather than to anything else the textured path does. Both games were also
+captured and looked at, through a vertex layout change that touched every mesh producer.
+
+**Two supporting decisions, both cheap and both in the ADR.** `PixelFormat` gained `Rgba8Unorm`,
+because a normal map's bytes are directions rather than light and the sRGB curve bends every one of
+them — declared in the sidecar, which needed **no format change** because its settings were already a
+free-form map. This is precisely the extension ADR 0026 described before it existed, and it cost one
+variant and one match arm. And bind group 2 became a *combination* of textures rather than one
+texture: the obvious alternative, a fourth bind group, works today and dead-ends immediately, since
+wgpu guarantees four and three are spoken for.
+
+**Two things it ships knowing about**, both now open questions rather than notes: a sidecar that
+forgets `color_space` is silently wrong and nothing warns (**Q31**), and every field added to
+`Material` rewrites every `.material` file (**Q32**).
 
 ### And one sharp edge that is NOT fixed — Q30
 
@@ -268,12 +336,14 @@ Q3, Q4, Q7, Q10, Q13, Q14, Q16, Q17, Q19, Q21 and Q22 are all closed.
 **Q9 closed in session 11 — ADR 0041 — which was the oldest one open**, raised in session 2 and
 answered the way it asked to be: before the first background task rather than after.
 
-**Nothing is blocked.** Seven questions are open and every one of them is a *decision waiting for its
+**Nothing is blocked.** Nine questions are open and every one of them is a *decision waiting for its
 first real case*, which is the state this project deliberately keeps them in:
 
 | | | |
 |---|---|---|
 | ~~Q29~~ | — | **Closed in session 13 by ADR 0046.** Terrain edits are a hashed resource; the streamer is a cache of them, and a dug world saves and reloads dug |
+| **Q31** | P2 | **New.** Nothing warns when a normal map's sidecar forgets `color_space = "linear"`. Silent, subtly wrong, and it becomes blocking the moment authored art ships |
+| **Q32** | P2 | **New.** Every field added to `Material` rewrites every `.material` file. Five files today; PBR and IBL want four or five more slots |
 | **Q30** | P2 | **No way to move a physics body from outside the tick.** Writing a `Transform` is silently reverted — `step_physics` prefers `GlobalTransform` and propagation runs last. Blocks respawns and fast travel |
 | **Q25** | P1 | LOD across chunks — **better posed** by ADR 0043 and still open: may a chunk's mesh depend on its neighbours' resolutions? |
 | **Q23** | P1 | One environment per frame, when a world may hold several cameras |
@@ -284,11 +354,13 @@ first real case*, which is the state this project deliberately keeps them in:
 | **Q28** | P2 | Ambient light is a hardcoded constant |
 | **Q6, Q8, Q11, Q18, Q20** | P2 | Editor process model, entity relations, netcode introspection, unreadable `ActionId`, gate 4's stronger test |
 
-**Remote:** `origin → https://github.com/justinbs/amadeo.git` (private). Green on every job.
+**Remote:** `origin → https://github.com/justinbs/amadeo.git`. **The repository is public now**, so
+Actions minutes are free and unlimited — the Windows→Ubuntu cost optimisation discussed in session 13
+is no longer needed and should not be built. Green on every job.
 
-**Session 13 pushed as it went, in eleven commits.** At the very end one was still local
-(`6d6993f`, mipmaps) and its CI result was not seen — always check with
-`git log --oneline origin/main..HEAD` rather than trusting this number, for the reason below.
+**Session 14 opened by checking CI and it was clean:** both of session 13's trailing commits
+(`6d6993f` mipmaps, `cea8ae4` docs) had landed, `origin/main..HEAD` was empty after a fetch, and the
+last five runs were 5/5 green on both platforms.
 
 > **Session 13 opened by checking CI and it was clean:** `cc32d7a` went 5/5 green on both platforms
 > and `origin/main..HEAD` was empty, so session 12's work is genuinely on the remote. The habit below
@@ -332,7 +404,7 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-gltf`, `amadeo-jobs`, `amadeo-noise`, `amadeo-voxel`, `amadeo-terrain`,
 `amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
 reserved since session 1 — and `games/quad-demo`, `games/vault`, `games/atrium` and `games/scarp`.
-**1192 tests passing with `--all-features`** (16 of them GPU capture tests, 7 rapier, 9 character,
+**1200 tests passing with `--all-features`** (18 of them GPU capture tests, 7 rapier, 9 character,
 7 shadow fitting, 12 the Atrium, 15 the Scarp, 9 deterministic noise, 7 frustum culling, 6 mip
 chains, 13 glTF, 5 profiling, 8 jobs, 6 parallel iteration, 4 parallel loading, 10 surface nets,
 13 chunk residency, 10 the terrain source, 9 static trimesh colliders, 18 the terrain streamer,
@@ -553,13 +625,21 @@ the only evidence available was a push.
 ## The single most important thing to do next
 
 **M2.5 is complete, and so is Q29.** A dug world now saves and reloads dug (ADR 0046). **M3 has
-started**, with the renderer work ADR 0045 ordered — **mipmaps and anisotropic filtering are done**.
+started**, with the renderer work ADR 0045 ordered — **mipmaps and anisotropic filtering are done**,
+and **normal mapping landed in session 14 (ADR 0047)**.
 
-**Next on that list:** **normal mapping** (the largest perceived-detail gain per unit of cost in
-real-time graphics), then **metallic-roughness PBR** — `Material` has carried `metallic` and
+**Next on that list:** **metallic-roughness PBR** — `Material` has carried `metallic` and
 `roughness` since ADR 0033 and the shader reads neither, so every surface still shades as coloured
-paint — then **sky/image-based lighting**, which replaces the hardcoded `0.12` ambient (**Q28**) and
-is probably the single biggest step towards looking like a real engine, then **shadow cascades**.
+paint. It is the natural next step because the sockets are already open: bind group 2 is now keyed on
+a *combination* of textures rather than one, precisely so a metallic-roughness map is a binding and a
+shader line rather than a rework. Then **sky/image-based lighting**, which replaces the hardcoded
+`0.12` ambient (**Q28**) and is probably the single biggest step towards looking like a real engine,
+then **shadow cascades**.
+
+**Worth doing alongside PBR rather than after it:** **Q32**, because PBR is the change that makes it
+hurt. Every field added to `Material` rewrites every `.material` file, since reflection requires all
+fields to be present. Normal mapping added two and touched five files, which was nothing; PBR plus
+image-based lighting want four or five more slots, and each one does it again.
 
 That is where "it looks like a prototype" stops being true, and M3's exit gate — a dark corridor with
 a moving flashlight that reads as genuinely atmospheric — was always the renderer's real exam.
