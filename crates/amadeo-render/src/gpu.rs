@@ -128,6 +128,20 @@ struct GpuMeshView {
     /// direction, so Lambert never had to know where the viewer was. A **specular** highlight is a
     /// reflection, and where a reflection lands depends entirely on where you are standing.
     eye: [f32; 4],
+    /// Three vectors that turn a screen position into a world direction, for drawing the sky.
+    ///
+    /// `direction = sky_right * ndc.x + sky_up * ndc.y + sky_forward`, then normalised. The first two
+    /// already carry the field of view and the aspect ratio, so the shader needs no trigonometry and
+    /// no matrix.
+    ///
+    /// **A basis rather than an inverse view-projection matrix**, which is the usual way to do this.
+    /// `Mat4` has `inverse_rigid` — an inverse for transforms that only rotate and translate — and a
+    /// projection is neither, so a general inverse would have had to be written and tested for this
+    /// one caller. Three vectors computed where the projection is already being built cost nothing
+    /// and need no new maths.
+    sky_right: [f32; 4],
+    sky_up: [f32; 4],
+    sky_forward: [f32; 4],
 }
 
 /// One uploaded mesh's buffers.
@@ -452,6 +466,19 @@ struct GpuEnvironment {
     bind_group: wgpu::BindGroup,
 }
 
+/// One axis of a transform's basis, scaled — column `axis` of the matrix, times `by`.
+///
+/// A world transform's first three columns are the directions its local x, y and z point in the
+/// world, which is exactly what turning a screen position into a view ray needs.
+fn scaled_axis(matrix: &amadeo_transform::Mat4, axis: usize, by: f32) -> [f32; 4] {
+    [
+        matrix.columns[axis][0] * by,
+        matrix.columns[axis][1] * by,
+        matrix.columns[axis][2] * by,
+        0.0,
+    ]
+}
+
 /// Uploads a cube map, one mip level per entry, as a single cube texture.
 ///
 /// The levels are handed over sharpest first and each is half the previous, which is exactly a mip
@@ -745,6 +772,8 @@ pub struct WgpuBackend {
     mesh_pipeline: wgpu::RenderPipeline,
     /// Draws the scene from a light's point of view, depth only (ADR 0038).
     shadow_pipeline: wgpu::RenderPipeline,
+    /// Paints the environment behind everything else (ADR 0049). Shares `mesh_pipeline`'s layout.
+    sky_pipeline: wgpu::RenderPipeline,
     /// The layout a shadow map is bound through: `Depth` sample type, comparison sampler.
     shadow_layout: wgpu::BindGroupLayout,
     shadow_sampler: wgpu::Sampler,
@@ -1863,6 +1892,70 @@ impl WgpuBackend {
             cache: None,
         });
 
+        // The sky, drawn behind everything (ADR 0049).
+        //
+        // **Its own layout with two groups rather than the mesh pipeline's four.** Sharing that one
+        // looked tidier — the bind groups would already be set — but the sky has to draw for a
+        // camera with *no meshes at all*, where nothing has bound the shadow map or a material. Two
+        // groups is what this shader actually reads, so it is also what it declares.
+        let sky_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("amadeo sky shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("sky.wgsl").into()),
+        });
+        let sky_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("amadeo sky pipeline layout"),
+            bind_group_layouts: &[Some(&mesh_view_layout), Some(&environment_layout)],
+            immediate_size: 0,
+        });
+        let sky_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("amadeo sky pipeline"),
+            layout: Some(&sky_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &sky_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                // No vertex buffers at all: three vertices derived from the index.
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &sky_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: SCENE_FORMAT,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                // **No culling.** The one triangle covers the screen and overhangs it, and which way
+                // it happens to wind is an artefact of deriving it from an index rather than
+                // something meaningful. Culling it would be a coin flip on an invisible screen.
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                // **Writes nothing.** The sky is infinitely far away; recording a depth for it would
+                // occlude anything drawn afterwards.
+                depth_write_enabled: Some(false),
+                // `LessEqual` rather than the geometry's `Less`, and the difference is the whole
+                // trick: the sky sits at exactly the far plane, which is exactly the cleared value,
+                // so `Less` would reject every one of its fragments and draw nothing at all.
+                depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
         let mesh_instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("amadeo mesh instance buffer"),
             size: (size_of::<GpuMeshInstance>() * INITIAL_INSTANCE_CAPACITY) as u64,
@@ -1968,6 +2061,7 @@ impl WgpuBackend {
             present_pipeline,
             mesh_pipeline,
             shadow_pipeline,
+            sky_pipeline,
             shadow_layout,
             shadow_sampler,
             shadow_placeholder_bind_group,
@@ -2837,6 +2931,11 @@ impl RenderBackend for WgpuBackend {
             let projection = amadeo_transform::Mat4::perspective(fov, aspect, near, far);
             let view_projection = projection.mul(&camera_view);
 
+            // How far the view opens out at one unit ahead — the tangent of half the vertical field
+            // of view. Multiplying the camera's right and up axes by this is what makes a screen
+            // position into a direction, and it is why the sky basis needs no trigonometry.
+            let half_extent = (fov.to_radians() * 0.5).tan();
+
             // The first light, or none. Several directional lights need either a loop in the shader
             // or a pass each, and picking between those before anything wants two is guessing.
             let light = view.lights.first().copied().unwrap_or(crate::LightData {
@@ -2881,6 +2980,13 @@ impl RenderBackend for WgpuBackend {
                     view.eye_matrix.columns[3][2],
                     0.0,
                 ],
+                sky_right: scaled_axis(&view.eye_matrix, 0, half_extent * aspect),
+                sky_up: scaled_axis(&view.eye_matrix, 1, half_extent),
+                // **Negated**, because a camera looks along its own *negative* Z — the same
+                // convention `Camera` and `DirectionalLight` both use (ADR 0018). Taking column two
+                // as-is points the sky out of the back of the camera, which draws a perfectly
+                // plausible sky facing exactly the wrong way.
+                sky_forward: scaled_axis(&view.eye_matrix, 2, -1.0),
             };
             let at = index * self.mesh_view_stride as usize;
             mesh_views[at..at + size_of::<GpuMeshView>()]
@@ -3278,6 +3384,28 @@ impl RenderBackend for WgpuBackend {
                             );
                             pass.draw_indexed(0..mesh.index_count, 0, range.clone());
                         }
+                    }
+
+                    // The sky, behind everything drawn above (ADR 0049).
+                    //
+                    // **Only when this camera actually names one**, and that condition is doing real
+                    // work: a camera with no sky would otherwise have the neutral cube painted over
+                    // its clear colour, turning every existing 2D game's background into flat dark
+                    // grey. Naming no sky means "do not draw one", not "draw a default one".
+                    //
+                    // Outside the mesh block on purpose. A camera looking at an empty world still
+                    // has a sky to show, and nesting this inside `if !draws.is_empty()` would make
+                    // the horizon vanish the moment nothing was in front of it.
+                    if let Some(sky) = self.environments.get(view_data.environment.sky.as_str()) {
+                        pass.set_pipeline(&self.sky_pipeline);
+                        pass.set_bind_group(
+                            0,
+                            &self.mesh_view_bind_group,
+                            &[index as u32 * self.mesh_view_stride as u32],
+                        );
+                        pass.set_bind_group(1, &sky.bind_group, &[]);
+                        // Three vertices, no buffer — see `sky.wgsl`.
+                        pass.draw(0..3, 0..1);
                     }
 
                     let camera_offset = index as u32 * self.camera_stride as u32;
