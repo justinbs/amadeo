@@ -51,6 +51,10 @@ path = "src/main.rs"
 name = "turf"
 path = "src/bin/turf.rs"
 
+[[bin]]
+name = "sky"
+path = "src/bin/sky.rs"
+
 [dev-dependencies]
 # The save/reload round trip for terrain edits (Q29). A dev-dependency of the *game* rather than of
 # amadeo-terrain, because amadeo-snapshot sits above that crate and depending on it from there would

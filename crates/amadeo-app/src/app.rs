@@ -747,10 +747,26 @@ impl App {
         if !self.world.has_service::<EnvironmentCache>() {
             self.world.insert_service(EnvironmentCache::new());
         }
+        let names_a_sky = found.iter().any(|(_, look)| !look.sky.is_empty());
         if let Some(cache) = self.world.service_mut::<EnvironmentCache>() {
             for (id, environment) in found {
                 cache.insert(id, environment);
             }
+        }
+
+        // And the cache that turns a named sky into the light it casts (ADR 0049). Installed here,
+        // beside the looks, because a look is the only thing that names a sky — so if one does, the
+        // service it needs is present, and if none does, nothing is carried.
+        //
+        // **Automatic rather than a line in each game's setup, and that is a deliberate departure
+        // from how `TextureCache` is installed.** Every game inserts that one by hand, which is a
+        // step that can be forgotten — and it was: image-based lighting was built, wired and tested
+        // and then rendered *nothing* on the Scarp, because no service existed to prefilter into and
+        // the frame quietly fell back to the neutral sky. Nothing failed and nothing said so. A
+        // capability that goes silently inert when a setup line is missing is the shape of defect
+        // this project keeps rediscovering, so this one installs itself.
+        if names_a_sky && !self.world.has_service::<amadeo_render::SkyCache>() {
+            self.world.insert_service(amadeo_render::SkyCache::new());
         }
         self
     }

@@ -72,6 +72,39 @@ struct MeshView {
 // one is unchanged. Data rather than colour, so it wants `color_space = "linear"` in its sidecar.
 @group(2) @binding(3) var metallic_roughness_map: texture_2d<f32>;
 
+// The environment this view is lit by (ADR 0049) -- what replaced the hardcoded ambient constant.
+//
+// Two cube maps rather than one, because diffuse and specular need the environment blurred in
+// completely different ways. `irradiance_map` holds, for each direction, the total light reaching a
+// matte surface facing it. `specular_map` holds the environment blurred once per roughness level,
+// as a mip chain, so a rough surface reads a blurrier level than a shiny one.
+//
+// Always bound: a camera naming no sky gets a uniform dim neutral, which is the same 0.12 that used
+// to be written into this shader. One pipeline, no branch, and a game that asks for nothing shades
+// as it always did.
+@group(3) @binding(0) var irradiance_map: texture_cube<f32>;
+@group(3) @binding(1) var specular_map: texture_cube<f32>;
+@group(3) @binding(2) var environment_sampler: sampler;
+
+// How many roughness levels `specular_map` holds. Must match `SPECULAR_LEVELS` in `ibl.rs`.
+const SPECULAR_LEVELS: f32 = 6.0;
+
+// How much of a reflection survives, and how white it goes, at this angle and roughness.
+//
+// The second half of Karis's split-sum: the first half is the prefiltered environment, this is the
+// BRDF integrated over it. Unreal stores this in a lookup texture; this is Lazarov's analytic fit of
+// the same function, which is four instructions and saves both a texture and a binding.
+//
+// Returns a scale and a bias to apply to the surface's reflectance -- `f0 * scale + bias` -- which is
+// what makes a surface go mirror-bright at a glancing angle regardless of what colour it is.
+fn environment_brdf(n_dot_v: f32, roughness: f32) -> vec2<f32> {
+    let c0 = vec4<f32>(-1.0, -0.0275, -0.572, 0.022);
+    let c1 = vec4<f32>(1.0, 0.0425, 1.04, -0.04);
+    let r = vec4<f32>(roughness, roughness, roughness, roughness) * c0 + c1;
+    let a004 = min(r.x * r.x, exp2(-9.28 * n_dot_v)) * r.x + r.y;
+    return vec2<f32>(-1.04, 1.04) * a004 + vec2<f32>(r.z, r.w);
+}
+
 // How much light reaches this point: 1.0 in full light, 0.0 fully shadowed.
 fn shadow_factor(world: vec3<f32>, lambert: f32) -> f32 {
     if view.shadow_params.z < 0.5 {
@@ -307,17 +340,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let n_dot_h = max(dot(normal, half_vector), 0.0);
     let v_dot_h = max(dot(towards_eye, half_vector), 0.0);
 
-    // A small ambient term so an unlit surface is dark rather than pure black. Not a lighting model
-    // -- it is a stand-in until there is something better.
+    // **This used to be `let ambient = 0.12;`** -- one number, added to every surface regardless of
+    // which way it faced or what was around it. That constant is why shadowed areas read as flat
+    // grey holes and why a metal rendered black, and replacing it is what ADR 0045 called the single
+    // biggest step towards looking like a real engine.
     //
-    // **Raised from 0.03 to 0.12 when shadows arrived**, and the reason is worth keeping. Before
-    // shadow maps, the only ambient-only pixels were faces turned away from the light, which are
-    // small and read fine as near-black. With shadows, whole areas of *floor* are ambient-only, and
-    // at 0.03 they came out as holes in the world rather than as shade. Real outdoor shadow is
-    // roughly a tenth to a fifth of direct sun, because the sky is also a light -- which is what
-    // this is standing in for, and what should eventually replace it as an authored sky colour on
-    // `Environment`.
-    let ambient = 0.12;
+    // Its history is worth keeping, because the number was not arbitrary: it started at 0.03 and was
+    // raised to 0.12 when shadow maps landed. Before shadows, the only ambient-only pixels were
+    // faces turned away from the light -- small, and fine as near-black. With shadows, whole areas of
+    // *floor* became ambient-only, and at 0.03 they read as holes in the world rather than as shade.
+    // The fix was to guess a brighter constant. The real answer was always that the sky is a light,
+    // which is what this now reads instead. A camera naming no sky still gets exactly 0.12, from a
+    // uniform neutral cube map, so nothing that relied on the old behaviour changed.
 
     // Shadow multiplies the *direct* light only. Ambient is deliberately left out of it: a surface
     // in shadow is still lit by the sky, and multiplying ambient too would make every shadow a
@@ -381,12 +415,37 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // actually decides whether a material reads correctly, is unaffected.
     let direct = (diffuse + specular) * view.light_colour.rgb * lambert * shadow * PI;
 
-    // Ambient reaches the **diffuse** only, and that is a real limitation rather than an oversight.
-    // A metal has no diffuse, so under ambient alone it goes black -- correctly, since a metal with
-    // nothing to reflect *is* black. What it should be reflecting is the sky, and there is no sky
-    // yet: that is image-based lighting, the next item on ADR 0045's list and what closes Q28.
-    // Until then, keep metallic near zero on anything that matters.
-    let ambient_light = diffuse_colour * ambient;
+    // **The ambient half, and it now has two parts where it used to have none.**
+    //
+    // Diffuse: the light a matte surface facing this way receives from the whole environment,
+    // already summed into `irradiance_map` at load. A surface under a blue sky picks up blue; one
+    // facing a red wall picks up red. This is what the flat constant could never do.
+    let ambient_diffuse = diffuse_colour
+        * textureSample(irradiance_map, environment_sampler, normal).rgb;
+
+    // Specular: what the surface *reflects*. The direction is the view mirrored about the normal,
+    // and the roughness picks how blurred a copy of the environment to read -- level 0 is a mirror,
+    // the last level is fully diffuse scattering.
+    //
+    // `textureSampleLevel` rather than `textureSample`, because the level is chosen from the
+    // material rather than from how far away the surface is. Letting the hardware pick would make a
+    // polished floor go rough in the distance.
+    let reflected = reflect(-towards_eye, normal);
+    let blurred = textureSampleLevel(
+        specular_map,
+        environment_sampler,
+        reflected,
+        roughness * (SPECULAR_LEVELS - 1.0)
+    ).rgb;
+
+    // How much of that reflection survives at this angle, and how white it goes. This is what makes
+    // a metal reflect its own colour while a dielectric's reflection turns white at a glancing
+    // angle -- and it is what stops a metal being black, because a metal's *only* ambient light is
+    // this term.
+    let env_brdf = environment_brdf(n_dot_v, roughness);
+    let ambient_specular = blurred * (f0 * env_brdf.x + vec3<f32>(env_brdf.y));
+
+    let ambient_light = ambient_diffuse + ambient_specular;
 
     // Emissive is added rather than multiplied, and is not affected by the light -- that is what
     // makes it emissive. Above 1.0 it pushes into the HDR range the post pass tonemaps (ADR 0034).

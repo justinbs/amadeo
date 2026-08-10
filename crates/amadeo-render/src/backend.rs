@@ -324,7 +324,7 @@ impl FrameData {
     #[must_use]
     pub fn look(&self) -> crate::Environment {
         self.primary()
-            .map_or_else(crate::Environment::default, |view| view.environment)
+            .map_or_else(crate::Environment::default, |view| view.environment.clone())
     }
 
     /// Every quad across every view.
@@ -457,6 +457,33 @@ pub trait RenderBackend: fmt::Debug + Send + Sync {
     /// the defect `docs/07` warns about, so the removal is made harmless instead.
     fn remove_mesh(&mut self, _id: &str) {}
 
+    /// Whether the backend already holds the prefiltered environment under `id`.
+    fn has_environment(&self, _id: &str) -> bool {
+        false
+    }
+
+    /// Hands the backend a prefiltered environment to hold under `id`, replacing any earlier one.
+    ///
+    /// The same push-rather-than-carry rule as textures and meshes, and more so: an
+    /// [`EnvironmentMap`](crate::EnvironmentMap) is six faces at seven resolutions and it never
+    /// changes once built, so putting it in a [`FrameData`] would copy megabytes sixty times a
+    /// second to draw the same sky.
+    ///
+    /// **Which environment a frame uses is named per view**, on [`Camera::environment`]'s
+    /// [`Environment::sky`](crate::Environment::sky) — so the same prefiltered map serves every
+    /// camera that names it.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError`] if the backend could not take it — typically out of video memory.
+    fn upload_environment(
+        &mut self,
+        _id: &str,
+        _environment: &crate::EnvironmentMap,
+    ) -> Result<(), RenderError> {
+        Ok(())
+    }
+
     /// Draws one frame.
     fn render(&mut self, frame: &FrameData) -> Result<(), RenderError>;
 
@@ -510,6 +537,9 @@ pub struct NullBackend {
     /// Geometry that reached the backend, by id — so a headless test can assert the *right* mesh
     /// arrived, which is a much sharper claim than "no error was returned".
     meshes: std::collections::BTreeMap<String, crate::MeshData>,
+    /// Ids of prefiltered environments that reached the backend. Just the ids: the pixels are
+    /// megabytes and a headless test's question is whether the *wiring* works, which an id answers.
+    environments: std::collections::BTreeSet<String>,
 }
 
 impl Default for NullBackend {
@@ -529,6 +559,7 @@ impl NullBackend {
             textures: std::collections::BTreeMap::new(),
             last_passes: Vec::new(),
             meshes: std::collections::BTreeMap::new(),
+            environments: std::collections::BTreeSet::new(),
         }
     }
 
@@ -638,6 +669,21 @@ impl RenderBackend for NullBackend {
     /// a leak invisible to every test that does not need a GPU — which is most of them.
     fn remove_mesh(&mut self, id: &str) {
         self.meshes.remove(id);
+    }
+
+    /// Recorded for real, like meshes above, so a headless test can assert that an environment
+    /// reached the backend at all — which is most of what can be checked without a GPU.
+    fn has_environment(&self, id: &str) -> bool {
+        self.environments.contains(id)
+    }
+
+    fn upload_environment(
+        &mut self,
+        id: &str,
+        _environment: &crate::EnvironmentMap,
+    ) -> Result<(), RenderError> {
+        self.environments.insert(id.to_string());
+        Ok(())
     }
 
     fn render(&mut self, frame: &FrameData) -> Result<(), RenderError> {

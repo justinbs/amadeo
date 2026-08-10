@@ -214,6 +214,121 @@ impl EnvironmentMap {
     }
 }
 
+/// The neutral sky a camera gets when it names no environment map.
+///
+/// **Not black, and the value is not arbitrary.** It replaces the `0.12` constant that stood in for
+/// ambient light before ADR 0049, and it is that same number — so a game that names no sky shades
+/// exactly as it did before image-based lighting existed. A black default would turn every shadowed
+/// surface into a hole and every metal into a silhouette, which is a worse picture than the constant
+/// it replaced.
+pub const DEFAULT_SKY: [f32; 4] = [0.12, 0.12, 0.12, 1.0];
+
+/// Prefiltered environments, by asset id.
+///
+/// An [`amadeo_ecs::Service`], like every other rendering cache: machinery, never simulation state,
+/// so `World::state_hash` excludes it by trait bound (ADR 0009).
+///
+/// # Why this is not just another `TextureCache` entry
+///
+/// A texture is decoded and handed to the GPU. An environment is decoded, projected onto a cube,
+/// convolved twice at seven resolutions, and *then* handed over — seconds of work rather than
+/// milliseconds, producing something that is not a `TextureData` at all. Sharing a cache would mean
+/// one of the two paths carrying a branch it never takes.
+#[derive(Debug, Default)]
+pub struct SkyCache {
+    /// Ordered, so listing it is reproducible (invariant I3).
+    prefiltered: std::collections::BTreeMap<String, EnvironmentMap>,
+    /// Ids that could not be turned into an environment, and why.
+    failures: std::collections::BTreeMap<String, String>,
+}
+
+impl amadeo_ecs::Service for SkyCache {}
+
+impl SkyCache {
+    /// An empty cache.
+    #[must_use]
+    pub fn new() -> SkyCache {
+        SkyCache::default()
+    }
+
+    /// Prefilters `id` if it is not already done, reading its bytes from `assets`.
+    ///
+    /// **Expensive on the first call for an id and free afterwards**, which is why the result is
+    /// remembered and why a failure is remembered too: retrying a broken file every frame would turn
+    /// one bad asset into a permanent frame-rate problem, and this is far more expensive to retry
+    /// than a texture decode.
+    ///
+    /// Safe to do lazily rather than at the load barrier for the same reason `TextureCache` is:
+    /// ADR 0021 forbids gameplay from observing whether an asset has loaded, so *when* this happens
+    /// cannot reach the simulation.
+    pub fn ensure(&mut self, id: &str, assets: &amadeo_assets::Assets) {
+        if id.is_empty() || self.prefiltered.contains_key(id) || self.failures.contains_key(id) {
+            return;
+        }
+
+        let Some(asset) = assets.store.get(id) else {
+            self.failures.insert(
+                id.to_string(),
+                format!(
+                    "no bytes are loaded for sky `{id}`, so a plain neutral sky is being used \
+                     instead. Check that a scene declares it in its `assets` block"
+                ),
+            );
+            return;
+        };
+
+        match amadeo_image::decode_hdr(&asset.bytes, id) {
+            Ok(image) => {
+                self.prefiltered
+                    .insert(id.to_string(), EnvironmentMap::from_equirectangular(&image));
+            }
+            Err(cause) => {
+                self.failures.insert(
+                    id.to_string(),
+                    format!(
+                        "sky `{id}` could not be decoded, so a plain neutral sky is being used \
+                         instead: {cause}"
+                    ),
+                );
+            }
+        }
+    }
+
+    /// Records an already-prefiltered environment under an id, without going near a file.
+    ///
+    /// The counterpart to [`TextureCache::insert_decoded`](crate::TextureCache::insert_decoded), and
+    /// for the same reason: a test that wants a known sky — plain blue, or bright on one side —
+    /// should say so directly rather than round-tripping through a generated `.hdr`, which would be
+    /// testing the decoder instead of the thing being asked about.
+    pub fn insert(&mut self, id: impl Into<String>, environment: EnvironmentMap) {
+        self.prefiltered.insert(id.into(), environment);
+    }
+
+    /// The prefiltered environment an id names, or `None` if it is not ready.
+    ///
+    /// `None` rather than a fallback, unlike [`TextureCache::get`](crate::TextureCache::get): the
+    /// caller here is the *upload* path, which should do nothing rather than upload a stand-in that
+    /// would then have to be replaced. What a camera actually falls back to is decided in the
+    /// backend, which binds [`DEFAULT_SKY`] when nothing is bound.
+    #[must_use]
+    pub fn get(&self, id: &str) -> Option<&EnvironmentMap> {
+        self.prefiltered.get(id)
+    }
+
+    /// Whether an id has been prefiltered.
+    #[must_use]
+    pub fn is_ready(&self, id: &str) -> bool {
+        self.prefiltered.contains_key(id)
+    }
+
+    /// Every id that failed, and why. In id order.
+    pub fn failures(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.failures
+            .iter()
+            .map(|(id, reason)| (id.as_str(), reason.as_str()))
+    }
+}
+
 /// Which face a direction lands on, and where on it, as `(face, u, v)` with u and v in `0..1`.
 fn direction_to_face(direction: [f32; 3]) -> (usize, f32, f32) {
     let [x, y, z] = direction;

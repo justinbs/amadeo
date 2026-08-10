@@ -4,6 +4,7 @@ version 1
 assets
   body
   scarp_look
+  scarp_sky
   turf
   turf_grass
   walker

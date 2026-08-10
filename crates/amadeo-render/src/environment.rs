@@ -175,7 +175,11 @@ impl Default for Vignette {
 ///       intensity 0.4
 ///       radius 0.6
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+// **No longer `Copy`**, since ADR 0049 gave this a `sky` asset id and a `String` cannot be. That is
+// a real if small cost: an `Environment` is now cloned where it used to be copied, once per view per
+// frame. Measured against the alternative — an interned id, or a fixed-size array of bytes — which
+// would buy back a handful of nanoseconds in exchange for a type nobody could read.
+#[derive(Debug, Clone, PartialEq, StableHash, Reflect)]
 pub struct Environment {
     /// Linear multiplier on everything the cameras drew, applied first.
     ///
@@ -191,6 +195,24 @@ pub struct Environment {
     pub grade: Grade,
     /// Edge darkening, applied last because it is about *where* a pixel is rather than its colour.
     pub vignette: Vignette,
+    /// Declared asset id of the `.hdr` environment map this look lights surfaces with (ADR 0049).
+    /// **Empty means none**, and falls back to a plain neutral sky.
+    ///
+    /// # Why the sky lives on the look rather than on a light
+    ///
+    /// **Q28 asked exactly this**, and the answer is that a `DirectionalLight` is a *direct* light —
+    /// one direction, one colour, casting a shadow — whereas an environment map is the **indirect**
+    /// half: everything arriving from everywhere else. They are different quantities that happen to
+    /// both be called lighting.
+    ///
+    /// `Environment` is already "what this camera sees the world as" and is already an asset with a
+    /// cache behind it (ADR 0034), so this needed no new asset kind, no new component and no new
+    /// loading path. A world may hold several lights; it has one look per view, which is what an
+    /// environment map is — one surrounding, not one source among several.
+    ///
+    /// Cheap to move if that turns out wrong: it is one field and the handful of `.environment`
+    /// files that name it.
+    pub sky: String,
 }
 
 impl Default for Environment {
@@ -207,6 +229,7 @@ impl Default for Environment {
             tonemap: Tonemap::default(),
             grade: Grade::default(),
             vignette: Vignette::default(),
+            sky: String::new(),
         }
     }
 }
@@ -281,7 +304,7 @@ impl EnvironmentCache {
         if id.is_empty() {
             return Environment::default();
         }
-        self.loaded.get(id).copied().unwrap_or_default()
+        self.loaded.get(id).cloned().unwrap_or_default()
     }
 
     /// Whether an id has actually been loaded.
@@ -361,6 +384,7 @@ mod tests {
                 intensity: 0.35,
                 ..Vignette::default()
             },
+            sky: "overcast_afternoon".to_string(),
         };
 
         let value = look.to_value();

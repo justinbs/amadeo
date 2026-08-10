@@ -724,29 +724,80 @@ fn a_metal_has_no_diffuse_colour() {
 }
 
 #[test]
-fn a_metal_is_black_under_ambient_because_there_is_no_sky_yet() {
-    // **The engine's current limitation, pinned deliberately so that fixing it breaks this test.**
+fn a_metal_reflects_the_sky_rather_than_going_black() {
+    // **This test used to be called `a_metal_is_black_under_ambient_because_there_is_no_sky_yet`,
+    // and it was written so that closing Q28 would break it.** Closing Q28 did not break it — it
+    // kept passing, for a reason that had stopped being true. Worth recording, because a test that
+    // outlives its rationale is worse than no test: it reads as evidence for something it no longer
+    // checks.
     //
-    // Ambient reaches the diffuse only, and a metal has no diffuse — so a metal lit by nothing but
-    // the ambient term is black. That is *correct*: a metal with nothing to reflect is black. What
-    // it should be reflecting is the sky, and there is no sky (**Q28**, image-based lighting, next
-    // on ADR 0045's list).
+    // What it now checks is the actual claim of image-based lighting: a metal has no diffuse, so
+    // *all* of its ambient light is reflection, and under a blue sky it must come out blue. Before
+    // ADR 0049 there was nothing to reflect and the answer was black.
     //
-    // Turned 130°, so the visible face points away from the light and only ambient reaches it.
-    let (Some(dielectric), Some(metal)) = (
-        a_surface([0.8, 0.8, 0.8, 1.0], 0.0, 0.5, 130.0),
-        a_surface([0.8, 0.8, 0.8, 1.0], 1.0, 0.5, 130.0),
-    ) else {
+    // Turned 130°, so the visible face points away from the sun and what reaches it is the
+    // environment rather than the direct light.
+    let sky = |colour: [f32; 4]| -> Option<TextureData> {
+        let mut world = a_lit_box([0.8, 0.8, 0.8, 1.0], [2.0, 2.0, 2.0]);
+        if let Some(materials) = world.service_mut::<MaterialCache>() {
+            materials.insert(
+                "paint",
+                Material {
+                    base_colour: [0.8, 0.8, 0.8, 1.0],
+                    metallic: 1.0,
+                    roughness: 0.25,
+                    ..Material::default()
+                },
+            );
+        }
+        let mut skies = amadeo_render::SkyCache::new();
+        skies.insert("overhead", amadeo_render::EnvironmentMap::solid(colour));
+        world.insert_service(skies);
+
+        let mut looks = EnvironmentCache::new();
+        looks.insert(
+            "outdoors",
+            Environment {
+                sky: "overhead".to_string(),
+                ..Environment::default()
+            },
+        );
+        world.insert_service(looks);
+
+        for entity in world.entities() {
+            if world.get::<Camera>(entity).is_some() {
+                let mut camera = Camera::perspective(60.0);
+                camera.environment = "outdoors".to_string();
+                world.insert(entity, camera);
+            }
+            if world.get::<Mesh>(entity).is_some() {
+                let mut transform = Transform::at(0.0, 0.0);
+                transform.rotation = [0.0, 130.0, 0.0];
+                world.insert(entity, transform);
+            }
+        }
+        capture(&mut world, 64, 64)
+    };
+
+    let (Some(blue), Some(red)) = (sky([0.1, 0.2, 1.2, 1.0]), sky([1.2, 0.2, 0.1, 1.0])) else {
         return;
     };
 
-    let painted = pixel_at(&dielectric, 32, 32);
-    let metallic = pixel_at(&metal, 32, 32);
+    let under_blue = pixel_at(&blue, 32, 32);
+    let under_red = pixel_at(&red, 32, 32);
 
     assert!(
-        metallic[0] < painted[0],
-        "with only ambient reaching it, a metal must be darker than a dielectric: \
-         metal {metallic:?} against dielectric {painted:?}"
+        under_blue[2] > under_blue[0],
+        "a metal under a blue sky must read blue, got {under_blue:?}"
+    );
+    assert!(
+        under_red[0] > under_red[2],
+        "and the same metal under a red sky must read red, got {under_red:?}"
+    );
+    // And it is genuinely lit rather than merely tinted-dark, which is what "no longer black" means.
+    assert!(
+        under_blue[2] > 60,
+        "the reflection should be visible, not a hint: {under_blue:?}"
     );
 }
 

@@ -11,6 +11,7 @@ entity look "Atrium"
       contrast 1.0
       saturation 1.0
       tint 1.0 1.0 1.0
+    sky ""
     tonemap AcesFilmic
     vignette
       intensity 0.25

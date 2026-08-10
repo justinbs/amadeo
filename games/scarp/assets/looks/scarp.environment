@@ -11,6 +11,7 @@ entity look "The Scarp"
       contrast 1.0
       saturation 1.05
       tint 1.0 1.0 0.98
+    sky "scarp_sky"
     tonemap AcesFilmic
     vignette
       intensity 0.2

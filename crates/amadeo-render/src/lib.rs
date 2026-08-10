@@ -66,8 +66,8 @@ pub use frustum::{Frustum, transformed_bounds};
 #[cfg(feature = "gpu")]
 pub use gpu::{AdapterDescription, WgpuBackend};
 pub use ibl::{
-    Cubemap, EnvironmentMap, FACE_COUNT, IRRADIANCE_SIZE, SPECULAR_LEVELS, SPECULAR_SIZE,
-    irradiance, prefilter_specular,
+    Cubemap, DEFAULT_SKY, EnvironmentMap, FACE_COUNT, IRRADIANCE_SIZE, SPECULAR_LEVELS,
+    SPECULAR_SIZE, SkyCache, irradiance, prefilter_specular,
 };
 pub use mesh::{
     BoxMesh, DirectionalLight, GltfPart, Material, MaterialCache, Mesh, MeshCache, MeshData,
@@ -261,6 +261,29 @@ impl Renderer {
                     }
                 }
                 Err(error) => self.last_error = Some(error),
+            }
+        }
+    }
+
+    /// Uploads the prefiltered sky each camera in this frame names, if the backend lacks it.
+    ///
+    /// No version and no placeholder tracking, unlike the two paths either side of this one. An
+    /// environment map is built once from a file that does not change, so "does the backend have
+    /// this id" is a complete question — where a texture can arrive late and geometry can be re-meshed
+    /// under a fixed id.
+    fn upload_frame_skies(&mut self, frame: &FrameData, cache: &SkyCache) {
+        for view in &frame.views {
+            let id = view.environment.sky.as_str();
+            if id.is_empty() || self.backend.has_environment(id) {
+                continue;
+            }
+            // Not ready yet is not an error: prefiltering happens on first sight and the frame that
+            // asked draws with the neutral fallback. ADR 0021 applied to a sky.
+            let Some(prefiltered) = cache.get(id) else {
+                continue;
+            };
+            if let Err(error) = self.backend.upload_environment(id, prefiltered) {
+                self.last_error = Some(error);
             }
         }
     }
@@ -838,6 +861,9 @@ pub fn render_quads(world: &mut World) {
     // Reads `Assets` and fills `TextureCache`; both are services, so neither can move the state
     // hash (ADR 0009).
     decode_frame_textures(world, &frame);
+    // And every sky, which is the same idea one step more expensive: decode, project onto a cube,
+    // and convolve twice. Cached, so this is free after the first frame that names an id.
+    prefilter_frame_skies(world, &frame);
 
     world.with_service_taken::<Renderer, ()>(|world, renderer| {
         // The cache is read *inside* the taken-service closure because the renderer and the cache
@@ -848,7 +874,32 @@ pub fn render_quads(world: &mut World) {
         if let Some(cache) = world.service::<MeshCache>() {
             renderer.upload_frame_meshes(&frame, cache);
         }
+        if let Some(cache) = world.service::<SkyCache>() {
+            renderer.upload_frame_skies(&frame, cache);
+        }
         renderer.render(&frame);
+    });
+}
+
+/// Prefilters every sky this frame's cameras name, if it is not prefiltered already.
+///
+/// Split out for the same reason [`decode_frame_textures`] is: it needs [`SkyCache`] mutably and
+/// `Assets` shared, which are two entries in one service map, so the cache is taken out of the world
+/// for the duration.
+///
+/// Does nothing if either service is absent — a headless test that installed no asset system still
+/// renders, with the neutral sky.
+fn prefilter_frame_skies(world: &mut World, frame: &FrameData) {
+    if !world.has_service::<SkyCache>() {
+        return;
+    }
+    world.with_service_taken::<SkyCache, ()>(|world, cache| {
+        let Some(assets) = world.service::<amadeo_assets::Assets>() else {
+            return;
+        };
+        for view in &frame.views {
+            cache.ensure(&view.environment.sky, assets);
+        }
     });
 }
 

@@ -436,6 +436,139 @@ struct GpuTexture {
     view: wgpu::TextureView,
 }
 
+/// A prefiltered environment as the GPU holds it: two cube textures and the bind group naming them.
+#[derive(Debug)]
+struct GpuEnvironment {
+    #[allow(
+        dead_code,
+        reason = "held to keep the cube textures alive; the bind group's views borrow from them"
+    )]
+    irradiance: wgpu::Texture,
+    #[allow(
+        dead_code,
+        reason = "held to keep the cube textures alive; the bind group's views borrow from them"
+    )]
+    specular: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
+}
+
+/// Uploads a cube map, one mip level per entry, as a single cube texture.
+///
+/// The levels are handed over sharpest first and each is half the previous, which is exactly a mip
+/// chain — so the specular chain and a mip chain are the same object, and the shader picks a
+/// roughness by asking for a mip level.
+fn upload_cubemap(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    label: &str,
+    levels: &[crate::Cubemap],
+) -> (wgpu::Texture, wgpu::TextureView) {
+    let base = levels[0].size;
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width: base,
+            height: base,
+            // **Six layers, not six textures.** A cube map is an array of six faces that the
+            // sampler addresses with a direction rather than a coordinate; the view below is what
+            // tells wgpu to treat the layers that way.
+            depth_or_array_layers: 6,
+        },
+        mip_level_count: levels.len() as u32,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba16Float,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+
+    for (level, cube) in levels.iter().enumerate() {
+        for (face, pixels) in cube.faces.iter().enumerate() {
+            // Converted a level at a time rather than all at once, so the scratch buffer stays the
+            // size of one face instead of the whole chain.
+            let mut halves: Vec<u16> = Vec::with_capacity(pixels.len() * 4);
+            for pixel in pixels {
+                for channel in pixel {
+                    halves.push(to_half(*channel));
+                }
+            }
+
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &texture,
+                    mip_level: level as u32,
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: 0,
+                        // The array layer, which for a cube texture is the face.
+                        z: face as u32,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                bytemuck::cast_slice(&halves),
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    // Four channels of two bytes each.
+                    bytes_per_row: Some(cube.size * 8),
+                    rows_per_image: Some(cube.size),
+                },
+                wgpu::Extent3d {
+                    width: cube.size,
+                    height: cube.size,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+    }
+
+    let view = texture.create_view(&wgpu::TextureViewDescriptor {
+        label: Some(label),
+        dimension: Some(wgpu::TextureViewDimension::Cube),
+        ..Default::default()
+    });
+    (texture, view)
+}
+
+/// Converts a 32-bit float to a 16-bit one, as the GPU stores an environment map.
+///
+/// # Why halve them at all
+///
+/// `Rgba32Float` is **not filterable** in wgpu's base feature set — sampling one with anything but
+/// nearest-neighbour needs the `FLOAT32_FILTERABLE` feature, which plenty of adapters do not
+/// advertise. `Rgba16Float` is filterable everywhere. An environment map is sampled with smooth
+/// interpolation across faces and between roughness levels, so it must be the one that filters, and
+/// half the memory is a bonus rather than the reason.
+///
+/// Half floats carry about three decimal digits and reach ~65504. Both are ample: this is lighting
+/// information about to be blurred and multiplied by a surface colour, not a coordinate.
+///
+/// Written out rather than taking the `half` crate, because it is twenty lines of bit arithmetic and
+/// this engine holds two non-`thiserror` dependencies in total.
+fn to_half(value: f32) -> u16 {
+    let bits = value.to_bits();
+    let sign = ((bits >> 16) & 0x8000) as u16;
+    // Exponent, rebiased from the 32-bit bias of 127 to the 16-bit bias of 15.
+    let mut exponent = ((bits >> 23) & 0xff) as i32 - 127 + 15;
+    let mantissa = bits & 0x007f_ffff;
+
+    if exponent >= 0x1f {
+        // Too big for a half, or already an infinity or a NaN. Saturating to infinity rather than
+        // wrapping to zero, which is what a naive truncation would do and would turn the brightest
+        // part of a sky into a black hole.
+        let is_nan = ((bits >> 23) & 0xff) == 0xff && mantissa != 0;
+        return sign | 0x7c00 | u16::from(is_nan) << 9;
+    }
+    if exponent <= 0 {
+        // Below the smallest normal half. Subnormals are not worth the arithmetic here — every value
+        // this small is thousands of times dimmer than anything visible.
+        return sign;
+    }
+    // Truncating the mantissa rather than rounding. One bit of a half float is far below what any
+    // reflection could show, and rounding would cost a branch per channel per texel.
+    exponent &= 0x1f;
+    sign | ((exponent as u16) << 10) | ((mantissa >> 13) as u16)
+}
+
 /// Builds a one-pixel texture holding a single colour, and a view onto it.
 ///
 /// For the stand-ins a material binds when it names no texture of its own. Both are returned because
@@ -638,6 +771,25 @@ pub struct WgpuBackend {
     /// entry built while an id was still a placeholder would otherwise keep showing the placeholder
     /// forever.
     material_bind_groups: BTreeMap<MaterialTextures, wgpu::BindGroup>,
+    /// Prefiltered environments, by asset id (ADR 0049).
+    environments: BTreeMap<String, GpuEnvironment>,
+    /// What a view binds when it names no sky, or names one not yet prefiltered.
+    neutral_environment_bind_group: wgpu::BindGroup,
+    /// The layout every environment bind group is built to.
+    environment_layout: wgpu::BindGroupLayout,
+    /// Clamped, linear, and linear *between mip levels* — see its construction for why that last
+    /// part is what makes roughness continuous rather than stepped.
+    environment_sampler: wgpu::Sampler,
+    #[allow(
+        dead_code,
+        reason = "held to keep the neutral cube textures alive; their views borrow from them"
+    )]
+    neutral_irradiance: wgpu::Texture,
+    #[allow(
+        dead_code,
+        reason = "held to keep the neutral cube textures alive; their views borrow from them"
+    )]
+    neutral_specular: wgpu::Texture,
     #[allow(
         dead_code,
         reason = "held to keep the placeholder texture alive; its view and bind group borrow from it"
@@ -1102,6 +1254,65 @@ impl WgpuBackend {
                 ],
             });
 
+        // Bind group 3: the environment a view is lit by (ADR 0049). Two cube textures and a
+        // sampler.
+        //
+        // **Group 3 is the last one wgpu guarantees**, and it is the right home rather than merely
+        // the only slot left: 0 is the view, 1 is the shadow map, 2 is the material. An environment
+        // changes per *view* like the first two, not per draw like the third, so it is set once per
+        // camera rather than once per object.
+        let environment_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("amadeo environment layout"),
+                entries: &[
+                    // Diffuse irradiance: for each direction, the light a matte surface facing it gets.
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::Cube,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // Specular: the environment blurred once per roughness level, as a mip chain.
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::Cube,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
+        // Clamped and linear, with linear filtering *between* mip levels too.
+        //
+        // That last part is what makes roughness read as continuous rather than stepping between six
+        // discrete looks: the shader asks for a fractional mip level and the hardware blends the two
+        // either side. Clamped rather than repeating because a direction cannot run off the end of a
+        // cube — there is no edge to wrap around.
+        let environment_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("amadeo environment sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            ..Default::default()
+        });
+
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("amadeo sprite sampler"),
             // Clamping rather than repeating: a `region` is a rectangle inside a shared sheet, and
@@ -1450,6 +1661,42 @@ impl WgpuBackend {
             [128, 128, 255, 255],
         );
 
+        // The environment a camera gets when it names no sky, or names one that has not prefiltered
+        // yet. A uniform dim neutral, which is exactly the `0.12` constant that stood in for ambient
+        // light before ADR 0049 — so a game that asks for nothing shades as it always did, rather
+        // than going black and making image-based lighting look like a regression.
+        let neutral = crate::EnvironmentMap::solid(crate::DEFAULT_SKY);
+        let (neutral_irradiance, neutral_irradiance_view) = upload_cubemap(
+            &device,
+            &queue,
+            "amadeo neutral irradiance",
+            std::slice::from_ref(&neutral.irradiance),
+        );
+        let (neutral_specular, neutral_specular_view) = upload_cubemap(
+            &device,
+            &queue,
+            "amadeo neutral specular",
+            &neutral.specular,
+        );
+        let neutral_environment_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("amadeo neutral environment"),
+            layout: &environment_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&neutral_irradiance_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&neutral_specular_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&environment_sampler),
+                },
+            ],
+        });
+
         let shadow_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("amadeo shadow shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shadow.wgsl").into()),
@@ -1524,13 +1771,14 @@ impl WgpuBackend {
 
         let mesh_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("amadeo mesh pipeline layout"),
-            // Group 2 is the base colour texture. It reuses `texture_layout`, the same layout sprites
-            // bind, so a texture uploaded for a sprite and one uploaded for a material are the same
-            // object -- which is what makes `upload_texture` need no notion of what will sample it.
+            // All four groups wgpu guarantees, and each holds things that change at a different
+            // rate: 0 the view, 1 the shadow map, 2 the material's textures, 3 the environment.
+            // Groups 0, 1 and 3 are set once per camera; only group 2 changes per draw.
             bind_group_layouts: &[
                 Some(&mesh_view_layout),
                 Some(&shadow_layout),
                 Some(&surface_texture_layout),
+                Some(&environment_layout),
             ],
             immediate_size: 0,
         });
@@ -1726,6 +1974,12 @@ impl WgpuBackend {
             white_placeholder_view,
             flat_normal_placeholder_view,
             material_bind_groups: BTreeMap::new(),
+            environments: BTreeMap::new(),
+            neutral_environment_bind_group,
+            environment_layout,
+            environment_sampler,
+            neutral_irradiance,
+            neutral_specular,
             white_placeholder,
             flat_normal_placeholder,
             shadow_placeholder,
@@ -2294,6 +2548,66 @@ impl RenderBackend for WgpuBackend {
     /// whole of it — there is nothing to release explicitly and nothing that can be released twice.
     fn remove_mesh(&mut self, id: &str) {
         self.meshes.remove(id);
+    }
+
+    fn has_environment(&self, id: &str) -> bool {
+        self.environments.contains_key(id)
+    }
+
+    fn upload_environment(
+        &mut self,
+        id: &str,
+        environment: &crate::EnvironmentMap,
+    ) -> Result<(), RenderError> {
+        if environment.specular.is_empty() {
+            return Err(RenderError::InitFailed {
+                backend: "wgpu",
+                reason: format!(
+                    "environment `{id}` has no specular levels; a prefiltered environment needs at \
+                     least one, and an empty one would leave the shader sampling nothing"
+                ),
+            });
+        }
+
+        let (irradiance, irradiance_view) = upload_cubemap(
+            &self.device,
+            &self.queue,
+            id,
+            std::slice::from_ref(&environment.irradiance),
+        );
+        let (specular, specular_view) =
+            upload_cubemap(&self.device, &self.queue, id, &environment.specular);
+
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(id),
+            layout: &self.environment_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&irradiance_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&specular_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&self.environment_sampler),
+                },
+            ],
+        });
+
+        // Replacing rather than refusing, like every other upload here, so a hot-reloaded sky works
+        // for nothing. Dropping the old textures releases their video memory.
+        self.environments.insert(
+            id.to_string(),
+            GpuEnvironment {
+                irradiance,
+                specular,
+                bind_group,
+            },
+        );
+        Ok(())
     }
 
     fn upload_texture(&mut self, id: &str, texture: &TextureData) -> Result<(), RenderError> {
@@ -2930,6 +3244,17 @@ impl RenderBackend for WgpuBackend {
                             .and_then(|pooled| self.transients[*pooled].bind_group.as_ref())
                             .unwrap_or(&self.shadow_placeholder_bind_group);
                         pass.set_bind_group(1, shadow_binding, &[]);
+
+                        // The environment this camera is lit by, or the neutral one. Set here,
+                        // once per view, rather than per draw — every surface a camera sees is
+                        // surrounded by the same sky.
+                        let environment = self
+                            .environments
+                            .get(view_data.environment.sky.as_str())
+                            .map_or(&self.neutral_environment_bind_group, |held| {
+                                &held.bind_group
+                            });
+                        pass.set_bind_group(3, environment, &[]);
                         pass.set_vertex_buffer(1, self.mesh_instance_buffer.slice(..));
 
                         for (mesh_id, textures, range) in draws {
