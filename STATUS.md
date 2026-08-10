@@ -167,11 +167,53 @@ trigger for going native: a **console** target.
 | ~~Metallic-roughness PBR~~ | ✅ **Done — M3's third (ADR 0048).** Cook-Torrance/GGX, and a glTF-packed metallic-roughness map. **Changed the picture almost not at all**, because every material in the repo is a rough dielectric — which is exactly where a full BRDF and Lambert agree. Scaffolding for the next item rather than a win on its own |
 | ~~Sky and image-based lighting~~ | ✅ **Done — M3's fourth (ADR 0049), and it closes Q28.** The ambient constant is gone. Shadows are filled by the sky, metals reflect their surroundings. **Does not draw the sky** — that is a separate pass and is now the largest visual gap |
 | ~~Drawing the sky~~ | ✅ **Done.** One oversized triangle at the far plane, depth-tested with depth-write off, drawn **only when a camera names a sky** — naming none means "do not draw one", which is what keeps the 2D games' backgrounds intact |
-| **Shadow cascades** | The last of ADR 0045's tier 1. One shadow map over 70 m of outdoor scene is visibly blocky; ADR 0038 reserved `ShadowMode`'s third variant for exactly this |
+| **Shadow cascades** | The last of ADR 0045's tier 1. One shadow map over 70 m of outdoor scene is visibly blocky; ADR 0038 reserved `ShadowMode`'s third variant for exactly this. **Researched and planned — see below** |
 | **Triplanar mapping** | Terrain UVs are a planar projection from world x/z, so anything steep stretches — *and* has zero UV area, so its tangent frame falls back to an arbitrary axis. One fix for both. Wants a `Material` field to opt in, which is another schema change to every `.material` file (**Q32**) |
 | **Ambient / sky light** | Still the hardcoded `0.12` constant (**Q28**). No ambient occlusion, no bounce, no sky colour. Flat lighting is the other half of why a scene reads as a prototype, and no amount of texture fixes it |
 
 The visual gap is now overwhelmingly **shading**, not geometry.
+
+### 📋 Shadow cascades — researched and planned, not started
+
+**The last item in ADR 0045's tier 1.** Deliberately not begun rather than begun badly: it touches
+the shadow fitting, the render graph's transient pool, the backend and the shader at once, and half
+of it would be worse than none. What follows is the plan, so the next session starts on code.
+
+**The problem.** `games/scarp` fits one 2048² map over a 70 m box, so a shadow-map texel is about
+7 cm and edges are visibly blocky. Cascades split the camera's range into a few slices and give each
+its own map, so near geometry gets a fine one and distant geometry a coarse one.
+
+**Three decisions, all cheap to reverse, so taken here and flagged rather than asked:**
+
+1. **Four cascades, fixed, not authored.** Four is what nearly everything ships. Making the count
+   authored means a variable-length texture array and a variable shader loop bound to buy flexibility
+   nobody has asked for. **Additive later**: a `cascade_count` field defaulting to four changes no
+   existing file.
+2. **The split scheme is the "practical" one, with an authored blend.** Uniform splits waste
+   resolution near the camera; logarithmic splits waste it far away. The standard fix (Fournier /
+   NVIDIA's parallel-split work) interpolates between them by a weight, conventionally `lambda`, with
+   `0.5` the usual default. That weight *is* worth authoring — it is the one number whose right value
+   depends on the scene — so `DirectionalLight` gains one field, not four.
+3. **`Orthogonal` stays** alongside `Cascaded`. An indoor scene does not need cascades and one map is
+   cheaper — and M3's exit gate is indoor. `games/vault` and `games/atrium` keep what they have.
+
+**The five touchpoints, in the order they have to happen:**
+
+| | |
+|---|---|
+| `mesh.rs` | `ShadowMode::Cascaded`, and a `cascade_blend` field on `DirectionalLight`. **Adds a field to a component, so every `.scene` naming a `DirectionalLight` changes — see docs/07's entry on exactly that, and Q32** |
+| `lib.rs` | `fit_shadow` becomes *fit four*. Split the camera's near-to-`shadow_distance` range by the practical scheme, fit a box per slice, keep the existing world-origin snapping per cascade — **the snapping is what stops edges crawling and it must be per cascade, since each has its own texel size** |
+| `backend.rs` | `ShadowData` becomes up to four, and `View` carries the split distances the shader selects by |
+| `graph.rs` + `gpu.rs` | The shadow transient becomes a **depth texture array of four layers**. The transient pool matches on format, so a layered depth target is a new `TargetFormat` variant rather than a flag — the same reasoning `ShadowMap32` already carries |
+| `mesh.wgsl` | Pick a cascade from the fragment's view depth, then the existing lookup unchanged. **The bias must scale per cascade**: a fixed world-space bias tuned for the near map is far too small for the far one, which is what makes distant shadows acne up |
+
+**The trap worth knowing before starting.** A fragment near a split boundary can pick a different
+cascade than its neighbour, which shows as a hard line across the ground where resolution changes.
+The standard fix is to blend over a small band either side. Worth building *without* it first and
+looking, because the seam may be invisible at these distances and blending costs a second sample.
+
+Sources: [NVIDIA GPU Gems 3, ch. 10 — parallel-split shadow maps](https://developer.nvidia.com/gpugems/gpugems3/part-ii-light-and-shadows/chapter-10-parallel-split-shadow-maps-programmable-gpus),
+[MJP, A Sampling of Shadow Techniques](https://therealmjp.github.io/posts/shadow-maps/)
 
 ### Session 14: normal mapping, and the dependency it did not need — ADR 0047
 
