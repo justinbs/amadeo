@@ -447,10 +447,21 @@ fn a_mesh_actually_reaches_the_pixels() {
         return;
     };
 
+    // **The green and blue bounds were loosened when PBR landed, and the reason is not a
+    // regression.** Before ADR 0048 a lit surface was pure Lambert: a red box reflected only red,
+    // so the other two channels sat near zero. A real surface also has a *specular* highlight, and
+    // a dielectric's highlight is white rather than tinted — which is what makes plastic look like
+    // plastic. Facing the light head-on at the default roughness of 0.5, that highlight measures
+    // about 0.15 in linear light, and it lifts green and blue to roughly 111.
+    //
+    // So the assertion keeps what it was actually testing — geometry reaches the pixels, and the
+    // face reads as *red* — while no longer encoding "there is no specular" as though that were a
+    // property of the renderer rather than a missing feature.
     let centre = pixel_at(&image, 32, 32);
     assert!(
-        centre[0] > 100 && centre[1] < 60 && centre[2] < 60,
-        "the middle of the screen should be a lit red face, got {centre:?}"
+        centre[0] > 100 && centre[1] < 160 && centre[2] < 160 && centre[0] > centre[1] + 80,
+        "the middle of the screen should be a lit red face with a white highlight on it, \
+         got {centre:?}"
     );
 
     // And the corner is still the background, so the box has a *size* rather than filling
@@ -615,6 +626,127 @@ fn normal_strength_zero_is_exactly_the_unmapped_surface() {
         pixel_at(&without, 32, 32),
         pixel_at(&with, 32, 32),
         "normal_strength 0.0 must be byte-identical to naming no normal map at all"
+    );
+}
+
+/// A capture of a box with the given surface parameters, optionally turned about Y.
+///
+/// Turning matters for these tests. Straight on, the camera, the light and the surface normal all
+/// line up, which is exactly where a specular highlight is at its most extreme — bright enough to
+/// saturate and stop being a measurement. A turned box puts the visible face off the highlight,
+/// where the numbers still have room to move.
+fn a_surface(colour: [f32; 4], metallic: f32, roughness: f32, degrees: f32) -> Option<TextureData> {
+    let mut world = a_lit_box(colour, [2.0, 2.0, 2.0]);
+    if let Some(materials) = world.service_mut::<MaterialCache>() {
+        materials.insert(
+            "paint",
+            Material {
+                base_colour: colour,
+                metallic,
+                roughness,
+                ..Material::default()
+            },
+        );
+    }
+    for entity in world.entities() {
+        if world.get::<Mesh>(entity).is_some() {
+            let mut transform = Transform::at(0.0, 0.0);
+            transform.rotation = [0.0, degrees, 0.0];
+            world.insert(entity, transform);
+        }
+    }
+    capture(&mut world, 64, 64)
+}
+
+#[test]
+fn roughness_changes_how_a_surface_shades() {
+    // **What `roughness` was for.** It has been on `Material` since ADR 0033 and the shader read it
+    // for the first time in ADR 0048 — so before this these two captures were identical, and no
+    // test in the engine could have told.
+    //
+    // A **dark** box, so that the diffuse term is small and what is being compared is the highlight
+    // rather than the paint. The camera and the light both look down −Z, so a face square to them
+    // reflects light straight back at the viewer: a smooth surface concentrates that into a narrow
+    // blaze, a rough one spreads it into almost nothing.
+    let (Some(smooth), Some(rough)) = (
+        a_surface([0.15, 0.15, 0.15, 1.0], 0.0, 0.15, 0.0),
+        a_surface([0.15, 0.15, 0.15, 1.0], 0.0, 1.0, 0.0),
+    ) else {
+        return;
+    };
+
+    let shiny_centre = pixel_at(&smooth, 32, 32);
+    let dull_centre = pixel_at(&rough, 32, 32);
+
+    assert!(
+        shiny_centre[0] > dull_centre[0].saturating_add(40),
+        "a smooth surface concentrates its highlight and must be far brighter head-on than a rough \
+         one: smooth {shiny_centre:?} against rough {dull_centre:?}. Equal values mean the shader \
+         never read `roughness`"
+    );
+
+    // The smooth case **saturates**, and that is the finding rather than a flaw in the test. A
+    // near-mirror pointed at a light genuinely is far brighter than white, which is what the HDR
+    // target exists to carry and what a tonemapper exists to bring back down — and the default
+    // `Environment` deliberately does nothing (ADR 0034). See ADR 0048's consequences.
+    assert_eq!(
+        shiny_centre[0], 255,
+        "a near-mirror facing the light heads into HDR, so this is expected to clip at 255 until a \
+         tonemap is on; got {shiny_centre:?}"
+    );
+}
+
+#[test]
+fn a_metal_has_no_diffuse_colour() {
+    // **The half of `metallic` that surprises people.** It is not a shininess dial: a metal has no
+    // diffuse colour *at all*. Light either reflects off it or is absorbed, and nothing scatters
+    // back out — which is why a gold bar has no "gold-coloured matte" to it, and why the difference
+    // between gold and yellow paint is this one property.
+    //
+    // A red box turned 50°, so the visible face is off the highlight and the reading is about the
+    // diffuse rather than about a saturated specular. The dielectric shows its red plainly; the
+    // metal has only a red-tinted reflection, which away from the highlight is very little.
+    let (Some(dielectric), Some(metal)) = (
+        a_surface([1.0, 0.0, 0.0, 1.0], 0.0, 0.5, 50.0),
+        a_surface([1.0, 0.0, 0.0, 1.0], 1.0, 0.5, 50.0),
+    ) else {
+        return;
+    };
+
+    let painted = pixel_at(&dielectric, 32, 32);
+    let metallic = pixel_at(&metal, 32, 32);
+
+    assert!(
+        i32::from(metallic[0]) < i32::from(painted[0]) - 60,
+        "a metal has no diffuse, so off the highlight it must be far darker than the same colour as \
+         paint: metal {metallic:?} against dielectric {painted:?}"
+    );
+}
+
+#[test]
+fn a_metal_is_black_under_ambient_because_there_is_no_sky_yet() {
+    // **The engine's current limitation, pinned deliberately so that fixing it breaks this test.**
+    //
+    // Ambient reaches the diffuse only, and a metal has no diffuse — so a metal lit by nothing but
+    // the ambient term is black. That is *correct*: a metal with nothing to reflect is black. What
+    // it should be reflecting is the sky, and there is no sky (**Q28**, image-based lighting, next
+    // on ADR 0045's list).
+    //
+    // Turned 130°, so the visible face points away from the light and only ambient reaches it.
+    let (Some(dielectric), Some(metal)) = (
+        a_surface([0.8, 0.8, 0.8, 1.0], 0.0, 0.5, 130.0),
+        a_surface([0.8, 0.8, 0.8, 1.0], 1.0, 0.5, 130.0),
+    ) else {
+        return;
+    };
+
+    let painted = pixel_at(&dielectric, 32, 32);
+    let metallic = pixel_at(&metal, 32, 32);
+
+    assert!(
+        metallic[0] < painted[0],
+        "with only ambient reaching it, a metal must be darker than a dielectric: \
+         metal {metallic:?} against dielectric {painted:?}"
     );
 }
 

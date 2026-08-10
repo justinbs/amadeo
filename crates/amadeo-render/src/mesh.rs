@@ -465,6 +465,21 @@ pub struct Material {
     /// flat surface and there is no value at which the frame degenerates.
     #[reflect(min = 0.0, max = 4.0)]
     pub normal_strength: f32,
+    /// Declared asset id of the metallic-roughness map. **Empty means none.**
+    ///
+    /// **One image carries both, in separate channels**: green is roughness, blue is metallic, and
+    /// red is unused. That packing is not this engine's invention — it is what glTF 2.0 specifies,
+    /// and ADR 0033 chose the metallic-roughness model precisely so an imported material maps across
+    /// without a translation step. Every tool that exports glTF already writes this layout.
+    ///
+    /// Sampled values **multiply** [`Material::metallic`] and [`Material::roughness`], the same way
+    /// [`Material::base_colour_texture`] multiplies [`Material::base_colour`]. So the scalars stay
+    /// meaningful with a texture attached — they tint it — and a material with no texture is
+    /// unchanged, because the placeholder is white and white is the identity of a multiply.
+    ///
+    /// Like a normal map, this is **data rather than colour**, so its sidecar wants
+    /// `color_space = "linear"` (**Q31**).
+    pub metallic_roughness_texture: String,
 }
 
 impl Default for Material {
@@ -485,6 +500,7 @@ impl Default for Material {
             // a material that names no normal map should shade the same whatever this says, and a
             // 0.0 default would silently flatten the first map anyone attached.
             normal_strength: 1.0,
+            metallic_roughness_texture: String::new(),
         }
     }
 }
@@ -1180,6 +1196,7 @@ mod tests {
             base_colour_texture: "rust_plate".to_string(),
             normal_texture: "rust_plate_normal".to_string(),
             normal_strength: 0.75,
+            metallic_roughness_texture: "rust_plate_wear".to_string(),
         };
         let back = Material::from_value(&material.to_value()).expect("round trips");
         assert_eq!(back, material);

@@ -97,6 +97,12 @@ struct GpuMeshInstance {
     base_colour: [f32; 4],
     /// rgb = emissive, a unused.
     emissive: [f32; 4],
+    /// How this surface responds to light: `[metallic, roughness, normal_strength, unused]`.
+    ///
+    /// The scalar half of the material. A metallic-roughness *texture* multiplies into the first two
+    /// per pixel, exactly as `base_colour_texture` multiplies into `base_colour` — which is what
+    /// glTF specifies and what lets one material serve a whole surface with varying wear.
+    surface: [f32; 4],
 }
 
 /// What one 3D view needs that is the same for every instance in it.
@@ -116,6 +122,12 @@ struct GpuMeshView {
     /// rather than a separate pipeline because a branch that every pixel takes the same way is
     /// nearly free on a GPU, where a second pipeline is a real state change.
     shadow_params: [f32; 4],
+    /// The camera's world position, xyz. w unused.
+    ///
+    /// New with PBR (ADR 0048) and not needed before it: diffuse lighting looks the same from every
+    /// direction, so Lambert never had to know where the viewer was. A **specular** highlight is a
+    /// reflection, and where a reflection lands depends entirely on where you are standing.
+    eye: [f32; 4],
 }
 
 /// One uploaded mesh's buffers.
@@ -483,6 +495,7 @@ fn single_pixel_texture(
 struct MaterialTextures {
     base_colour: String,
     normal: String,
+    metallic_roughness: String,
 }
 
 impl MaterialTextures {
@@ -491,7 +504,21 @@ impl MaterialTextures {
         MaterialTextures {
             base_colour: material.base_colour_texture.clone(),
             normal: material.normal_texture.clone(),
+            metallic_roughness: material.metallic_roughness_texture.clone(),
         }
+    }
+
+    /// Every id this names, in binding order, including the empty ones.
+    ///
+    /// One place that knows the slot list, so adding a fourth texture does not mean remembering to
+    /// update the decode walk, the upload walk and the invalidation check separately — which is
+    /// exactly how `base_colour_texture` went a milestone without reaching a pixel.
+    fn ids(&self) -> [&str; 3] {
+        [
+            self.base_colour.as_str(),
+            self.normal.as_str(),
+            self.metallic_roughness.as_str(),
+        ]
     }
 }
 
@@ -1059,6 +1086,19 @@ impl WgpuBackend {
                         },
                         count: None,
                     },
+                    // The metallic-roughness map (ADR 0048): green is roughness, blue is metallic.
+                    // Always bound, and the placeholder is **white** — because these values
+                    // multiply the material's scalars, and one is the identity of a multiply.
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
                 ],
             });
 
@@ -1518,8 +1558,9 @@ impl WgpuBackend {
                             9 => Float32x4,
                         ],
                     }),
-                    // Per instance: four matrix columns, then two colours. Locations continue from
-                    // 3, because they share one shader with the vertex attributes above.
+                    // Per instance: four matrix columns, two colours, and the surface parameters.
+                    // Locations continue from 3, because they share one shader with the vertex
+                    // attributes above — which is why the tangent had to take 9 and this takes 10.
                     Some(wgpu::VertexBufferLayout {
                         array_stride: size_of::<GpuMeshInstance>() as u64,
                         step_mode: wgpu::VertexStepMode::Instance,
@@ -1530,6 +1571,7 @@ impl WgpuBackend {
                             6 => Float32x4,
                             7 => Float32x4,
                             8 => Float32x4,
+                            10 => Float32x4,
                         ],
                     }),
                 ],
@@ -2102,6 +2144,14 @@ impl WgpuBackend {
                 .textures
                 .get(&key.normal)
                 .map_or(&self.flat_normal_placeholder_view, |texture| &texture.view);
+            // The white placeholder again, reused rather than duplicated as a linear one. White is
+            // the one value where the two formats agree exactly -- a byte of 255 is 1.0 whether it
+            // is read through the sRGB curve or not -- and 1.0 is the identity of the multiply this
+            // feeds. Any other colour would need its own linear texture.
+            let metallic_roughness = self
+                .textures
+                .get(&key.metallic_roughness)
+                .map_or(&self.white_placeholder_view, |texture| &texture.view);
 
             let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("amadeo material textures"),
@@ -2118,6 +2168,10 @@ impl WgpuBackend {
                     wgpu::BindGroupEntry {
                         binding: 2,
                         resource: wgpu::BindingResource::TextureView(normal),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(metallic_roughness),
                     },
                 ],
             });
@@ -2341,7 +2395,7 @@ impl RenderBackend for WgpuBackend {
         // exactly the defect `placeholders_uploaded` exists to catch one layer up. Discarding the
         // whole entry rather than editing it in place, because a bind group is immutable once made.
         self.material_bind_groups
-            .retain(|key, _| key.base_colour != id && key.normal != id);
+            .retain(|key, _| !key.ids().contains(&id));
 
         // Inserting replaces any earlier texture under this id, and dropping the old one releases
         // its video memory. That is what makes a late-arriving asset, and later hot-reload, work.
@@ -2504,6 +2558,15 @@ impl RenderBackend for WgpuBackend {
                     ],
                     None => [0.0, 0.0, 0.0, 0.0],
                 },
+                // The camera's world position is the translation column of its world transform —
+                // column 3. Taken from `eye_matrix` rather than from `View::eye`, which is the 2D
+                // path's two numbers and has no height in it.
+                eye: [
+                    view.eye_matrix.columns[3][0],
+                    view.eye_matrix.columns[3][1],
+                    view.eye_matrix.columns[3][2],
+                    0.0,
+                ],
             };
             let at = index * self.mesh_view_stride as usize;
             mesh_views[at..at + size_of::<GpuMeshView>()]
@@ -2531,7 +2594,13 @@ impl RenderBackend for WgpuBackend {
                         instance.material.emissive[0],
                         instance.material.emissive[1],
                         instance.material.emissive[2],
+                        0.0,
+                    ],
+                    surface: [
+                        instance.material.metallic,
+                        instance.material.roughness,
                         instance.material.normal_strength,
+                        0.0,
                     ],
                 });
                 let last = mesh_instances.len() as u32;
@@ -2558,7 +2627,13 @@ impl RenderBackend for WgpuBackend {
                         instance.material.emissive[0],
                         instance.material.emissive[1],
                         instance.material.emissive[2],
+                        0.0,
+                    ],
+                    surface: [
+                        instance.material.metallic,
+                        instance.material.roughness,
                         instance.material.normal_strength,
+                        0.0,
                     ],
                 });
                 let last = mesh_instances.len() as u32;

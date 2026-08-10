@@ -344,6 +344,7 @@ pub fn decode_frame_textures(world: &mut amadeo_ecs::World, frame: &FrameData) {
                 for id in [
                     &instance.material.base_colour_texture,
                     &instance.material.normal_texture,
+                    &instance.material.metallic_roughness_texture,
                 ] {
                     if !id.is_empty() {
                         cache.ensure(id, assets);

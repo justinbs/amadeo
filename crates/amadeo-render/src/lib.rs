@@ -234,6 +234,7 @@ impl Renderer {
                 [
                     instance.material.base_colour_texture.as_str(),
                     instance.material.normal_texture.as_str(),
+                    instance.material.metallic_roughness_texture.as_str(),
                 ]
             })
             .filter(|id| !id.is_empty());

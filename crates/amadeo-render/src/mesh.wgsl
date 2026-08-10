@@ -23,6 +23,9 @@ struct MeshView {
     light_colour: vec4<f32>,
     // x = depth bias, y = one shadow-map texel in UV, z = 1 when a real shadow map is bound.
     shadow_params: vec4<f32>,
+    // xyz = the camera's world position. Needed only since PBR: diffuse light looks the same from
+    // everywhere, but a specular highlight is a reflection and moves with the viewer.
+    eye: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> view: MeshView;
@@ -61,6 +64,13 @@ struct MeshView {
 // **Uploaded as a linear format, not sRGB.** These bytes are a direction rather than a colour, and
 // sampling them through the sRGB curve would bend every one of them.
 @group(2) @binding(2) var normal_map: texture_2d<f32>;
+
+// The metallic-roughness map (ADR 0048). **Green is roughness, blue is metallic**, which is glTF
+// 2.0's packing rather than a choice made here — so an imported material maps straight across.
+//
+// Sampled values multiply the material's scalars, so the placeholder is white and a material without
+// one is unchanged. Data rather than colour, so it wants `color_space = "linear"` in its sidecar.
+@group(2) @binding(3) var metallic_roughness_map: texture_2d<f32>;
 
 // How much light reaches this point: 1.0 in full light, 0.0 fully shadowed.
 fn shadow_factor(world: vec3<f32>, lambert: f32) -> f32 {
@@ -124,9 +134,10 @@ struct InstanceInput {
     @location(5) model_2: vec4<f32>,
     @location(6) model_3: vec4<f32>,
     @location(7) base_colour: vec4<f32>,
-    // rgb = emissive, a = normal_strength. The alpha channel was spare and a normal map's strength
-    // is one float, so it rides along rather than growing the instance by another sixteen bytes.
+    // rgb = emissive. a unused.
     @location(8) emissive: vec4<f32>,
+    // x = metallic, y = roughness, z = normal_strength. w unused.
+    @location(10) surface: vec4<f32>,
 };
 
 struct VertexOutput {
@@ -143,6 +154,8 @@ struct VertexOutput {
     // model's basis exactly as the normal is, and re-normalised per pixel for the same reason.
     @location(5) tangent: vec4<f32>,
     @location(6) normal_strength: f32,
+    @location(7) metallic: f32,
+    @location(8) roughness: f32,
 };
 
 @vertex
@@ -178,7 +191,9 @@ fn vs_main(vertex: VertexInput, instance: InstanceInput) -> VertexOutput {
     out.tangent = vec4<f32>(basis * vertex.tangent.xyz, vertex.tangent.w);
     out.base_colour = instance.base_colour;
     out.emissive = instance.emissive.rgb;
-    out.normal_strength = instance.emissive.a;
+    out.normal_strength = instance.surface.z;
+    out.metallic = instance.surface.x;
+    out.roughness = instance.surface.y;
     out.world_position = world.xyz;
     out.uv = vertex.uv;
     return out;
@@ -221,6 +236,56 @@ fn shade_normal(in: VertexOutput) -> vec3<f32> {
     return normalize(to_world * leaning);
 }
 
+const PI: f32 = 3.14159265359;
+
+// How much light a rough surface scatters back towards the viewer -- the "microfacet distribution".
+//
+// The model (GGX / Trowbridge-Reitz) treats a surface as a field of microscopic mirrors. This says
+// what fraction of them happen to be angled to bounce light from the source straight at the eye. A
+// smooth surface has nearly all of them aligned, so the answer spikes hugely in one direction and
+// that spike is a sharp highlight; a rough one spreads them out into a broad sheen.
+//
+// GGX rather than the older Blinn-Phong because of its *tail*: it falls off slowly away from the
+// peak, which is what real measured materials do and what stops a highlight ending in a hard ring.
+fn distribution_ggx(n_dot_h: f32, roughness: f32) -> f32 {
+    // Squared because artists author "perceptual" roughness -- a linear-feeling dial -- and the
+    // maths wants the square. glTF specifies this squaring, so an imported value means the same
+    // thing here as in Blender.
+    let a = roughness * roughness;
+    let a2 = a * a;
+    let denominator = n_dot_h * n_dot_h * (a2 - 1.0) + 1.0;
+    return a2 / max(PI * denominator * denominator, 1e-7);
+}
+
+// How much of that light is lost to the surface shadowing itself.
+//
+// At a glancing angle, microscopic bumps hide each other -- some catch light that never reaches the
+// eye, some are in the shadow of their neighbours. Without this term a rough surface gets brighter
+// than the light falling on it, which is unphysical and reads as a white rim on every edge.
+//
+// The height-correlated Smith form, which accounts for the two effects being related rather than
+// independent. Returned already divided by the `4 * NoL * NoV` the specular term would otherwise
+// need, which is why it is called visibility rather than geometry.
+fn visibility_smith(n_dot_v: f32, n_dot_l: f32, roughness: f32) -> f32 {
+    let a = roughness * roughness;
+    let a2 = a * a;
+    let view = n_dot_l * sqrt(n_dot_v * n_dot_v * (1.0 - a2) + a2);
+    let light = n_dot_v * sqrt(n_dot_l * n_dot_l * (1.0 - a2) + a2);
+    return 0.5 / max(view + light, 1e-7);
+}
+
+// How reflective the surface is at this angle -- the Fresnel term.
+//
+// Everything becomes a mirror at a shallow enough angle. It is why a road looks wet in the distance
+// and why you can see through water at your feet but not across a lake. `f0` is the reflectance
+// looking straight down at the surface, and this raises it towards white as the angle flattens.
+//
+// Schlick's approximation: one power of five, accurate to within a percent or so of the real thing.
+fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
+    let factor = pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
+    return f0 + (vec3<f32>(1.0) - f0) * factor;
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // The geometric normal bent by the normal map — see `shade_normal`. Re-normalising the
@@ -232,6 +297,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // max() rather than abs(): a surface facing away is in shadow, not lit from behind.
     let towards_light = -normalize(view.light_direction.xyz);
     let lambert = max(dot(normal, towards_light), 0.0);
+
+    // Towards the viewer, and the half vector between that and the light. The half vector is the
+    // direction a microfacet would have to face to bounce this light straight into the eye, which
+    // is what `distribution_ggx` is asking about.
+    let towards_eye = normalize(view.eye.xyz - in.world_position);
+    let half_vector = normalize(towards_light + towards_eye);
+    let n_dot_v = max(dot(normal, towards_eye), 1e-4);
+    let n_dot_h = max(dot(normal, half_vector), 0.0);
+    let v_dot_h = max(dot(towards_eye, half_vector), 0.0);
 
     // A small ambient term so an unlit surface is dark rather than pure black. Not a lighting model
     // -- it is a stand-in until there is something better.
@@ -263,8 +337,58 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let sampled = textureSample(base_colour_map, base_colour_sampler, in.uv);
     let albedo = in.base_colour * sampled;
 
-    let lit = albedo.rgb * (view.light_colour.rgb * lambert * shadow + vec3<f32>(ambient));
+    // The metallic-roughness map multiplies the scalars, glTF's packing: green is roughness, blue is
+    // metallic. The placeholder is white, so a material without one is exactly its scalars.
+    let packed = textureSample(metallic_roughness_map, base_colour_sampler, in.uv);
+    let metallic = clamp(in.metallic * packed.b, 0.0, 1.0);
+    // Floored well above zero. A perfectly smooth surface concentrates its whole highlight into a
+    // single point, which is infinitely bright and one blazing pixel wide -- it aliases horribly and
+    // reads as a firefly rather than as polish.
+    let roughness = clamp(in.roughness * packed.g, 0.04, 1.0);
+
+    // **What metallic actually means**, and it is two changes at once rather than a dial:
+    //
+    // A metal has no diffuse colour at all. Light either reflects off it or is absorbed; nothing
+    // scatters back out, which is why a gold bar has no "gold-coloured matte" to it. So the diffuse
+    // term goes to zero as metallic rises.
+    //
+    // And a metal's *reflection* is tinted by its own colour, where a dielectric -- wood, stone,
+    // plastic, skin -- reflects white regardless of what colour it is. That is the difference
+    // between gold and yellow paint, and it is this one line.
+    //
+    // 0.04 is the reflectance of a typical dielectric looking straight on: about 4% of light bounces
+    // off the surface of almost everything that is not a metal.
+    let diffuse_colour = albedo.rgb * (1.0 - metallic);
+    let f0 = mix(vec3<f32>(0.04), albedo.rgb, metallic);
+
+    // The three terms, combined the way Cook-Torrance specifies.
+    let distribution = distribution_ggx(n_dot_h, roughness);
+    let visibility = visibility_smith(n_dot_v, lambert, roughness);
+    let fresnel = fresnel_schlick(v_dot_h, f0);
+    let specular = distribution * visibility * fresnel;
+
+    // Energy conservation: light that reflected off the surface cannot also scatter through it. So
+    // whatever Fresnel took goes to the highlight and the remainder is left for the diffuse.
+    let diffuse = diffuse_colour * (vec3<f32>(1.0) - fresnel) / PI;
+
+    // **The `PI` here is deliberate and is the reason existing scenes did not all go dark.**
+    //
+    // The BRDF above is energy-correct, which puts a `1 / PI` on the diffuse term. Applied
+    // literally, every surface in the engine would drop to about a third of its previous brightness
+    // and every authored `intensity` would need retuning. So `light_colour` is treated as carrying
+    // `PI` times the irradiance -- the light's units absorb the constant, which is what most
+    // real-time renderers do. The *relative* weighting of diffuse against specular, which is what
+    // actually decides whether a material reads correctly, is unaffected.
+    let direct = (diffuse + specular) * view.light_colour.rgb * lambert * shadow * PI;
+
+    // Ambient reaches the **diffuse** only, and that is a real limitation rather than an oversight.
+    // A metal has no diffuse, so under ambient alone it goes black -- correctly, since a metal with
+    // nothing to reflect *is* black. What it should be reflecting is the sky, and there is no sky
+    // yet: that is image-based lighting, the next item on ADR 0045's list and what closes Q28.
+    // Until then, keep metallic near zero on anything that matters.
+    let ambient_light = diffuse_colour * ambient;
+
     // Emissive is added rather than multiplied, and is not affected by the light -- that is what
     // makes it emissive. Above 1.0 it pushes into the HDR range the post pass tonemaps (ADR 0034).
-    return vec4<f32>(lit + in.emissive, albedo.a);
+    return vec4<f32>(direct + ambient_light + in.emissive, albedo.a);
 }
