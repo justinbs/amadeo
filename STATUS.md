@@ -30,8 +30,12 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 (`cargo run -p scarp`), reproducing at every thread count, drawing only what can be seen, at 61 µs of
 GPU time.
 
-**Session 14 landed normal mapping — ADR 0047**, the second item on ADR 0045's list. Three things
-from it are worth knowing before touching the renderer:
+**Session 14 landed normal mapping (ADR 0047) and PBR (ADR 0048)** — items two and three on
+ADR 0045's list. **Sky and image-based lighting is next, and it is now the one that matters**: PBR's
+payoff is largely locked behind it, and metals are literally black without it. See "the single most
+important thing to do next".
+
+Three things from normal mapping are worth knowing before touching the renderer:
 
 1. **A mesh now has three independent properties, not two.** `docs/07` paired *normals* and *winding*
    after session 13's inside-out mesher; **tangents** are the third, and they fail the same silent
@@ -151,6 +155,7 @@ trigger for going native: a **console** target.
 |---|---|
 | ~~Mipmaps~~ | ✅ **Done — M3's first renderer item.** `amadeo_image::mip_chain`, averaged in linear light, with 16× anisotropic filtering on surfaces and sprites pinned to level 0. The terrain tile went from 8 m to **4 m** as a direct result |
 | ~~Normal mapping~~ | ✅ **Done — M3's second (ADR 0047).** Tangents read from glTF when the file has them, generated at load when it does not. **Terrain is the exception and still needs triplanar**, below |
+| ~~Metallic-roughness PBR~~ | ✅ **Done — M3's third (ADR 0048).** Cook-Torrance/GGX, and a glTF-packed metallic-roughness map. **Changed the picture almost not at all**, because every material in the repo is a rough dielectric — which is exactly where a full BRDF and Lambert agree. Scaffolding for the next item rather than a win on its own |
 | **Triplanar mapping** | Terrain UVs are a planar projection from world x/z, so anything steep stretches — *and* has zero UV area, so its tangent frame falls back to an arbitrary axis. One fix for both. Wants a `Material` field to opt in, which is another schema change to every `.material` file (**Q32**) |
 | **Ambient / sky light** | Still the hardcoded `0.12` constant (**Q28**). No ambient occlusion, no bounce, no sky colour. Flat lighting is the other half of why a scene reads as a prototype, and no amount of texture fixes it |
 
@@ -204,6 +209,31 @@ wgpu guarantees four and three are spoken for.
 **Two things it ships knowing about**, both now open questions rather than notes: a sidecar that
 forgets `color_space` is silently wrong and nothing warns (**Q31**), and every field added to
 `Material` rewrites every `.material` file (**Q32**).
+
+### Session 14 also landed PBR — ADR 0048 — and it barely changed the picture
+
+`metallic` and `roughness` had been on `Material` since ADR 0033 and the shader read **neither**. It
+now runs Cook-Torrance with GGX, Smith visibility and Schlick Fresnel — glTF 2.0's model, which
+ADR 0033 had already committed to — plus a glTF-packed metallic-roughness texture.
+
+**The honest result: the picture is almost unchanged, and that is the finding.** Every material in the
+repository is a rough dielectric (`metallic 0.0`, roughness 0.6–0.9), which is exactly the case where a
+full BRDF and plain Lambert nearly agree. The Scarp is essentially identical; the Atrium picked up a
+faint sheen where its floor is seen at a shallow angle and the Fresnel term rises.
+
+**The number that says the implementation is right.** A red box lit head-on used to have green and
+blue near zero, because Lambert reflects only the surface colour. A dielectric's highlight is *white*
+— that is what makes plastic look like plastic — and the maths predicts about 0.15 in linear light at
+the default roughness of 0.5. Measured: 111 in sRGB, which is 0.15. Predicted before it was measured,
+and they agreed to two decimal places.
+
+**One existing test changed its premise**, which is worth knowing rather than skimming:
+`a_mesh_actually_reaches_the_pixels` asserted green and blue stayed below 60, and that encoded *"there
+is no specular"* as though it were a property of the renderer rather than a missing feature.
+
+**Two limitations shipped on purpose, both named in ADR 0048.** Metals are unusable until Q28 closes,
+and the test that pins that is written so closing Q28 breaks it. And a physically-correct highlight
+needs a tonemapper the default `Environment` deliberately does not apply.
 
 ### And one sharp edge that is NOT fixed — Q30
 
@@ -404,7 +434,7 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-gltf`, `amadeo-jobs`, `amadeo-noise`, `amadeo-voxel`, `amadeo-terrain`,
 `amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
 reserved since session 1 — and `games/quad-demo`, `games/vault`, `games/atrium` and `games/scarp`.
-**1200 tests passing with `--all-features`** (18 of them GPU capture tests, 7 rapier, 9 character,
+**1203 tests passing with `--all-features`** (21 of them GPU capture tests, 7 rapier, 9 character,
 7 shadow fitting, 12 the Atrium, 15 the Scarp, 9 deterministic noise, 7 frustum culling, 6 mip
 chains, 13 glTF, 5 profiling, 8 jobs, 6 parallel iteration, 4 parallel loading, 10 surface nets,
 13 chunk residency, 10 the terrain source, 9 static trimesh colliders, 18 the terrain streamer,
@@ -628,18 +658,29 @@ the only evidence available was a push.
 started**, with the renderer work ADR 0045 ordered — **mipmaps and anisotropic filtering are done**,
 and **normal mapping landed in session 14 (ADR 0047)**.
 
-**Next on that list:** **metallic-roughness PBR** — `Material` has carried `metallic` and
-`roughness` since ADR 0033 and the shader reads neither, so every surface still shades as coloured
-paint. It is the natural next step because the sockets are already open: bind group 2 is now keyed on
-a *combination* of textures rather than one, precisely so a metallic-roughness map is a binding and a
-shader line rather than a rework. Then **sky/image-based lighting**, which replaces the hardcoded
-`0.12` ambient (**Q28**) and is probably the single biggest step towards looking like a real engine,
-then **shadow cascades**.
+**Next on that list, and it is now the one that matters: sky and image-based lighting** — which
+replaces the hardcoded `0.12` ambient (**Q28**). ADR 0045 called it "probably the single biggest step
+towards looking like a real engine", and building PBR has made that *more* true rather than less.
 
-**Worth doing alongside PBR rather than after it:** **Q32**, because PBR is the change that makes it
-hurt. Every field added to `Material` rewrites every `.material` file, since reflection requires all
-fields to be present. Normal mapping added two and touched five files, which was nothing; PBR plus
-image-based lighting want four or five more slots, and each one does it again.
+**Three things now converge on it, which is why it is unambiguously next:**
+
+1. **Metals are unusable without it.** A metal has no diffuse, so one lit by a constant ambient is
+   black — correctly, since a metal with nothing to reflect is black. The sky is what it should be
+   reflecting. `a_metal_is_black_under_ambient_because_there_is_no_sky_yet` is written so that closing
+   Q28 **breaks it**, which is deliberate.
+2. **Shadowed areas are still flat-filled**, which is the other half of why a scene reads as a
+   prototype, and no amount of texture or BRDF work touches it.
+3. **PBR's payoff is mostly locked behind it.** A real BRDF with nothing in the environment to reflect
+   is a very good specular model of a single sun.
+
+**One thing to decide near it: whether the default `Environment` should tonemap.** ADR 0034 made the
+default a byte-identical no-op, which was right when nothing produced values above 1.0 — and PBR is
+what makes it produce them. A near-mirror facing a light is genuinely a hundred times brighter than
+white, and the HDR target carries that correctly right up until the default look clips it. Worth
+settling *with* sky lighting rather than on its own.
+
+**And Q32 is now concrete rather than theoretical.** Every field added to `Material` rewrites every
+`.material` file. Normal mapping added two, PBR added one, and image-based lighting will want more.
 
 That is where "it looks like a prototype" stops being true, and M3's exit gate — a dark corridor with
 a moving flashlight that reads as genuinely atmospheric — was always the renderer's real exam.
