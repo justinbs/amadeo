@@ -1768,6 +1768,41 @@ model**. One generates directions, the other measures how many point a given way
 cannot see each other is how those drift apart, and the symptom would be reflections subtly the wrong
 shape for the material shading them.
 
+### An environment map must not contain a light the scene already has
+
+**The rule:** an environment map is the **indirect** half of lighting — everything arriving from
+everywhere else. Anything in it that is *also* modelled as a direct light gets counted twice, and
+every surface receives that light at double strength.
+
+The Scarp's sun is a `DirectionalLight` **and** was a bright disc in its generated sky. Fixing an
+unrelated bug — the sun had been below the horizon, so its disc contributed nothing — blew the entire
+demo out to near-white, and the cause read as an exposure problem.
+
+**What makes this easy to get badly wrong is solid angle.** Irradiance weighs each direction by how
+much of the sky it covers, so a small bright thing contributes far more than its size suggests:
+
+| | Covers | At | Contributes |
+|---|---|---|---|
+| A 5° sun disc | ~0.5% of the sky | 250× | **more than all the rest of the sky combined** |
+| A 1.8° sun disc | ~0.05% of the sky | 40× | negligible |
+
+Both read as a blazing sun when you look straight at them, because anything above about 2.0 tonemaps
+to white. Only one of them wrecks the lighting.
+
+> **So: keep the *energy* of a direct light in the light, where it can also cast a shadow, and keep
+> only a token of it in the environment, for something to look at and reflect.**
+
+The same trap waits for any bright emissive surface that is also a light — a lamp, a window, a fire.
+Nothing in the engine detects it; the symptom is a scene that is inexplicably too bright, and the
+instinct is to reach for exposure, which hides it rather than fixing it.
+
+**And a related tuning point that is not a bug.** A real sky is a strong light source, so switching
+from a constant ambient to a physically-bright sky changes the total light in a scene substantially.
+Every existing light intensity was tuned against the old constant. `games/scarp`'s `bin/sky.rs`
+carries a `SKY_SCALE` for exactly this reason: it lands the sky near where the constant was *on
+average*, while keeping what the constant never had — direction and colour. Turning both up at once
+would be changing two things and learning nothing from either.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

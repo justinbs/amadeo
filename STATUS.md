@@ -34,9 +34,15 @@ GPU time.
 items two, three and four on ADR 0045's list, and **Q28 is closed**. The engine's ambient light is no
 longer a constant.
 
-**Next, and it is the most visible thing left: drawing the sky.** The environment is a *light source*
-now; nothing paints it behind the scene, so the background is still a flat clear colour. Then shadow
-cascades, which is the last of ADR 0045's tier 1.
+**The sky is drawn too.** ADR 0045's tier 1 is complete except **shadow cascades**, which is the
+natural next item: one shadow map over 70 m of outdoor scene is visibly blocky, and ADR 0038 reserved
+`ShadowMode`'s third variant for it rather than leaving it a rewrite.
+
+**Two things about the sky worth knowing before changing it.** It is *content* and was tuned by eye —
+`bin/sky.rs`'s `SKY_SCALE` exists because the Scarp's sun intensity was tuned against the old `0.12`
+ambient, and raising the sky to physical brightness without retuning the sun would change two things
+at once. And `games/atrium` and `games/vault` still name no sky, so they shade exactly as they always
+did; the Atrium is an open-topped room that would benefit from one.
 
 Three things from normal mapping are worth knowing before touching the renderer:
 
@@ -160,7 +166,8 @@ trigger for going native: a **console** target.
 | ~~Normal mapping~~ | ✅ **Done — M3's second (ADR 0047).** Tangents read from glTF when the file has them, generated at load when it does not. **Terrain is the exception and still needs triplanar**, below |
 | ~~Metallic-roughness PBR~~ | ✅ **Done — M3's third (ADR 0048).** Cook-Torrance/GGX, and a glTF-packed metallic-roughness map. **Changed the picture almost not at all**, because every material in the repo is a rough dielectric — which is exactly where a full BRDF and Lambert agree. Scaffolding for the next item rather than a win on its own |
 | ~~Sky and image-based lighting~~ | ✅ **Done — M3's fourth (ADR 0049), and it closes Q28.** The ambient constant is gone. Shadows are filled by the sky, metals reflect their surroundings. **Does not draw the sky** — that is a separate pass and is now the largest visual gap |
-| **Drawing the sky** | The background is still a flat clear colour. A pass sampling the environment cube by view ray, behind everything, with depth. Cheap relative to what IBL cost, and the most visible thing left |
+| ~~Drawing the sky~~ | ✅ **Done.** One oversized triangle at the far plane, depth-tested with depth-write off, drawn **only when a camera names a sky** — naming none means "do not draw one", which is what keeps the 2D games' backgrounds intact |
+| **Shadow cascades** | The last of ADR 0045's tier 1. One shadow map over 70 m of outdoor scene is visibly blocky; ADR 0038 reserved `ShadowMode`'s third variant for exactly this |
 | **Triplanar mapping** | Terrain UVs are a planar projection from world x/z, so anything steep stretches — *and* has zero UV area, so its tangent frame falls back to an arbitrary axis. One fix for both. Wants a `Material` field to opt in, which is another schema change to every `.material` file (**Q32**) |
 | **Ambient / sky light** | Still the hardcoded `0.12` constant (**Q28**). No ambient occlusion, no bounce, no sky colour. Flat lighting is the other half of why a scene reads as a prototype, and no amount of texture fixes it |
 
@@ -678,8 +685,18 @@ extended.
 **blue**, because the sky fills it. Surfaces facing up pick up sky colour; a metal reflects its
 surroundings instead of rendering black, which is what ADR 0048 shipped without.
 
-**What it did *not* do: draw the sky.** The background is still a flat clear colour. That is a
-separate pass and is now probably the largest single visual gap left.
+**And the sky is drawn too**, in a follow-up commit: the background was a flat clear colour until
+then, so the sun lighting the world and casting its shadow was invisible.
+
+**Two defects in the sky, both found by looking, and the second is a rule rather than a slip.** The
+sun was *below the horizon* — a direction vector written by hand with the sign of Y inverted, so
+light travelled upward and the sky had no sun in it, silently. It is now derived from the same Euler
+angles the scene uses, through the engine's own transform code. Then fixing that blew the whole demo
+out to near-white, because **the scene has a `DirectionalLight` for the sun and the sky had a disc for
+the same sun** — every surface received it twice. Irradiance weighs a direction by its solid angle, so
+a 5° disc at 250× is half a percent of the sky and out-contributes all the rest of it. `docs/07`
+carries the rule: keep a direct light's *energy* in the light, and only a token of it in the
+environment.
 
 **Two defects, both found by looking at the picture rather than by reasoning** — the third session
 running that this has been the method:
