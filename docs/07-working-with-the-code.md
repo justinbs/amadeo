@@ -1619,6 +1619,74 @@ What to do today: move a character by *driving* it — input, or its `CharacterM
 assignment. There is no supported teleport, which is a real gap for respawns and fast travel and is
 recorded as **Q30**.
 
+### A mesh now has three independent properties, not two
+
+The entry above pairs **normals** and **winding** and says getting one right does not check the other.
+Normal mapping adds a third, and it fails the same silent way both of those do.
+
+| | Comes from | Decides |
+|---|---|---|
+| Normal | the field's gradient, or the shape's own maths | how brightly a surface is lit |
+| Winding | the order a triangle's three corners are listed in | which side the GPU considers the front |
+| **Tangent** | the UVs, or the file's own `TANGENT` attribute | **which way "left" points on the surface** |
+
+A tangent frame can be wrong in three ways, and only the first is loud:
+
+- **Zero length** → `normalize(0)` → `NaN` → the surface renders black, and the `NaN` spreads.
+  This is the one you notice. `generate_tangents` cannot produce it: a vertex whose UVs carried no
+  information gets an arbitrary axis in the surface instead.
+- **Not perpendicular to the normal** → the frame is not a rotation, so it shears every direction the
+  normal map stores. Looks like slightly wrong lighting.
+- **Perpendicular but pointing the wrong way** → an orthonormal frame rotated 90°, which passes every
+  "is it a valid frame" check and slides the normal map sideways across the surface.
+
+The third is why `a_tangent_points_the_way_the_texture_grows` compares against a direction worked out
+by hand — a plane's `u` axis runs along +x, so its tangent must too. A test that only checked
+orthonormality would have passed a frame pointing anywhere.
+
+> **If you add a fifth producer of `MeshData`, it needs all three checks**, not the two the earlier
+> entry names. `every_box_tangent_is_a_usable_frame` and the one above are the templates.
+
+### Colour, and things that are shaped like colour but are not
+
+`PixelFormat` has two variants and the difference is not cosmetic:
+
+- `Rgba8UnormSrgb` — the bytes are **colour**, on a perceptual curve. Everything an artist painted.
+- `Rgba8Unorm` — the same four bytes read as **linear**. Normal maps, and soon roughness and masks.
+
+**A `.png` cannot tell you which it is.** The bytes are identical; only intent differs. So the
+declaration lives in the asset's `.ama-meta` sidecar:
+
+```text
+id = "brick_normal"
+color_space = "linear"
+```
+
+`TextureCache::ensure` applies it with `TextureData::reinterpret`, which changes the tag and **not one
+byte** — converting would be the bug, since a normal map's numbers are already the numbers wanted.
+
+Getting it wrong is quiet: a normal map decoded as sRGB has every direction it stores bent, so the
+surface is lit as though its bumps face somewhere they do not. Nothing errors. **Nothing warns yet
+either** — that is **Q31**, and until it exists, checking the sidecar is a manual step when adding a
+normal map.
+
+This is the same rule as the mip-chain entry above, one layer earlier: that one is about *averaging*
+colour correctly, this one is about knowing whether a thing is colour at all.
+
+### Why a normal map needs a normal map placeholder
+
+A material naming no normal map still binds one: a 1×1 pixel of `(128, 128, 255)`, which decodes to
+`(0, 0, 1)` — "leaning nowhere" — and leaves the geometric normal exactly as it was.
+
+That is the same trick as the white base-colour placeholder, and the same reason: **the shader's
+bindings are declared by the pipeline, so leaving one empty is a validation error rather than a shader
+that skips the lookup.** Binding an identity value means one pipeline serves both textured and
+untextured materials, instead of two pipelines that can drift apart.
+
+The engine now has three of these, and the pattern is worth recognising: the shadow map's 1×1
+placeholder, the white base colour, and this. Each is the **identity of the operation it feeds** —
+never the magenta "asset missing" check, which means something different and should stay meaning it.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

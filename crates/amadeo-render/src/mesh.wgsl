@@ -51,6 +51,17 @@ struct MeshView {
 @group(2) @binding(0) var base_colour_map: texture_2d<f32>;
 @group(2) @binding(1) var base_colour_sampler: sampler;
 
+// The normal map (ADR 0047), sharing the sampler above because it is sampled at the same coordinate
+// on the same surface and wants the same repeat, filter and mip behaviour.
+//
+// Always bound, on the same argument as the two above: a material naming no normal map gets a 1×1
+// (128, 128, 255) placeholder, which decodes to (0, 0, 1) — "leaning nowhere" — and leaves the
+// geometric normal exactly as it was.
+//
+// **Uploaded as a linear format, not sRGB.** These bytes are a direction rather than a colour, and
+// sampling them through the sRGB curve would bend every one of them.
+@group(2) @binding(2) var normal_map: texture_2d<f32>;
+
 // How much light reaches this point: 1.0 in full light, 0.0 fully shadowed.
 fn shadow_factor(world: vec3<f32>, lambert: f32) -> f32 {
     if view.shadow_params.z < 0.5 {
@@ -99,6 +110,10 @@ struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
+    // xyz = the direction the texture's u axis runs across the surface, w = ±1 handedness.
+    // Location 9 rather than 3 because 3..8 belong to the instance buffer; the two share one
+    // namespace. See the pipeline's vertex layout.
+    @location(9) tangent: vec4<f32>,
 };
 
 // One per instance: where this copy of the mesh sits, and what it is made of. The model matrix
@@ -109,7 +124,8 @@ struct InstanceInput {
     @location(5) model_2: vec4<f32>,
     @location(6) model_3: vec4<f32>,
     @location(7) base_colour: vec4<f32>,
-    // rgb = emissive. a unused.
+    // rgb = emissive, a = normal_strength. The alpha channel was spare and a normal map's strength
+    // is one float, so it rides along rather than growing the instance by another sixteen bytes.
     @location(8) emissive: vec4<f32>,
 };
 
@@ -123,6 +139,10 @@ struct VertexOutput {
     // matrix multiply, and it keeps the light matrix in exactly one place.
     @location(3) world_position: vec3<f32>,
     @location(4) uv: vec2<f32>,
+    // The tangent in world space, with its handedness carried through untouched in w. Rotated by the
+    // model's basis exactly as the normal is, and re-normalised per pixel for the same reason.
+    @location(5) tangent: vec4<f32>,
+    @location(6) normal_strength: f32,
 };
 
 @vertex
@@ -151,18 +171,62 @@ fn vs_main(vertex: VertexInput, instance: InstanceInput) -> VertexOutput {
         instance.model_2.xyz,
     );
     out.normal = basis * vertex.normal;
+    // The same basis, because a tangent is a direction lying in the surface and moves with it. The
+    // handedness in w is a sign rather than a direction, so it passes through untransformed -- a
+    // negatively scaled model would flip it, which nothing authors and which the normal above has
+    // the same gap for.
+    out.tangent = vec4<f32>(basis * vertex.tangent.xyz, vertex.tangent.w);
     out.base_colour = instance.base_colour;
     out.emissive = instance.emissive.rgb;
+    out.normal_strength = instance.emissive.a;
     out.world_position = world.xyz;
     out.uv = vertex.uv;
     return out;
 }
 
+// The surface normal at this pixel, after the normal map has had its say.
+//
+// # What a normal map is doing
+//
+// The image stores, per pixel, which way the surface leans -- as if the flat triangle were finely
+// bumpy. Lighting that per-pixel direction instead of the triangle's own is what puts mortar grooves
+// between bricks and grain in wood without a single extra vertex.
+//
+// The directions are stored **in tangent space**: relative to the surface, not to the world. That is
+// what makes one image tile across a curved wall -- "lean left" means the same thing everywhere on
+// the surface, where a world direction would not. Converting one to the other is what the tangent
+// frame is for.
+fn shade_normal(in: VertexOutput) -> vec3<f32> {
+    // Interpolation across a triangle shortens both vectors, so both are re-normalised here.
+    let normal = normalize(in.normal);
+    let tangent = normalize(in.tangent.xyz);
+
+    // Sampled and decoded from 0..1 to -1..1. A flat pixel is (0.5, 0.5, 1.0) stored, which comes
+    // out as (0, 0, 1): straight along the normal, changing nothing.
+    let sampled = textureSample(normal_map, base_colour_sampler, in.uv).xyz * 2.0 - 1.0;
+
+    // Strength scales the sideways lean and leaves z alone, so 0.0 is exactly the flat surface and
+    // there is no value at which this degenerates. Scaling all three would only rescale a vector
+    // that is about to be normalised, which would do nothing at all.
+    let leaning = vec3<f32>(sampled.xy * in.normal_strength, sampled.z);
+
+    // Gram-Schmidt again, per pixel: interpolating a tangent across a triangle can leave it slightly
+    // out of the surface, and the frame has to be square or it shears the direction it maps.
+    let square_tangent = normalize(tangent - normal * dot(normal, tangent));
+    let bitangent = cross(normal, square_tangent) * in.tangent.w;
+
+    // Tangent space to world space. The columns are where each tangent-space axis points in the
+    // world, which is exactly what the three vectors are.
+    let to_world = mat3x3<f32>(square_tangent, bitangent, normal);
+    return normalize(to_world * leaning);
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Interpolating a normal across a triangle shortens it, so it is re-normalised here rather than
-    // in the vertex stage. This also absorbs whatever uniform scale the model matrix applied.
-    let normal = normalize(in.normal);
+    // The geometric normal bent by the normal map — see `shade_normal`. Re-normalising the
+    // interpolated inputs happens in there, which is also what absorbs whatever uniform scale the
+    // model matrix applied.
+    let normal = shade_normal(in);
 
     // Light travels along `light_direction`, so the vector *towards* the light is its negative.
     // max() rather than abs(): a surface facing away is in shadow, not lit from behind.
@@ -184,7 +248,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Shadow multiplies the *direct* light only. Ambient is deliberately left out of it: a surface
     // in shadow is still lit by the sky, and multiplying ambient too would make every shadow a
     // silhouette of pure black rather than something you can still see into.
-    let shadow = shadow_factor(in.world_position, lambert);
+    //
+    // **Fed the geometric normal, not the mapped one.** The slope-scaled bias exists to match how
+    // much depth one shadow-map texel spans, and the shadow map was drawn from the *geometry* --
+    // a normal map does not move a single triangle. Using the bumpy normal would vary the bias
+    // pixel to pixel across a flat wall and speckle it with acne.
+    let geometric_lambert = max(dot(normalize(in.normal), towards_light), 0.0);
+    let shadow = shadow_factor(in.world_position, geometric_lambert);
 
     // The material's base colour times its texture. Multiplied rather than replaced, which is what
     // glTF's metallic-roughness model specifies and what ADR 0033 followed: the texture carries the

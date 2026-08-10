@@ -632,21 +632,36 @@ impl App {
             let Some(primitive) = mesh.primitives.get(part.primitive as usize) else {
                 continue;
             };
-            built.push((
-                id,
-                MeshData {
-                    vertices: primitive
-                        .vertices
-                        .iter()
-                        .map(|vertex| Vertex {
-                            position: vertex.position,
-                            normal: vertex.normal,
-                            uv: vertex.uv,
-                        })
-                        .collect(),
-                    indices: primitive.indices.clone(),
-                },
-            ));
+            // A file that exports tangents is trusted over anything computed here: it is the frame
+            // the model's normal map was baked against (ADR 0047). Only a file that omits them gets
+            // a generated frame, and glTF's own spec expects a client to do exactly that.
+            //
+            // All-or-nothing rather than per-vertex, because a tangent frame is only consistent
+            // across a surface if one method produced the whole of it -- mixing two would put a
+            // visible lighting seam wherever they met.
+            let has_tangents = primitive
+                .vertices
+                .iter()
+                .all(|vertex| vertex.tangent.is_some());
+
+            let mut data = MeshData {
+                vertices: primitive
+                    .vertices
+                    .iter()
+                    .map(|vertex| Vertex {
+                        position: vertex.position,
+                        normal: vertex.normal,
+                        uv: vertex.uv,
+                        tangent: vertex.tangent.unwrap_or_default(),
+                    })
+                    .collect(),
+                indices: primitive.indices.clone(),
+            };
+            if !has_tangents {
+                data.generate_tangents();
+            }
+
+            built.push((id, data));
         }
         built
     }

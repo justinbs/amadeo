@@ -75,15 +75,17 @@ struct GpuCamera {
 
 /// One mesh vertex as the GPU sees it. Matches `Vertex` and `mesh.wgsl`'s `VertexInput`.
 ///
-/// `uv` is followed by two floats of padding so the struct is a multiple of 16 bytes — not required
-/// for a vertex buffer, which only needs its stride to match, but it keeps the layout obvious and
-/// matches how every other GPU struct here is written.
+/// Twelve floats, which is 48 bytes and a multiple of 16 — not required for a vertex buffer, whose
+/// only rule is that the stride matches what the pipeline declares, but it keeps the layout obvious
+/// and matches how every other GPU struct here is written.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct GpuVertex {
     position: [f32; 3],
     normal: [f32; 3],
     uv: [f32; 2],
+    /// xyz = the texture's u direction across the surface, w = ±1 handedness (ADR 0047).
+    tangent: [f32; 4],
 }
 
 /// One drawn copy of a mesh: where it is and what it is made of.
@@ -409,20 +411,88 @@ struct GpuTexture {
     )]
     texture: wgpu::Texture,
     /// For sprites: clamped and unfiltered, because a `region` is a rectangle inside a shared sheet.
+    ///
+    /// A sprite draws one texture and can therefore have its bind group made once, here. A *surface*
+    /// draws several at once — base colour and normal today, more with PBR — so its bind group
+    /// belongs to the combination rather than to any one texture, and lives in
+    /// [`WgpuBackend::material_bind_groups`].
     bind_group: wgpu::BindGroup,
-    /// For 3D surfaces: **repeating and filtered**.
+    /// The view the material bind groups above are built from.
     ///
-    /// Two bind groups over one texture rather than one, because the two uses want opposite samplers
-    /// and a sampler is baked into a bind group at creation. A sprite sheet must clamp or a
-    /// neighbouring tile bleeds in at the seam; a material texture must repeat or it tiles once
-    /// across a whole landscape and smears the edge pixel over everything beyond. Filtering follows
-    /// the same split — a pixel-art sprite wants `Nearest` and a surface seen at a glancing angle
-    /// wants `Linear`.
-    ///
-    /// The alternative was a field on `Material` choosing between them, which is a schema change to
-    /// every `.material` file in the repository to express something no caller has yet wanted to
-    /// vary. Cheap to add later if one does.
-    surface_bind_group: wgpu::BindGroup,
+    /// Kept because a bind group is assembled from views, and a pair's group cannot be made until
+    /// both textures exist — which may be different frames.
+    view: wgpu::TextureView,
+}
+
+/// Builds a one-pixel texture holding a single colour, and a view onto it.
+///
+/// For the stand-ins a material binds when it names no texture of its own. Both are returned because
+/// a bind group is assembled from the *view*, while the texture itself has to be kept alive or the
+/// view dangles.
+fn single_pixel_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    label: &str,
+    format: wgpu::TextureFormat,
+    pixel: [u8; 4],
+) -> (wgpu::Texture, wgpu::TextureView) {
+    let size = wgpu::Extent3d {
+        width: 1,
+        height: 1,
+        depth_or_array_layers: 1,
+    };
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &pixel,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(4),
+            rows_per_image: Some(1),
+        },
+        size,
+    );
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    (texture, view)
+}
+
+/// Which textures a surface draws with: the key a material bind group is cached under.
+///
+/// Ids rather than the textures themselves, because this is built from a `Material` before anything
+/// has looked up whether either has been uploaded — an absent one falls back to a placeholder and
+/// still draws, per ADR 0021.
+///
+/// **This grows as the material model does.** Metallic-roughness and occlusion maps join it, which
+/// is the reason group 2 is keyed on a combination at all rather than a fourth and fifth bind group:
+/// wgpu guarantees only four groups, and 0, 1 and 2 are already the view, the shadow map and this.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct MaterialTextures {
+    base_colour: String,
+    normal: String,
+}
+
+impl MaterialTextures {
+    /// The texture ids a material names. Empty strings stay empty and mean "bind the placeholder".
+    fn of(material: &crate::Material) -> MaterialTextures {
+        MaterialTextures {
+            base_colour: material.base_colour_texture.clone(),
+            normal: material.normal_texture.clone(),
+        }
+    }
 }
 
 /// Where a finished frame goes.
@@ -520,19 +590,42 @@ pub struct WgpuBackend {
     shadow_sampler: wgpu::Sampler,
     /// Bound when nothing casts a shadow, so there is one mesh pipeline rather than two.
     shadow_placeholder_bind_group: wgpu::BindGroup,
-    /// A 1×1 opaque white texture, bound for a material that names no base colour texture.
+    /// A 1×1 opaque white view, bound for a material that names no base colour texture.
     ///
     /// White is the identity of the multiply the shader does, so binding it is arithmetically the
     /// same as not sampling — which is what keeps this to one mesh pipeline rather than a textured
     /// one and an untextured one. Deliberately **not** the magenta `TextureCache` placeholder:
     /// magenta means "an asset is missing and you should notice", and an untextured material is not
     /// missing anything.
-    white_placeholder_bind_group: wgpu::BindGroup,
+    white_placeholder_view: wgpu::TextureView,
+    /// A 1×1 flat normal view, bound for a material that names no normal map. See its construction
+    /// for why the pixel is `(128, 128, 255)` and why it is linear rather than sRGB.
+    flat_normal_placeholder_view: wgpu::TextureView,
+    /// One bind group per *combination* of material textures, built on first use.
+    ///
+    /// Keyed on the combination rather than on a single texture because group 2 now carries several
+    /// images at once. Two materials naming the same pair share an entry, which is the common case:
+    /// forty-four walls wearing one stone texture are one bind group.
+    ///
+    /// Cleared whenever a texture is uploaded — see [`WgpuBackend::upload_texture`] — because an
+    /// entry built while an id was still a placeholder would otherwise keep showing the placeholder
+    /// forever.
+    material_bind_groups: BTreeMap<MaterialTextures, wgpu::BindGroup>,
     #[allow(
         dead_code,
         reason = "held to keep the placeholder texture alive; its view and bind group borrow from it"
     )]
     shadow_placeholder: wgpu::Texture,
+    #[allow(
+        dead_code,
+        reason = "held to keep the placeholder texture alive; its view borrows from it"
+    )]
+    white_placeholder: wgpu::Texture,
+    #[allow(
+        dead_code,
+        reason = "held to keep the placeholder texture alive; its view borrows from it"
+    )]
+    flat_normal_placeholder: wgpu::Texture,
     /// Uploaded geometry, by asset id.
     meshes: BTreeMap<String, GpuMesh>,
     /// One aligned slot per 3D view, addressed by dynamic offset — the same arrangement the 2D
@@ -920,13 +1013,17 @@ impl WgpuBackend {
             ],
         });
 
-        // The same two bindings for 3D surfaces, but **filterable**.
+        // What a 3D surface binds: **every** texture its material names, plus one shared sampler.
         //
-        // A separate layout rather than relaxing the one above, because that one's `filterable:
-        // false` is a deliberate compatibility choice: requiring a filterable float texture is a
-        // capability some adapters do not advertise for every format, and nearest-neighbour sprites
-        // do not need it. Asking for it only here confines that requirement to the 3D path, and to
-        // `Rgba8UnormSrgb`, which WebGPU's base feature set guarantees is filterable.
+        // Filterable where the sprite layout above is not. A separate layout rather than relaxing
+        // that one, because its `filterable: false` is a deliberate compatibility choice: requiring
+        // a filterable float texture is a capability some adapters do not advertise for every
+        // format, and nearest-neighbour sprites do not need it. Asking for it only here confines the
+        // requirement to the 3D path.
+        //
+        // One sampler for both textures, because a normal map wants exactly what a base colour map
+        // wants — repeat, filter, mip. They are sampled at the same coordinate on the same surface;
+        // a second sampler would be the same settings under a different name.
         let surface_texture_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("amadeo surface texture layout"),
@@ -945,6 +1042,21 @@ impl WgpuBackend {
                         binding: 1,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                    // The normal map (ADR 0047). Always bound — a material naming none gets a 1×1
+                    // flat-blue placeholder, which decodes to "leaning nowhere" and leaves the
+                    // geometric normal untouched. Same trick as the white base-colour placeholder:
+                    // one pipeline serves both instead of a textured and an untextured variant that
+                    // can drift apart.
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
                         count: None,
                     },
                 ],
@@ -1272,55 +1384,31 @@ impl WgpuBackend {
         // `base_colour`. White is the identity of the multiply, so binding this is arithmetically
         // the same as not sampling at all — which is what lets there be one mesh pipeline instead of
         // a textured one and an untextured one that can drift apart.
-        let white_placeholder = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("amadeo white placeholder"),
-            size: wgpu::Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &white_placeholder,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &[255_u8, 255, 255, 255],
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(4),
-                rows_per_image: Some(1),
-            },
-            wgpu::Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
-            },
+        let (white_placeholder, white_placeholder_view) = single_pixel_texture(
+            &device,
+            &queue,
+            "amadeo white placeholder",
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            [255, 255, 255, 255],
         );
-        let white_placeholder_view =
-            white_placeholder.create_view(&wgpu::TextureViewDescriptor::default());
-        let white_placeholder_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("amadeo white placeholder bind group"),
-            layout: &surface_texture_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&white_placeholder_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&surface_sampler),
-                },
-            ],
-        });
+
+        // A 1×1 flat normal, for a material that names no normal map.
+        //
+        // `(128, 128, 255)` is what a tangent-space normal map stores where the surface is not
+        // leaning at all: the shader decodes each channel from `0..1` to `-1..1`, so this comes out
+        // as `(0, 0, 1)` — straight along the geometric normal. Binding it is arithmetically the
+        // same as not sampling, which is the white placeholder's argument applied to directions.
+        //
+        // **Linear, not sRGB.** The whole point of `PixelFormat::Rgba8Unorm` is that these bytes are
+        // not colour; tagging the placeholder sRGB would decode 128 to about 55 and tilt a surface
+        // that is meant to be perfectly flat.
+        let (flat_normal_placeholder, flat_normal_placeholder_view) = single_pixel_texture(
+            &device,
+            &queue,
+            "amadeo flat normal placeholder",
+            wgpu::TextureFormat::Rgba8Unorm,
+            [128, 128, 255, 255],
+        );
 
         let shadow_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("amadeo shadow shader"),
@@ -1415,7 +1503,7 @@ impl WgpuBackend {
                 entry_point: Some("vs_main"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 buffers: &[
-                    // Per vertex: position, normal, uv.
+                    // Per vertex: position, normal, uv, tangent.
                     Some(wgpu::VertexBufferLayout {
                         array_stride: size_of::<GpuVertex>() as u64,
                         step_mode: wgpu::VertexStepMode::Vertex,
@@ -1423,6 +1511,11 @@ impl WgpuBackend {
                             0 => Float32x3,
                             1 => Float32x3,
                             2 => Float32x2,
+                            // 9, not 3: locations are one namespace shared with the instance
+                            // buffer below, which already claimed 3 through 8. Renumbering those
+                            // to keep the vertex attributes contiguous would touch the shadow
+                            // pipeline and both shaders to buy nothing.
+                            9 => Float32x4,
                         ],
                     }),
                     // Per instance: four matrix columns, then two colours. Locations continue from
@@ -1588,7 +1681,11 @@ impl WgpuBackend {
             shadow_layout,
             shadow_sampler,
             shadow_placeholder_bind_group,
-            white_placeholder_bind_group,
+            white_placeholder_view,
+            flat_normal_placeholder_view,
+            material_bind_groups: BTreeMap::new(),
+            white_placeholder,
+            flat_normal_placeholder,
             shadow_placeholder,
             meshes: BTreeMap::new(),
             mesh_view_buffer,
@@ -1863,7 +1960,7 @@ impl WgpuBackend {
         declared: &graph::Pass,
         assigned: &BTreeMap<String, usize>,
         view_index: usize,
-        draws: Option<&Vec<(&str, &str, std::ops::Range<u32>)>>,
+        draws: Option<&Vec<(&str, MaterialTextures, std::ops::Range<u32>)>>,
         timestamp_writes: Option<wgpu::RenderPassTimestampWrites<'_>>,
     ) {
         // The map it draws into is declared in `writes`, which is what orders this pass before the
@@ -1977,6 +2074,56 @@ impl WgpuBackend {
 
         assigned
     }
+
+    /// Makes sure a bind group exists for every texture combination this frame will draw.
+    ///
+    /// **Runs before the render pass opens, and has to.** Creating a bind group needs `&mut self` to
+    /// cache it, and a pass holds the encoder borrowed for its whole life — so building one lazily
+    /// inside the draw loop does not compile. Doing it up front is also simply better: a bind group
+    /// is built once per combination rather than reconsidered per draw.
+    ///
+    /// A texture that has not been uploaded falls back to a placeholder rather than skipping the
+    /// draw. ADR 0021 again: a material naming a texture that has not decoded yet still draws in its
+    /// base colour, which is survivable and visible rather than an object that vanishes.
+    fn ensure_material_bind_groups<'a>(
+        &mut self,
+        wanted: impl Iterator<Item = &'a MaterialTextures>,
+    ) {
+        for key in wanted {
+            if self.material_bind_groups.contains_key(key) {
+                continue;
+            }
+
+            let base_colour = self
+                .textures
+                .get(&key.base_colour)
+                .map_or(&self.white_placeholder_view, |texture| &texture.view);
+            let normal = self
+                .textures
+                .get(&key.normal)
+                .map_or(&self.flat_normal_placeholder_view, |texture| &texture.view);
+
+            let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("amadeo material textures"),
+                layout: &self.surface_texture_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(base_colour),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&self.surface_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(normal),
+                    },
+                ],
+            });
+            self.material_bind_groups.insert(key.clone(), bind_group);
+        }
+    }
 }
 
 impl RenderBackend for WgpuBackend {
@@ -2039,6 +2186,7 @@ impl RenderBackend for WgpuBackend {
                 position: vertex.position,
                 normal: vertex.normal,
                 uv: vertex.uv,
+                tangent: vertex.tangent,
             })
             .collect();
 
@@ -2100,6 +2248,10 @@ impl RenderBackend for WgpuBackend {
             // the art is gamma-encoded, the GPU converts to linear when sampling, blending happens
             // in linear, and the surface converts back on the way out.
             PixelFormat::Rgba8UnormSrgb => wgpu::TextureFormat::Rgba8UnormSrgb,
+            // No conversion on sampling, because these bytes are not colour. A normal map read
+            // through the sRGB curve comes out with every direction bent, which lights a surface as
+            // though its bumps face somewhere they do not (ADR 0047).
+            PixelFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
         };
 
         let limit = self.device.limits().max_texture_dimension_2d;
@@ -2180,22 +2332,16 @@ impl RenderBackend for WgpuBackend {
             ],
         });
 
-        // The same pixels again with the repeating, filtered sampler, for when this texture is worn
-        // by a 3D surface rather than a sprite. One texture, two bind groups — see `GpuTexture`.
-        let surface_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(id),
-            layout: &self.surface_texture_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.surface_sampler),
-                },
-            ],
-        });
+        // **Every cached material bind group naming this id is now stale**, because a bind group
+        // holds the view it was built from rather than looking it up again. Dropping them makes the
+        // next frame rebuild against the new texture.
+        //
+        // This is what makes a late arrival visible: a surface drawn while its texture was still a
+        // placeholder would otherwise keep the placeholder for the life of the process, which is
+        // exactly the defect `placeholders_uploaded` exists to catch one layer up. Discarding the
+        // whole entry rather than editing it in place, because a bind group is immutable once made.
+        self.material_bind_groups
+            .retain(|key, _| key.base_colour != id && key.normal != id);
 
         // Inserting replaces any earlier texture under this id, and dropping the old one releases
         // its video memory. That is what makes a late-arriving asset, and later hot-reload, work.
@@ -2204,7 +2350,7 @@ impl RenderBackend for WgpuBackend {
             GpuTexture {
                 texture: gpu_texture,
                 bind_group,
-                surface_bind_group,
+                view,
             },
         );
         Ok(())
@@ -2288,12 +2434,12 @@ impl RenderBackend for WgpuBackend {
         // than follow. `mesh_draws` records each view's slice and which mesh each run uses.
         let mut mesh_views: Vec<u8> = vec![0; self.mesh_view_stride as usize * frame.views.len()];
         let mut mesh_instances: Vec<GpuMeshInstance> = Vec::new();
-        let mut mesh_draws: Vec<Vec<(&str, &str, std::ops::Range<u32>)>> =
+        let mut mesh_draws: Vec<Vec<(&str, MaterialTextures, std::ops::Range<u32>)>> =
             Vec::with_capacity(frame.views.len());
         // The shadow pass's own ranges, over the same instance buffer. Kept in step with
         // `mesh_draws`: every path that pushes to one pushes to the other, so one `view_index`
         // addresses both and they cannot drift out of alignment.
-        let mut shadow_draws: Vec<Vec<(&str, &str, std::ops::Range<u32>)>> =
+        let mut shadow_draws: Vec<Vec<(&str, MaterialTextures, std::ops::Range<u32>)>> =
             Vec::with_capacity(frame.views.len());
 
         for (index, view) in frame.views.iter().enumerate() {
@@ -2375,7 +2521,7 @@ impl RenderBackend for WgpuBackend {
             // draws. They overlap, and the overlap is written twice — a matrix and two colours per
             // repeat, which is cheaper than the second buffer and the second resize path that
             // avoiding it would cost. See `View::shadow_casters` for why they are different lists.
-            let mut draws: Vec<(&str, &str, std::ops::Range<u32>)> = Vec::new();
+            let mut draws: Vec<(&str, MaterialTextures, std::ops::Range<u32>)> = Vec::new();
             for instance in &view.meshes {
                 let first = mesh_instances.len() as u32;
                 mesh_instances.push(GpuMeshInstance {
@@ -2385,24 +2531,24 @@ impl RenderBackend for WgpuBackend {
                         instance.material.emissive[0],
                         instance.material.emissive[1],
                         instance.material.emissive[2],
-                        0.0,
+                        instance.material.normal_strength,
                     ],
                 });
                 let last = mesh_instances.len() as u32;
 
-                let texture = instance.material.base_colour_texture.as_str();
+                let textures = MaterialTextures::of(&instance.material);
                 match draws.last_mut() {
                     Some((mesh, bound, range))
-                        if *mesh == instance.mesh.as_str() && *bound == texture =>
+                        if *mesh == instance.mesh.as_str() && *bound == textures =>
                     {
                         range.end = last;
                     }
-                    _ => draws.push((instance.mesh.as_str(), texture, first..last)),
+                    _ => draws.push((instance.mesh.as_str(), textures, first..last)),
                 }
             }
             mesh_draws.push(draws);
 
-            let mut casters: Vec<(&str, &str, std::ops::Range<u32>)> = Vec::new();
+            let mut casters: Vec<(&str, MaterialTextures, std::ops::Range<u32>)> = Vec::new();
             for instance in &view.shadow_casters {
                 let first = mesh_instances.len() as u32;
                 mesh_instances.push(GpuMeshInstance {
@@ -2412,23 +2558,34 @@ impl RenderBackend for WgpuBackend {
                         instance.material.emissive[0],
                         instance.material.emissive[1],
                         instance.material.emissive[2],
-                        0.0,
+                        instance.material.normal_strength,
                     ],
                 });
                 let last = mesh_instances.len() as u32;
 
-                let texture = instance.material.base_colour_texture.as_str();
+                let textures = MaterialTextures::of(&instance.material);
                 match casters.last_mut() {
                     Some((mesh, bound, range))
-                        if *mesh == instance.mesh.as_str() && *bound == texture =>
+                        if *mesh == instance.mesh.as_str() && *bound == textures =>
                     {
                         range.end = last;
                     }
-                    _ => casters.push((instance.mesh.as_str(), texture, first..last)),
+                    _ => casters.push((instance.mesh.as_str(), textures, first..last)),
                 }
             }
             shadow_draws.push(casters);
         }
+
+        // Before any pass opens — see `ensure_material_bind_groups`. Both lists, because the shadow
+        // pass draws its own set of instances and a caster the camera cannot see still needs a
+        // binding to draw with.
+        let wanted: Vec<MaterialTextures> = mesh_draws
+            .iter()
+            .chain(shadow_draws.iter())
+            .flatten()
+            .map(|(_, textures, _)| textures.clone())
+            .collect();
+        self.ensure_material_bind_groups(wanted.iter());
 
         let mut cameras: Vec<u8> = vec![0; self.camera_stride as usize * frame.views.len()];
         let mut instances: Vec<GpuInstance> = Vec::with_capacity(frame.quad_count());
@@ -2700,23 +2857,19 @@ impl RenderBackend for WgpuBackend {
                         pass.set_bind_group(1, shadow_binding, &[]);
                         pass.set_vertex_buffer(1, self.mesh_instance_buffer.slice(..));
 
-                        for (mesh_id, texture_id, range) in draws {
+                        for (mesh_id, textures, range) in draws {
                             // A mesh that was never uploaded is skipped rather than drawn with
                             // whatever buffer happened to be bound, which would render one shape
                             // wearing another's geometry — silently, and very confusingly.
                             let Some(mesh) = self.meshes.get(*mesh_id) else {
                                 continue;
                             };
-                            // The material's texture, or white. Falling back rather than skipping:
-                            // a material naming a texture that has not decoded yet still draws in
-                            // its base colour, which is ADR 0021's "survivable and visible" applied
-                            // to a surface rather than to a sprite.
-                            let bound = self
-                                .textures
-                                .get(*texture_id)
-                                .map_or(&self.white_placeholder_bind_group, |texture| {
-                                    &texture.surface_bind_group
-                                });
+                            // Built above, so this is a lookup that cannot miss. Skipping rather
+                            // than unwrapping if it somehow does: a dropped draw is a missing
+                            // object, where a panic in a render pass takes the whole game down.
+                            let Some(bound) = self.material_bind_groups.get(textures) else {
+                                continue;
+                            };
                             pass.set_bind_group(2, bound, &[]);
                             pass.set_vertex_buffer(0, mesh.vertices.slice(..));
                             pass.set_index_buffer(

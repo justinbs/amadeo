@@ -247,6 +247,73 @@ exit gate asked for anyway. It becomes blocking the first time a game needs a re
 
 ---
 
+## Q31 · P2 · Nothing warns when a normal map forgets to declare itself linear
+
+**New in session 14, and named in ADR 0047 as the sharpest edge that feature ships with.**
+
+A normal map's bytes are directions, not colour, so its `.ama-meta` sidecar must say
+`color_space = "linear"`. A `.png` cannot say which it is — the bytes are identical either way — so
+the sidecar is the only declaration there is.
+
+**Forgetting it is silent.** The map decodes through the sRGB curve, every direction it stores is
+bent, and the surface is lit as though its bumps face somewhere they do not. No error, no fallback, no
+entry in `TextureCache::failures` — because nothing failed. It renders, slightly wrong, forever.
+
+Unity and Godot both solve this in the importer, with a "this texture is not marked as a normal map —
+fix now?" prompt. That is the right shape here too. What is missing is the path: `amadeo check`
+validates a scene document against the asset catalogue and has no knowledge of `Material`, because
+`amadeo-scene` does not depend on `amadeo-render` and should not.
+
+### The options
+
+- **A generic rule in `amadeo_scene::validate`**: any component field named `*_texture` whose asset
+  declares no `color_space`, checked against a small table of which slots are data. Cheap and
+  stringly-typed — a naming convention baked into a validator.
+- **A diagnostics pass in `amadeo-app`**, which already has both the `Material` and the `Assets` and
+  sits above both. The natural home, and it needs somewhere to report *to*: the engine has no logging
+  convention, and inventing one is the actual work.
+- **Infer it from the slot instead of declaring it**, making the sidecar advisory. Removes the class
+  of error entirely, and does not generalise — `TextureCache` is keyed by id, so one image used in two
+  slots would need two decodes.
+
+**Not blocking.** Nothing in the repository ships a normal map yet. It becomes blocking the moment
+authored art does, which is M3's exit gate.
+
+---
+
+## Q32 · P2 · Every field added to `Material` rewrites every `.material` file
+
+**Noticed in session 14 while adding two fields, and it is about the scene format rather than about
+materials.**
+
+Reflection requires **every** field to be present when reading a value, so adding one to a component
+invalidates every file that spells it out. `Material` gained `normal_texture` and `normal_strength`
+and five files had to change. PBR will do it again; so will triplanar; so will every texture slot.
+
+It is trivial churn at five files and it is not trivial at five hundred, and it is a real barrier to
+`Material` growing the fields a modern renderer needs. It also affects *authoring by hand*, which
+invariant I1 is about: a person writing a `.material` must currently name every field including the
+ones they do not care about.
+
+The tension is genuine and this is not simply an oversight. `MissingField` is what catches a typo'd
+field name and what makes a prefab that lost a component refuse to load rather than silently reverting
+(ADR 0029's deliberate opposite of Unity). Making fields optional trades that away.
+
+### The options
+
+- **A field may declare a default, and a missing field takes it.** Familiar and easy, and it weakens
+  the guarantee above unless "optional" is opt-in per field rather than blanket.
+- **A `version` per component, with a migration step.** The heavyweight answer, already on M3's list
+  for save files ("save/load built on snapshots, with versioning and migration"), and possibly the
+  same mechanism.
+- **Leave it.** Five files is nothing, and `amadeo fmt` could grow a `--migrate` that adds missing
+  fields at their defaults — turning a schema change into a command rather than a hand edit.
+
+**Not blocking**, and worth deciding before `Material` grows the four or five more slots PBR and
+image-based lighting want.
+
+---
+
 ## ~~Q26~~ · **CLOSED in session 13** · `render.describe` can see meshes
 
 **Resolved.** `describe_frame` picks the first active window camera of **either** projection

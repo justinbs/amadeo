@@ -250,7 +250,8 @@ fn material_text(id: &str, name: &str, material: &amadeo_gltf::GltfMaterial) -> 
     // `Material` type to reflect -- `amadeo-cli` deliberately does not depend on `amadeo-render`.
     format!(
         "scene {id}\nversion 1\n\nentity material \"{}\"\n  Material\n    base_colour {} {} {} {}\n    \
-         base_colour_texture \"\"\n    emissive {} {} {}\n    metallic {}\n    roughness {}\n",
+         base_colour_texture \"\"\n    emissive {} {} {}\n    metallic {}\n    normal_strength 1.0\n    \
+         normal_texture \"\"\n    roughness {}\n",
         escape(name),
         number(material.base_colour[0]),
         number(material.base_colour[1]),

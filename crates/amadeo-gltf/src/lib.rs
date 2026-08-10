@@ -83,6 +83,19 @@ pub struct GltfVertex {
     pub normal: [f32; 3],
     /// Texture coordinate.
     pub uv: [f32; 2],
+    /// The file's `TANGENT` attribute — `xyz` direction, `w` handedness — or `None` if it has none.
+    ///
+    /// **Optional where the others are required**, and that asymmetry is the point (ADR 0047). A
+    /// tangent frame can be computed from the other three; a position cannot be computed from
+    /// anything. So a file without one is ordinary rather than broken, and the engine generates a
+    /// frame at load.
+    ///
+    /// Reading it matters because the alternative is guessing. A normal map is *baked* against a
+    /// particular tangent frame — usually MikkTSpace's — and a renderer that computes a different one
+    /// lights the bumps slightly wrong everywhere. Blender and Substance can export the frame they
+    /// baked against, so taking it from the file when it is there is how Amadeo gets MikkTSpace
+    /// correctness without implementing MikkTSpace.
+    pub tangent: Option<[f32; 4]>,
 }
 
 /// One drawable piece of geometry.
@@ -265,12 +278,23 @@ fn read_primitive(
     // accessors by mistake; a valid file has them equal. Truncating to the shortest is what keeps a
     // slightly-wrong file drawable rather than making it a hard error, and it cannot index past the
     // end of anything.
+    // Tangents, if the exporter wrote them. Unlike the three above this is not `ok_or_else`: a file
+    // without tangents is normal, and the engine generates them at load (ADR 0047).
+    let tangents: Vec<[f32; 4]> = reader
+        .read_tangents()
+        .map(Iterator::collect)
+        .unwrap_or_default();
+
     let count = positions.len().min(normals.len()).min(uvs.len());
     let vertices = (0..count)
         .map(|index| GltfVertex {
             position: positions[index],
             normal: normals[index],
             uv: uvs[index],
+            // `get` rather than indexing: a file with tangents for only some vertices is malformed,
+            // and truncating the way `count` does above would silently drop good geometry. Missing
+            // entries become `None` and are generated with the rest.
+            tangent: tangents.get(index).copied(),
         })
         .collect();
 

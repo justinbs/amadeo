@@ -34,8 +34,8 @@ use std::collections::BTreeMap;
 /// defines-plus-a-pipeline-cache over that kind of generality for the same reason — one person
 /// maintains this.
 ///
-/// Tangents are **not** here. When normal mapping needs them they are generated at load from the
-/// UVs, which is what glTF itself permits for a model that omits them.
+/// Tangents arrived with normal mapping (ADR 0047) and are the one attribute that is usually
+/// *computed* rather than authored — see [`Vertex::tangent`] and [`MeshData::generate_tangents`].
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Vertex {
     /// Position in the mesh's own space, before any transform.
@@ -44,6 +44,32 @@ pub struct Vertex {
     pub normal: [f32; 3],
     /// Texture coordinate. `[0, 0]` is the **top-left** of an image, matching `sprite.wgsl`.
     pub uv: [f32; 2],
+    /// The direction the texture's **u** axis runs across this surface, plus a handedness sign.
+    ///
+    /// `xyz` is unit length and lies in the surface; `w` is `+1.0` or `-1.0` and says which way the
+    /// bitangent points, which the shader recovers as `cross(normal, tangent.xyz) * w`.
+    ///
+    /// # What it is for, in plain terms
+    ///
+    /// A normal map stores directions relative to *the surface* rather than to the world — "lean
+    /// left", "lean up" — because that is what lets one image tile across a curved wall. Turning
+    /// "lean left" into a world direction needs to know which way "left" points at this vertex, and
+    /// that is what the tangent is. Normal alone is not enough: it fixes which way is *out* and
+    /// leaves the surface free to spin around it.
+    ///
+    /// # Why `w` is a sign rather than a second vector
+    ///
+    /// The bitangent is perpendicular to both the normal and the tangent, so the only thing left to
+    /// say about it is which of the two perpendicular directions it takes. Storing one float instead
+    /// of three is glTF 2.0's own encoding, so an imported tangent maps straight across.
+    ///
+    /// A sign is also what mirrored UVs need. Mirroring a texture across a model's centre line — how
+    /// nearly every character is textured — flips handedness on one side, and a mesh that could not
+    /// express that would light one half of a face inside out.
+    ///
+    /// **Defaults to all zeros, which is not a valid frame.** Producers either fill it or call
+    /// [`MeshData::generate_tangents`]; the generator itself never leaves a zero behind.
+    pub tangent: [f32; 4],
 }
 
 /// Geometry, ready for the GPU.
@@ -98,6 +124,129 @@ impl MeshData {
             }
         }
         Some((min, max))
+    }
+
+    /// Fills in every vertex's [`tangent`](Vertex::tangent) from the positions, UVs and normals.
+    ///
+    /// Call this on any mesh that might wear a normal map and does not already carry tangents from
+    /// its source file. It is idempotent and overwrites whatever was there.
+    ///
+    /// # The algorithm, and why it is this one rather than MikkTSpace
+    ///
+    /// For each triangle, the two edges and their UV deltas give a small linear system whose
+    /// solution is the direction `u` runs in world space. Each triangle's answer is added to its
+    /// three vertices, and at the end each vertex's total is orthonormalised against its normal
+    /// (Gram-Schmidt). Averaging over the triangles sharing a vertex is what makes a curved surface
+    /// come out smooth rather than faceted.
+    ///
+    /// The industry standard is **MikkTSpace**, and this is deliberately not it. MikkTSpace matters
+    /// when a normal map was *baked* against MikkTSpace's exact frame, because a baker and a renderer
+    /// disagreeing produces subtly wrong lighting. Amadeo sidesteps that rather than reimplementing
+    /// ~1900 lines of reference C: glTF can carry `TANGENT` directly, so a model baked in Blender or
+    /// Substance **exports the tangents it was baked against** and `amadeo-gltf` reads them. (Named
+    /// rather than linked: this crate sits below that one and cannot refer to it — invariant I6.)
+    /// This
+    /// generator is the fallback for geometry with no file to ask — procedural shapes, whose UVs are
+    /// flat and axis-aligned and where the two algorithms agree exactly anyway.
+    ///
+    /// ADR 0047 records the decision and what would reverse it.
+    ///
+    /// # Degenerate cases produce a usable frame rather than a `NaN`
+    ///
+    /// A triangle whose UVs are collinear — every vertex on one texture coordinate — carries no
+    /// information about where `u` points, and the linear system above is unsolvable. Terrain hits
+    /// this for real: its UVs are a planar projection from world x/z, so a perfectly vertical face
+    /// has zero UV area. Rather than emit a zero vector, which becomes `normalize(0)` and then a
+    /// `NaN` that spreads across the whole surface as a black hole, those vertices get an arbitrary
+    /// axis perpendicular to the normal. The normal map will look wrong there; it will not look
+    /// *broken*, and nothing downstream has to test for it.
+    pub fn generate_tangents(&mut self) {
+        // Running totals per vertex, summed over every triangle that touches it. Both directions are
+        // accumulated: the tangent is what gets stored, and the bitangent is what its sign is
+        // measured against at the end.
+        let mut accumulated = vec![[0.0_f32; 3]; self.vertices.len()];
+        let mut accumulated_bitangent = vec![[0.0_f32; 3]; self.vertices.len()];
+
+        for triangle in self.indices.chunks_exact(3) {
+            let [a, b, c] = [
+                triangle[0] as usize,
+                triangle[1] as usize,
+                triangle[2] as usize,
+            ];
+            // An index past the end is skipped rather than panicking: `is_well_formed` is the place
+            // that reports it, and a generator that crashed on bad input would turn a drawable-but-
+            // wrong mesh into a dead process.
+            let (Some(&va), Some(&vb), Some(&vc)) = (
+                self.vertices.get(a),
+                self.vertices.get(b),
+                self.vertices.get(c),
+            ) else {
+                continue;
+            };
+
+            let edge1 = sub(vb.position, va.position);
+            let edge2 = sub(vc.position, va.position);
+            let duv1 = [vb.uv[0] - va.uv[0], vb.uv[1] - va.uv[1]];
+            let duv2 = [vc.uv[0] - va.uv[0], vc.uv[1] - va.uv[1]];
+
+            // The determinant of the UV matrix. Zero means the triangle's UVs are collinear and the
+            // system has no solution, so this triangle contributes nothing and the vertices fall
+            // back below if no other triangle helps them.
+            let determinant = duv1[0] * duv2[1] - duv2[0] * duv1[1];
+            if determinant == 0.0 {
+                continue;
+            }
+            let inverse = 1.0 / determinant;
+
+            // Solving for the u direction: the combination of the two edges whose UV change is
+            // purely along u. The v direction is the same system with the roles swapped.
+            let tangent = [
+                (duv2[1] * edge1[0] - duv1[1] * edge2[0]) * inverse,
+                (duv2[1] * edge1[1] - duv1[1] * edge2[1]) * inverse,
+                (duv2[1] * edge1[2] - duv1[1] * edge2[2]) * inverse,
+            ];
+            let bitangent = [
+                (duv1[0] * edge2[0] - duv2[0] * edge1[0]) * inverse,
+                (duv1[0] * edge2[1] - duv2[0] * edge1[1]) * inverse,
+                (duv1[0] * edge2[2] - duv2[0] * edge1[2]) * inverse,
+            ];
+
+            for index in [a, b, c] {
+                accumulated[index] = add(accumulated[index], tangent);
+                accumulated_bitangent[index] = add(accumulated_bitangent[index], bitangent);
+            }
+        }
+
+        let totals = accumulated.into_iter().zip(accumulated_bitangent);
+        for (vertex, (total, total_bitangent)) in self.vertices.iter_mut().zip(totals) {
+            let normal = vertex.normal;
+
+            // Gram-Schmidt: drop whatever part of the accumulated tangent points along the normal,
+            // leaving the part lying in the surface. Averaging across triangles with slightly
+            // different normals is what makes this necessary.
+            let projected = scale(normal, dot(total, normal));
+            let in_surface = sub(total, projected);
+
+            let tangent = match normalise(in_surface) {
+                Some(unit) => unit,
+                // No triangle gave this vertex a usable direction. Any axis lying in the surface
+                // will do -- see the degenerate-case note above.
+                None => perpendicular_to(normal),
+            };
+
+            // Handedness: which of the two perpendicular directions the bitangent takes. The shader
+            // recovers it as `cross(normal, tangent) * w`, so `w` is decided by comparing that
+            // against the bitangent the UVs actually implied. Disagreeing means the UVs are
+            // mirrored here, and the sign is what carries that across.
+            let implied = cross(normal, tangent);
+            let handedness = if dot(implied, total_bitangent) < 0.0 {
+                -1.0
+            } else {
+                1.0
+            };
+
+            vertex.tangent = [tangent[0], tangent[1], tangent[2], handedness];
+        }
     }
 
     /// Whether every index names a vertex that exists.
@@ -192,12 +341,16 @@ impl BoxMesh {
                     position: *corner,
                     normal,
                     uv,
+                    ..Vertex::default()
                 });
             }
             // Two triangles per face, both counter-clockwise from outside.
             data.indices
                 .extend([first, first + 1, first + 2, first, first + 2, first + 3]);
         }
+        // Each face is flat with axis-aligned UVs, so the generated frame is exact here rather than
+        // approximate -- there is nothing a baking tool would have computed differently.
+        data.generate_tangents();
         data
     }
 }
@@ -233,7 +386,7 @@ impl PlaneMesh {
         let corners = [[-x, 0.0, z], [x, 0.0, z], [x, 0.0, -z], [-x, 0.0, -z]];
         let uvs = [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
 
-        MeshData {
+        let mut data = MeshData {
             vertices: corners
                 .iter()
                 .zip(uvs)
@@ -241,10 +394,14 @@ impl PlaneMesh {
                     position: *position,
                     normal: up,
                     uv,
+                    ..Vertex::default()
                 })
                 .collect(),
             indices: vec![0, 1, 2, 0, 2, 3],
-        }
+        };
+        // Flat and axis-aligned, so exact -- see the note in `BoxMesh::tessellate`.
+        data.generate_tangents();
+        data
     }
 }
 
@@ -277,6 +434,37 @@ pub struct Material {
     /// Declared asset id of the base colour texture. **Empty means none**, matching
     /// [`Camera::environment`](crate::Camera) and `Sprite::texture`.
     pub base_colour_texture: String,
+    /// Declared asset id of the normal map. **Empty means none.**
+    ///
+    /// A normal map fakes surface detail that is not in the geometry: the image stores, per pixel, a
+    /// direction the surface is leaning, and the shader lights that direction instead of the flat
+    /// one the triangle has. Bricks get depth, and the mesh is still two triangles.
+    ///
+    /// # Two things about the image itself
+    ///
+    /// Its `.ama-meta` sidecar must say `color_space = "linear"`. The bytes are directions rather
+    /// than colour, and decoding them through the sRGB curve tilts every one of them — a subtly
+    /// wrong picture with no error anywhere.
+    ///
+    /// **Nothing warns about this yet**, and it is the sharpest edge on this feature: a normal map
+    /// whose sidecar forgot the line renders slightly wrong and says nothing. The check belongs in
+    /// `amadeo check`, which needs a diagnostics path from a material to the asset it names that
+    /// does not exist today. Recorded as **Q31**.
+    ///
+    /// It must also be a **tangent-space** map — the mostly-blue kind. Object-space maps exist and
+    /// are a different thing entirely; nothing here would report the difference, and the surface
+    /// would simply light wrong.
+    pub normal_texture: String,
+    /// How strongly [`Material::normal_texture`] is applied. `1.0` is the map as authored.
+    ///
+    /// Below one flattens the detail, above one exaggerates it. Useful because a normal map baked
+    /// from a high-poly model is often too subtle or too strong for the surface it ends up on, and
+    /// re-baking is expensive where turning a dial is not.
+    ///
+    /// Scales the sideways lean only, leaving the map's own direction alone, so `0.0` is exactly the
+    /// flat surface and there is no value at which the frame degenerates.
+    #[reflect(min = 0.0, max = 4.0)]
+    pub normal_strength: f32,
 }
 
 impl Default for Material {
@@ -292,6 +480,11 @@ impl Default for Material {
             roughness: 0.5,
             emissive: [0.0, 0.0, 0.0],
             base_colour_texture: String::new(),
+            normal_texture: String::new(),
+            // The identity of the operation rather than zero, exactly as `base_colour` is white:
+            // a material that names no normal map should shade the same whatever this says, and a
+            // 0.0 default would silently flatten the first map anyone attached.
+            normal_strength: 1.0,
         }
     }
 }
@@ -609,14 +802,71 @@ impl MaterialCache {
     }
 }
 
+// Three-component vector arithmetic, for [`MeshData::generate_tangents`].
+//
+// Written out rather than reaching for `glam` because `amadeo-render` does not depend on it and one
+// tangent generator is not a reason to add an edge to the crate graph. Six lines each, and the
+// names say what they do.
+
+/// Dot product — how much two directions agree.
+fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+/// Cross product — a direction perpendicular to both inputs.
+fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+fn add(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+}
+
+fn sub(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn scale(a: [f32; 3], by: f32) -> [f32; 3] {
+    [a[0] * by, a[1] * by, a[2] * by]
+}
+
+/// A unit-length version, or `None` if the vector is too short to have a direction.
+///
+/// The threshold is what stops a `normalize(0)` becoming a `NaN` that spreads across a surface. It
+/// is compared against the *squared* length, so it is `1e-12` rather than `1e-6`.
+fn normalise(a: [f32; 3]) -> Option<[f32; 3]> {
+    let length_squared = dot(a, a);
+    if length_squared < 1e-12 {
+        return None;
+    }
+    let length = length_squared.sqrt();
+    Some(scale(a, 1.0 / length))
+}
+
+/// Some unit-length direction at right angles to `normal`.
+///
+/// Which one is arbitrary and does not matter: this is only reached when the UVs carried no
+/// information about where the texture's u axis runs, so there is no right answer to find — only a
+/// need for a frame that is valid rather than `NaN`.
+///
+/// Crossing with whichever axis the normal leans on least, because crossing with a nearly-parallel
+/// axis gives a very short vector and the normalisation would then amplify its rounding error.
+fn perpendicular_to(normal: [f32; 3]) -> [f32; 3] {
+    let axis = if normal[0].abs() < 0.9 {
+        [1.0, 0.0, 0.0]
+    } else {
+        [0.0, 1.0, 0.0]
+    };
+    normalise(cross(normal, axis)).unwrap_or([1.0, 0.0, 0.0])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Dot product, for checking a normal points where it should.
-    fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
-        a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-    }
 
     /// A triangle's geometric normal, from the winding of its three corners.
     ///
@@ -684,6 +934,124 @@ mod tests {
                  winding {geometric:?} vs stored {stored:?}"
             );
         }
+    }
+
+    #[test]
+    fn every_box_tangent_is_a_usable_frame() {
+        // **The third independent property of a mesh**, after normals and winding, and it fails the
+        // same silent way both of those do: a bad tangent frame does not error, it lights the
+        // surface wrong. Four things have to hold for the shader's `mat3(t, b, n)` to be a rotation
+        // rather than a smear.
+        let data = BoxMesh::default().tessellate();
+        for (index, vertex) in data.vertices.iter().enumerate() {
+            let tangent = [vertex.tangent[0], vertex.tangent[1], vertex.tangent[2]];
+
+            let length = dot(tangent, tangent);
+            assert!(
+                (length - 1.0).abs() < 1e-4,
+                "vertex {index}'s tangent must be unit length, got {tangent:?} (length² {length})"
+            );
+            assert!(
+                length.is_finite() && tangent.iter().all(|c| c.is_finite()),
+                "vertex {index}'s tangent is not finite: {tangent:?}. A NaN here spreads across the \
+                 whole surface as a black hole"
+            );
+
+            // Perpendicular to the normal, which is what makes the frame a rotation. A tangent that
+            // leans out of the surface tilts every direction the normal map stores.
+            let alignment = dot(tangent, vertex.normal);
+            assert!(
+                alignment.abs() < 1e-4,
+                "vertex {index}'s tangent must lie in the surface: dot with normal is {alignment}"
+            );
+
+            assert!(
+                (vertex.tangent[3].abs() - 1.0).abs() < 1e-4,
+                "handedness is ±1, got {}",
+                vertex.tangent[3]
+            );
+        }
+    }
+
+    #[test]
+    fn a_tangent_points_the_way_the_texture_grows() {
+        // The frame has to agree with the *UVs*, not merely be perpendicular to something -- an
+        // orthonormal frame pointing 90° off passes every check above and still slides the normal
+        // map sideways across the surface.
+        //
+        // A plane lies in XZ with `u` growing along +x (its corners run -x to +x as u runs 0 to 1),
+        // so the tangent must point along +x. Checked against a direction worked out by hand rather
+        // than by re-running the generator, which would only prove it agrees with itself.
+        let data = PlaneMesh { size: [2.0, 2.0] }.tessellate();
+        for vertex in &data.vertices {
+            let tangent = [vertex.tangent[0], vertex.tangent[1], vertex.tangent[2]];
+            assert!(
+                dot(tangent, [1.0, 0.0, 0.0]) > 0.99,
+                "a plane's u axis runs along +x, so its tangent must too, got {tangent:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn collinear_uvs_produce_an_arbitrary_frame_rather_than_a_nan() {
+        // **Terrain hits this for real.** A planar UV projection from world x/z gives a perfectly
+        // vertical face zero UV area, so there is no solution for where `u` points. The generator
+        // must answer with *something* valid: `normalize(0)` is a NaN, and a NaN in a normal
+        // propagates through the lighting and paints the surface black.
+        //
+        // Every vertex here shares one UV, which is the degenerate case in its purest form.
+        let mut data = MeshData {
+            vertices: vec![
+                Vertex {
+                    position: [0.0, 0.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.5, 0.5],
+                    ..Vertex::default()
+                },
+                Vertex {
+                    position: [1.0, 0.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.5, 0.5],
+                    ..Vertex::default()
+                },
+                Vertex {
+                    position: [0.0, 1.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.5, 0.5],
+                    ..Vertex::default()
+                },
+            ],
+            indices: vec![0, 1, 2],
+        };
+        data.generate_tangents();
+
+        for vertex in &data.vertices {
+            let tangent = [vertex.tangent[0], vertex.tangent[1], vertex.tangent[2]];
+            assert!(
+                tangent.iter().all(|component| component.is_finite()),
+                "a degenerate UV triangle must still give a finite tangent, got {tangent:?}"
+            );
+            assert!(
+                (dot(tangent, tangent) - 1.0).abs() < 1e-4,
+                "and a unit-length one, got {tangent:?}"
+            );
+            assert!(
+                dot(tangent, vertex.normal).abs() < 1e-4,
+                "and one still lying in the surface, got {tangent:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn generating_tangents_twice_changes_nothing() {
+        // Idempotent, because the loader may run it after a file supplied only some of them and
+        // because a mesh cache may re-derive. If the second pass differed, geometry would depend on
+        // how many times it had been through -- which is the shape of bug that shows up as a mesh
+        // lighting differently after a hot-reload.
+        let mut data = BoxMesh::default().tessellate();
+        let first = data.vertices.clone();
+        data.generate_tangents();
+        assert_eq!(data.vertices, first);
     }
 
     #[test]
@@ -810,6 +1178,8 @@ mod tests {
             roughness: 0.25,
             emissive: [2.0, 0.0, 0.0],
             base_colour_texture: "rust_plate".to_string(),
+            normal_texture: "rust_plate_normal".to_string(),
+            normal_strength: 0.75,
         };
         let back = Material::from_value(&material.to_value()).expect("round trips");
         assert_eq!(back, material);

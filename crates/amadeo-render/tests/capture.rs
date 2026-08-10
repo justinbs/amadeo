@@ -520,6 +520,104 @@ fn a_materials_texture_actually_reaches_the_pixels() {
     );
 }
 
+/// A world from [`a_lit_box`] whose material wears `normal_texture` at a given strength.
+///
+/// The map is one pixel leaning hard along the surface's +u axis: `(255, 128, 255)` decodes to
+/// `(1, 0, 1)`, which normalises to 45° off the surface normal. A flat map would be `(128, 128, 255)`.
+fn a_box_wearing_a_normal_map(strength: f32) -> World {
+    let mut world = a_lit_box([1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 2.0]);
+
+    let mut textures = amadeo_render::TextureCache::new();
+    textures.insert_decoded(
+        "leaning",
+        TextureData {
+            width: 1,
+            height: 1,
+            // **Linear, not sRGB**, which is the whole point of the format tag: these bytes are a
+            // direction. Tagged sRGB, 255 and 128 would decode to different numbers entirely and
+            // the lean would not be 45°.
+            format: amadeo_image::PixelFormat::Rgba8Unorm,
+            pixels: vec![255, 128, 255, 255],
+        },
+    );
+    world.insert_service(textures);
+
+    if let Some(materials) = world.service_mut::<MaterialCache>() {
+        materials.insert(
+            "paint",
+            Material {
+                base_colour: [1.0, 1.0, 1.0, 1.0],
+                normal_texture: "leaning".to_string(),
+                normal_strength: strength,
+                ..Material::default()
+            },
+        );
+    }
+    world
+}
+
+#[test]
+fn a_normal_map_actually_changes_the_shading() {
+    // **The thing that makes normal mapping real rather than plumbed.** Every piece of it can be
+    // wired up correctly — the field set, the texture decoded, the tangents generated, the bind
+    // group built — and the shader can still ignore the map entirely. Nothing on the CPU side can
+    // tell; only a pixel can.
+    //
+    // The light shines straight down −Z at the box's front face, so that face is fully lit and its
+    // lambert term is 1.0 — the brightest a surface can be. Leaning the normal 45° away can
+    // therefore only make it *darker*, which is an unambiguous direction to assert in.
+    let mut flat = a_lit_box([1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 2.0]);
+    let Some(without) = capture(&mut flat, 64, 64) else {
+        return;
+    };
+
+    let mut leaning = a_box_wearing_a_normal_map(1.0);
+    let Some(with) = capture(&mut leaning, 64, 64) else {
+        return;
+    };
+
+    let plain = pixel_at(&without, 32, 32);
+    let bumped = pixel_at(&with, 32, 32);
+
+    assert!(
+        bumped[0] < plain[0].saturating_sub(20),
+        "a normal leaning 45° off the light should be visibly darker than one facing it square: \
+         got {bumped:?} with the map against {plain:?} without it. Equal values mean the shader \
+         never read the map"
+    );
+    assert!(
+        bumped[0] > 30,
+        "and darker rather than black — a black surface here means the tangent frame produced a \
+         NaN or pointed backwards, got {bumped:?}"
+    );
+}
+
+#[test]
+fn normal_strength_zero_is_exactly_the_unmapped_surface() {
+    // Two things at once, and the second is why this is worth its own test.
+    //
+    // That the dial works — and that the darkening above is attributable to *the normal map* rather
+    // than to anything else the textured path does differently. At strength zero the sideways lean
+    // is scaled to nothing and the frame collapses back to the geometric normal, so the pixels must
+    // match the untextured box exactly. If they did not, something in binding a second texture
+    // would be changing the picture on its own.
+    let mut flat = a_lit_box([1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 2.0]);
+    let Some(without) = capture(&mut flat, 64, 64) else {
+        return;
+    };
+
+    let mut zeroed = a_box_wearing_a_normal_map(0.0);
+    let Some(with) = capture(&mut zeroed, 64, 64) else {
+        return;
+    };
+
+    assert_eq!(
+        pixel_at(&without, 32, 32),
+        pixel_at(&with, 32, 32),
+        "normal_strength 0.0 must be byte-identical to naming no normal map at all"
+    );
+}
+
 #[test]
 fn a_nearer_face_hides_a_further_one() {
     // What the depth buffer is *for*, and the one thing no amount of graph testing could show. A

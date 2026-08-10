@@ -139,7 +139,14 @@ impl TextureCache {
 
         match decode(&asset.bytes, id) {
             Ok(texture) => {
-                self.decoded.insert(id.to_string(), texture);
+                // A `.png` holding a normal map is byte-for-byte indistinguishable from one holding
+                // colour, so the decoder always guesses sRGB and the *sidecar* is what corrects it
+                // (ADR 0047). Re-tagging is free: both formats are the same four bytes and disagree
+                // only about what they mean.
+                self.decoded.insert(
+                    id.to_string(),
+                    texture.reinterpret(declared_format(id, assets)),
+                );
             }
             Err(cause) => {
                 self.failures.insert(
@@ -238,6 +245,37 @@ impl TextureCache {
     }
 }
 
+/// The setting an asset uses to declare that its bytes are data rather than colour.
+///
+/// Lives in the `.ama-meta` sidecar next to the image:
+///
+/// ```text
+/// id = "brick_normal"
+/// color_space = "linear"
+/// ```
+pub const COLOR_SPACE_SETTING: &str = "color_space";
+
+/// The value of [`COLOR_SPACE_SETTING`] that means "these bytes are already linear".
+pub const LINEAR_COLOR_SPACE: &str = "linear";
+
+/// Which format an asset's sidecar says its pixels are in.
+///
+/// **sRGB unless the sidecar says otherwise**, because that is what an art file holds and what every
+/// texture in the engine was before normal maps existed. An unknown value is treated as sRGB rather
+/// than refused: this runs on the render path, where ADR 0021 requires a wrong picture over a dead
+/// frame, and `amadeo check` is the place that complains about it.
+fn declared_format(id: &str, assets: &Assets) -> PixelFormat {
+    let declared = assets
+        .catalogue
+        .get(id)
+        .and_then(|entry| entry.settings.get(COLOR_SPACE_SETTING));
+
+    match declared.map(String::as_str) {
+        Some(LINEAR_COLOR_SPACE) => PixelFormat::Rgba8Unorm,
+        _ => PixelFormat::Rgba8UnormSrgb,
+    }
+}
+
 /// The image drawn when there is no image: a 2x2 magenta and near-black check.
 ///
 /// Deliberately built from a literal rather than read from `assets/textures/placeholder.ppm`. The
@@ -300,8 +338,16 @@ pub fn decode_frame_textures(world: &mut amadeo_ecs::World, frame: &FrameData) {
         // both — and a texture shared between a sprite and a surface is decoded once.
         for view in &frame.views {
             for instance in &view.meshes {
-                if !instance.material.base_colour_texture.is_empty() {
-                    cache.ensure(&instance.material.base_colour_texture, assets);
+                // Every texture slot a material has, not just the first. Missing one here is how
+                // `base_colour_texture` went a whole milestone without reaching a pixel: the field
+                // was set, the shader was ready, and nothing ever decoded the image.
+                for id in [
+                    &instance.material.base_colour_texture,
+                    &instance.material.normal_texture,
+                ] {
+                    if !id.is_empty() {
+                        cache.ensure(id, assets);
+                    }
                 }
             }
         }

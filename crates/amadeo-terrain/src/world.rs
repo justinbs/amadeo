@@ -505,7 +505,7 @@ fn collider_id(key: ChunkKey) -> StaticMeshId {
 /// print a grid of seams across the landscape the moment a material carried a texture — visible
 /// nowhere today, since materials are colours only, and tedious to attribute once they are not.
 fn mesh_data_of(chunk: &ReadyChunk) -> MeshData {
-    MeshData {
+    let mut data = MeshData {
         vertices: chunk
             .mesh
             .positions
@@ -518,10 +518,22 @@ fn mesh_data_of(chunk: &ReadyChunk) -> MeshData {
                     (position[0] + chunk.origin[0]) / TEXTURE_TILE,
                     (position[2] + chunk.origin[2]) / TEXTURE_TILE,
                 ],
+                ..Vertex::default()
             })
             .collect(),
         indices: chunk.mesh.indices.clone(),
-    }
+    };
+
+    // Tangents, so a terrain material can wear a normal map without the shader meeting a zero
+    // vector. **They are approximate here in a way they are not for a box**, and for the same reason
+    // the UVs above stretch: a planar projection gives a perfectly vertical face zero UV area, so
+    // those vertices fall back to an arbitrary axis in the surface (see `generate_tangents`).
+    //
+    // The real fix for both is triplanar mapping, which derives its own frame per axis and needs no
+    // vertex tangents at all. Until then a cliff face carries a normal map that points somewhere
+    // plausible rather than somewhere correct, which is strictly better than a `NaN`.
+    data.generate_tangents();
+    data
 }
 
 /// Converts a chunk's geometry into what the solver holds.

@@ -69,7 +69,10 @@ pub use mesh::{
     PlaneMesh, ShadowMode, Vertex,
 };
 pub use sprites::{COLLECT_SPRITES, collect_sprites};
-pub use textures::{PLACEHOLDER_TEXTURE_ID, TextureCache, TextureFailure, decode_frame_textures};
+pub use textures::{
+    COLOR_SPACE_SETTING, LINEAR_COLOR_SPACE, PLACEHOLDER_TEXTURE_ID, TextureCache, TextureFailure,
+    decode_frame_textures,
+};
 // Re-exported because a caller holding a `TextureCache` needs to talk about what is in it, and
 // making them add `amadeo-image` to their own manifest for a type this crate hands them would be a
 // dependency they did not choose.
@@ -221,11 +224,18 @@ impl Renderer {
         // than against what this frame asked for — and a texture shared between a sprite and a
         // material is one upload for the same reason.
         let sprite_textures = frame.batches().map(|batch| batch.texture.as_str());
+        // Both of a material's texture slots, for the same reason `decode_frame_textures` walks
+        // both: an id that decodes and is never uploaded is as invisible as one that never decoded.
         let mesh_textures = frame
             .views
             .iter()
             .flat_map(|view| view.meshes.iter())
-            .map(|instance| instance.material.base_colour_texture.as_str())
+            .flat_map(|instance| {
+                [
+                    instance.material.base_colour_texture.as_str(),
+                    instance.material.normal_texture.as_str(),
+                ]
+            })
             .filter(|id| !id.is_empty());
 
         for id in sprite_textures.chain(mesh_textures).collect::<Vec<&str>>() {

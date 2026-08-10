@@ -60,9 +60,6 @@ pub use ppm::decode_ppm;
 ///
 /// What will be added, and what will drive it:
 ///
-/// - `Rgba8Unorm` — the same bytes read as *linear* rather than gamma-encoded. Wanted the first time
-///   a texture carries data rather than colour (a normal map, a mask). Driven by a `color_space`
-///   setting in the `.ama-meta` sidecar.
 /// - `Bc7` / `Astc…` — GPU-compressed. Only ever produced by an import pipeline, never by [`decode`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PixelFormat {
@@ -71,6 +68,25 @@ pub enum PixelFormat {
     /// What every source image decodes to, because art files hold gamma-encoded colour. The GPU
     /// converts to linear when sampling, which is why the surface is configured sRGB too.
     Rgba8UnormSrgb,
+
+    /// The same four bytes read as **linear** rather than gamma-encoded.
+    ///
+    /// For a texture carrying *data* rather than colour: a normal map, a roughness mask, a height
+    /// field. ADR 0026 anticipated this variant and ADR 0047 is what finally needed it.
+    ///
+    /// # Why the distinction is not cosmetic
+    ///
+    /// The sRGB curve exists because human vision is not linear in light, so art files spend more of
+    /// their 256 steps where the eye can tell them apart. A normal map's bytes are not light at all —
+    /// they are a direction, packed into `0..1`. Decoding one through the sRGB curve bends every
+    /// direction it stores, and the surface is then lit as though its bumps face somewhere they do
+    /// not. It is subtly, pervasively wrong rather than obviously broken, which is what makes it
+    /// worth a type-level distinction instead of a convention.
+    ///
+    /// **No decoder produces this.** A `.png` holding a normal map is bytes like any other, and
+    /// nothing in the file says which it is — the *sidecar* does, via `color_space = "linear"`, and
+    /// [`TextureData::reinterpret`] is what applies it.
+    Rgba8Unorm,
 }
 
 impl PixelFormat {
@@ -78,8 +94,17 @@ impl PixelFormat {
     #[must_use]
     pub fn bytes_per_pixel(self) -> u32 {
         match self {
-            PixelFormat::Rgba8UnormSrgb => 4,
+            PixelFormat::Rgba8UnormSrgb | PixelFormat::Rgba8Unorm => 4,
         }
+    }
+
+    /// Whether values in this format are gamma-encoded and must be decoded before averaging.
+    ///
+    /// The one question every blend, blur and mip reduction has to ask — see [`mip_chain`] for what
+    /// getting it wrong looks like.
+    #[must_use]
+    pub fn is_srgb(self) -> bool {
+        matches!(self, PixelFormat::Rgba8UnormSrgb)
     }
 }
 
@@ -165,6 +190,23 @@ impl TextureData {
         let start = ((y * self.width + x) * stride) as usize;
         let bytes = self.pixels.get(start..start + 4)?;
         Some([bytes[0], bytes[1], bytes[2], bytes[3]])
+    }
+
+    /// The same pixels, tagged as a different format.
+    ///
+    /// **Nothing is converted.** Both current formats are four bytes per pixel in the same channel
+    /// order; they disagree only about what those bytes *mean*, and that is exactly what this
+    /// changes. Converting would be wrong: a normal map's bytes are already the numbers wanted, and
+    /// running them through a colour transform is the bug this exists to avoid.
+    ///
+    /// Why it is needed: a `.png` holding a normal map is byte-for-byte indistinguishable from one
+    /// holding colour, so [`decode`] cannot tell them apart and always says sRGB. The declaration
+    /// lives in the asset's `.ama-meta` sidecar, which is read a layer above this crate — so the
+    /// decoder produces its honest guess and the caller that knows better re-tags it.
+    #[must_use]
+    pub fn reinterpret(mut self, format: PixelFormat) -> TextureData {
+        self.format = format;
+        self
     }
 }
 
@@ -262,6 +304,10 @@ const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
 /// So each level decodes to linear, averages four pixels, and re-encodes. Alpha is **not** encoded
 /// that way — it is already linear coverage — so it is averaged directly.
 ///
+/// [`PixelFormat::Rgba8Unorm`] skips both transforms, because its bytes are already linear. That is
+/// the case a normal map takes, and it falls out of the format tag rather than needing a second
+/// function.
+///
 /// # `powf` is used here and is forbidden in a `TerrainSource`
 ///
 /// ADR 0044 bans transcendentals from anything deciding gameplay state, because their precision
@@ -286,7 +332,7 @@ pub fn mip_chain(texture: &TextureData) -> Vec<TextureData> {
 fn halve(source: &TextureData) -> TextureData {
     let width = (source.width / 2).max(1);
     let height = (source.height / 2).max(1);
-    let srgb = source.format == PixelFormat::Rgba8UnormSrgb;
+    let srgb = source.format.is_srgb();
     let mut pixels = Vec::with_capacity((width * height * 4) as usize);
 
     for y in 0..height {
@@ -588,6 +634,46 @@ mod tests {
         assert_eq!(
             averaged[3], 255,
             "alpha is linear already and must not shift"
+        );
+    }
+
+    #[test]
+    fn a_linear_texture_averages_to_the_byte_middle_because_its_bytes_are_light() {
+        // The mirror image of the test above, and the reason the format tag carries its weight. The
+        // *same* two pixels, tagged linear, must average to 128 rather than 188 — because now the
+        // bytes really are the quantity being averaged. A normal map takes this path: its bytes are
+        // a direction, and bending them through the sRGB curve would tilt every bump it stores.
+        let mut checker = solid(2, 1, [0, 0, 0, 255]).reinterpret(PixelFormat::Rgba8Unorm);
+        checker.pixels[4..8].copy_from_slice(&[255, 255, 255, 255]);
+
+        let levels = mip_chain(&checker);
+        let averaged = levels[1].pixel(0, 0).expect("a 1x1 level");
+
+        assert!(
+            (126..=130).contains(&averaged[0]),
+            "a linear texture averages its bytes directly, so half black and half white is about \
+             128, got {}; 188 would mean the sRGB curve was applied to data that is not colour",
+            averaged[0]
+        );
+        assert_eq!(
+            levels[1].format,
+            PixelFormat::Rgba8Unorm,
+            "a level must carry its source's format, or the GPU uploads it as the wrong thing"
+        );
+    }
+
+    #[test]
+    fn reinterpret_changes_the_meaning_and_not_one_byte() {
+        // The guarantee the normal-map path rests on: re-tagging is free and lossless. If this ever
+        // converted, a normal map would be colour-transformed on its way to the GPU.
+        let colour = solid(2, 2, [10, 200, 30, 255]);
+        let data = colour.pixels.clone();
+
+        let linear = colour.reinterpret(PixelFormat::Rgba8Unorm);
+        assert_eq!(linear.format, PixelFormat::Rgba8Unorm);
+        assert_eq!(
+            linear.pixels, data,
+            "reinterpreting must not touch the pixels"
         );
     }
 
