@@ -48,6 +48,7 @@ mod frustum;
 #[cfg(feature = "gpu")]
 mod gpu;
 mod graph;
+mod ibl;
 mod mesh;
 mod sprites;
 mod textures;
@@ -64,6 +65,10 @@ pub use environment::{Bloom, Environment, EnvironmentCache, Grade, Tonemap, Vign
 pub use frustum::{Frustum, transformed_bounds};
 #[cfg(feature = "gpu")]
 pub use gpu::{AdapterDescription, WgpuBackend};
+pub use ibl::{
+    Cubemap, EnvironmentMap, FACE_COUNT, IRRADIANCE_SIZE, SPECULAR_LEVELS, SPECULAR_SIZE,
+    irradiance, prefilter_specular,
+};
 pub use mesh::{
     BoxMesh, DirectionalLight, GltfPart, Material, MaterialCache, Mesh, MeshCache, MeshData,
     PlaneMesh, ShadowMode, Vertex,

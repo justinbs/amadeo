@@ -42,9 +42,11 @@
 //! depends on no engine crate, so there is nothing here to link to.) A texture that fails to decode
 //! changes what is on screen and nothing else.
 
+mod hdr;
 mod png_format;
 mod ppm;
 
+pub use hdr::{HdrImage, decode_hdr, encode_hdr};
 pub use png_format::{EncodeError, decode_png, encode_png};
 pub use ppm::decode_ppm;
 
