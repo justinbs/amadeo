@@ -30,10 +30,13 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 (`cargo run -p scarp`), reproducing at every thread count, drawing only what can be seen, at 61 µs of
 GPU time.
 
-**Session 14 landed normal mapping (ADR 0047) and PBR (ADR 0048)** — items two and three on
-ADR 0045's list. **Sky and image-based lighting is next, and it is now the one that matters**: PBR's
-payoff is largely locked behind it, and metals are literally black without it. See "the single most
-important thing to do next".
+**Session 14 landed normal mapping (ADR 0047), PBR (ADR 0048) and image-based lighting (ADR 0049)** —
+items two, three and four on ADR 0045's list, and **Q28 is closed**. The engine's ambient light is no
+longer a constant.
+
+**Next, and it is the most visible thing left: drawing the sky.** The environment is a *light source*
+now; nothing paints it behind the scene, so the background is still a flat clear colour. Then shadow
+cascades, which is the last of ADR 0045's tier 1.
 
 Three things from normal mapping are worth knowing before touching the renderer:
 
@@ -156,6 +159,8 @@ trigger for going native: a **console** target.
 | ~~Mipmaps~~ | ✅ **Done — M3's first renderer item.** `amadeo_image::mip_chain`, averaged in linear light, with 16× anisotropic filtering on surfaces and sprites pinned to level 0. The terrain tile went from 8 m to **4 m** as a direct result |
 | ~~Normal mapping~~ | ✅ **Done — M3's second (ADR 0047).** Tangents read from glTF when the file has them, generated at load when it does not. **Terrain is the exception and still needs triplanar**, below |
 | ~~Metallic-roughness PBR~~ | ✅ **Done — M3's third (ADR 0048).** Cook-Torrance/GGX, and a glTF-packed metallic-roughness map. **Changed the picture almost not at all**, because every material in the repo is a rough dielectric — which is exactly where a full BRDF and Lambert agree. Scaffolding for the next item rather than a win on its own |
+| ~~Sky and image-based lighting~~ | ✅ **Done — M3's fourth (ADR 0049), and it closes Q28.** The ambient constant is gone. Shadows are filled by the sky, metals reflect their surroundings. **Does not draw the sky** — that is a separate pass and is now the largest visual gap |
+| **Drawing the sky** | The background is still a flat clear colour. A pass sampling the environment cube by view ray, behind everything, with depth. Cheap relative to what IBL cost, and the most visible thing left |
 | **Triplanar mapping** | Terrain UVs are a planar projection from world x/z, so anything steep stretches — *and* has zero UV area, so its tangent frame falls back to an arbitrary axis. One fix for both. Wants a `Material` field to opt in, which is another schema change to every `.material` file (**Q32**) |
 | **Ambient / sky light** | Still the hardcoded `0.12` constant (**Q28**). No ambient occlusion, no bounce, no sky colour. Flat lighting is the other half of why a scene reads as a prototype, and no amount of texture fixes it |
 
@@ -381,7 +386,7 @@ first real case*, which is the state this project deliberately keeps them in:
 | **Q12** | P1 | `Service: Send + Sync` — ADR 0041 changed the argument without closing it |
 | ~~Q26~~ | — | **Closed in session 13.** `render.describe` sees meshes through a real perspective projection |
 | **Q27** | P2 | A third-person camera clips through walls |
-| **Q28** | P2 | Ambient light is a hardcoded constant |
+| ~~Q28~~ | — | **Closed in session 14 by ADR 0049.** The sky is a light source; the ambient constant is gone |
 | **Q6, Q8, Q11, Q18, Q20** | P2 | Editor process model, entity relations, netcode introspection, unreadable `ActionId`, gate 4's stronger test |
 
 **Remote:** `origin → https://github.com/justinbs/amadeo.git`. **The repository is public now**, so
@@ -434,7 +439,7 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-gltf`, `amadeo-jobs`, `amadeo-noise`, `amadeo-voxel`, `amadeo-terrain`,
 `amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
 reserved since session 1 — and `games/quad-demo`, `games/vault`, `games/atrium` and `games/scarp`.
-**1203 tests passing with `--all-features`** (21 of them GPU capture tests, 7 rapier, 9 character,
+**1217 tests passing with `--all-features`** (22 of them GPU capture tests, 7 rapier, 9 character,
 7 shadow fitting, 12 the Atrium, 15 the Scarp, 9 deterministic noise, 7 frustum culling, 6 mip
 chains, 13 glTF, 5 profiling, 8 jobs, 6 parallel iteration, 4 parallel loading, 10 surface nets,
 13 chunk residency, 10 the terrain source, 9 static trimesh colliders, 18 the terrain streamer,
@@ -658,39 +663,51 @@ the only evidence available was a push.
 started**, with the renderer work ADR 0045 ordered — **mipmaps and anisotropic filtering are done**,
 and **normal mapping landed in session 14 (ADR 0047)**.
 
-## 🚧 IN PROGRESS — image-based lighting, about half built
+## ✅ Q28 is closed — the sky is a light source (ADR 0049)
 
-**Justin chose full IBL over the cheaper hemisphere-gradient option**, having been given both with
-costs. What is built and committed is the half that needs no GPU:
+**`let ambient = 0.12;` is gone.** One number added to every surface regardless of which way it faced
+is now a real environment: decoded from a Radiance `.hdr`, projected onto a cube, convolved twice at
+load, and read by the shader as irradiance for diffuse and a GGX-prefiltered chain for specular.
 
-| | |
-|---|---|
-| ✅ | **Radiance `.hdr` decode and encode** — `amadeo-image`. An ordinary `.png` clips the sun and the sky to the same white; RGBE holds about `10^38` in four bytes |
-| ✅ | **Equirectangular → cube map** — `amadeo_render::Cubemap::from_equirectangular` |
-| ✅ | **Diffuse irradiance convolution** — `irradiance`, exhaustive rather than sampled, so it has no noise at all |
-| ✅ | **Specular prefilter chain** — `prefilter_specular`, GGX importance sampling, Karis's split-sum |
-| | **GPU cube textures** — the backend has only 2D textures today. Needs `Rgba16Float` (which is filterable in the base feature set where `Rgba32Float` is not, so an f32→f16 conversion is needed), a cube view, and a sampler |
-| | **Bind group 3** — the last free slot, which is the right home: 0, 1 and 2 are the view, the shadow map and the material |
-| | **The shader's ambient half** — irradiance for diffuse, the prefiltered chain plus an analytic environment BRDF for specular. Karis's `EnvBRDFApprox` avoids needing a lookup texture |
-| | **Where an environment map is named** — Q28's second half: on the `Environment` asset, or on a light? |
-| | **A sky to look at** — the Scarp's "sky" is currently just the clear colour. A generated `.hdr`, the way `bin/turf` and `bin/pix` already generate their textures |
-| | **Tonemapping on the demos** — decided, not yet done: the engine default stays a no-op, the two demos get an environment that tonemaps |
+**Justin was given four options with costs and chose full image-based lighting** over the cheaper
+hemisphere gradient that was recommended — the right call, because M3's exit gate is an indoor scene a
+sky gradient does nothing for, and because the gradient would have been thrown away rather than
+extended.
 
-**Two things settled while building it, both following existing precedent.** Prefiltering runs on the
-**CPU at load** — invariant I7 requires headless capability and a GPU-only prefilter could not run in
-a headless test; `mip_chain` is the precedent. And the transcendentals it uses are covered by
-ADR 0044's existing carve-out: banned in anything deciding gameplay state, fine at load when the
-output is pixels.
+**The visible result** is clearest in `games/scarp`'s shadow: it was a flat dark hole and it is now
+**blue**, because the sky fills it. Surfaces facing up pick up sky colour; a metal reflects its
+surroundings instead of rendering black, which is what ADR 0048 shipped without.
 
-**One finding worth keeping.** A test asserting "a rough surface is blurrier than a mirror" failed for
-a *correct* reason: this prefilter assumes a head-on viewer, so it gathers only from the hemisphere
-around the normal, and a downward-facing surface therefore sees nothing of the sky at any roughness.
-That is the split-sum approximation behaving as designed, not a bug. The test now measures the blur
-where the blur actually is.
+**What it did *not* do: draw the sky.** The background is still a flat clear colour. That is a
+separate pass and is now probably the largest single visual gap left.
+
+**Two defects, both found by looking at the picture rather than by reasoning** — the third session
+running that this has been the method:
+
+1. **The whole feature rendered nothing.** Every game installs `TextureCache` by hand, so `SkyCache`
+   followed that precedent and *nothing installed it* — so every frame silently fell back to the
+   neutral sky, with no error, no failing test, and a capture identical to the one before. It now
+   installs itself beside `EnvironmentCache`. **`docs/07` carries this as a fourth sibling of the
+   background-work rule: a capability may not depend on a caller remembering to enable it.**
+2. **Adding `sky` to `Environment` broke every `.environment` file**, and the symptom was not a parse
+   error — the file was skipped in silence and the failure surfaced three layers away as a *missing
+   service*. That is **Q32** arriving one session after it was filed as theoretical.
+
+**And one test was rewritten rather than kept.**
+`a_metal_is_black_under_ambient_because_there_is_no_sky_yet` was written last session so that closing
+Q28 would break it. It did not break — it kept passing for a reason that had stopped being true, which
+is worse than no test. It now checks the real claim: a metal under a blue sky reads blue, under a red
+sky reads red.
+
+**Sharp edges it ships with**, both in ADR 0049: prefiltering costs **seconds at load** for a real
+environment map (an import pipeline is the answer when that stops being acceptable, which ADR 0026
+already anticipates); and **the sun in a generated sky and the sun in a scene must agree by hand** —
+`games/scarp`'s `bin/sky.rs` carries a `SUN_DIRECTION` matching its `DirectionalLight`, and nothing
+holds them together.
 
 ---
 
-**Why it is the one that matters:** it replaces the hardcoded `0.12` ambient (**Q28**). ADR 0045 called it "probably the single biggest step
+**What made it the one that mattered:** it replaced the hardcoded `0.12` ambient (**Q28**). ADR 0045 called it "probably the single biggest step
 towards looking like a real engine", and building PBR has made that *more* true rather than less.
 
 **Three things now converge on it, which is why it is unambiguously next:**

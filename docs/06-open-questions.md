@@ -408,7 +408,32 @@ Worth deciding when a game needs it. The Atrium tolerates it because you can see
 
 ---
 
-## Q28 · P2 · Ambient light is a hardcoded constant, and shadows made that visible
+## ~~Q28~~ · **CLOSED in session 14** · The sky is a light source now — ADR 0049
+
+**Resolved.** `let ambient = 0.12;` is gone from `mesh.wgsl`. An environment is decoded from a
+Radiance `.hdr`, projected onto a cube and convolved twice at load — irradiance for diffuse, a
+GGX-prefiltered chain for specular — and the shader reads both. Shadowed areas are filled by the sky
+rather than by a constant, and a metal reflects its surroundings instead of rendering black.
+
+**Both halves of the original question were answered.** It asked whether ambient should be a flat
+colour or a sky/ground gradient: neither, in the end — Justin was given four options with costs and
+chose full image-based lighting over the cheaper gradient, because M3's exit gate is an indoor scene
+that a sky gradient does nothing for. And it asked whether it belongs to `Environment` or to a light
+entity: **`Environment`**, because a `DirectionalLight` is a *direct* light and an environment map is
+the indirect half.
+
+**What it did not do: draw the sky.** The background is still a flat clear colour. That is a separate
+pass and is now probably the largest remaining visual gap.
+
+Also still true, and recorded here when this question was opened: **`Grade::contrast` above 1.0
+crushes shadows to pure black**, because the operation is `(colour - 0.5) * contrast + 0.5` and
+near-black values go negative and clamp. Inherent to a pivot with no toe.
+
+The original question follows, for the reasoning it carried.
+
+---
+
+## Q28 (original) · Ambient light is a hardcoded constant, and shadows made that visible
 
 **Found in session 10 the moment shadows landed.** Before shadow maps the only ambient-only pixels
 were faces turned away from the light — small, and fine as near-black. With shadows, whole areas of

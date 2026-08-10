@@ -1687,6 +1687,87 @@ The engine now has three of these, and the pattern is worth recognising: the sha
 placeholder, the white base colour, and this. Each is the **identity of the operation it feeds** —
 never the magenta "asset missing" check, which means something different and should stay meaning it.
 
+### A service nobody installs is a feature that silently does nothing
+
+**The fourth time this project has shipped something wired, tested, and inert**, and the first time
+the cause was a missing line rather than a missing call.
+
+Image-based lighting was built, unit-tested, and GPU-tested. Then `games/scarp` rendered a capture
+**identical** to the one before it. Nothing errored, no test failed, and the asset was resident.
+
+The cause: every game installs `TextureCache` by hand —
+
+```rust
+app.scan_assets(ASSET_DIRECTORY)?;
+app.insert_service(TextureCache::new());
+```
+
+— so `SkyCache` followed that precedent, and nothing installed it. `prefilter_frame_skies` returns
+early when the service is absent, `upload_frame_skies` likewise, and the backend falls back to a
+neutral sky. Every one of those is individually correct, and together they are a feature that does
+nothing quietly.
+
+> **The rule: if a capability needs a setup line, remove the line rather than remember it.** A service
+> that only some worlds need should install itself at the point where the need is *visible* — for
+> `SkyCache` that is `load_environments`, because a look is the only thing that can name a sky.
+
+The general shape, alongside its three siblings above: **the deterministic outputs of a background
+system must come from deterministic inputs; a background result may only be admitted for something
+with a consumer; a test may not assume background work has finished; and a capability may not depend
+on a caller remembering to enable it.**
+
+`TextureCache` is still installed by hand in four games, which is now the odd one out rather than the
+pattern. Worth changing next time something touches it.
+
+### A field added to a component invalidates every file that spells it out
+
+Reflection requires **every** field to be present (`ReflectError::MissingField`), so adding one to a
+component breaks every existing `.scene`, `.material` or `.environment` naming it.
+
+That is deliberate and load-bearing: it is what catches a typo'd field name, and what makes a prefab
+that lost a component refuse to load rather than silently reverting — ADR 0029's chosen opposite of
+Unity's behaviour.
+
+**The trap is not the churn, it is how the churn reports itself.** Adding `sky` to `Environment`
+produced no parse error anywhere. `read_component_assets` skipped the unparseable file in silence,
+`found` came back empty, the function returned early, and the failure surfaced three layers away as a
+test asserting *"load_environments installs it on first use"*. Nothing in that message mentions a
+field, a file, or a schema.
+
+So, when adding a field to a reflected component:
+
+1. **Find every file that spells the type out** — `find . -name "*.material"` and friends.
+2. Add the field **in alphabetical order**, which is what the canonical writer emits.
+3. Run `amadeo fmt --check` on them, which confirms the placement rather than trusting it.
+
+This is **Q32**, and it is filed rather than solved. Five files is trivial; the reason it is worth a
+question is that `Material` gained three fields in one session and image-based lighting wants more.
+
+### Where an environment map is different from every other texture
+
+A `TextureData` is bytes plus a format tag: decoded once, uploaded once, four bytes a pixel. An
+environment map shares none of that shape, which is why [`HdrImage`] and [`Cubemap`] are separate
+types rather than variants of it:
+
+| | A texture | An environment map |
+|---|---|---|
+| Pixels | bytes, usually sRGB | **floats**, always linear, values well above 1.0 |
+| Shape | one rectangle | **six square faces** of a cube |
+| Preparation | decode | decode, project onto a cube, convolve **twice**, at seven resolutions |
+| Cost | milliseconds | **seconds** |
+| GPU format | `Rgba8UnormSrgb` | `Rgba16Float` |
+
+The last row is the one that catches people. **`Rgba32Float` is not filterable in wgpu's base feature
+set** — sampling one with anything but nearest-neighbour needs `FLOAT32_FILTERABLE`, which plenty of
+adapters do not advertise. An environment is sampled with smooth interpolation across faces *and*
+between roughness levels, so it has to be the format that filters everywhere.
+
+And the reason the prefiltering lives in `amadeo-render` rather than beside `mip_chain` in
+`amadeo-image`: `importance_sample_ggx` and `mesh.wgsl`'s `distribution_ggx` are **two views of one
+model**. One generates directions, the other measures how many point a given way. Two crates that
+cannot see each other is how those drift apart, and the symptom would be reflections subtly the wrong
+shape for the material shading them.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---
