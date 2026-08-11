@@ -84,8 +84,20 @@ const CHUNK: ChunkShape = ChunkShape {
     cell_size: 2.0,
 };
 
-/// How far a dig reaches from the digger, in cells.
-const DIG_RADIUS: i32 = 2;
+/// How far a dig reaches from the digger, **in metres**.
+///
+/// # It used to be in cells, and that was a bug waiting for the cell size to change
+///
+/// Which it then did. Coarsening the ground from one-metre cells to two-metre ones for the low-poly
+/// look (ADR 0050) doubled every dig without a line of the digging code changing — a two-metre hole
+/// became a four-metre one, wide enough to reach the bottom of the streamed region. Below that there
+/// is no geometry at all, so the sky pass filled it and digging down showed the sky through the
+/// ground.
+///
+/// Reported by Justin, and the same shape as the sun direction that was written out by hand: a
+/// quantity expressed in units of something else that later moved. Stating it in metres and
+/// converting is what makes the cell size free to change again.
+const DIG_RADIUS_METRES: f32 = 2.0;
 
 /// What a dug sample is set to.
 ///
@@ -349,11 +361,15 @@ pub fn dig_terrain(world: &mut World) {
             (position[2] / cell).floor() as i32,
         ];
 
-        for dx in -DIG_RADIUS..=DIG_RADIUS {
-            for dy in -DIG_RADIUS..=DIG_RADIUS {
-                for dz in -DIG_RADIUS..=DIG_RADIUS {
+        // The radius in cells, from the radius in metres. At least one, so a cell coarser than the
+        // dig still removes something rather than silently doing nothing.
+        let radius = ((DIG_RADIUS_METRES / cell).round() as i32).max(1);
+
+        for dx in -radius..=radius {
+            for dy in -radius..=radius {
+                for dz in -radius..=radius {
                     // A sphere rather than a cube, so the hole looks dug rather than cut.
-                    if dx * dx + dy * dy + dz * dz > DIG_RADIUS * DIG_RADIUS {
+                    if dx * dx + dy * dy + dz * dz > radius * radius {
                         continue;
                     }
                     // Set rather than added to, so digging the same spot twice is a no-op instead of
