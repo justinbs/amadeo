@@ -238,7 +238,12 @@ pub fn build_with_workers(workers: usize) -> anyhow::Result<App> {
             // what `a_walk_reproduces_at_every_thread_count` requires rather than assumes.
             workers,
         )
-        .with_material("turf"),
+        .with_material("turf")
+        // ADR 0050: Amadeo's own content is low-poly. Surface nets gives smooth normals from the
+        // field's gradient, which is the opposite of what a faceted look wants — this is what turns
+        // rolling hills into folded planes. Drawn geometry only; the collider is untouched, so the
+        // ground is exactly as solid as it was.
+        .flat_shaded(),
     )?;
 
     app.add_system(

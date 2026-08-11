@@ -251,6 +251,23 @@ pub struct Terrain {
     /// `amadeo check` validates, and inlining a copy here would be a second place for it to live.
     /// Empty means a plain white surface — which is what an unconfigured terrain draws as.
     pub material: String,
+    /// Whether each chunk's triangles are shaded by their own face rather than smoothly.
+    ///
+    /// **The low-poly switch for a generated world** (ADR 0050). Surface nets produces normals from
+    /// the field's gradient, which are smooth by construction — correct for rolling hills, and the
+    /// opposite of what a faceted look wants. Turning this on gives every triangle its own normal,
+    /// so the terrain reads as folded planes rather than as a soft surface.
+    ///
+    /// Off by default, because it is an art choice rather than a correctness one and a generated
+    /// world is not necessarily low-poly.
+    ///
+    /// # What it costs, and it is not free
+    ///
+    /// Vertex count becomes three times the triangle count — no sharing at all — so a chunk's
+    /// geometry roughly triples. It is paid per chunk, on the meshing job, and it changes **only the
+    /// drawn mesh**: the collider is built from the chunk's own data before this runs, so physics is
+    /// untouched and a flat-shaded world is exactly as solid as a smooth one.
+    pub flat_shaded: bool,
 }
 
 impl Service for Terrain {}
@@ -263,6 +280,7 @@ impl Terrain {
             streamer: TerrainStreamer::new(source, settings, workers),
             applied_revision: 0,
             material: String::new(),
+            flat_shaded: false,
         }
     }
 
@@ -270,6 +288,15 @@ impl Terrain {
     #[must_use]
     pub fn with_material(mut self, id: impl Into<String>) -> Self {
         self.material = id.into();
+        self
+    }
+
+    /// Shades every chunk by its own faces rather than smoothly — the low-poly look (ADR 0050).
+    ///
+    /// See [`Terrain::flat_shaded`] for what it costs and for why the collider is unaffected.
+    #[must_use]
+    pub fn flat_shaded(mut self) -> Self {
+        self.flat_shaded = true;
         self
     }
 }
@@ -356,11 +383,15 @@ pub fn stream_terrain(world: &mut World) {
         return;
     }
 
-    let (update, material) = {
+    let (update, material, flat_shaded) = {
         let Some(terrain) = world.service_mut::<Terrain>() else {
             return;
         };
-        (terrain.streamer.update(&viewers), terrain.material.clone())
+        (
+            terrain.streamer.update(&viewers),
+            terrain.material.clone(),
+            terrain.flat_shaded,
+        )
     };
 
     // --- Geometry into the cache. ---
@@ -369,7 +400,7 @@ pub fn stream_terrain(world: &mut World) {
     // never appears in `meshes`, and without this the ground underfoot is the one invisible thing.
     if let Some(cache) = world.service_mut::<MeshCache>() {
         for chunk in update.meshes.iter().chain(&update.colliders) {
-            cache.insert(chunk_mesh_id(chunk.key), mesh_data_of(chunk));
+            cache.insert(chunk_mesh_id(chunk.key), mesh_data_of(chunk, flat_shaded));
         }
         // **Dropped as well as added**, which this system's own documentation claimed and its code
         // did not do. Without it, geometry accumulates for every chunk ever visited: walk in one
@@ -504,7 +535,7 @@ fn collider_id(key: ChunkKey) -> StaticMeshId {
 /// to the chunk origin, so using them directly would restart the pattern at every chunk boundary and
 /// print a grid of seams across the landscape the moment a material carried a texture — visible
 /// nowhere today, since materials are colours only, and tedious to attribute once they are not.
-fn mesh_data_of(chunk: &ReadyChunk) -> MeshData {
+fn mesh_data_of(chunk: &ReadyChunk, flat_shaded: bool) -> MeshData {
     let mut data = MeshData {
         vertices: chunk
             .mesh
@@ -523,6 +554,14 @@ fn mesh_data_of(chunk: &ReadyChunk) -> MeshData {
             .collect(),
         indices: chunk.mesh.indices.clone(),
     };
+
+    // Faceting before tangents, never after (ADR 0050, Q33). Splitting the vertices afterwards would
+    // duplicate a frame that had been averaged across edges this has just made sharp — see
+    // `MeshData::flat_shade`. The collider is built from the chunk's own data and never sees this, so
+    // a flat-shaded world is exactly as solid as a smooth one.
+    if flat_shaded {
+        data.flat_shade();
+    }
 
     // Tangents, so a terrain material can wear a normal map without the shader meeting a zero
     // vector. **They are approximate here in a way they are not for a box**, and for the same reason
