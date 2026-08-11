@@ -254,6 +254,58 @@ fn the_camera_cannot_be_tilted_past_vertical() {
     );
 }
 
+/// The camera's height above the player — its local `y`.
+fn camera_height(world: &World) -> f32 {
+    world
+        .query::<(&Camera, &Parent, &Transform)>()
+        .map(|(_, (_, _, transform))| transform.translation[1])
+        .next()
+        .expect("the scene authors one follow camera")
+}
+
+#[test]
+fn the_pivot_is_swept_for_too_rather_than_assumed_clear() {
+    // **The gap the other five tests all pass straight through**, because every one of them has the
+    // player standing in the open where the point three metres above their head is fresh air.
+    //
+    // In a tunnel it is rock. A shape cast that *starts* embedded has no good answer — solvers
+    // differ on whether they report an immediate hit, no hit, or push out — so the distance coming
+    // back is arbitrary, and arbitrary per tick is exactly the flicker this system exists to remove.
+    //
+    // Forced the same way the flicker test forces its swing: a sweep radius large enough that
+    // nothing above the player is clear. The pivot must then come down rather than staying at its
+    // authored height.
+    let mut app = game();
+    app.run_ticks(240).expect("the world advances");
+
+    let wanted = follow(&app.world);
+    let open = camera_height(&app.world);
+    assert!(
+        (open - wanted.height).abs() < 0.5,
+        "in the open the pivot should reach its authored height of {}, got {open}",
+        wanted.height
+    );
+
+    set_follow(
+        &mut app.world,
+        FollowCamera {
+            radius: 4.0,
+            ..wanted
+        },
+    );
+    app.run_ticks(4).expect("the world advances");
+
+    let blocked = camera_height(&app.world);
+    assert!(
+        blocked < open,
+        "with nothing above the player clear, the pivot must come down from {open}, got {blocked}"
+    );
+    assert!(
+        blocked >= -0.01,
+        "but never below the player it is following, got {blocked}"
+    );
+}
+
 #[test]
 fn the_camera_never_goes_closer_than_its_minimum() {
     // The other end of the clamp. A camera pulled to the pivot sits inside the thing it follows,

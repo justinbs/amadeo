@@ -622,11 +622,29 @@ pub fn keep_camera_out_of_the_ground(world: &mut World) {
             basis.columns[2][2],
         ];
 
-        let pivot = [
-            parent.translation[0],
-            parent.translation[1] + follow.height,
-            parent.translation[2],
-        ];
+        // **The pivot is swept for too**, and this is the part the first version got away with only
+        // because the player was usually standing in the open.
+        //
+        // The pivot is a point `height` above the player, and in a tunnel or a dug pit that point is
+        // inside rock. A shape cast that *starts* embedded in geometry has no good answer — solvers
+        // differ on whether they report an immediate hit, no hit at all, or push out — so the
+        // distance that came back was arbitrary, and arbitrary per tick is a flicker.
+        //
+        // Sweeping upward from the player first and stopping where that stops keeps the pivot in
+        // open air: under a low ceiling the camera orbits nearer the player's own height instead of
+        // through the rock above.
+        let head_room = amadeo_physics::ShapeMove {
+            step_height: 0.0,
+            snap_distance: 0.0,
+            ..amadeo_physics::ShapeMove::new(
+                amadeo_physics::Shape::Sphere {
+                    radius: follow.radius,
+                },
+                parent.translation,
+                [0.0, follow.height, 0.0],
+            )
+        };
+        let pivot = physics.move_shape(&head_room).translation;
         let wanted = [
             back[0] * follow.distance,
             back[1] * follow.distance,
@@ -677,10 +695,15 @@ pub fn keep_camera_out_of_the_ground(world: &mut World) {
             (current + follow.return_speed * amadeo_core::FIXED_DT).min(target)
         };
 
+        // The height the pivot *reached*, not the one it asked for — a ceiling stops it short, and
+        // the camera has to sit where the pivot actually is or it is placed back inside the rock the
+        // sweep just avoided.
+        let height = pivot[1] - parent.translation[1];
+
         results.push((
             entity,
             Transform {
-                translation: [0.0, follow.height, distance],
+                translation: [0.0, height, distance],
                 // Rotation and scale are the scene's to author — this only ever moves the camera
                 // along the one axis it is allowed to move along.
                 ..Transform::default()
