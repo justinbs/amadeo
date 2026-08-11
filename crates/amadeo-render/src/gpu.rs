@@ -302,6 +302,13 @@ struct GpuPost {
     grade: [f32; 4],
     /// rgb = tint, a unused.
     tint: [f32; 4],
+    /// x = bloom threshold, y = bloom intensity, zw unused.
+    ///
+    /// Read by `bloom.wgsl`'s bright pass and by `post.wgsl`'s composite. Both shaders declare this
+    /// struct through the shared `post_uniform.wgsl`, so there is one WGSL statement of the layout —
+    /// **this Rust one is the copy that cannot be shared**, and adding a field here means adding it
+    /// there, in the same position.
+    bloom: [f32; 4],
 }
 
 impl GpuPost {
@@ -324,6 +331,7 @@ impl GpuPost {
                 look.grade.tint[2],
                 0.0,
             ],
+            bloom: [look.bloom.threshold, look.bloom.intensity, 0.0, 0.0],
         }
     }
 }
@@ -940,6 +948,22 @@ pub struct WgpuBackend {
     /// One frame's post-process settings, rewritten each frame.
     post_buffer: wgpu::Buffer,
     post_bind_group: wgpu::BindGroup,
+    /// Bloom's three passes: isolate the bright parts, blur along x, blur along y. See `bloom.wgsl`.
+    bloom_bright_pipeline: wgpu::RenderPipeline,
+    bloom_blur_x_pipeline: wgpu::RenderPipeline,
+    bloom_blur_y_pipeline: wgpu::RenderPipeline,
+    /// Bound as the glow when bloom is off — a 1×1 black texture, which adds nothing.
+    bloom_placeholder_bind_group: wgpu::BindGroup,
+    #[allow(
+        dead_code,
+        reason = "held to keep the placeholder texture alive; its view borrows from it"
+    )]
+    black_placeholder: wgpu::Texture,
+    #[allow(
+        dead_code,
+        reason = "held to keep the placeholder texture alive; its bind group borrows from it"
+    )]
+    black_placeholder_view: wgpu::TextureView,
     /// Physical textures backing the graph's transients, reused within a frame and across frames.
     transients: Vec<PooledTexture>,
     /// Which pooled texture holds the last frame's finished picture.
@@ -1815,6 +1839,21 @@ impl WgpuBackend {
             [255, 255, 255, 255],
         );
 
+        // A 1×1 black texture, bound as the glow when bloom is off.
+        //
+        // **Black is the identity of an addition**, exactly as white is of a multiply — so the post
+        // pass samples it, adds nothing, and there is one post pipeline rather than a bloomed one and
+        // a plain one. The alternative is a shader branch on a uniform, which is what
+        // `shadow_params.y` does for shadows; either works, and a placeholder is chosen here because
+        // the post pass has no other reason to know whether bloom ran.
+        let (black_placeholder, black_placeholder_view) = single_pixel_texture(
+            &device,
+            &queue,
+            "amadeo bloom placeholder",
+            wgpu::TextureFormat::Rgba8Unorm,
+            [0, 0, 0, 255],
+        );
+
         // A 1×1 flat normal, for a material that names no normal map.
         //
         // `(128, 128, 255)` is what a tangent-space normal map stores where the surface is not
@@ -2132,9 +2171,25 @@ impl WgpuBackend {
         //
         // Group 0 is the scene image, the same layout every sampled texture uses. Group 1 is the
         // frame's `Environment`, flattened into three vec4s.
+        // Prepended with the shared uniform declaration, as the mesh and sky shaders are with
+        // `view.wgsl` — `post.wgsl` and `bloom.wgsl` read the same buffer at the same binding, and
+        // one declaration is what keeps them from disagreeing about its layout.
         let post_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("amadeo post shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("post.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(
+                concat!(include_str!("post_uniform.wgsl"), include_str!("post.wgsl")).into(),
+            ),
+        });
+
+        let bloom_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("amadeo bloom shader"),
+            source: wgpu::ShaderSource::Wgsl(
+                concat!(
+                    include_str!("post_uniform.wgsl"),
+                    include_str!("bloom.wgsl")
+                )
+                .into(),
+            ),
         });
 
         let post_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -2167,11 +2222,88 @@ impl WgpuBackend {
             }],
         });
 
+        // The glow slot's stand-in, built against the same layout a pooled colour transient gets, so
+        // the post pass binds one or the other with no other difference.
+        let bloom_placeholder_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("amadeo bloom placeholder bind group"),
+            layout: &texture_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&black_placeholder_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+
         let post_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("amadeo post pipeline layout"),
-            bind_group_layouts: &[Some(&texture_layout), Some(&post_layout)],
+            // Group 2 is the blurred glow, bound to a 1×1 black placeholder when bloom is off — the
+            // same one-pipeline argument the shadow map and the base-colour texture both make.
+            bind_group_layouts: &[
+                Some(&texture_layout),
+                Some(&post_layout),
+                Some(&texture_layout),
+            ],
             immediate_size: 0,
         });
+
+        // Bloom's three passes share one pipeline layout: each reads one image and the post uniform.
+        let bloom_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("amadeo bloom pipeline layout"),
+                bind_group_layouts: &[Some(&texture_layout), Some(&post_layout)],
+                immediate_size: 0,
+            });
+
+        // One pipeline per entry point. The blur's *direction* is a property of the pass rather than
+        // of the frame, so it is two pipelines over one shader rather than a uniform written twice
+        // with two values and a second bind group to hold them.
+        let bloom_pipeline = |label: &str, entry: &str| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&bloom_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &bloom_shader,
+                    entry_point: Some("vs_main"),
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &bloom_shader,
+                    entry_point: Some(entry),
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        // HDR, like the scene target: a glow clamped to white before the tonemap
+                        // sees it has already lost the difference bloom exists to show.
+                        format: SCENE_FORMAT,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: None,
+                    polygon_mode: wgpu::PolygonMode::Fill,
+                    unclipped_depth: false,
+                    conservative: false,
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let bloom_bright_pipeline = bloom_pipeline("amadeo bloom bright pipeline", "fs_bright");
+        let bloom_blur_x_pipeline =
+            bloom_pipeline("amadeo bloom blur x pipeline", "fs_blur_horizontal");
+        let bloom_blur_y_pipeline =
+            bloom_pipeline("amadeo bloom blur y pipeline", "fs_blur_vertical");
 
         let post_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("amadeo post pipeline"),
@@ -2260,6 +2392,12 @@ impl WgpuBackend {
             post_pipeline,
             post_buffer,
             post_bind_group,
+            bloom_bright_pipeline,
+            bloom_blur_x_pipeline,
+            bloom_blur_y_pipeline,
+            bloom_placeholder_bind_group,
+            black_placeholder,
+            black_placeholder_view,
             transients: Vec::new(),
             capture_source: None,
             camera_buffer,
@@ -3597,10 +3735,10 @@ impl RenderBackend for WgpuBackend {
             let load = match declared.kind {
                 PassKind::View { clears: false, .. } => wgpu::LoadOp::Load,
                 PassKind::View { .. } | PassKind::Clear => clear,
-                // Both full-screen passes overwrite every pixel of their target, so what was there
-                // is irrelevant — but a load of undefined contents is worse than a clear on some
+                // Every full-screen pass overwrites every pixel of its target, so what was there is
+                // irrelevant — but a load of undefined contents is worse than a clear on some
                 // backends, and a clear of something about to be fully written costs nothing.
-                PassKind::Post | PassKind::Present => clear,
+                PassKind::Post | PassKind::Present | PassKind::Bloom(_) => clear,
                 // Returned above, before any colour attachment is chosen.
                 PassKind::Shadow { .. } => continue,
             };
@@ -3808,7 +3946,7 @@ impl RenderBackend for WgpuBackend {
                     }
                 }
 
-                PassKind::Post | PassKind::Present => {
+                PassKind::Post | PassKind::Present | PassKind::Bloom(_) => {
                     let Some(source) = declared
                         .reads
                         .first()
@@ -3827,11 +3965,31 @@ impl RenderBackend for WgpuBackend {
                         continue;
                     };
 
-                    if matches!(declared.kind, PassKind::Post) {
-                        pass.set_pipeline(&self.post_pipeline);
-                        pass.set_bind_group(1, &self.post_bind_group, &[]);
-                    } else {
-                        pass.set_pipeline(&self.present_pipeline);
+                    match declared.kind {
+                        PassKind::Post => {
+                            pass.set_pipeline(&self.post_pipeline);
+                            pass.set_bind_group(1, &self.post_bind_group, &[]);
+                            // The glow, at group 2. The graph puts it second in `reads` when bloom
+                            // ran; otherwise the 1×1 black placeholder, which adds nothing.
+                            let glow = declared
+                                .reads
+                                .get(1)
+                                .and_then(|name| assigned.get(name))
+                                .and_then(|pooled| self.transients[*pooled].bind_group.as_ref())
+                                .unwrap_or(&self.bloom_placeholder_bind_group);
+                            pass.set_bind_group(2, glow, &[]);
+                        }
+                        PassKind::Bloom(step) => {
+                            pass.set_pipeline(match step {
+                                graph::BloomStep::Bright => &self.bloom_bright_pipeline,
+                                graph::BloomStep::BlurX => &self.bloom_blur_x_pipeline,
+                                graph::BloomStep::BlurY => &self.bloom_blur_y_pipeline,
+                            });
+                            // Bloom reads the same look the post pass does — the threshold for the
+                            // bright pass, and the exposure it has to apply first.
+                            pass.set_bind_group(1, &self.post_bind_group, &[]);
+                        }
+                        _ => pass.set_pipeline(&self.present_pipeline),
                     }
                     pass.set_bind_group(0, binding, &[]);
                     // Three vertices, one instance, no buffers — see `present.wgsl`.

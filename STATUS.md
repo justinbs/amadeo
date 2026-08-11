@@ -159,9 +159,45 @@ for free, and a test pins it.
 > borrowed rather than copied. **Two copies of one fact drift, and a comment saying "keep these in
 > step" is not a mechanism.**
 
-**Next:** ADR 0045's tier 1 is complete. The renderer's open items are now triplanar mapping for
-terrain (which also fixes the tangent-frame fallback on steep faces), bloom's blur passes, and
-per-camera post (**Q23**). None is blocking.
+### Then bloom, because it was authorable and read by nothing — ADR 0056
+
+`Environment::Bloom` has had two authored fields, a schema and a line in every `.environment` file
+this repo ships **since ADR 0034**, and the renderer ignored it completely. A scene could ask for
+bloom and get nothing, with no error and a `describe` that reported the field as meaningful. Same
+defect shape as Q32's silent asset and Q31's forgotten `color_space`: **the file format promising
+something the engine does not deliver.**
+
+Three graph passes now — bright, blur x, blur y, at half resolution — composited by the post pass
+**between exposure and tonemapping**, which is what the HDR scene target has existed for since ADR
+0034 and what nothing had exercised. A glow added after tonemapping is a grey wash; added before it,
+it is light.
+
+**Off by default and byte-identical when off**, pinned as bytes rather than "close", because close is
+also what an accidental extra full-screen pass looks like.
+
+> **The Scarp does not use it, and that is the finding.** Its daylight scene has nothing above the
+> threshold after exposure, so bloom at a sensible threshold changes **not one byte** — and at a
+> threshold low enough to catch something, it washes the whole picture out. Both were captured and
+> looked at. Turning on an effect that either does nothing or makes the picture worse is not an
+> improvement, so `scarp.environment` keeps `intensity 0.0`.
+>
+> What bloom is *for* is M3's exit gate — a dark corridor with a moving flashlight, a few genuinely
+> bright sources in a mostly dark frame. **This engine does not have a scene like that yet**, which
+> is the honest reason the feature ships untested by a game.
+
+**Known limitation, named rather than discovered later:** nine taps at half resolution reach eight
+full-resolution pixels — a tight bright halo, not a broad haze. Widening it is a **downsample chain**,
+not a bigger kernel, and it is a change to those three passes alone.
+
+**Next, and the biggest one left for M3: more than one light, and point and spot lights.** The engine
+has exactly one directional light and the horror slice needs a flashlight, which is a spot light with
+a shadow. That is the renderer's last structural gap before the M3 gate is buildable, and **it wants
+a decision first** — how many lights a frame carries and how they reach the shader is a forward-versus-
+clustered choice with real cost to undo. Worth putting to Justin with the research done rather than
+picking one.
+
+Also open and non-blocking: triplanar mapping for terrain (which also fixes the tangent-frame
+fallback on steep faces), bloom's downsample chain, and per-camera post (**Q23**).
 
 ## 📋 The plan cascades were built from — kept as a record
 

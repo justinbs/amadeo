@@ -247,10 +247,19 @@ crates/
                      post pass brings it down -- `Environment` is an asset the camera names by id,
                      holding exposure/tonemap/grade/vignette in an engine-defined order. Its file is
                      a scene file, so `amadeo fmt` and `amadeo check` work on it unchanged. The
-                     default look is a **byte-identical** no-op. `bloom` is declared but not drawn;
-                     fog waits for a depth buffer. Still to come: bloom's blur passes, render targets
-                     on a camera, and per-camera post (**Q23** -- one look per frame today, from the
-                     camera that draws first).
+                     default look is a **byte-identical** no-op.
+                     **Bloom is drawn (ADR 0056)**, and it had been authorable-but-ignored since ADR
+                     0034 -- a scene could ask for it and silently get nothing, which is Q32's defect
+                     shape in the file format rather than in an asset. Three passes at half
+                     resolution, composited **before the tonemap**, which is what the HDR target
+                     exists for: a glow added after it is a grey wash rather than light. Off by
+                     default and byte-identical when off, pinned as bytes. The glow reaches ~8 px;
+                     widening it is a **downsample chain**, not more taps. `games/scarp` deliberately
+                     leaves it off -- daylight has nothing above the threshold, so it either does
+                     nothing or washes the picture out, and both were captured.
+                     Fog waits for a depth buffer. Still to come: render targets on a camera, and
+                     per-camera post (**Q23** -- one look per frame today, from the camera that draws
+                     first).
                      **Session 14 finished ADR 0045's tier 1.** Normal mapping (**ADR 0047**):
                      `Vertex` gained a tangent, read from glTF's `TANGENT` when the file has one and
                      generated at load when it does not — which is why **no `mikktspace` dependency**

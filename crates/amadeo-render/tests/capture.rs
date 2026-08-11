@@ -1237,3 +1237,107 @@ fn the_sky_still_faces_the_right_way_with_cascades_on() {
          sky shader reading its direction vectors from the wrong offset — see view.wgsl"
     );
 }
+
+#[test]
+fn bloom_actually_reaches_the_pixels() {
+    // **`Bloom` was authorable and read by nothing.** It has been a reflected field on `Environment`
+    // since ADR 0034 — spellable in a `.environment` file, visible to `describe`, validated by
+    // `amadeo check` — and the renderer ignored it completely. A scene could ask for it and silently
+    // get nothing, which is the same class of defect as the asset that failed to build in silence.
+    //
+    // The property that says bloom happened is that light appears **outside** the thing emitting it.
+    // A small bright quad on a dark background bleeds into the surrounding pixels; without bloom
+    // those pixels are exactly the background, because nothing else in the pipeline moves light
+    // sideways.
+    let build = |world: &mut World| {
+        let entity = world.spawn();
+        world.insert(entity, Transform::at(0.0, 0.0));
+        // Brighter than white, which is what the HDR scene target exists to carry and what gives
+        // the bright pass something above the threshold to find.
+        world.insert(entity, Quad::new(1.0, 1.0, [6.0, 6.0, 6.0, 1.0]));
+    };
+
+    let mut off = World::new();
+    add_camera_named(&mut off, 10.0, "test_look");
+    build(&mut off);
+
+    let mut on = World::new();
+    add_camera_named(&mut on, 10.0, "test_look");
+    build(&mut on);
+
+    let glowing = Environment {
+        bloom: amadeo_render::Bloom {
+            threshold: 1.0,
+            intensity: 1.5,
+        },
+        ..Environment::default()
+    };
+
+    let (Some(off), Some(on)) = (
+        capture_with(&mut off, Environment::default(), 64, 64),
+        capture_with(&mut on, glowing, 64, 64),
+    ) else {
+        return;
+    };
+
+    // Just outside the quad: it covers one world unit in a ten-unit view, so about six pixels across
+    // the middle of a 64-pixel image, with its edge near x = 35.
+    //
+    // **Eight pixels from centre, because the glow is deliberately tight**: nine taps on a half-
+    // resolution target reach four half-res texels, which is eight full-resolution pixels. Measured
+    // across this row it runs 251, 172, 109, 73 and is back to the background by x = 44. Widening it
+    // means a downsample chain rather than a bigger kernel — see `bloom.wgsl`.
+    let beside_off = pixel_at(&off, 40, 32);
+    let beside_on = pixel_at(&on, 40, 32);
+
+    assert!(
+        beside_on[0] > beside_off[0] + 8,
+        "with bloom on, the background beside a bright quad should pick up light from it: \
+         {beside_off:?} without, {beside_on:?} with"
+    );
+
+    // And the far corner is beyond the blur, so it must be untouched — otherwise this is measuring
+    // something that brightened the whole image rather than a glow with a *radius*.
+    let corner_off = pixel_at(&off, 1, 1);
+    let corner_on = pixel_at(&on, 1, 1);
+    assert!(
+        corner_on[0].abs_diff(corner_off[0]) < 4,
+        "bloom must have a radius rather than lifting the whole picture: corner went \
+         {corner_off:?} to {corner_on:?}"
+    );
+}
+
+#[test]
+fn bloom_off_is_byte_identical_to_before_it_existed() {
+    // The control, and the reason the test above is evidence. `Bloom::intensity` defaults to zero,
+    // so every existing scene must render *exactly* as it did — not nearly. If bloom's passes ran
+    // regardless, or the black placeholder were not exactly black, this is what would say so.
+    //
+    // Byte-identical rather than close, because "close" is what an accidental extra full-screen pass
+    // would also be.
+    let build = |world: &mut World| {
+        let entity = world.spawn();
+        world.insert(entity, Transform::at(0.0, 0.0));
+        world.insert(entity, Quad::new(1.0, 1.0, [6.0, 6.0, 6.0, 1.0]));
+    };
+
+    let mut bare = World::new();
+    add_camera(&mut bare, 10.0);
+    build(&mut bare);
+
+    let mut defaulted = World::new();
+    add_camera_named(&mut defaulted, 10.0, "test_look");
+    build(&mut defaulted);
+
+    let (Some(bare), Some(defaulted)) = (
+        capture(&mut bare, 64, 64),
+        capture_with(&mut defaulted, Environment::default(), 64, 64),
+    ) else {
+        return;
+    };
+
+    assert_eq!(
+        bare.pixels, defaulted.pixels,
+        "the default environment must still be a no-op now that bloom exists"
+    );
+}

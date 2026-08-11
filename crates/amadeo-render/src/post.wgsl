@@ -11,21 +11,12 @@
 // the result. ADR 0034 §4 records why content is not allowed to reorder these: a scene file that put
 // tonemapping first would mostly produce wrong pictures and would have no way to say so.
 //
-// Bloom is missing from this shader on purpose -- it is a multi-pass blur rather than arithmetic on
-// one pixel, so it arrives as its own passes in the graph rather than as lines here.
-
-struct Post {
-    // x = exposure, y = tonemap operator, z = vignette intensity, w = vignette radius.
-    //
-    // Packed into vec4s rather than named scalars because a WGSL uniform pads every member to 16
-    // bytes; four separate f32s would occupy 64 bytes and read no more clearly than this does with
-    // the comment next to it.
-    controls: vec4<f32>,
-    // x = contrast, y = saturation. zw unused.
-    grade: vec4<f32>,
-    // rgb = tint. a unused.
-    tint: vec4<f32>,
-};
+// Bloom's *blur* is not in this shader, on purpose -- it is a multi-pass job rather than arithmetic
+// on one pixel, so it lives in `bloom.wgsl` and its own graph passes. What is here is the one line
+// that belongs here: adding the finished blur back, between exposure and tonemapping, so that the
+// glow is part of what the tonemap curve compresses rather than something painted over the top of it.
+//
+// `Post` and `post` come from `post_uniform.wgsl`, prepended at pipeline creation.
 
 // Must match `Tonemap`'s declaration order in environment.rs. A mismatch would silently apply the
 // wrong curve, so `tonemap_indices_match_the_shader` in the backend tests pins it.
@@ -35,7 +26,16 @@ const TONEMAP_ACES: f32 = 2.0;
 
 @group(0) @binding(0) var scene_texture: texture_2d<f32>;
 @group(0) @binding(1) var scene_sampler: sampler;
-@group(1) @binding(0) var<uniform> post: Post;
+
+// The blurred bright parts, at half resolution — sampled back up, which the bilinear filter smooths
+// for free.
+//
+// **Always bound**, like the shadow map and the base-colour texture: when bloom is off, a 1×1 black
+// placeholder stands in. Black is the identity of an addition, so binding it is arithmetically the
+// same as not sampling, and there is one post pipeline rather than a bloomed one and a plain one
+// that can drift apart.
+@group(2) @binding(0) var bloom_texture: texture_2d<f32>;
+@group(2) @binding(1) var bloom_sampler: sampler;
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
@@ -82,7 +82,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 1. Exposure, on linear light, before anything else looks at it.
     color = color * post.controls.x;
 
-    // 2. Bloom would be added here, out of its own passes.
+    // 2. Bloom, added out of its own passes (`bloom.wgsl`).
+    //
+    //    **Added before the tonemap, not after**, and that is the whole reason the scene target is
+    //    high dynamic range. A glow added afterwards sits on top of an already-compressed picture and
+    //    reads as a grey wash; added here it is light, so the curve below compresses it along with
+    //    everything else and a bright glow blows out the way a bright thing does.
+    //
+    //    The bright pass already applied exposure, so this is not scaled again.
+    color = color + textureSample(bloom_texture, bloom_sampler, in.uv).rgb * post.bloom.y;
 
     // 3. Tonemap. `None` clamps, which is what an 8-bit target used to do implicitly -- so the
     //    default environment produces exactly the picture this renderer drew before ADR 0034.

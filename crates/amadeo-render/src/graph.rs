@@ -56,6 +56,25 @@ pub(crate) const OUTPUT: &str = "output";
 /// Declared only when a frame actually holds a 3D camera — see [`frame_graph`].
 pub(crate) const DEPTH: &str = "depth";
 
+/// The bright parts of the scene, at half resolution, before any blurring.
+///
+/// Declared only when a camera's environment actually asks for bloom — the same rule the depth
+/// buffer and the shadow map follow, and for the same reason: a look that does not use an effect
+/// must not allocate for it or run passes over it.
+pub(crate) const BLOOM_BRIGHT: &str = "bloom bright";
+
+/// The bright parts blurred along x. Feeds the vertical blur.
+pub(crate) const BLOOM_BLUR_X: &str = "bloom blur x";
+
+/// The finished glow, blurred along both axes. Read by the post pass.
+///
+/// **Three names rather than ping-ponging between two.** A pass that wrote back into a target an
+/// earlier pass had read would make the resource's writers and readers circular, and the graph
+/// derives its order from exactly that relationship — so it would either refuse to resolve or resolve
+/// wrongly. The transient pool is free to hand two of these the same physical texture once their
+/// lifetimes are known, which is what [`Plan::lifetimes`] is for.
+pub(crate) const BLOOM_BLUR_Y: &str = "bloom blur y";
+
 /// The pixel format of a transient image.
 ///
 /// One variant, deliberately, exactly as [`PixelFormat`](amadeo_image::PixelFormat) shipped with one
@@ -188,6 +207,11 @@ pub(crate) enum PassKind {
     /// turns "brighter than white" into pixels, so everything after it is in display range and
     /// everything before it is not.
     Post,
+    /// One step of bloom: isolate the bright parts, then blur them along each axis in turn.
+    ///
+    /// Three passes rather than lines in the post shader, because bloom is the one effect in the
+    /// chain that needs a pixel's *neighbours* — see `bloom.wgsl`.
+    Bloom(BloomStep),
     /// Draw the scene from a light's point of view, keeping only depth — a shadow map (ADR 0038).
     ///
     /// The only pass in this engine with **no colour attachment at all**: nothing is being painted,
@@ -211,6 +235,21 @@ pub(crate) enum PassKind {
     /// accept a copy — and because this is where tonemapping goes when it arrives, so the pass has
     /// to be a shader either way.
     Present,
+}
+
+/// Which of bloom's three passes this is.
+///
+/// An enum rather than an index, so the backend picks a pipeline by matching rather than by
+/// remembering that 1 means horizontal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BloomStep {
+    /// Keep only what is brighter than the threshold, at half resolution.
+    Bright,
+    /// Blur that along x.
+    BlurX,
+    /// And then along y, which is what makes the pair a two-dimensional blur for 2n samples rather
+    /// than n².
+    BlurY,
 }
 
 /// One declared step of a frame.
@@ -727,10 +766,56 @@ pub(crate) fn frame_graph(frame: &crate::FrameData, width: u32, height: u32) -> 
         }
     }
 
+    // Bloom, but only when the look actually asks for it. Intensity zero is the default and means
+    // off, so the common case declares nothing, allocates nothing and runs no extra passes — the
+    // same rule the depth buffer and the shadow map follow.
+    let bloom = frame.look().bloom;
+    let bloomed = bloom.intensity > 0.0;
+    if bloomed {
+        // Half resolution on each axis, so a quarter of the pixels. The output is a wide soft glow
+        // with no detail to lose, and sampling it back up bilinearly is free smoothing on top of the
+        // blur. `max(1)` because a 1×1 target would otherwise halve to zero and fail allocation.
+        let half_width = (width / 2).max(1);
+        let half_height = (height / 2).max(1);
+        for name in [BLOOM_BRIGHT, BLOOM_BLUR_X, BLOOM_BLUR_Y] {
+            // HDR like the scene target, because the whole point is values above the display range —
+            // an 8-bit glow would clamp to white and lose the difference between bright and very
+            // bright before the tonemap ever sees it.
+            graph.transient(name, half_width, half_height, TargetFormat::Hdr16);
+        }
+
+        graph.pass(
+            "bloom bright",
+            PassKind::Bloom(BloomStep::Bright),
+            &[SCENE],
+            &[BLOOM_BRIGHT],
+        );
+        graph.pass(
+            "bloom blur x",
+            PassKind::Bloom(BloomStep::BlurX),
+            &[BLOOM_BRIGHT],
+            &[BLOOM_BLUR_X],
+        );
+        graph.pass(
+            "bloom blur y",
+            PassKind::Bloom(BloomStep::BlurY),
+            &[BLOOM_BLUR_X],
+            &[BLOOM_BLUR_Y],
+        );
+    }
+
     // Always present, even when the environment does nothing, so that a frame has **one shape**
     // rather than two. A conditional pass would mean the common path and the tested path could
     // differ, which is the sort of saving that costs more than it returns.
-    graph.pass("post", PassKind::Post, &[SCENE], &[OUTPUT]);
+    // **`SCENE` stays first**, because the backend takes `reads.first()` as the image a full-screen
+    // pass is filtering. The glow is a second input, and reading it is also what orders this pass
+    // after the blurs — declared rather than asserted, which is the whole point of the graph.
+    let post_reads: &[&str] = if bloomed {
+        &[SCENE, BLOOM_BLUR_Y]
+    } else {
+        &[SCENE]
+    };
+    graph.pass("post", PassKind::Post, post_reads, &[OUTPUT]);
     graph.pass("present", PassKind::Present, &[OUTPUT], &[DESTINATION]);
     graph
 }
