@@ -33,8 +33,8 @@ use amadeo_app::{App, Stage, system};
 use amadeo_input::{InputDriver, NullSource};
 use amadeo_physics::{Collider, Gravity, Physics, RapierPhysics, RigidBody, Velocity};
 use amadeo_render::{
-    BoxMesh, Camera, DirectionalLight, Environment, Material, Mesh, PlaneMesh, SortOrder,
-    TextureCache,
+    BoxMesh, Camera, DirectionalLight, Environment, Material, Mesh, PlaneMesh, PointLight,
+    SortOrder, SpotLight, TextureCache,
 };
 use amadeo_transform::{
     GlobalTransform, PROPAGATE_TRANSFORMS, Parent, Transform, propagate_transforms,
@@ -72,6 +72,10 @@ pub fn build_simulation() -> anyhow::Result<App> {
     app.register_component::<Camera>()?;
     app.register_component::<Mesh>()?;
     app.register_component::<DirectionalLight>()?;
+    // Point and spot lights (ADR 0057). Registered here rather than only where used, so a scene file
+    // can name one and `amadeo check` can validate it.
+    app.register_component::<PointLight>()?;
+    app.register_component::<SpotLight>()?;
     app.register_component::<SortOrder>()?;
     app.register_component::<RigidBody>()?;
     app.register_component::<Collider>()?;

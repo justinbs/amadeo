@@ -1316,6 +1316,30 @@ slices with a map each — are what fixes blocky shadows over large outdoor scen
 a third variant. The mode being *data* is why that is an addition rather than a rewrite; ADR 0038 has
 the full argument, and it is the same one `PixelFormat` shipped with.
 
+### An absolute pixel threshold in a lit scene is measuring the ambient
+
+Writing the first spot-light capture test, I asserted the floor **outside** the cone was darker than
+40. It failed at 94.
+
+94 is what a surface reads at with **no light in the world at all**: a camera naming no environment
+still gets the neutral cube map, which is the `0.12` ambient constant ADR 0049 replaced with something
+principled. So the assertion was unsatisfiable — and worse, the companion point-light assertion
+(`under[0] > 90`) was **trivially true** and would have passed against a `PointLight` the renderer
+ignored completely.
+
+The fix is to capture the same scene with the light absent and compare:
+
+```rust
+let (Some(unlit), Some(image)) = (capture(&mut unlit, 64, 64), capture(&mut world, 64, 64)) else {
+    return;
+};
+assert!(under[0] > pixel_at(&unlit, 32, 32)[0] + 40);
+```
+
+> **Generally: a capture test's threshold should come from another capture, not from a number you
+> guessed.** Ambient, tonemapping, exposure and the clear colour all move absolute values around, and
+> every one of them is a reason a hand-picked constant is either unsatisfiable or free.
+
 ### Two shaders reading one buffer must not each declare its layout
 
 **The bug:** turning on shadow cascades drew a huge dark wedge across the horizon. Nothing failed to

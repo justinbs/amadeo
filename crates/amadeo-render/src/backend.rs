@@ -181,6 +181,37 @@ pub struct LightData {
     pub shadow: Option<ShadowData>,
 }
 
+/// A light at a place — a bulb or a beam, resolved to what a shader needs — ADR 0057.
+///
+/// "Punctual" is the graphics term for a light that comes from a point, as opposed to a directional
+/// one that has no position or an area one that has a size. Both kinds collapse into this one struct
+/// because they differ in exactly one thing: whether the cone limits them.
+///
+/// **A point light is a spot light with a cone of the whole sphere**, so it is stored as one with
+/// `cone_outer_cos` at -1 — everything is inside a cone that wide, and the shader needs no branch. A
+/// branch per pixel per light to save two multiplies would cost more than it saves, and would mean
+/// the two kinds could shade differently by accident.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PunctualLight {
+    /// Where it is, in world space.
+    pub position: [f32; 3],
+    /// The direction the beam travels, normalised. Meaningless for a point light and set to straight
+    /// down, which nothing reads because its cone admits everything.
+    pub direction: [f32; 3],
+    /// Linear RGB, already multiplied by intensity.
+    pub colour: [f32; 3],
+    /// How far it reaches, in world units.
+    pub range: f32,
+    /// Cosine of the inner half-angle: within this of the axis, full strength.
+    ///
+    /// **A cosine rather than an angle**, because comparing a cosine against a dot product is what
+    /// the shader actually does — converting per pixel would be a transcendental in the innermost
+    /// loop in the engine.
+    pub cone_inner_cos: f32,
+    /// Cosine of the outer half-angle, where it fades to nothing. `-1.0` for a point light.
+    pub cone_outer_cos: f32,
+}
+
 /// Everything a backend needs to render and sample one shadow map — ADR 0038.
 ///
 /// The matrix is computed here rather than in the backend for the same reason a view's is: a backend
@@ -309,6 +340,19 @@ pub struct View {
     /// its own lighting, and because everything else a backend needs to draw one pass already lives
     /// here — reaching up to the frame for lights would be the one exception.
     pub lights: Vec<LightData>,
+    /// Point and spot lights affecting this view, **nearest to the camera first** and at most
+    /// [`MAX_PUNCTUAL_LIGHTS`](crate::MAX_PUNCTUAL_LIGHTS) of them.
+    ///
+    /// # Why they are a separate list from `lights`
+    ///
+    /// A directional light and a punctual one share a colour and nothing else: one has a direction
+    /// and a shadow fitted to the camera, the other has a position, a falloff and a cone. Putting
+    /// both in one list means a kind tag every consumer matches on, and a struct whose fields are
+    /// half meaningless whichever kind it holds.
+    ///
+    /// It also keeps the shadow path untouched. Shadows are a property of `lights` today and this
+    /// list casts none — which is a real limitation and is `ShadowMode`'s to fix, not this list's.
+    pub punctual: Vec<PunctualLight>,
 }
 
 /// Everything needed to draw one frame.
@@ -749,6 +793,7 @@ mod tests {
                 meshes: Vec::new(),
                 shadow_casters: Vec::new(),
                 lights: Vec::new(),
+                punctual: Vec::new(),
                 quads: vec![QuadInstance {
                     center: [1.0, 2.0],
                     size: [1.0, 1.0],

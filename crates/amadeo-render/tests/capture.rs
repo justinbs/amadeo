@@ -24,8 +24,8 @@
 use amadeo_ecs::World;
 use amadeo_render::{
     BoxMesh, Camera, DirectionalLight, Environment, EnvironmentCache, Material, MaterialCache,
-    Mesh, MeshCache, NullBackend, Quad, RenderBackend, Renderer, ShadowMode, TextureData, Vignette,
-    WgpuBackend, render_quads,
+    Mesh, MeshCache, NullBackend, PointLight, Quad, RenderBackend, Renderer, ShadowMode, SpotLight,
+    TextureData, Vignette, WgpuBackend, render_quads,
 };
 use amadeo_transform::Transform;
 
@@ -1339,5 +1339,200 @@ fn bloom_off_is_byte_identical_to_before_it_existed() {
     assert_eq!(
         bare.pixels, defaulted.pixels,
         "the default environment must still be a no-op now that bloom exists"
+    );
+}
+
+/// A dark floor with no sun at all, so the only light is whatever the test adds.
+///
+/// **The directional light has zero intensity rather than being absent**, which is what makes these
+/// tests measure a point or spot light rather than a change in the sun. A world with no light entity
+/// at all takes a different path through the collection pass, and testing that path here would be
+/// testing two things at once.
+fn an_unlit_floor() -> World {
+    let mut world = World::new();
+
+    let eye = world.spawn();
+    world.insert(
+        eye,
+        Transform {
+            translation: [0.0, 14.0, 0.0],
+            rotation: [-90.0, 0.0, 0.0],
+            ..Transform::default()
+        },
+    );
+    world.insert(eye, Camera::perspective(60.0));
+
+    let sun = world.spawn();
+    world.insert(sun, Transform::default());
+    world.insert(
+        sun,
+        DirectionalLight {
+            intensity: 0.0,
+            ..DirectionalLight::default()
+        },
+    );
+
+    let mut meshes = MeshCache::new();
+    meshes.insert(
+        "floor",
+        BoxMesh {
+            size: [20.0, 0.2, 20.0],
+        }
+        .tessellate(),
+    );
+    world.insert_service(meshes);
+
+    let mut materials = MaterialCache::new();
+    materials.insert(
+        "pale",
+        Material {
+            base_colour: [0.9, 0.9, 0.9, 1.0],
+            ..Material::default()
+        },
+    );
+    world.insert_service(materials);
+
+    let floor = world.spawn();
+    world.insert(floor, Transform::at_xyz(0.0, 0.0, 0.0));
+    world.insert(floor, Mesh::new("floor", "pale"));
+    world
+}
+
+#[test]
+fn a_point_light_actually_reaches_the_pixels() {
+    // **ADR 0057's whole claim in one assertion**: the engine had exactly one light and it had no
+    // position, so nothing in a scene could be lit *from somewhere*. This is a bulb over a floor.
+    //
+    // The property that says a point light happened is that brightness falls off **with distance**.
+    // A directional light of any colour lights a flat floor evenly, so a test that only checked
+    // "the floor got brighter" would pass against one wired up wrongly as directional.
+    let mut world = an_unlit_floor();
+    let lamp = world.spawn();
+    world.insert(lamp, Transform::at_xyz(0.0, 3.0, 0.0));
+    world.insert(
+        lamp,
+        PointLight {
+            colour: [1.0, 1.0, 1.0],
+            intensity: 40.0,
+            range: 12.0,
+        },
+    );
+
+    // **The baseline is the same floor with no lamp at all**, and it matters more than it looks.
+    // A camera naming no environment still gets the neutral cube map, which lights every surface
+    // to about 94 — so "the floor is bright" is true before a light is added, and an assertion on an
+    // absolute value would pass against a `PointLight` the renderer ignored completely.
+    let mut unlit = an_unlit_floor();
+
+    let (Some(unlit), Some(image)) = (capture(&mut unlit, 64, 64), capture(&mut world, 64, 64))
+    else {
+        return;
+    };
+
+    // The camera looks straight down from above, so screen centre is the floor directly under the
+    // lamp and the edges are the floor several units away from it.
+    let under = pixel_at(&image, 32, 32);
+    let away = pixel_at(&image, 4, 32);
+    let baseline = pixel_at(&unlit, 32, 32);
+
+    assert!(
+        under[0] > baseline[0] + 40,
+        "the floor under the lamp should be much brighter than the same floor with no lamp: \
+         {under:?} against {baseline:?}"
+    );
+    assert!(
+        under[0] > away[0] + 40,
+        "a point light falls off with distance, so under it must be clearly brighter than the \
+         floor to the side: {under:?} under, {away:?} away. Equal brightness means it was wired \
+         up as a directional light"
+    );
+}
+
+#[test]
+fn a_spot_light_lights_a_cone_and_not_the_rest() {
+    // The property that distinguishes a spot from a point light, and the one a flashlight is: light
+    // *inside* the cone and none outside it.
+    //
+    // Aimed straight down from three units up with a narrow cone, so the lit patch is a small disc
+    // under it. A spot whose cone was ignored would light the whole floor exactly as the point-light
+    // test does — which is why that test alone cannot cover this.
+    let mut world = an_unlit_floor();
+    let torch = world.spawn();
+    world.insert(
+        torch,
+        Transform {
+            translation: [0.0, 3.0, 0.0],
+            // Aimed like a camera: pitched down 90 degrees puts its negative Z on the floor.
+            rotation: [-90.0, 0.0, 0.0],
+            ..Transform::default()
+        },
+    );
+    world.insert(
+        torch,
+        SpotLight {
+            colour: [1.0, 1.0, 1.0],
+            intensity: 40.0,
+            range: 12.0,
+            inner_angle: 15.0,
+            outer_angle: 20.0,
+        },
+    );
+
+    let mut unlit = an_unlit_floor();
+
+    let (Some(unlit), Some(image)) = (capture(&mut unlit, 64, 64), capture(&mut world, 64, 64))
+    else {
+        return;
+    };
+
+    let inside = pixel_at(&image, 32, 32);
+    let outside = pixel_at(&image, 4, 32);
+    let baseline = pixel_at(&unlit, 4, 32);
+
+    assert!(
+        inside[0] > baseline[0] + 40,
+        "the floor inside the cone should be much brighter than unlit: {inside:?} against \
+         {baseline:?}"
+    );
+    // **Against the unlit baseline rather than against a fixed number.** Ambient light already puts
+    // this pixel near 94 with no lamp in the world at all, so an absolute threshold would either be
+    // unsatisfiable or trivially true — the first version of this test asserted `< 40` and failed
+    // for that reason rather than because the cone was wrong.
+    assert!(
+        outside[0].abs_diff(baseline[0]) <= 2,
+        "the floor outside the cone should be exactly as dark as it is with no lamp at all: \
+         {outside:?} against {baseline:?}. A brighter value means the cone was not applied and \
+         this is behaving as a point light"
+    );
+}
+
+#[test]
+fn a_scene_with_no_punctual_lights_is_unchanged_by_them_existing() {
+    // The control. Every existing scene has no `PointLight` and no `SpotLight`, so every existing
+    // capture must be **byte-identical** — not close. A loop that ran once over a zeroed light, or a
+    // count read from the wrong place, would show up here and nowhere else.
+    let mut before = a_floor_under_a_floating_box(ShadowMode::Orthogonal);
+    let mut after = a_floor_under_a_floating_box(ShadowMode::Orthogonal);
+    // The second world gets a light with zero intensity, which the collection pass drops — so this
+    // also pins that "authored but off" costs nothing, which is what `intensity` defaulting to a
+    // usable value would otherwise quietly break.
+    let dark = after.spawn();
+    after.insert(dark, Transform::at_xyz(0.0, 3.0, 0.0));
+    after.insert(
+        dark,
+        PointLight {
+            intensity: 0.0,
+            ..PointLight::default()
+        },
+    );
+
+    let (Some(before), Some(after)) = (capture(&mut before, 64, 64), capture(&mut after, 64, 64))
+    else {
+        return;
+    };
+
+    assert_eq!(
+        before.pixels, after.pixels,
+        "a light with no intensity must contribute nothing at all"
     );
 }

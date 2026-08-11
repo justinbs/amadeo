@@ -811,6 +811,113 @@ impl DirectionalLight {
 
 impl Component for DirectionalLight {}
 
+/// The most lights one view can carry, beside its directional one — ADR 0057.
+///
+/// **Eight, fixed.** Every pixel evaluates every light in the list, so this is a direct cost, and
+/// eight is comfortably more than a lit room or a corridor with a flashlight needs. Raising it is a
+/// constant here and a uniform that grows; going *far* past it means clustered shading, which sorts
+/// lights into regions of the screen so a pixel only pays for the ones near it — a different
+/// mechanism, and one `RenderBackend` isolates completely.
+///
+/// A frame with more than this many takes the **nearest** to the camera; see `collect_punctual`.
+pub const MAX_PUNCTUAL_LIGHTS: usize = 8;
+
+/// A light at a place, shining in every direction and falling off with distance — a bulb.
+///
+/// # Why "punctual", and why this is a different component from [`DirectionalLight`]
+///
+/// A directional light has no position: every surface is lit from the same angle, which is what
+/// distant light looks like. This one has a position and no direction, which is the opposite, and the
+/// arithmetic differs at every step — so folding both into one component would give it a set of
+/// fields half of which are meaningless whichever kind you picked. `ShadowMode` makes that trade
+/// deliberately for a *mode* of one light; a light's **kind** is not a mode.
+///
+/// # It casts no shadows yet, and that is stated rather than implied
+///
+/// Everything a point light illuminates is lit through walls. That is the honest state of it and the
+/// reason the horror slice's flashlight is not finished — see ADR 0057's consequences.
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+pub struct PointLight {
+    /// Linear RGB. White is neutral; warm and cool are what sell a light source.
+    #[reflect(min = 0.0, max = 1.0)]
+    pub colour: [f32; 3],
+    /// How bright, multiplied into the colour.
+    ///
+    /// Not capped at 1.0: the scene target is high dynamic range (ADR 0034), and a value above it is
+    /// what gives bloom something to find and tonemapping something to compress.
+    #[reflect(min = 0.0, max = 100.0)]
+    pub intensity: f32,
+    /// How far the light reaches, in world units. Beyond this it contributes nothing.
+    ///
+    /// **A hard cut-off on top of the inverse-square falloff**, and it is not physical — real light
+    /// never quite stops. It is here because a light with no range would have to be evaluated by
+    /// every pixel in the world, and because an artist placing a lamp wants to know what it touches.
+    /// The falloff is smoothed to zero at the edge so the boundary is not a visible circle.
+    #[reflect(min = 0.0, max = 1000.0, unit = "world units")]
+    pub range: f32,
+}
+
+impl Default for PointLight {
+    fn default() -> Self {
+        Self {
+            colour: [1.0, 1.0, 1.0],
+            intensity: 1.0,
+            // About a room. Far enough to be useful, near enough that a scene with several of them
+            // does not have every pixel inside all of them.
+            range: 10.0,
+        }
+    }
+}
+
+impl Component for PointLight {}
+
+/// A light at a place, shining in a cone — a torch, a lamp, a flashlight.
+///
+/// Aimed along its own **negative Z**, the same convention [`DirectionalLight`] and
+/// [`Camera`](crate::Camera) both use — so aiming a light is aiming a camera, and parenting one to a
+/// character's head is all a flashlight needs to follow them.
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+pub struct SpotLight {
+    /// Linear RGB.
+    #[reflect(min = 0.0, max = 1.0)]
+    pub colour: [f32; 3],
+    /// How bright, multiplied into the colour.
+    #[reflect(min = 0.0, max = 100.0)]
+    pub intensity: f32,
+    /// How far the cone reaches, in world units. See [`PointLight::range`].
+    #[reflect(min = 0.0, max = 1000.0, unit = "world units")]
+    pub range: f32,
+    /// The half-angle of the cone's bright centre, in degrees.
+    ///
+    /// Everything within this of the axis gets the light's full strength.
+    #[reflect(min = 0.0, max = 89.0, unit = "degrees")]
+    pub inner_angle: f32,
+    /// The half-angle where the cone stops, in degrees.
+    ///
+    /// Between [`SpotLight::inner_angle`] and this the light fades out, which is what gives the beam
+    /// a soft edge instead of a hard circle. **Should exceed the inner angle**; if it does not, the
+    /// falloff collapses to a hard edge rather than misbehaving.
+    #[reflect(min = 0.0, max = 89.0, unit = "degrees")]
+    pub outer_angle: f32,
+}
+
+impl Default for SpotLight {
+    fn default() -> Self {
+        Self {
+            colour: [1.0, 1.0, 1.0],
+            intensity: 1.0,
+            range: 20.0,
+            // A beam about as tight as a hand torch, with a couple of degrees of softness at the
+            // edge. Both stop short of 90, where the cone becomes a hemisphere and the falloff
+            // between them has nothing left to interpolate over.
+            inner_angle: 20.0,
+            outer_angle: 28.0,
+        }
+    }
+}
+
+impl Component for SpotLight {}
+
 /// Every mesh the game has loaded, by asset id.
 ///
 /// A [`Service`], so it can never move a replay (ADR 0009) — the *parameters* of a procedural shape

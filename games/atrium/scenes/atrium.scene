@@ -296,3 +296,13 @@ entity player "Wanderer"
       rotation -18.0 0.0 0.0
       scale 1.0 1.0 1.0
       translation 0.0 3.35 5.71
+
+entity lamp "Warm lamp"
+  PointLight
+    colour 1.0 0.72 0.42
+    intensity 22.0
+    range 9.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -4.0 2.6 -3.0

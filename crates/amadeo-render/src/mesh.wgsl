@@ -94,6 +94,56 @@ fn environment_brdf(n_dot_v: f32, roughness: f32) -> vec2<f32> {
     return vec2<f32>(-1.04, 1.04) * a004 + vec2<f32>(r.z, r.w);
 }
 
+// What one light contributes directly to a surface — the Cook-Torrance BRDF, ADR 0048.
+//
+// Extracted from `fs_main` when point and spot lights arrived (ADR 0057), because a sun and a torch
+// differ in exactly two things — which way the light comes from, and how much of it arrives — and in
+// nothing else. Two copies of this arithmetic would drift, and the way they would drift is that a
+// material looks right under the sun and wrong under a lamp.
+//
+// `radiance` is the light's colour already scaled by everything that attenuates it: the sun's shadow
+// factor, or a punctual light's distance falloff and cone.
+fn direct_light(
+    normal: vec3<f32>,
+    towards_eye: vec3<f32>,
+    n_dot_v: f32,
+    towards_light: vec3<f32>,
+    radiance: vec3<f32>,
+    diffuse_colour: vec3<f32>,
+    f0: vec3<f32>,
+    roughness: f32,
+) -> vec3<f32> {
+    // max() rather than abs(): a surface facing away from this light is unlit by it, not lit from
+    // behind.
+    let lambert = max(dot(normal, towards_light), 0.0);
+
+    // The half vector is the direction a microfacet would have to face to bounce this light straight
+    // into the eye, which is what `distribution_ggx` is asking about.
+    let half_vector = normalize(towards_light + towards_eye);
+    let n_dot_h = max(dot(normal, half_vector), 0.0);
+    let v_dot_h = max(dot(towards_eye, half_vector), 0.0);
+
+    // The three terms, combined the way Cook-Torrance specifies.
+    let distribution = distribution_ggx(n_dot_h, roughness);
+    let visibility = visibility_smith(n_dot_v, lambert, roughness);
+    let fresnel = fresnel_schlick(v_dot_h, f0);
+    let specular = distribution * visibility * fresnel;
+
+    // Energy conservation: light that reflected off the surface cannot also scatter through it. So
+    // whatever Fresnel took goes to the highlight and the remainder is left for the diffuse.
+    let diffuse = diffuse_colour * (vec3<f32>(1.0) - fresnel) / PI;
+
+    // **The `PI` here is deliberate and is the reason existing scenes did not all go dark.**
+    //
+    // The BRDF is energy-correct, which puts a `1 / PI` on the diffuse term. Applied literally,
+    // every surface in the engine would drop to about a third of its previous brightness and every
+    // authored `intensity` would need retuning. So a light's colour is treated as carrying `PI`
+    // times the irradiance -- the light's units absorb the constant, which is what most real-time
+    // renderers do. The *relative* weighting of diffuse against specular, which is what actually
+    // decides whether a material reads correctly, is unaffected.
+    return (diffuse + specular) * radiance * lambert * PI;
+}
+
 // Which cascade covers a point this far from the camera — ADR 0055.
 //
 // The nearest one whose reach exceeds the distance. Cascades are concentric rings around the camera
@@ -369,14 +419,10 @@ fn fs_main(
     let towards_light = -normalize(view.light_direction.xyz);
     let lambert = max(dot(normal, towards_light), 0.0);
 
-    // Towards the viewer, and the half vector between that and the light. The half vector is the
-    // direction a microfacet would have to face to bounce this light straight into the eye, which
-    // is what `distribution_ggx` is asking about.
+    // Towards the viewer. The half vector between this and each light is computed per light, inside
+    // `direct_light` — it depends on the light's direction, so the sun and a torch cannot share one.
     let towards_eye = normalize(view.eye.xyz - in.world_position);
-    let half_vector = normalize(towards_light + towards_eye);
     let n_dot_v = max(dot(normal, towards_eye), 1e-4);
-    let n_dot_h = max(dot(normal, half_vector), 0.0);
-    let v_dot_h = max(dot(towards_eye, half_vector), 0.0);
 
     // **This used to be `let ambient = 0.12;`** -- one number, added to every surface regardless of
     // which way it faced or what was around it. That constant is why shadowed areas read as flat
@@ -433,25 +479,70 @@ fn fs_main(
     let diffuse_colour = albedo.rgb * (1.0 - metallic);
     let f0 = mix(vec3<f32>(0.04), albedo.rgb, metallic);
 
-    // The three terms, combined the way Cook-Torrance specifies.
-    let distribution = distribution_ggx(n_dot_h, roughness);
-    let visibility = visibility_smith(n_dot_v, lambert, roughness);
-    let fresnel = fresnel_schlick(v_dot_h, f0);
-    let specular = distribution * visibility * fresnel;
+    // The sun. Its shadow multiplies its radiance rather than the whole result, because ambient is
+    // deliberately outside the shadow — see above.
+    var direct = direct_light(
+        normal,
+        towards_eye,
+        n_dot_v,
+        towards_light,
+        view.light_colour.rgb * shadow,
+        diffuse_colour,
+        f0,
+        roughness,
+    );
 
-    // Energy conservation: light that reflected off the surface cannot also scatter through it. So
-    // whatever Fresnel took goes to the highlight and the remainder is left for the diffuse.
-    let diffuse = diffuse_colour * (vec3<f32>(1.0) - fresnel) / PI;
-
-    // **The `PI` here is deliberate and is the reason existing scenes did not all go dark.**
+    // **Point and spot lights** (ADR 0057), summed on top. At most
+    // `MAX_PUNCTUAL_LIGHTS` of them, nearest to the camera first, so a scene with more loses the
+    // ones contributing least rather than an arbitrary set.
     //
-    // The BRDF above is energy-correct, which puts a `1 / PI` on the diffuse term. Applied
-    // literally, every surface in the engine would drop to about a third of its previous brightness
-    // and every authored `intensity` would need retuning. So `light_colour` is treated as carrying
-    // `PI` times the irradiance -- the light's units absorb the constant, which is what most
-    // real-time renderers do. The *relative* weighting of diffuse against specular, which is what
-    // actually decides whether a material reads correctly, is unaffected.
-    let direct = (diffuse + specular) * view.light_colour.rgb * lambert * shadow * PI;
+    // These cast **no shadow**: everything they light, they light through walls. That is the honest
+    // state of them and the reason a flashlight is not finished.
+    let count = i32(view.punctual_count.x);
+    for (var index = 0; index < count; index = index + 1) {
+        let light = view.punctual[index];
+
+        let offset = light.position_range.xyz - in.world_position;
+        let distance = length(offset);
+        let range = light.position_range.w;
+        if distance > range {
+            continue;
+        }
+        // `1e-4` rather than zero: a fragment exactly at a light's position would otherwise divide
+        // by zero and paint one infinite pixel, which reads as a firefly rather than as a bug.
+        let to_light = offset / max(distance, 1e-4);
+
+        // Inverse square, which is how light actually falls off, windowed to reach exactly zero at
+        // the range. Without the window there is a visible circle where the light is cut off; the
+        // squared-and-squared term fades the last part of the falloff smoothly into nothing.
+        let falloff = 1.0 / max(distance * distance, 1e-4);
+        let ratio = distance / range;
+        let windowed = falloff * pow(max(1.0 - ratio * ratio * ratio * ratio, 0.0), 2.0);
+
+        // The cone. A point light stores an outer cosine of -1, so `along` is always above it and
+        // this comes out as 1 — no branch on the light's kind.
+        let along = dot(-to_light, light.direction_outer.xyz);
+        let outer = light.direction_outer.w;
+        let inner = light.colour_inner.a;
+        // `max(…, 1e-4)` guards the case where an author set the two angles equal, which would
+        // otherwise divide by zero and give a beam of NaN.
+        let cone = clamp((along - outer) / max(inner - outer, 1e-4), 0.0, 1.0);
+        // Squared, so the beam's edge falls off smoothly rather than linearly — a linear ramp has a
+        // visible crease where it reaches full brightness.
+        let radiance = light.colour_inner.rgb * windowed * cone * cone;
+
+        direct = direct
+            + direct_light(
+                normal,
+                towards_eye,
+                n_dot_v,
+                to_light,
+                radiance,
+                diffuse_colour,
+                f0,
+                roughness,
+            );
+    }
 
     // **The ambient half, and it now has two parts where it used to have none.**
     //

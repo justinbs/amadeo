@@ -1037,6 +1037,7 @@ mod tests {
                     meshes: Vec::new(),
                     shadow_casters: Vec::new(),
                     lights: Vec::new(),
+                    punctual: Vec::new(),
                 })
                 .collect(),
             ..FrameData::default()

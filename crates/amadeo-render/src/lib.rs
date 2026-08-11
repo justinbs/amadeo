@@ -54,8 +54,8 @@ mod sprites;
 mod textures;
 
 pub use backend::{
-    FrameData, LightData, MeshInstance, NullBackend, QuadInstance, RenderBackend, RenderError,
-    ShadowCascade, ShadowData, SpriteBatch, SpriteInstance, View,
+    FrameData, LightData, MeshInstance, NullBackend, PunctualLight, QuadInstance, RenderBackend,
+    RenderError, ShadowCascade, ShadowData, SpriteBatch, SpriteInstance, View,
 };
 pub use components::{Camera, Projection, Quad, SortOrder, Sprite};
 pub use describe::{
@@ -70,8 +70,8 @@ pub use ibl::{
     SPECULAR_SIZE, SkyCache, irradiance, prefilter_specular,
 };
 pub use mesh::{
-    BoxMesh, DirectionalLight, GltfPart, Material, MaterialCache, Mesh, MeshCache, MeshData,
-    PlaneMesh, ShadowMode, Vertex,
+    BoxMesh, DirectionalLight, GltfPart, MAX_PUNCTUAL_LIGHTS, Material, MaterialCache, Mesh,
+    MeshCache, MeshData, PlaneMesh, PointLight, ShadowMode, SpotLight, Vertex,
 };
 pub use sprites::{COLLECT_SPRITES, collect_sprites};
 pub use textures::{
@@ -465,6 +465,131 @@ fn active_cameras(world: &World) -> Vec<(Camera, [f32; 2], Mat4)> {
         .into_iter()
         .map(|(_, _, camera, eye, matrix)| (camera, eye, matrix))
         .collect()
+}
+
+/// Every point and spot light worth drawing for a camera at `eye`, nearest first.
+///
+/// # Nearest first, and capped
+///
+/// Every pixel evaluates every light in the list, so the list has a hard limit
+/// ([`MAX_PUNCTUAL_LIGHTS`]). When a scene has more, *something* has to be dropped, and distance to
+/// the camera is the honest cheap answer: a light across the level contributes least and is least
+/// missed. Sorting is by distance from the eye to the light's **surface** — its position minus its
+/// range — so a big lamp fifty metres away outranks a candle at thirty, which is what "affects this
+/// view most" actually means.
+///
+/// **The cut is silent, deliberately.** A frame that quietly drops the ninth light is a lit scene
+/// with a light missing, which an author can see; refusing to draw or logging every frame is worse.
+/// The count is visible through `render.describe`, which is where a question about it gets answered.
+///
+/// # Determinism
+///
+/// The sort breaks ties by entity, so two lights at identical distances always come out in the same
+/// order — an unstable sort over floats is exactly the kind of thing that makes one machine's frame
+/// differ from another's. Rendering is outside the state hash (ADR 0031), so this is about a
+/// reproducible *picture* rather than a reproducible simulation, and `render.describe` and a capture
+/// are both worthless if it wobbles.
+fn collect_punctual(world: &World, eye: [f32; 3]) -> Vec<PunctualLight> {
+    let mut found: Vec<(f32, amadeo_ecs::Entity, PunctualLight)> = Vec::new();
+
+    let placement = |transform: &Transform, global: Option<&GlobalTransform>| match global {
+        Some(global) => global.to_mat4(),
+        None => local_matrix(transform),
+    };
+    let position_of = |matrix: &Mat4| {
+        [
+            matrix.columns[3][0],
+            matrix.columns[3][1],
+            matrix.columns[3][2],
+        ]
+    };
+
+    for (entity, (light, transform, global)) in
+        world.query::<(&PointLight, &Transform, Option<&GlobalTransform>)>()
+    {
+        if light.intensity <= 0.0 || light.range <= 0.0 {
+            continue;
+        }
+        let matrix = placement(transform, global);
+        found.push((
+            0.0,
+            entity,
+            PunctualLight {
+                position: position_of(&matrix),
+                // Never read: the cone below admits the whole sphere.
+                direction: [0.0, -1.0, 0.0],
+                colour: [
+                    light.colour[0] * light.intensity,
+                    light.colour[1] * light.intensity,
+                    light.colour[2] * light.intensity,
+                ],
+                range: light.range,
+                cone_inner_cos: -1.0,
+                cone_outer_cos: -1.0,
+            },
+        ));
+    }
+
+    for (entity, (light, transform, global)) in
+        world.query::<(&SpotLight, &Transform, Option<&GlobalTransform>)>()
+    {
+        if light.intensity <= 0.0 || light.range <= 0.0 {
+            continue;
+        }
+        let matrix = placement(transform, global);
+        // The third column is the entity's Z axis; light travels along its negative — the same
+        // convention a camera looks along, so aiming a light is aiming a camera.
+        let axis = matrix.columns[2];
+        let length = (axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]).sqrt();
+        let direction = if length < 1e-6 {
+            [0.0, -1.0, 0.0]
+        } else {
+            [-axis[0] / length, -axis[1] / length, -axis[2] / length]
+        };
+
+        // Clamped so the outer cone is never tighter than the inner one. An author who swaps the two
+        // gets a hard-edged beam rather than a divide by a negative width, which would invert the
+        // falloff and light everything *outside* the cone.
+        let outer = light.outer_angle.max(light.inner_angle);
+        found.push((
+            0.0,
+            entity,
+            PunctualLight {
+                position: position_of(&matrix),
+                direction,
+                colour: [
+                    light.colour[0] * light.intensity,
+                    light.colour[1] * light.intensity,
+                    light.colour[2] * light.intensity,
+                ],
+                range: light.range,
+                // Cosines, computed once here rather than per pixel per light in the shader — and
+                // with the engine's own trigonometry (ADR 0053), so two machines agree.
+                cone_inner_cos: amadeo_core::cos_degrees(light.inner_angle),
+                cone_outer_cos: amadeo_core::cos_degrees(outer),
+            },
+        ));
+    }
+
+    for entry in &mut found {
+        let light = &entry.2;
+        let offset = [
+            light.position[0] - eye[0],
+            light.position[1] - eye[1],
+            light.position[2] - eye[2],
+        ];
+        let distance =
+            (offset[0] * offset[0] + offset[1] * offset[1] + offset[2] * offset[2]).sqrt();
+        // To the light's reach rather than to its centre, so a large distant lamp beats a small near
+        // one. Negative for a camera inside the light, which sorts it first, which is right.
+        entry.0 = distance - light.range;
+    }
+
+    // `total_cmp` rather than `partial_cmp`: it is a total order over every float including NaN, so
+    // there is no unwrap and no arm that cannot happen. The entity breaks ties.
+    found.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.index().cmp(&b.1.index())));
+    found.truncate(MAX_PUNCTUAL_LIGHTS);
+    found.into_iter().map(|(_, _, light)| light).collect()
 }
 
 /// Every directional light in the world, in a reproducible order.
@@ -955,6 +1080,14 @@ pub fn render_quads(world: &mut World) {
                     meshes: visible,
                     shadow_casters: casters,
                     lights: view_lights,
+                    // Empty for a 2D view: a sprite has no normal and no position in depth, so
+                    // nothing about it could respond to a light at a place. The same reason `flat`
+                    // skips shadow fitting above.
+                    punctual: if flat {
+                        Vec::new()
+                    } else {
+                        collect_punctual(world, eye_matrix.translation())
+                    },
                 }
             })
             .collect(),

@@ -260,6 +260,20 @@ crates/
                      Fog waits for a depth buffer. Still to come: render targets on a camera, and
                      per-camera post (**Q23** -- one look per frame today, from the camera that draws
                      first).
+                     **`PointLight` and `SpotLight` (ADR 0057)** -- lights at a *place*, which the
+                     engine had none of until session 15. **Eight per view**, forward, in a uniform
+                     array; the ninth is dropped by distance to the light's *reach*, silently.
+                     Deferred is ruled out because it fights ADR 0051's MSAA; clustered is the
+                     upgrade path and is behind `RenderBackend`. **A point light is a spot whose cone
+                     is the whole sphere** (`cone_outer_cos = -1`), so the shader has no branch on
+                     kind -- but they stay two *components*, because an author should not be typing
+                     `inner_angle` on a bulb. Cosines are computed at collection, never per pixel.
+                     `direct_light` in `mesh.wgsl` is the shared BRDF: a sun and a torch differ only
+                     in direction and radiance, and two copies would drift into a material that looks
+                     right under one and wrong under the other.
+                     **They cast NO shadows** -- everything they light, they light through walls.
+                     Deliberate, and Justin's call: ship the lights first so the component shape
+                     settles before shadows complicate it.
                      **Session 14 finished ADR 0045's tier 1.** Normal mapping (**ADR 0047**):
                      `Vertex` gained a tangent, read from glTF's `TANGENT` when the file has one and
                      generated at load when it does not — which is why **no `mikktspace` dependency**

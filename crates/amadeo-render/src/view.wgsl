@@ -20,6 +20,20 @@
 // — `#[repr(C)]` and this struct are two statements of one layout, and only a wrong picture says
 // they disagree.
 
+// One point or spot light. A point light is stored as a spot whose cone admits the whole sphere, so
+// the shader needs no branch on the kind — see `PunctualLight` in backend.rs.
+//
+// Declared before `MeshView` because WGSL requires a type to exist before it is used.
+struct PunctualLight {
+    // xyz = world position. w = range, in world units.
+    position_range: vec4<f32>,
+    // xyz = the direction the beam travels, normalised. w = cosine of the outer half-angle, which is
+    // -1 for a point light so that everything is inside its cone.
+    direction_outer: vec4<f32>,
+    // rgb = colour with intensity folded in. a = cosine of the inner half-angle.
+    colour_inner: vec4<f32>,
+};
+
 struct MeshView {
     // World to clip space: the camera's inverse transform, then its projection.
     view_projection: mat4x4<f32>,
@@ -47,6 +61,12 @@ struct MeshView {
     sky_right: vec4<f32>,
     sky_up: vec4<f32>,
     sky_forward: vec4<f32>,
+    // How many of `punctual` below are real. A float because everything else in this struct is, and
+    // an integer here would need its own 16-byte slot anyway.
+    punctual_count: vec4<f32>,
+    // Point and spot lights, nearest first (ADR 0057). Unused slots are zeroed and never read,
+    // because the loop stops at `punctual_count`.
+    punctual: array<PunctualLight, 8>,
 };
 
 @group(0) @binding(0) var<uniform> view: MeshView;

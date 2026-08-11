@@ -189,15 +189,47 @@ also what an accidental extra full-screen pass looks like.
 full-resolution pixels — a tight bright halo, not a broad haze. Widening it is a **downsample chain**,
 not a bigger kernel, and it is a change to those three passes alone.
 
-**Next, and the biggest one left for M3: more than one light, and point and spot lights.** The engine
-has exactly one directional light and the horror slice needs a flashlight, which is a spot light with
-a shadow. That is the renderer's last structural gap before the M3 gate is buildable, and **it wants
-a decision first** — how many lights a frame carries and how they reach the shader is a forward-versus-
-clustered choice with real cost to undo. Worth putting to Justin with the research done rather than
-picking one.
+### And then lights at a place — ADR 0057, the last structural gap before M3's gate
 
-Also open and non-blocking: triplanar mapping for terrain (which also fixes the tangent-frame
-fallback on steep faces), bloom's downsample chain, and per-camera post (**Q23**).
+The engine had **exactly one kind of light** since M2: directional, with no position, so nothing in a
+scene could be lit *from somewhere*. M3's renderer exam is a dark corridor with a moving flashlight,
+which is a spot light. `PointLight` and `SpotLight` now exist as authored components.
+
+**Put to Justin as a scope question and he chose lights first, shadows after** — so the component
+shape, which lives in scene files and is the expensive-to-change part, gets settled and used before
+shadows complicate it.
+
+Decisions I made and flagged rather than asked, all behind `RenderBackend` and cheap to revisit:
+**forward with a fixed array of eight**, not clustered (worth its machinery north of a few dozen
+lights, and a lit room is under eight) and **not deferred** — deferred fights ADR 0051's MSAA, which
+ADR 0050's low-poly direction depends on. Over eight, the nearest win, measured to the light's
+*reach* so a big distant lamp beats a small near one.
+
+> **They cast no shadows.** Everything a lamp lights, it lights through walls. That is the honest
+> state of it and it is visible in the Atrium's capture as plainly as the light is. A spot's shadow is
+> a second map with a perspective projection; a point's is six faces of a cube. Both want an atlas,
+> and `TargetFormat::ShadowMap32`'s layer count already has the shape for one.
+
+Two things worth knowing: a point light is stored as a **spot whose cone is the whole sphere**, so the
+shader has no branch on kind — but they stay two *components*, because an author should not be typing
+`inner_angle` on a bulb. And the Cook-Torrance BRDF moved out of `fs_main` into `direct_light`,
+because a sun and a torch differ in exactly two things and two copies would drift into a material that
+looks right under one and wrong under the other.
+
+`games/atrium` gained a warm lamp, on the rule that a feature nothing uses is a feature nobody has
+looked at.
+
+> **A test caught me being sloppy, which is worth recording.** The first spot-light test asserted the
+> floor outside the cone was `< 40`. It failed at 94 — and 94 is what **ambient light alone** gives,
+> because a camera naming no environment still gets the neutral cube map. So the assertion was
+> unsatisfiable, *and* the companion point-light assertion (`> 90`) had been trivially true and would
+> have passed against a light the renderer ignored entirely. Both now compare against a captured
+> unlit baseline. **An absolute pixel threshold in a lit scene is almost always measuring the
+> ambient.**
+
+**Next:** shadows for spot lights, which finishes the flashlight and is the remaining half of the M3
+renderer exam. Also open and non-blocking: triplanar mapping for terrain (which also fixes the
+tangent-frame fallback on steep faces), bloom's downsample chain, and per-camera post (**Q23**).
 
 ## 📋 The plan cascades were built from — kept as a record
 

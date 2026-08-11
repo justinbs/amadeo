@@ -105,6 +105,26 @@ struct GpuMeshInstance {
     surface: [f32; 4],
 }
 
+/// One point or spot light, as the mesh shader reads it — ADR 0057.
+///
+/// Packed into three `vec4`s because a WGSL uniform pads every member to sixteen bytes: a position,
+/// a range, a direction and two cosines as separate members would occupy ninety-six bytes where this
+/// occupies forty-eight, and would read no more clearly than the field names here.
+///
+/// **Must match `PunctualLight` in `view.wgsl` field for field.** That declaration is shared between
+/// the mesh and sky shaders so the two cannot disagree with each other; this one is Rust, and only a
+/// wrong picture says it disagrees with them.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct GpuPunctualLight {
+    /// xyz = world position, w = range.
+    position_range: [f32; 4],
+    /// xyz = the direction the beam travels, w = cosine of the outer half-angle.
+    direction_outer: [f32; 4],
+    /// rgb = colour with intensity folded in, a = cosine of the inner half-angle.
+    colour_inner: [f32; 4],
+}
+
 /// What one shadow pass needs: the one matrix it draws with.
 ///
 /// # Why the shadow pass stopped sharing `GpuMeshView`
@@ -181,6 +201,10 @@ struct GpuMeshView {
     sky_right: [f32; 4],
     sky_up: [f32; 4],
     sky_forward: [f32; 4],
+    /// x = how many of `punctual` are real, yzw unused.
+    punctual_count: [f32; 4],
+    /// Point and spot lights, nearest first (ADR 0057). Unused slots are zeroed and never read.
+    punctual: [GpuPunctualLight; crate::MAX_PUNCTUAL_LIGHTS],
 }
 
 /// One uploaded mesh's buffers.
@@ -3402,6 +3426,39 @@ impl RenderBackend for WgpuBackend {
                 }
             }
 
+            // The punctual lights, flattened into the uniform's fixed array. The collection pass has
+            // already sorted them nearest-first and truncated to the cap, so this takes them as they
+            // come — `min` is belt and braces against a backend being handed more than it can hold.
+            let mut punctual: [GpuPunctualLight; crate::MAX_PUNCTUAL_LIGHTS] =
+                bytemuck::Zeroable::zeroed();
+            let punctual_count = view.punctual.len().min(crate::MAX_PUNCTUAL_LIGHTS);
+            for (slot, light) in punctual
+                .iter_mut()
+                .zip(view.punctual.iter())
+                .take(punctual_count)
+            {
+                *slot = GpuPunctualLight {
+                    position_range: [
+                        light.position[0],
+                        light.position[1],
+                        light.position[2],
+                        light.range,
+                    ],
+                    direction_outer: [
+                        light.direction[0],
+                        light.direction[1],
+                        light.direction[2],
+                        light.cone_outer_cos,
+                    ],
+                    colour_inner: [
+                        light.colour[0],
+                        light.colour[1],
+                        light.colour[2],
+                        light.cone_inner_cos,
+                    ],
+                };
+            }
+
             let uniform = GpuMeshView {
                 view_projection: view_projection.columns,
                 light_view_projection,
@@ -3440,6 +3497,8 @@ impl RenderBackend for WgpuBackend {
                 // as-is points the sky out of the back of the camera, which draws a perfectly
                 // plausible sky facing exactly the wrong way.
                 sky_forward: scaled_axis(&view.eye_matrix, 2, -1.0),
+                punctual_count: [punctual_count as f32, 0.0, 0.0, 0.0],
+                punctual,
             };
             let at = index * self.mesh_view_stride as usize;
             mesh_views[at..at + size_of::<GpuMeshView>()]
