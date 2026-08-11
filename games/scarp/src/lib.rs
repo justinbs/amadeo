@@ -58,6 +58,16 @@ const SCENE: &str = include_str!("../scenes/scarp.scene");
 /// The seed, when nothing overrides it. `--seed` on the command line changes the world.
 const DEFAULT_SEED: u64 = 0x0053_4341_5250;
 
+/// The seed this world uses when `--seed` does not override it.
+///
+/// Public so a test can rebuild the same [`Highlands`] the running game has and ask it where the
+/// ground is — which is what lets an assertion about the terrain hold for any tuning rather than
+/// pinning a coordinate that a change to the camera would invalidate.
+#[must_use]
+pub fn default_seed() -> u64 {
+    DEFAULT_SEED
+}
+
 /// The named input action that digs.
 pub const DIG: &str = "dig";
 

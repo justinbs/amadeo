@@ -20,7 +20,7 @@ use amadeo_ecs::World;
 use amadeo_input::{InputDriver, ScriptedSource};
 use amadeo_render::Camera;
 use amadeo_transform::{Parent, Transform};
-use scarp::build_simulation;
+use scarp::{Highlands, build_simulation};
 
 fn game() -> App {
     let mut app = build_simulation().expect("the game builds");
@@ -522,6 +522,68 @@ fn walking_over_open_ground_does_not_disturb_the_arm() {
         worst < 0.05,
         "walking over open ground moved the camera arm by {worst} in a single tick. Nothing is in \
          the way out here, so the arm should not move at all"
+    );
+}
+
+#[test]
+fn tilting_all_the_way_up_does_not_bury_the_camera() {
+    // **The third thing Justin reported by playing**, after the flicker and the tilt: looking up
+    // filled the screen with a dark mass over a pale band. That is the camera *under the terrain*,
+    // looking at its unlit underside (ADR 0052) with the sky showing past the edge — and it is the
+    // one case the sweep is supposed to make impossible.
+    //
+    // # It was the projection workaround failing on its own terms
+    //
+    // Tilted up, the arm points down and back. It hit the ground and `move_shape` **slid** backward
+    // along it — and backward is 0.87 of the arm's direction, so projecting the travel onto the arm
+    // counted almost the whole slide as progress along it. The arm shortened from 7.0 to 6.86 for a
+    // shape that had gone nowhere in the direction asked for, and the camera was placed 0.06 m below
+    // the surface rather than the 0.35 m above it that its own probe radius should guarantee.
+    //
+    // ADR 0054's `cast_shape` removes the projection entirely, so there is no slide to misread.
+    //
+    // Asserted against the terrain function rather than against a number, so it stays true for any
+    // seed and any tuning of the pitch limits.
+    let mut app = looking(-300.0);
+    app.run_ticks(300).expect("the world advances");
+
+    let wanted = follow(&app.world);
+    assert!(
+        camera_pitch(&app.world) > wanted.max_pitch - 0.01,
+        "the view has to be tilted all the way up for this to be the reported case, got {}",
+        camera_pitch(&app.world)
+    );
+
+    // The parent is never yawed in this test, so its local and world offsets coincide.
+    let player = app
+        .world
+        .query::<(&amadeo_terrain::TerrainViewer, &Transform)>()
+        .map(|(_, (_, transform))| transform.translation)
+        .next()
+        .expect("the scene authors one player");
+    let local = camera_local(&app.world);
+    let camera = [
+        player[0] + local[0],
+        player[1] + local[1],
+        player[2] + local[2],
+    ];
+
+    let ground = Highlands::new(scarp::default_seed()).height(camera[0], camera[2]);
+    let above = camera[1] - ground;
+    assert!(
+        above > 0.0,
+        "the camera is {:.3} metres BELOW the ground at ({:.2}, {:.2}) — which is what looking up \
+         used to do, and what the sweep exists to prevent",
+        -above,
+        camera[0],
+        camera[2]
+    );
+    // And not merely level with it: a sphere stopped by a surface rests a radius clear of it, so
+    // anything less than that means the cast is being ignored rather than merely imprecise.
+    assert!(
+        above > wanted.radius * 0.8,
+        "the camera should rest about its {} m probe radius clear of the ground, got {above:.3}",
+        wanted.radius
     );
 }
 

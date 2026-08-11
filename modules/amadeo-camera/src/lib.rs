@@ -35,7 +35,7 @@
 use amadeo_app::{App, Stage, system};
 use amadeo_ecs::{Component, Entity, World};
 use amadeo_input::{ActionId, InputState};
-use amadeo_physics::{Physics, Shape, ShapeMove};
+use amadeo_physics::{Physics, Shape, ShapeCast};
 use amadeo_reflect::RegistryError;
 use amadeo_transform::{Mat4, Parent, Transform};
 
@@ -294,21 +294,32 @@ pub fn look_with_mouse(world: &mut World) {
 /// on roughly one tick in ten, the camera snapped to its minimum distance, eased back out at
 /// `return_speed`, and was knocked down again long before it arrived. That is
 /// *"any movement in any direction makes the camera flicker close or far"*, and it is one missing
-/// [`ShapeMove::ignoring`] — the same call `modules/amadeo-character` has always made, for the same
+/// [`ShapeCast::ignoring`] — the same call `modules/amadeo-character` has always made, for the same
 /// reason, one crate away.
 ///
-/// # Why the result is projected rather than measured
+/// # Both sweeps are casts, not moves, and that took three attempts to get right
 ///
-/// [`ShapeMove`] is a *character* move: it slides along whatever it hits, because that is what a body
-/// walking into a wall should do. A camera wants the other question — how far along this one axis
-/// before something is in the way — and the engine has no pure shape cast to ask (**Q34**). Measuring
-/// the straight-line distance travelled counts a slide as progress, so a camera brushing a wall got a
-/// distance with little to do with where it was pointed. A dot product keeps only the component that
-/// was actually asked for.
+/// [`ShapeCast`] asks *"how far along this line before something is in the way?"*.
+/// [`ShapeMove`](amadeo_physics::ShapeMove) asks
+/// *"where does this body end up?"* and **slides** along whatever it hits to answer, because that is
+/// what a character walking into a wall should do. Until ADR 0054 the engine only had the second, and
+/// this function borrowed it — which failed twice, in ways that looked unrelated:
+///
+/// 1. The slide counted as progress. Measuring the straight-line distance travelled made a camera
+///    brushing a slope report a distance with little to do with the axis it was pointed along.
+///    Projecting onto the arm fixed *that*, and was a workaround.
+/// 2. **The projection then failed on its own terms.** With the view tilted up, the arm points down
+///    and back; it hits the ground, slides *backward* along it, and backward is most of the arm's
+///    direction. So the projection reported nearly a full arm's progress for a shape that had gone
+///    almost nowhere in the direction asked for, and the camera ended up **under the terrain looking
+///    up at its underside** — which reads as the sky, because the ground's underside is unlit
+///    (ADR 0052). Reported by Justin, and it is Q34 arriving with a picture.
+///
+/// A cast has no slide to misinterpret, so neither correction is needed and neither can come back.
 pub fn keep_camera_clear(world: &mut World) {
-    // Collected before touching the physics service, because the query borrows the world and the
-    // sweeps need it mutably. Everything the loop reads comes along, including the parent's entity —
-    // the sweeps have to name it to exclude it.
+    // Collected before the physics service is read, because the query borrows the world and the
+    // writes at the end need it mutably. Everything the loop reads comes along, including the
+    // parent's entity — the sweeps have to name it to exclude it.
     let cameras: Vec<Rig> = world
         .query::<(&FollowCamera, &CameraArm, &Parent, &Transform)>()
         .filter_map(|(entity, (follow, arm, parent, transform))| {
@@ -330,7 +341,7 @@ pub fn keep_camera_clear(world: &mut World) {
     if cameras.is_empty() {
         return;
     }
-    let Some(physics) = world.service_mut::<Physics>() else {
+    let Some(physics) = world.service::<Physics>() else {
         return;
     };
 
@@ -340,19 +351,23 @@ pub fn keep_camera_clear(world: &mut World) {
         let sphere = Shape::Sphere {
             radius: follow.radius,
         };
-        // Stepping and ground snapping are off throughout: a camera does not walk, and either would
-        // pull it somewhere the geometry did not ask for. Ignoring the parent is what stops the
-        // sweep starting inside the followed body's own collider — see this function's docs.
-        let sweep = |from: [f32; 3], motion: [f32; 3]| ShapeMove {
-            step_height: 0.0,
-            snap_distance: 0.0,
-            ..ShapeMove::new(sphere, from, motion).ignoring(rig.parent_entity)
+        // Ignoring the parent throughout is what stops a sweep starting inside the followed body's
+        // own collider — see this function's docs. Returns how far along `motion` is clear, as a
+        // fraction, with `None` meaning all of it.
+        let clear_fraction = |from: [f32; 3], motion: [f32; 3]| {
+            physics
+                .cast_shape(&ShapeCast::new(sphere, from, motion).ignoring(rig.parent_entity))
+                .map_or(1.0, |hit| hit.fraction)
         };
 
         // Upward first, so the pivot is in open air.
-        let pivot = physics
-            .move_shape(&sweep(rig.parent.translation, [0.0, follow.height, 0.0]))
-            .translation;
+        let rise =
+            follow.height * clear_fraction(rig.parent.translation, [0.0, follow.height, 0.0]);
+        let pivot = [
+            rig.parent.translation[0],
+            rig.parent.translation[1] + rise,
+            rig.parent.translation[2],
+        ];
 
         // The parent's axes in world space, as a pure rotation — scale is forced to one so the
         // columns stay unit vectors and the dot products below are projections rather than
@@ -379,14 +394,12 @@ pub fn keep_camera_clear(world: &mut World) {
             arm[1] * follow.distance,
             arm[2] * follow.distance,
         ];
-        let landed = physics.move_shape(&sweep(pivot, wanted)).translation;
-        let travelled = [
-            landed[0] - pivot[0],
-            landed[1] - pivot[1],
-            landed[2] - pivot[2],
-        ];
-        let along = dot(travelled, arm);
-        let target = along.clamp(follow.min_distance, follow.distance);
+        // A fraction of a known length is a distance along the arm directly — no projection, and
+        // nothing to reinterpret, because a cast never leaves the line it was given.
+        // A fraction of a known length is a distance along the arm directly — no projection, and
+        // nothing to reinterpret, because a cast never leaves the line it was given.
+        let target = (follow.distance * clear_fraction(pivot, wanted))
+            .clamp(follow.min_distance, follow.distance);
 
         // Snap in, drift out — see `FollowCamera::return_speed`.
         let distance = if target < rig.distance {
