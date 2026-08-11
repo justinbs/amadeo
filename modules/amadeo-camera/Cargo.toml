@@ -1,0 +1,32 @@
+[package]
+name = "amadeo-camera"
+description = "A third-person follow camera that keeps itself out of the world. A module, not engine core."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# A module may depend on any engine crate, and on other modules. The reverse is forbidden -- see
+# ADR 0037 and invariant I6.
+#
+# Deliberately **not** amadeo-character: trap 10 says a camera rig must not assume a character
+# exists. This follows a `Parent`, whatever that parent happens to be.
+amadeo-app.workspace = true
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-input.workspace = true
+amadeo-physics.workspace = true
+amadeo-reflect.workspace = true
+amadeo-render.workspace = true
+amadeo-transform.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Passed through so a game asks for the real solver in one place, exactly as amadeo-character does.
+# Off by default, so a headless test runs against `NullPhysics` -- where every sweep is unobstructed,
+# which is the control case that proves the obstructed ones measure something (ADR 0037 section 5).
+rapier = ["amadeo-physics/rapier"]

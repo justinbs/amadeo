@@ -281,6 +281,15 @@ entity player "Wanderer"
         near 0.1
       target ""
       viewport 0.0 0.0 1.0 1.0
+    FollowCamera
+      degrees_per_pixel 0.18
+      distance 6.0
+      height 2.8
+      max_pitch 30.0
+      min_distance 1.0
+      min_pitch -75.0
+      radius 0.3
+      return_speed 6.0
     Transform
       rotation -18.0 0.0 0.0
       scale 1.0 1.0 1.0

@@ -103,6 +103,12 @@ pub fn build_simulation() -> anyhow::Result<App> {
     // so asking first would query an empty one on tick 1 and walk through the level exactly once.
     amadeo_character::install(&mut app)?;
 
+    // **Q27's original case, which was about walls rather than terrain.** A follow camera six units
+    // behind a character in a room this size ends up inside a wall in most corners, and a camera
+    // inside geometry sees the far side of the world through it. The module was written for
+    // `games/scarp` and moved here the moment a second game wanted it.
+    amadeo_camera::install(&mut app)?;
+
     // Input is sampled before anything reads it, which is what `PreSimulation` is for. The character
     // module reads named actions rather than keys, so this is the only place in the game that knows
     // input exists at all.

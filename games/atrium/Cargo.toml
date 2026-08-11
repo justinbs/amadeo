@@ -14,6 +14,7 @@ amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 amadeo-input.workspace = true
 # The whole point of this game: the module walks, and the renderer draws its shadow.
+amadeo-camera.workspace = true
 amadeo-character.workspace = true
 # `rapier` on, deliberately and not by default elsewhere. Against `NullPhysics` the character walks
 # through the walls -- which is a *useful* control case in a test and a broken one in a demo somebody

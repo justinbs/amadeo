@@ -19,6 +19,7 @@ amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 amadeo-input.workspace = true
 # The whole point of this game.
+amadeo-camera.workspace = true
 amadeo-character.workspace = true
 amadeo-noise.workspace = true
 # `engine` is what brings in `TerrainViewer`, `stream_terrain` and `install`. Off by default so the

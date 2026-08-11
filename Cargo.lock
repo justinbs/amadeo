@@ -86,6 +86,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "amadeo-camera"
+version = "0.1.0"
+dependencies = [
+ "amadeo-app",
+ "amadeo-core",
+ "amadeo-ecs",
+ "amadeo-input",
+ "amadeo-physics",
+ "amadeo-reflect",
+ "amadeo-render",
+ "amadeo-transform",
+]
+
+[[package]]
 name = "amadeo-character"
 version = "0.1.0"
 dependencies = [
@@ -356,6 +370,7 @@ name = "atrium"
 version = "0.1.0"
 dependencies = [
  "amadeo-app",
+ "amadeo-camera",
  "amadeo-character",
  "amadeo-core",
  "amadeo-ecs",
@@ -2158,6 +2173,7 @@ name = "scarp"
 version = "0.1.0"
 dependencies = [
  "amadeo-app",
+ "amadeo-camera",
  "amadeo-character",
  "amadeo-core",
  "amadeo-ecs",

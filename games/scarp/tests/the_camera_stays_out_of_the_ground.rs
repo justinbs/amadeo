@@ -13,13 +13,14 @@
 //! to stream", which is precisely the confusion the bug caused.
 
 use amadeo_app::App;
+use amadeo_camera::FollowCamera;
 use amadeo_character::MOVE_FORWARD;
 use amadeo_core::Tick;
 use amadeo_ecs::World;
 use amadeo_input::{InputDriver, ScriptedSource};
 use amadeo_render::Camera;
 use amadeo_transform::{Parent, Transform};
-use scarp::{FollowCamera, build_simulation};
+use scarp::build_simulation;
 
 fn game() -> App {
     let mut app = build_simulation().expect("the game builds");
@@ -203,9 +204,9 @@ fn the_mouse_turns_the_player_and_tilts_only_the_camera() {
     // read. The same path a real mouse takes.
     let mut app = build_simulation().expect("the game builds");
     let mut source = ScriptedSource::new();
-    source.press(Tick(2), scarp::LOOK, true);
-    source.axis(Tick(2), scarp::LOOK_X, 100.0);
-    source.axis(Tick(2), scarp::LOOK_Y, 50.0);
+    source.press(Tick(2), amadeo_camera::LOOK, true);
+    source.axis(Tick(2), amadeo_camera::LOOK_X, 100.0);
+    source.axis(Tick(2), amadeo_camera::LOOK_Y, 50.0);
     amadeo_input::install(&mut app.world, InputDriver::new(Box::new(source)));
 
     let yaw_before = player_yaw(&app.world);
@@ -237,8 +238,8 @@ fn the_camera_cannot_be_tilted_past_vertical() {
     // rather than the drag running out.
     let mut app = build_simulation().expect("the game builds");
     let mut source = ScriptedSource::new();
-    source.press(Tick(2), scarp::LOOK, true);
-    source.axis(Tick(2), scarp::LOOK_Y, 4000.0);
+    source.press(Tick(2), amadeo_camera::LOOK, true);
+    source.axis(Tick(2), amadeo_camera::LOOK_Y, 4000.0);
     amadeo_input::install(&mut app.world, InputDriver::new(Box::new(source)));
 
     app.run_ticks(30).expect("the world advances");

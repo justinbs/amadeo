@@ -14,10 +14,11 @@ use std::time::Instant;
 
 use amadeo_app::App;
 use amadeo_app::{Stage, system};
+use amadeo_camera::{LOOK, LOOK_X, LOOK_Y};
 use amadeo_character::{JUMP, MOVE_FORWARD, MOVE_RIGHT, TURN};
 use amadeo_input::{InputDriver, LiveSource};
 use amadeo_render::{RENDER_QUADS, Renderer, WgpuBackend, render_quads};
-use scarp::{DIG, LOOK, LOOK_X, LOOK_Y, build_headless, build_simulation};
+use scarp::{DIG, build_headless, build_simulation};
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, ElementState, KeyEvent, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};

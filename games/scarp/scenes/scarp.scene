@@ -71,9 +71,12 @@ entity player "Walker"
       target ""
       viewport 0.0 0.0 1.0 1.0
     FollowCamera
+      degrees_per_pixel 0.18
       distance 7.0
       height 3.0
+      max_pitch 30.0
       min_distance 1.2
+      min_pitch -75.0
       radius 0.35
       return_speed 6.0
     Transform
