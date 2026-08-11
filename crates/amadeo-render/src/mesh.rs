@@ -126,6 +126,66 @@ impl MeshData {
         Some((min, max))
     }
 
+    /// Gives every triangle its own three vertices, each carrying that triangle's own normal.
+    ///
+    /// **What flat shading is, and why low-poly needs it.** A vertex shared between two triangles has
+    /// one normal, so the lighting blends smoothly across the edge between them — which is what makes
+    /// a coarse sphere read as round rather than as a stack of facets. Low-poly wants the opposite:
+    /// the facets *are* the look, and a model that smooths them shades as a blob (ADR 0050).
+    ///
+    /// The only way to have two different normals at one corner is to have two vertices there, which
+    /// is what this does. [`BoxMesh`] already tessellates this way for the same reason — twenty-four
+    /// vertices rather than eight — and this is that treatment applied to geometry that arrived
+    /// smooth.
+    ///
+    /// # What it costs
+    ///
+    /// Vertex count becomes exactly three times the triangle count, with no sharing at all. For a
+    /// cube that is 36 vertices against 8; for imported art it is typically a little under double.
+    /// Accepted, because the alternative is not having the look.
+    ///
+    /// # Run it before [`MeshData::generate_tangents`], never after
+    ///
+    /// Tangents are computed per vertex by averaging over the triangles that share it. Splitting the
+    /// vertices afterwards would duplicate tangents that were averaged across edges this has just
+    /// decided are sharp — so the frame would still be smooth where the normals are not, and a normal
+    /// map would light against the wrong basis. Every caller here splits first.
+    pub fn flat_shade(&mut self) {
+        let mut vertices = Vec::with_capacity(self.indices.len());
+        let mut indices = Vec::with_capacity(self.indices.len());
+
+        for triangle in self.indices.chunks_exact(3) {
+            let (Some(&a), Some(&b), Some(&c)) = (
+                self.vertices.get(triangle[0] as usize),
+                self.vertices.get(triangle[1] as usize),
+                self.vertices.get(triangle[2] as usize),
+            ) else {
+                continue;
+            };
+
+            // The triangle's own normal, from its winding rather than from what the vertices claimed.
+            // Taking it from the geometry is what makes this correct for a model whose normals were
+            // wrong to begin with, and it is the same cross product `every_box_triangle_faces_outward`
+            // compares against.
+            let face = cross(sub(b.position, a.position), sub(c.position, a.position));
+            // A degenerate triangle -- two corners in the same place -- has no direction to offer, so
+            // its vertices keep whatever they had rather than becoming `NaN`.
+            let normal = normalise(face);
+
+            let first = vertices.len() as u32;
+            for corner in [a, b, c] {
+                vertices.push(Vertex {
+                    normal: normal.unwrap_or(corner.normal),
+                    ..corner
+                });
+            }
+            indices.extend([first, first + 1, first + 2]);
+        }
+
+        self.vertices = vertices;
+        self.indices = indices;
+    }
+
     /// Fills in every vertex's [`tangent`](Vertex::tangent) from the positions, UVs and normals.
     ///
     /// Call this on any mesh that might wear a normal map and does not already carry tangents from
@@ -581,6 +641,20 @@ pub struct GltfPart {
     /// first.
     #[reflect(min = 0.0, max = 1000000.0)]
     pub primitive: u32,
+    /// Whether to discard the file's smooth normals and shade every triangle by its own face.
+    ///
+    /// **What low-poly needs, and the one thing an exporter cannot be relied on to have done**
+    /// (ADR 0050, **Q33**). A model exported with smooth normals shades as a blob, and the faceting
+    /// is the whole look — see [`MeshData::flat_shade`].
+    ///
+    /// On [`GltfPart`] rather than on `Mesh`, and rather than on the procedural shapes, because this
+    /// is the only producer that can arrive smooth: [`BoxMesh`] and [`PlaneMesh`] already give every
+    /// face its own normal. A flag on a type that is always flat anyway would be a field authors have
+    /// to write and nothing reads.
+    ///
+    /// Defaults to `false`, so importing behaves exactly as it did — this is opt-in per mesh rather
+    /// than a change to what an import means.
+    pub flat: bool,
 }
 
 impl Component for GltfPart {}
@@ -1054,6 +1128,159 @@ mod tests {
             assert!(
                 dot(tangent, vertex.normal).abs() < 1e-4,
                 "and one still lying in the surface, got {tangent:?}"
+            );
+        }
+    }
+
+    /// Two triangles sharing an edge, folded so they face different ways — the shape smooth shading
+    /// blends across and flat shading must not.
+    fn a_folded_pair() -> MeshData {
+        // A shared normal at the fold, as an exporter that smoothed the model would produce.
+        let smoothed = normalise([0.0, 1.0, 1.0]).expect("not degenerate");
+        let corner = |position: [f32; 3]| Vertex {
+            position,
+            normal: smoothed,
+            uv: [position[0], position[2]],
+            ..Vertex::default()
+        };
+        MeshData {
+            vertices: vec![
+                corner([0.0, 0.0, 0.0]),
+                corner([1.0, 0.0, 0.0]),
+                corner([1.0, 0.0, 1.0]),
+                corner([0.0, 1.0, 1.0]),
+            ],
+            // Two triangles sharing the edge from vertex 0 to vertex 2.
+            indices: vec![0, 1, 2, 0, 2, 3],
+        }
+    }
+
+    #[test]
+    fn flat_shading_gives_each_triangle_its_own_normal() {
+        // **What low-poly is** (ADR 0050). Before, both triangles share one averaged normal at the
+        // fold and the lighting blends smoothly across it, which reads as a curved surface. After,
+        // each triangle carries its own and the fold reads as an edge.
+        let mut data = a_folded_pair();
+        let before = data.vertices[0].normal;
+        assert_eq!(
+            data.vertices[2].normal, before,
+            "the fixture starts smoothed, or this test proves nothing"
+        );
+
+        data.flat_shade();
+
+        assert_eq!(
+            data.vertices.len(),
+            6,
+            "two triangles, three vertices each, shared with nothing"
+        );
+        let first = data.vertices[0].normal;
+        let second = data.vertices[3].normal;
+        assert!(
+            dot(first, second) < 0.99,
+            "the two triangles must end up facing measurably differently, got {first:?} and \
+             {second:?}"
+        );
+    }
+
+    #[test]
+    fn a_flat_shaded_normal_agrees_with_its_own_winding() {
+        // The same check every mesh producer in this engine needs, applied to a producer that
+        // *replaces* normals: a face normal computed with the cross product backwards would give a
+        // mesh that is uniformly inside out, which is exactly the defect session 13 found in the
+        // voxel mesher and which no smoothness test would catch.
+        let mut data = a_folded_pair();
+        data.flat_shade();
+
+        for triangle in 0..data.triangle_count() {
+            let geometric = winding_normal(&data, triangle);
+            let stored = data.vertices[data.indices[triangle * 3] as usize].normal;
+            assert!(
+                dot(geometric, stored) > 0.0,
+                "triangle {triangle} is wound against the normal flat shading gave it"
+            );
+        }
+    }
+
+    #[test]
+    fn flat_shading_leaves_the_surface_where_it_was() {
+        // Splitting vertices must move no geometry. If it did, a flat-shaded model would be a
+        // slightly different shape from the smooth one — which would show up as collision and
+        // rendering disagreeing, since a collider is built from the same data.
+        let mut data = a_folded_pair();
+        let before = data.bounds().expect("has vertices");
+        data.flat_shade();
+        let after = data.bounds().expect("still has vertices");
+
+        assert_eq!(
+            before, after,
+            "flat shading must not move a single position"
+        );
+        assert!(data.is_well_formed(), "and must leave the indices valid");
+    }
+
+    #[test]
+    fn tangents_generated_after_flat_shading_match_the_faces() {
+        // **The ordering that is load-bearing**, and the reason `app.rs` splits before it generates.
+        //
+        // Tangents are averaged over the triangles sharing a vertex. Generating them on the smooth
+        // mesh and splitting afterwards would copy a frame smoothed across an edge that flat shading
+        // has just made sharp — leaving the tangent basis curved where the normals are flat, so a
+        // normal map would light against the wrong basis.
+        //
+        // Checked by the property that must hold either way and only does in one order: every
+        // tangent perpendicular to the normal *of its own face*.
+        let mut data = a_folded_pair();
+        data.flat_shade();
+        data.generate_tangents();
+
+        for (index, vertex) in data.vertices.iter().enumerate() {
+            let tangent = [vertex.tangent[0], vertex.tangent[1], vertex.tangent[2]];
+            assert!(
+                dot(tangent, vertex.normal).abs() < 1e-4,
+                "vertex {index}'s tangent must lie in its own face, got {tangent:?} against \
+                 normal {:?}",
+                vertex.normal
+            );
+            assert!(
+                (dot(tangent, tangent) - 1.0).abs() < 1e-4,
+                "and be unit length, got {tangent:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn flat_shading_a_degenerate_triangle_keeps_a_usable_normal() {
+        // A triangle with two corners in the same place has no direction to offer. It must keep
+        // whatever it had rather than becoming a NaN, which would spread through the lighting and
+        // paint the surface black.
+        let mut data = MeshData {
+            vertices: vec![
+                Vertex {
+                    position: [0.0, 0.0, 0.0],
+                    normal: [0.0, 1.0, 0.0],
+                    ..Vertex::default()
+                },
+                Vertex {
+                    position: [0.0, 0.0, 0.0],
+                    normal: [0.0, 1.0, 0.0],
+                    ..Vertex::default()
+                },
+                Vertex {
+                    position: [1.0, 0.0, 0.0],
+                    normal: [0.0, 1.0, 0.0],
+                    ..Vertex::default()
+                },
+            ],
+            indices: vec![0, 1, 2],
+        };
+        data.flat_shade();
+
+        for vertex in &data.vertices {
+            assert!(
+                vertex.normal.iter().all(|component| component.is_finite()),
+                "a degenerate triangle must not produce a NaN normal, got {:?}",
+                vertex.normal
             );
         }
     }

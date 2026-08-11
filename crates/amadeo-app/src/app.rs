@@ -657,7 +657,21 @@ impl App {
                     .collect(),
                 indices: primitive.indices.clone(),
             };
-            if !has_tangents {
+
+            // **Faceting first, tangents second, and the order is load-bearing** (Q33).
+            //
+            // `flat_shade` splits every shared vertex so each triangle can carry its own normal.
+            // Tangents are averaged over the triangles sharing a vertex — so generating them first
+            // and splitting afterwards would copy a frame that had been smoothed across edges this
+            // has just decided are sharp, leaving the tangent basis smooth where the normals are not.
+            //
+            // It also discards the file's own tangents, deliberately: they were baked against the
+            // smooth normals that just went away, so they no longer describe this surface.
+            let flat = part.flat;
+            if flat {
+                data.flat_shade();
+            }
+            if flat || !has_tangents {
                 data.generate_tangents();
             }
 

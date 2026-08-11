@@ -268,8 +268,10 @@ fn material_text(id: &str, name: &str, material: &amadeo_gltf::GltfMaterial) -> 
 
 fn mesh_text(id: &str, name: &str, source: &str, mesh: usize, primitive: usize) -> String {
     format!(
-        "scene {id}\nversion 1\n\nentity mesh \"{}\"\n  GltfPart\n    mesh {mesh}\n    \
-         primitive {primitive}\n    source \"{source}\"\n",
+        // `flat false` because an import should mean what the file says (Q33). Turning it on is a
+        // one-word edit to a four-line text file, which is the point of the mesh asset being text.
+        "scene {id}\nversion 1\n\nentity mesh \"{}\"\n  GltfPart\n    flat false\n    \
+         mesh {mesh}\n    primitive {primitive}\n    source \"{source}\"\n",
         escape(name),
     )
 }

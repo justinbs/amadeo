@@ -92,8 +92,8 @@ fn asset_directory(name: &str, mesh_index: u32, primitive_index: u32) -> PathBuf
     write(
         "slab.mesh",
         format!(
-            "scene slab\nversion 1\n\nentity mesh \"Slab\"\n  GltfPart\n    mesh {mesh_index}\n    \
-             primitive {primitive_index}\n    source \"slab_glb\"\n"
+            "scene slab\nversion 1\n\nentity mesh \"Slab\"\n  GltfPart\n    flat false\n    \
+             mesh {mesh_index}\n    primitive {primitive_index}\n    source \"slab_glb\"\n"
         )
         .as_bytes(),
     );
