@@ -802,6 +802,51 @@ fn a_metal_reflects_the_sky_rather_than_going_black() {
 }
 
 #[test]
+fn a_slanted_edge_is_anti_aliased_rather_than_a_staircase() {
+    // **What ADR 0051 bought, and the only way to see it is to look at an edge.** Every other test
+    // in this file samples the middle of something, where anti-aliasing changes nothing — so all of
+    // them would pass just as happily with it switched off.
+    //
+    // A box turned 30° about Y puts a near-vertical silhouette edge across the picture at an angle.
+    // Without multisampling every pixel along it is either fully box or fully background, so a
+    // vertical scan across the edge finds only two values. With it, the pixels the edge passes
+    // through are mixtures, and those in-between values are the anti-aliasing.
+    let Some(image) = a_surface([0.9, 0.9, 0.9, 1.0], 0.0, 0.9, 30.0) else {
+        return;
+    };
+
+    // Scan a row across where the box's left silhouette falls, counting values that are neither
+    // background nor surface.
+    let row = 32;
+    let mut partials = 0;
+    let mut seen_box = false;
+    let mut seen_background = false;
+
+    for x in 0..64u32 {
+        let pixel = pixel_at(&image, x, row);
+        // The clear colour is a dark neutral; the lit box is bright. Anything comfortably between
+        // the two is a pixel the edge passed through.
+        if pixel[0] < 90 {
+            seen_background = true;
+        } else if pixel[0] > 170 {
+            seen_box = true;
+        } else {
+            partials += 1;
+        }
+    }
+
+    assert!(
+        seen_background && seen_box,
+        "the scan must cross an actual silhouette, or it proves nothing"
+    );
+    assert!(
+        partials > 0,
+        "a slanted edge with multisampling on must produce partially-covered pixels; finding none \
+         means every pixel is fully one thing or the other, which is a staircase"
+    );
+}
+
+#[test]
 fn a_nearer_face_hides_a_further_one() {
     // What the depth buffer is *for*, and the one thing no amount of graph testing could show. A
     // box's back faces are behind its front ones; without depth testing whichever drew last would

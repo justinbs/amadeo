@@ -212,9 +212,36 @@ fn wgpu_format(format: TargetFormat) -> wgpu::TextureFormat {
         TargetFormat::Hdr16 => SCENE_FORMAT,
         // The same wgpu format as the scene depth buffer. What differs is the usage it is created
         // with and the layout it is bound through -- see `TargetFormat::ShadowMap32`.
-        TargetFormat::Depth32 | TargetFormat::ShadowMap32 => DEPTH_FORMAT,
+        TargetFormat::ShadowMap32 | TargetFormat::Depth32Ms => DEPTH_FORMAT,
     }
 }
+
+/// How many samples an anti-aliased target takes per pixel — ADR 0051.
+///
+/// **Four**, which is the near-universal choice: two is visibly not enough on a near-vertical edge,
+/// and eight costs twice the memory for a difference most people cannot see. Every adapter supports
+/// four for the formats used here.
+///
+/// This is what anti-aliases *geometry edges* — the only kind low-poly has (ADR 0050). It leaves
+/// texture detail and flat colour untouched, which is precisely why it was chosen over a
+/// post-process filter like FXAA: that one would smear exactly the crisp facets the look depends on.
+const SAMPLE_COUNT: u32 = 4;
+
+/// The multisample state every pipeline that draws into the **scene** must declare.
+///
+/// wgpu requires a pipeline's sample count to match the attachment it draws into, and fails at
+/// pipeline creation rather than at draw when it does not — which is the good direction for this to
+/// fail in. Four pipelines target the scene: quads, sprites, meshes and the sky.
+///
+/// The other three deliberately keep the single-sampled default. **Post** and **present** are
+/// full-screen passes over already-resolved images; a **shadow** map is sampled directly by the mesh
+/// shader, and a multisampled one could not be.
+const SCENE_MULTISAMPLE: wgpu::MultisampleState = wgpu::MultisampleState {
+    count: SAMPLE_COUNT,
+    mask: !0,
+    // Off: it is for anti-aliasing *cutouts* in alpha-tested foliage, and nothing here alpha-tests.
+    alpha_to_coverage_enabled: false,
+};
 
 /// The depth buffer's format.
 ///
@@ -800,6 +827,15 @@ pub struct WgpuBackend {
     /// entry built while an id was still a placeholder would otherwise keep showing the placeholder
     /// forever.
     material_bind_groups: BTreeMap<MaterialTextures, wgpu::BindGroup>,
+    /// The multisampled colour buffer every view pass draws into, and its view (ADR 0051).
+    ///
+    /// Kept here rather than in the transient pool because it is not a transient: the pool hands out
+    /// textures the *graph* declared, and the graph deliberately has no vocabulary for resolving —
+    /// see `TargetFormat::Depth32Ms`. Re-created only when the frame size changes.
+    multisampled_target: Option<(wgpu::Texture, wgpu::TextureView)>,
+    /// What [`WgpuBackend::multisampled_target`] was last sized for, so a resize re-creates it and a
+    /// steady frame does not.
+    multisampled_size: (u32, u32),
     /// Prefiltered environments, by asset id (ADR 0049).
     environments: BTreeMap<String, GpuEnvironment>,
     /// What a view binds when it names no sky, or names one not yet prefiltered.
@@ -1176,7 +1212,7 @@ impl WgpuBackend {
                 conservative: false,
             },
             depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
+            multisample: SCENE_MULTISAMPLE,
             multiview_mask: None,
             cache: None,
         });
@@ -1452,7 +1488,7 @@ impl WgpuBackend {
                 conservative: false,
             },
             depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
+            multisample: SCENE_MULTISAMPLE,
             multiview_mask: None,
             cache: None,
         });
@@ -1887,7 +1923,7 @@ impl WgpuBackend {
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
-            multisample: wgpu::MultisampleState::default(),
+            multisample: SCENE_MULTISAMPLE,
             multiview_mask: None,
             cache: None,
         });
@@ -1951,7 +1987,7 @@ impl WgpuBackend {
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
-            multisample: wgpu::MultisampleState::default(),
+            multisample: SCENE_MULTISAMPLE,
             multiview_mask: None,
             cache: None,
         });
@@ -2068,6 +2104,8 @@ impl WgpuBackend {
             white_placeholder_view,
             flat_normal_placeholder_view,
             material_bind_groups: BTreeMap::new(),
+            multisampled_target: None,
+            multisampled_size: (0, 0),
             environments: BTreeMap::new(),
             neutral_environment_bind_group,
             environment_layout,
@@ -2258,7 +2296,7 @@ impl WgpuBackend {
         // variants: it is drawn into and then sampled, so it needs the binding usage the scene depth
         // buffer deliberately does without.
         let usage = match format {
-            TargetFormat::Depth32 => wgpu::TextureUsages::RENDER_ATTACHMENT,
+            TargetFormat::Depth32Ms => wgpu::TextureUsages::RENDER_ATTACHMENT,
             TargetFormat::ShadowMap32 => {
                 wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING
             }
@@ -2277,7 +2315,10 @@ impl WgpuBackend {
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
-            sample_count: 1,
+            sample_count: match format {
+                TargetFormat::Depth32Ms => SAMPLE_COUNT,
+                _ => 1,
+            },
             dimension: wgpu::TextureDimension::D2,
             format: wgpu_format(format),
             usage,
@@ -2287,8 +2328,9 @@ impl WgpuBackend {
         // Three cases, and each is a different answer to "how would a later pass sample this".
         // See `PooledTexture::bind_group`.
         let bind_group = match format {
-            // Nothing samples the scene depth buffer, so it gets no bind group at all.
-            TargetFormat::Depth32 => None,
+            // Nothing samples the scene depth buffer, so it gets no bind group at all. A
+            // multisampled one could not be sampled without resolving even if something wanted to.
+            TargetFormat::Depth32Ms => None,
             // A shadow map is sampled through the *comparison* layout, not the colour one: its
             // sample type is `Depth`, and building a colour bind group against it fails at
             // creation rather than at draw.
@@ -2463,6 +2505,42 @@ impl WgpuBackend {
         }
 
         assigned
+    }
+
+    /// Makes sure the multisampled colour buffer exists at the current frame size — ADR 0051.
+    ///
+    /// Cheap on every frame but the first and the ones after a resize: the size is compared and
+    /// nothing is created when it matches. Re-creating it per frame would allocate several megabytes
+    /// sixty times a second.
+    fn ensure_multisampled_target(&mut self) {
+        let size = (self.width.max(1), self.height.max(1));
+        if self.multisampled_target.is_some() && self.multisampled_size == size {
+            return;
+        }
+
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("amadeo multisampled scene"),
+            size: wgpu::Extent3d {
+                width: size.0,
+                height: size.1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: SAMPLE_COUNT,
+            dimension: wgpu::TextureDimension::D2,
+            // The same format as the scene transient it resolves into. A resolve requires both to
+            // agree, so this is not a free choice.
+            format: SCENE_FORMAT,
+            // **Attachment only.** A multisampled texture cannot be sampled or copied from without
+            // being resolved first, and asking for usages nothing can use is not free.
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Replacing drops the old texture, which is what releases its video memory on a resize.
+        self.multisampled_target = Some((texture, view));
+        self.multisampled_size = size;
     }
 
     /// Makes sure a bind group exists for every texture combination this frame will draw.
@@ -3170,6 +3248,11 @@ impl RenderBackend for WgpuBackend {
             );
         }
 
+        // The multisampled buffer view passes draw into (ADR 0051), allocated before the pool is
+        // borrowed below. It has to happen here rather than lazily inside the pass loop: creating it
+        // needs `&mut self`, and by then the loop is holding a transient's view immutably.
+        self.ensure_multisampled_target();
+
         // Every transient the plan needs, backed by a pooled texture. After this the pool is not
         // touched again this frame, so the loop below can borrow it immutably.
         let assigned = self.assign_transients(&graph, &plan);
@@ -3287,12 +3370,32 @@ impl RenderBackend for WgpuBackend {
                 timed.push((slot, declared.label.clone()));
             }
 
+            // **Anti-aliasing, and it is entirely contained in these four lines** (ADR 0051).
+            //
+            // A view pass draws into a multisampled buffer and names its ordinary target as the
+            // `resolve_target`, so the hardware averages the samples down at the end of the pass and
+            // everything downstream reads a plain single-sampled image. Nothing else in the frame —
+            // post, present, capture — needs to know it happened.
+            //
+            // The multisampled buffer **persists across view passes** rather than being resolved and
+            // discarded, which is what keeps a second camera composing over the first: view 1 loads
+            // what view 0 left in it. Resolving on every pass rather than only the last costs a
+            // little and means no pass has to know whether it is the final one.
+            let multisampled = match declared.kind {
+                PassKind::View { .. } => self.multisampled_target.as_ref().map(|(_, view)| view),
+                _ => None,
+            };
+            let (attachment_view, resolve_target) = match multisampled {
+                Some(view) => (view, Some(target_view)),
+                None => (target_view, None),
+            };
+
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some(declared.label.as_str()),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: target_view,
+                    view: attachment_view,
                     depth_slice: None,
-                    resolve_target: None,
+                    resolve_target,
                     ops: wgpu::Operations {
                         load,
                         store: wgpu::StoreOp::Store,

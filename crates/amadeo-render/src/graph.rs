@@ -89,15 +89,6 @@ pub(crate) enum TargetFormat {
     /// which is what ADR 0026's format-tag argument predicted when the same shape was used for
     /// decoded images.
     Hdr16,
-    /// A depth buffer: how far away each pixel is, so nearer geometry hides further geometry.
-    ///
-    /// **Not a colour image**, and the difference is load-bearing in one place — nothing samples it
-    /// yet, so a pooled depth texture carries no bind group. See `PooledTexture` in the wgpu
-    /// backend, where building one against the colour layout would fail at *creation* rather than at
-    /// draw, and therefore look like an allocation bug rather than a layout one.
-    ///
-    /// Shadow maps have their own variant below; fog is what will eventually read this one.
-    Depth32,
     /// A depth buffer that a later pass **samples** — a shadow map (ADR 0038).
     ///
     /// # Why this is a separate variant rather than a flag on [`TargetFormat::Depth32`]
@@ -115,6 +106,30 @@ pub(crate) enum TargetFormat {
     ///
     /// The same argument the enum's own doc makes: the tag is the load-bearing part.
     ShadowMap32,
+    /// The scene depth buffer: how far away each pixel is, so nearer geometry hides further
+    /// geometry. **Multisampled**, to match the anti-aliased colour target (ADR 0051).
+    ///
+    /// **Not a colour image**, and the difference is load-bearing in one place — nothing samples it,
+    /// so a pooled depth texture carries no bind group. See `PooledTexture` in the wgpu backend,
+    /// where building one against the colour layout would fail at *creation* rather than at draw, and
+    /// therefore look like an allocation bug rather than a layout one.
+    ///
+    /// # Why the sample count is in the format rather than beside it
+    ///
+    /// The same argument this enum makes for `ShadowMap32`. A multisampled attachment is a different
+    /// *kind* of thing: it cannot be sampled without resolving, and a pipeline drawing into it must
+    /// declare a matching sample count or fail at creation. Two transients differing in it must never
+    /// be handed the same physical texture, and matching on the format is what `assign_transients`
+    /// already does to guarantee exactly that.
+    ///
+    /// There is deliberately **no multisampled colour variant**. A colour target is read by the post
+    /// pass, so it must be resolved first — and resolving is a property of an *attachment* rather
+    /// than of the pass graph, so the backend owns it. Depth is read by no later pass, so it can
+    /// simply be multisampled and needs none of that machinery.
+    ///
+    /// There is also no longer a *single*-sampled scene depth variant, because nothing declares one:
+    /// anti-aliasing is unconditional. Turning it off would bring one back.
+    Depth32Ms,
 }
 
 /// An image that exists only for the duration of one frame.
@@ -617,7 +632,9 @@ pub(crate) fn frame_graph(frame: &crate::FrameData, width: u32, height: u32) -> 
         )
     });
     if any_3d {
-        graph.transient(DEPTH, width, height, TargetFormat::Depth32);
+        // Multisampled, because the colour target it accompanies is (ADR 0051) and wgpu requires
+        // every attachment in a pass to agree on sample count.
+        graph.transient(DEPTH, width, height, TargetFormat::Depth32Ms);
     }
 
     if frame.views.is_empty() {
@@ -1003,7 +1020,7 @@ mod tests {
             .iter()
             .find(|t| t.name == DEPTH)
             .expect("a 3D frame needs somewhere to put depth");
-        assert_eq!(depth.format, TargetFormat::Depth32);
+        assert_eq!(depth.format, TargetFormat::Depth32Ms);
         assert_eq!((depth.width, depth.height), (64, 64));
 
         // The view pass has it; the full-screen passes do not.
