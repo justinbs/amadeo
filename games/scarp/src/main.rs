@@ -40,6 +40,19 @@ fn build_app(backend: WgpuBackend) -> anyhow::Result<App> {
     app.insert_service(renderer);
 
     app.add_system(Stage::Render, system(RENDER_QUADS, render_quads));
+
+    // **Said out loud rather than left to be discovered.** An asset whose file names a component it
+    // then failed to build used to be skipped in silence, and whatever depended on it failed later
+    // somewhere unrelated — when `Environment` grew a `sky` field, every `.environment` file stopped
+    // parsing and the symptom was a *missing service* three layers away (Q32).
+    //
+    // A warning rather than an error, because ADR 0021's posture holds: a game with one broken asset
+    // should start and be visibly wrong, not refuse to run.
+    // The reason already names the id, so there is nothing to add to it here.
+    for (_, reason) in app.asset_problems() {
+        eprintln!("warning: {reason}");
+    }
+
     Ok(app)
 }
 

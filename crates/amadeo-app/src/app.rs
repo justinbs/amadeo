@@ -168,6 +168,10 @@ pub struct App {
     /// Kept because a replay only reproduces against the seed that recorded it, and the agent host
     /// has to be able to say so rather than silently replaying against the wrong one.
     seed: u64,
+    /// Assets whose file names a component it then failed to build, by id.
+    ///
+    /// See [`App::asset_problems`]. Ordered, so reporting it is reproducible (invariant I3).
+    asset_problems: BTreeMap<String, String>,
 }
 
 impl Default for App {
@@ -205,7 +209,37 @@ impl App {
             event_swaps: Vec::new(),
             accumulated_nanos: 0,
             seed,
+            asset_problems: BTreeMap::new(),
         }
+    }
+
+    /// Assets whose file names a component it then failed to build, and why. In id order.
+    ///
+    /// # Why this exists, and what it is not
+    ///
+    /// **Not** a list of missing assets — those are ADR 0021's business and are survivable by
+    /// design: a texture that has not loaded draws a placeholder, a mesh that has not loaded draws
+    /// nothing, and neither is worth complaining about. This is the narrower and much more
+    /// actionable case: a file that **says** it holds a `Material` and does not hold a valid one.
+    ///
+    /// That is nearly always one of two things — a typo'd field name, or a field the component has
+    /// grown since the file was written (**Q32**). Both are fixed in seconds once you know which
+    /// file, and were previously invisible: the asset was skipped in silence, and whatever depended
+    /// on it failed later somewhere unrelated. When `Environment` gained a `sky` field, every
+    /// `.environment` file stopped parsing and the symptom was a *missing service* three layers away.
+    ///
+    /// Empty is the normal state. A game that wants to be loud about it can print this at startup;
+    /// `games/scarp` does.
+    pub fn asset_problems(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.asset_problems
+            .iter()
+            .map(|(id, reason)| (id.as_str(), reason.as_str()))
+    }
+
+    /// Whether any asset named a component it could not build.
+    #[must_use]
+    pub fn has_asset_problems(&self) -> bool {
+        !self.asset_problems.is_empty()
     }
 
     /// The seed this app was built with.
@@ -492,6 +526,19 @@ impl App {
     /// Ids that name a *different* kind are skipped for the same reason, which is what lets a mesh
     /// asset be read as "a `BoxMesh`, or failing that a `PlaneMesh`" without either attempt being an
     /// error.
+    ///
+    /// # One of those skips is not like the others, and it is recorded
+    ///
+    /// A document that **has** a `T` which then fails to build is a different thing entirely from a
+    /// document that has no `T`. The first is a file that says `Material` and does not hold a valid
+    /// one — a typo'd field, or a field the type has grown since the file was written. The second is
+    /// ordinary and expected.
+    ///
+    /// Only the first is remembered, in [`App::asset_problems`]. **This is Q32's actual cost**: when
+    /// `Environment` gained a `sky` field, every `.environment` file stopped parsing, every one was
+    /// skipped in silence, and the failure surfaced three layers away as a test complaining that a
+    /// *service* had not been installed. Nothing in that message mentioned a field, a file, or a
+    /// schema. The churn of adding a field was never the problem; this was.
     fn read_component_assets<T: Component>(
         &mut self,
         wanted: &BTreeSet<String>,
@@ -507,17 +554,24 @@ impl App {
 
         let mut found = Vec::new();
         for id in wanted {
-            let Some(assets) = self.assets() else {
-                break;
-            };
-            let Some(loaded) = assets.store.get(id) else {
-                continue;
-            };
-            let Ok(text) = std::str::from_utf8(&loaded.bytes) else {
-                continue;
-            };
-            let Ok(document) = amadeo_scene::parse(text) else {
-                continue;
+            // The document is parsed out of the borrow before anything below can want `self`
+            // mutably, which recording a problem does. Cloning the text costs a few kilobytes once
+            // per asset at load; threading a second pass through here to avoid it would cost a
+            // reader's attention every time.
+            let document = {
+                let Some(assets) = self.assets() else {
+                    break;
+                };
+                let Some(loaded) = assets.store.get(id) else {
+                    continue;
+                };
+                let Ok(text) = std::str::from_utf8(&loaded.bytes) else {
+                    continue;
+                };
+                match amadeo_scene::parse(text) {
+                    Ok(document) => document,
+                    Err(_) => continue,
+                }
             };
             // `walk` rather than indexing the first entity, so a file that wraps the root in a
             // parent still works.
@@ -528,9 +582,24 @@ impl App {
             else {
                 continue;
             };
-            let Ok(built) = T::from_value(value) else {
-                continue;
+            let built = match T::from_value(value) {
+                Ok(built) => built,
+                Err(error) => {
+                    // The one skip worth complaining about — see this function's docs.
+                    self.asset_problems.insert(
+                        id.clone(),
+                        format!(
+                            "`{id}` holds a `{}` that could not be read: {error}",
+                            T::STATIC_NAME
+                        ),
+                    );
+                    continue;
+                }
             };
+            // A previous attempt on this id may have failed and been recorded — a mesh asset is
+            // tried as a `BoxMesh` and then a `PlaneMesh`, and only the one that matches proves the
+            // file is fine. Succeeding clears it.
+            self.asset_problems.remove(id);
             found.push((id.clone(), built));
         }
         found
