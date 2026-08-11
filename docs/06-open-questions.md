@@ -447,7 +447,34 @@ Three things, and the third is why it needs a decision rather than an afternoon:
 
 ---
 
-## Q27 · P2 · A third-person camera clips through walls
+## ~~Q27~~ · **CLOSED in session 14** · `modules/amadeo-camera`
+
+**Resolved.** `FollowCamera` sweeps a sphere from its pivot toward where it wants to sit and puts
+itself where the sweep stopped. Snap in, ease out — reacting to an obstruction has to happen the same
+tick or the camera spends a frame inside a wall, while going back out is eased because a sweep
+grazing an edge is noisy and snapping both ways flickers visibly.
+
+**It was reported as something else entirely**, which is the part worth remembering: *"digging down
+shows the sky"*. The camera had gone under the terrain, and terrain is an open surface — before
+ADR 0052 made geometry two-sided, looking at it from beneath showed nothing at all and the sky pass
+filled the frame. Two fixes, two different claims: ADR 0052 makes being inside something *dark*, and
+this keeps the camera out of it.
+
+**Two things in it that a second attempt would get wrong.** The pivot is swept for as well — a cast
+that *starts* inside geometry has no reliable answer, and in any tunnel the point above the player is
+inside the ceiling. And the result is projected onto the axis asked for rather than measured as a
+distance, because `move_shape` slides (**Q34**) and a slide counted as progress makes the camera
+swing.
+
+It lived in `games/scarp` first and moved when `games/atrium` wanted it, which is this project's rule
+for promoting to `modules/`. Q27's original wording was about **walls**, and walls are the Atrium's
+case.
+
+The original question follows.
+
+---
+
+## Q27 (original) · A third-person camera clips through walls
 
 **Found in session 10 by `games/atrium`**, whose follow camera is a child entity at a fixed offset.
 Backing the character into a wall pushes the camera outside the room, and the world turns inside out.

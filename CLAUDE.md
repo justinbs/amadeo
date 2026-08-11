@@ -80,6 +80,14 @@ crates/
                      ADR 0026: decoding happens at load time *for now*, and the format tag is what
                      makes the eventual import pipeline an addition rather than a rewrite. Holds one
                      of the engine's two non-`thiserror` dependencies; that is why it is its own crate.
+                     **Also Radiance `.hdr`, decode and encode** (ADR 0049), as `HdrImage` — floats
+                     rather than bytes, and a separate type on purpose: an environment map is
+                     decoded, projected onto a cube and convolved twice, so forcing it through
+                     `TextureData` would give every consumer a branch it never takes.
+                     `PixelFormat` gained **`Rgba8Unorm`** for a texture carrying *data rather than
+                     colour*. A normal map read through the sRGB curve has every direction bent, and
+                     **nothing in a `.png` says which it is** — the `.ama-meta` sidecar's
+                     `color_space` does, and forgetting it is silent (**Q31**).
 ✅ amadeo-gltf        reads glTF 2.0 (.glb, or .gltf with embedded buffers) into plain data: meshes,
                      materials, and the node hierarchy. Also no engine deps, for amadeo-image's exact
                      reason -- **no `gltf::` type is visible above it** (ADR 0039). Rotations come out
@@ -233,6 +241,21 @@ crates/
                      fog waits for a depth buffer. Still to come: bloom's blur passes, render targets
                      on a camera, and per-camera post (**Q23** -- one look per frame today, from the
                      camera that draws first).
+                     **Session 14 finished ADR 0045's tier 1.** Normal mapping (**ADR 0047**):
+                     `Vertex` gained a tangent, read from glTF's `TANGENT` when the file has one and
+                     generated at load when it does not — which is why **no `mikktspace` dependency**
+                     was needed, since the case where its exactness matters is baked art, and baked
+                     art exports the frame it was baked against. Metallic-roughness PBR
+                     (**ADR 0048**): Cook-Torrance/GGX. Image-based lighting (**ADR 0049**, closing
+                     **Q28**): the ambient constant is gone, replaced by an environment prefiltered
+                     on the **CPU at load** — invariant I7, since a GPU prefilter could not run
+                     headless. Plus a sky pass, and **4× MSAA** (**ADR 0051**), chosen over a post
+                     filter because low-poly's only aliasing is silhouettes.
+                     **Nothing is backface-culled any more (ADR 0052)**, and that is what fixed
+                     "digging down shows the sky": terrain is an open surface with no underside, so
+                     culling made it invisible from below. For a *closed* mesh it changes nothing —
+                     back faces are always behind front faces — and the Scarp's capture is
+                     byte-identical, which was checked rather than assumed.
                      **Shadows (ADR 0038)** are the first thing that *reads* a depth texture rather
                      than only writing one. `ShadowMode` on `DirectionalLight` is an enum shipping
                      `Off | Orthogonal`; cascades arrive as a third variant, which is why one map now
@@ -303,7 +326,13 @@ crates/
                      docs/07, which the reply points at. `render.capture` is served by the *host* in amadeo-app, since it needs an App.
                      Mutation pending.
                      ADR 0016, spec in docs/protocol/v1.md.
-✅ amadeo-app         Stage/Schedule, fixed-timestep loop, SimRng, ComponentRegistry, `Profiler`
+✅ amadeo-app         Stage/Schedule, fixed-timestep loop, SimRng, ComponentRegistry, **`asset_problems`
+                     — an asset whose file names a component it then failed to build says which
+                     asset, which component and which field.** Not a missing-asset report; those are
+                     survivable by design (ADR 0021). This is the narrower case that is always a
+                     fault, and it used to be a silent `continue`: adding a field to `Environment`
+                     invalidated every `.environment` file and the symptom was a *missing service*
+                     three layers away. See **Q32**, whose churn was never the problem. `Profiler`
                      (ADR 0040: per-system timings, **always on**; a wall clock does run inside the
                      tick and that is safe only because a Service is structurally outside the state
                      hash -- see ADR 0009), and the agent
@@ -321,6 +350,20 @@ crates/
 modules/             optional, genre-flavored. Core NEVER depends on these. Created by ADR 0037; a
                      module may depend on engine crates and on other modules, and no engine crate may
                      ever depend on a module (I6, one level up).
+🟡 amadeo-camera      the second module. A third-person `FollowCamera` that **sweeps a sphere and pulls
+                     itself in** rather than sitting inside a wall (Q27). **Does not depend on
+                     amadeo-character** — trap 10 says a camera rig must not assume a character
+                     exists, and this follows a `Parent`, whatever that is. `install` declares both
+                     orderings because both fail *silently*: the mouse turn before anything reads the
+                     parent's rotation, and the sweep **after `step_physics`**, since `move_shape`
+                     answers from an index that step builds and asking earlier finds open space
+                     everywhere. **Two sweeps, not one** — the second goes *upward* to the pivot,
+                     because a cast that starts inside geometry has no reliable answer and the pivot
+                     is inside the ceiling in any tunnel. The result is **projected onto the axis
+                     asked for**, because `move_shape` slides (Q34); measuring the distance travelled
+                     counts a slide as progress and the camera swings. Snap in, ease out.
+                     It lived in `games/scarp` first, on the rule that something moves to `modules/`
+                     when a *second* game wants it — `games/atrium` is what moved it.
 🟡 amadeo-character   the first module. `CharacterController` (speed, acceleration, jump, turn, slope,
                      step height) and `CharacterMotion` (velocity, grounded), driven by named input
                      actions, moved by `PhysicsBackend::move_shape`. `install(&mut app)?` registers

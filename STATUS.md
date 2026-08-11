@@ -35,10 +35,15 @@ mapping (0047), PBR (0048), image-based lighting (0049), the sky, and anti-alias
 two items ADR 0050 added when the art direction became low-poly, and three bug fixes that came out of
 Justin actually playing it.
 
-**Four questions closed: Q27, Q28, Q29 and Q33.** One opened: **Q34**.
+**Four questions closed: Q27, Q28, Q29 and Q33.** One opened: **Q34**. Q32 is **raised to P1** and
+half-addressed — its silence is fixed, its actual decision is not.
 
 **The one remaining tier-1 item is shadow cascades.** Its split scheme and fitting are built and
-tested; the GPU half is planned in detail below.
+tested; the GPU half is planned in detail below and is the obvious next session's work.
+
+**Twenty-three crates, two modules and four games.** `modules/amadeo-camera` is new: the follow
+camera moved out of `games/scarp` when `games/atrium` wanted it, which is the first time this
+project's "promote on the second caller" rule has actually been acted on.
 
 > ### ⚠️ The three bugs Justin found by playing, and what they have in common
 >
@@ -192,7 +197,8 @@ trigger for going native: a **console** target.
 | ~~Anti-aliasing~~ | ✅ **Done — 4× MSAA (ADR 0051).** MSAA over a post filter on purpose: it fixes geometry edges and leaves flat colour alone, where FXAA would smear exactly the facets low-poly depends on. All 21 existing capture tests passed with it *off*, which is why the new one scans across a silhouette |
 | ~~Flat shading~~ | ✅ **Done — Q33 closed.** `MeshData::flat_shade`, `GltfPart::flat` to ask for it, and `Terrain::flat_shaded` for a generated world. Runs **before** tangent generation, which is load-bearing |
 | ~~Two-sided rendering~~ | ✅ **Done — ADR 0052.** What "digging down showed the sky" actually was: terrain is an open surface with no underside, so culling made it vanish from below. Byte-identical from above; only the broken views changed |
-| ~~The camera in the ground~~ | ✅ **Done — Q27 closed.** A swept sphere pulls the follow camera in, snapping inward and easing outward. Plus right-click mouse look |
+| ~~The camera in the ground~~ | ✅ **Done — Q27 closed, and it is now `modules/amadeo-camera`.** A swept sphere pulls the follow camera in, snapping inward and easing outward, plus right-click mouse look. Used by the Scarp *and* the Atrium |
+| ~~Silent asset failures~~ | ✅ **Done — half of Q32.** An asset naming a component it cannot build now says which asset, which component and which field. The optionality question stays open |
 | **Shadow cascades** | Still wanted for any outdoor scene. ADR 0038 reserved `ShadowMode`'s third variant; the split scheme and fitting are **built and tested**, the GPU half is not. **Planned in detail below** |
 | **Triplanar mapping** | Terrain UVs are a planar projection from world x/z, so anything steep stretches — *and* has zero UV area, so its tangent frame falls back to an arbitrary axis. One fix for both. Wants a `Material` field to opt in, which is another schema change to every `.material` file (**Q32**) |
 | **Ambient / sky light** | Still the hardcoded `0.12` constant (**Q28**). No ambient occlusion, no bounce, no sky colour. Flat lighting is the other half of why a scene reads as a prototype, and no amount of texture fixes it |
@@ -539,13 +545,14 @@ texture cache, and the wgpu texture path — **closed invariant I8**, making `Re
 compiler-enforced bound on resources and events and shipping `world.resources`, **shipped snapshots**,
 **built `games/vault` and closed M1**, and then **settled Q7 with prefabs**. ADRs 0022–0029.
 
-**Twenty-two crates, one module, and four games**, all tested: `amadeo-derive`, `amadeo-image`,
+**Twenty-two crates, two modules, and four games**, all tested: `amadeo-derive`, `amadeo-image`,
 `amadeo-core`, `amadeo-reflect`, `amadeo-ecs`, `amadeo-transform`, `amadeo-events`, `amadeo-assets`,
 `amadeo-input`, `amadeo-render`, `amadeo-physics`, `amadeo-scene`, `amadeo-snapshot`, `amadeo-agent`,
 `amadeo-gltf`, `amadeo-jobs`, `amadeo-noise`, `amadeo-voxel`, `amadeo-terrain`,
 `amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
-reserved since session 1 — and `games/quad-demo`, `games/vault`, `games/atrium` and `games/scarp`.
-**1233 tests passing with `--all-features`** (23 of them GPU capture tests, 6 the follow camera,
+reserved since session 1 — and **`modules/amadeo-camera`**, the second, and
+`games/quad-demo`, `games/vault`, `games/atrium` and `games/scarp`.
+**1237 tests passing with `--all-features`** (23 of them GPU capture tests, 6 the follow camera,
 7 rapier, 9 character,
 7 shadow fitting, 12 the Atrium, 15 the Scarp, 9 deterministic noise, 7 frustum culling, 6 mip
 chains, 13 glTF, 5 profiling, 8 jobs, 6 parallel iteration, 4 parallel loading, 10 surface nets,

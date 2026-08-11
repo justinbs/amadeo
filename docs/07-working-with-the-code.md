@@ -1803,6 +1803,86 @@ carries a `SKY_SCALE` for exactly this reason: it lands the sky near where the c
 average*, while keeping what the constant never had — direction and colour. Turning both up at once
 would be changing two things and learning nothing from either.
 
+### A constant whose units are another constant is a coupling nothing checks
+
+**Two bugs in one session, both silent, both producing a plausible wrong picture, and neither
+failing a test.** The code that broke did not change in either case.
+
+- `DIG_RADIUS` counted **cells**. Coarsening the ground from one-metre cells to two-metre ones for
+  the low-poly look doubled every dig in world units without a line of the digging code being
+  touched. A four-metre hole punches through a hillside and reaches the bottom of the streamed
+  region, where there is no geometry at all.
+- `SUN_DIRECTION` in `games/scarp`'s `bin/sky` was a vector worked out by hand from the scene's Euler
+  angles. The sign of Y was inverted, so light travelled *upward* — the sun sat below the horizon and
+  the generated sky had no sun in it.
+
+> **The rule: state a quantity in the units it means, and derive the rest.** The dig radius is now in
+> metres and converted; the sun direction is derived from the same three angles the scene uses,
+> through `Mat4::from_transform`, so the two cannot disagree about what those angles *mean*.
+
+What makes this class nasty is that the coupling is invisible at both ends. Neither file mentions the
+other, nothing imports anything, and the compiler is perfectly happy. The only defence is not writing
+the derived value down.
+
+### An environment map is the *indirect* half of lighting
+
+Anything in it that is **also** a direct light gets counted twice, and solid angle makes it easy to
+get badly wrong rather than slightly wrong — see the table in the double-counting entry above. The
+Scarp's sun is a `DirectionalLight` *and* a disc in its sky; the disc is small and modest for exactly
+that reason.
+
+The same trap waits for any bright emissive surface that is also a light: a lamp, a window, a fire.
+The symptom is a scene that is inexplicably too bright, and the instinct is to reach for exposure,
+which hides it.
+
+**And one that is not a bug but reads like one.** `bin/sky`'s ground hemisphere returned *before* the
+`SKY_SCALE` applied to the sky above it, so the lower half was about two and a half times too bright.
+It showed as a near-white band along the horizon and a wash over everything facing downward — and it
+read as **the terrain being too pale**, not as the sky being wrong. It survived two looks. What
+exposed it was switching the ground from a noise texture to flat colour, because there was then no
+texture variation left to blame it on.
+
+> **Simplifying the picture, rather than studying it harder, is what found that one.**
+
+### Solid geometry is invisible from inside, and that is what "seeing the sky" means
+
+Surface extraction — `amadeo-voxel`'s surface nets — produces the **boundary** between solid and air.
+Solid rock therefore contains no geometry at all; only its surface does. Put a camera inside it and
+there is nothing between the camera and whatever is beyond.
+
+Before ADR 0052 that was worse still: the boundary's faces point outward, so from beneath they were
+backface-culled and the ground vanished entirely. The sky pass then filled the frame, and the result
+reads exactly like **terrain that failed to stream** — which is the complicated part of the system,
+and therefore where suspicion goes.
+
+Two things now hold it down, and they are different claims:
+
+- **ADR 0052** makes geometry two-sided, so being inside something is *dark* rather than transparent.
+- **`modules/amadeo-camera`** keeps the camera out of geometry in the first place (Q27).
+
+Neither alone is enough. A camera fully embedded in rock still sees very little, because there is
+genuinely nothing there — the honest fix for *that* is keeping the player out of solid ground, which
+is a different problem again.
+
+### Reading a mouse is not reading a key, in three specific ways
+
+`games/scarp`'s window layer is the worked example.
+
+1. **`DeviceEvent::MouseMotion`, never `WindowEvent::CursorMoved`.** The latter reports a *position
+   inside the window*, so it stops changing the moment the pointer reaches an edge and the view stops
+   turning with it.
+2. **Accumulate, and clear only once a tick has consumed it.** A mouse reports displacement since its
+   last report, on the window's schedule rather than the simulation's — and the loop runs uncapped,
+   so most frames advance no tick at all. Overwriting an action's value every frame throws away every
+   report that landed between two ticks, which is most of them.
+   `App::advance_real_time` returns the tick count, which is what makes "has anything read this yet"
+   answerable.
+3. **A pointer is a displacement; a key is a rate.** An action like `turn` is multiplied by a turn
+   speed and the timestep, so full deflection is a fixed degrees-per-second. Feeding mouse movement
+   through it caps how fast the view can move at whatever that speed happens to be. Mouse look writes
+   rotation directly instead, and Q/E keep the rate — which is correct for a key that is either held
+   or not.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---
