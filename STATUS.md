@@ -167,11 +167,36 @@ trigger for going native: a **console** target.
 | ~~Metallic-roughness PBR~~ | ✅ **Done — M3's third (ADR 0048).** Cook-Torrance/GGX, and a glTF-packed metallic-roughness map. **Changed the picture almost not at all**, because every material in the repo is a rough dielectric — which is exactly where a full BRDF and Lambert agree. Scaffolding for the next item rather than a win on its own |
 | ~~Sky and image-based lighting~~ | ✅ **Done — M3's fourth (ADR 0049), and it closes Q28.** The ambient constant is gone. Shadows are filled by the sky, metals reflect their surroundings. **Does not draw the sky** — that is a separate pass and is now the largest visual gap |
 | ~~Drawing the sky~~ | ✅ **Done.** One oversized triangle at the far plane, depth-tested with depth-write off, drawn **only when a camera names a sky** — naming none means "do not draw one", which is what keeps the 2D games' backgrounds intact |
-| **Shadow cascades** | The last of ADR 0045's tier 1. One shadow map over 70 m of outdoor scene is visibly blocky; ADR 0038 reserved `ShadowMode`'s third variant for exactly this. **Researched and planned — see below** |
+| **Anti-aliasing** | **Moved to the top by ADR 0050.** Low-poly is nothing but hard silhouette edges, and jagged ones are the loudest tell that something is unfinished. ADR 0045 had this in tier 2 for a stylised-realistic target; under low-poly it is first |
+| **Flat shading (Q33)** | Low-poly needs per-face normals. `BoxMesh` does it; nothing else does, so an imported model shades as a blob. **P1, because it blocks the look rather than limiting it** |
+| **Shadow cascades** | Still wanted for any outdoor scene. ADR 0038 reserved `ShadowMode`'s third variant; the split scheme and fitting are **built and tested**, the GPU half is not. **Planned in detail below** |
 | **Triplanar mapping** | Terrain UVs are a planar projection from world x/z, so anything steep stretches — *and* has zero UV area, so its tangent frame falls back to an arbitrary axis. One fix for both. Wants a `Material` field to opt in, which is another schema change to every `.material` file (**Q32**) |
 | **Ambient / sky light** | Still the hardcoded `0.12` constant (**Q28**). No ambient occlusion, no bounce, no sky colour. Flat lighting is the other half of why a scene reads as a prototype, and no amount of texture fixes it |
 
 The visual gap is now overwhelmingly **shading**, not geometry.
+
+### 🎨 The art direction is low-poly — ADR 0050
+
+**Decided in session 14.** Amadeo's own demos and assets are low-poly. The honest reason is that no
+art can be authored here in the conventional sense — no modelling, sculpting, texture painting or
+photogrammetry — but **generators** can be written, and the project already has three (`bin/pix`,
+`bin/turf`, `bin/sky`). Low-poly's quality lives in form, silhouette and colour, which is exactly what
+code can express; photoreal's lives in scanned surface detail, which it cannot.
+
+**The renderer does *not* narrow.** `CLAUDE.md` trap 8 forbids baking an art style into it, and the
+target games still span stylised-realistic, low-poly and dark interiors. Nothing is removed — what
+changes is the order of what is left:
+
+- **Anti-aliasing moves to the top.** Hard silhouette edges everywhere is what low-poly *is*.
+- **Image-based lighting was more important than it looked**, and is already built. Flat facets each
+  catching a different part of the sky is what makes low-poly read as solid rather than flat.
+- **Normal mapping matters much less** for this content. ADR 0047 is not wasted — imported art uses
+  it, and the other targets need it — but nothing further should be built on it now.
+
+**And one gap it opens: Q33, raised to P1.** Low-poly needs per-face normals. `BoxMesh` tessellates
+twenty-four vertices rather than eight so each face carries its own; **nothing else does**, so a glTF
+exported smooth imports smooth and shades as a blob. Note it interacts with ADR 0047: splitting
+vertices per face changes the tangent frame, so it has to run *before* `generate_tangents`.
 
 ### 📋 Shadow cascades — researched and planned, not started
 
@@ -461,13 +486,16 @@ last five runs were 5/5 green on both platforms.
 > about the remote written from memory instead of from the remote.** `git log --oneline
 > origin/main..HEAD` after a `git fetch` is the only thing worth believing here.
 
-> ### ⚠️ Two working rules that changed in session 7 — read before doing anything
+> ### ⚠️ Working rules — one of these changed in session 14
 >
-> 1. **Do not `git push`. Justin pushes.** Commit as much as you like; leave it on the local branch
->    and tell him what is waiting. Checking CI with `gh` after *he* pushes is still right.
-> 2. **Consult him on anything hard to reverse** — the test is cost-to-undo, not visibility. An
+> 1. **Pushing is allowed now.** This reverses the session-7 rule. Run the four checks, commit, push,
+>    then verify with `gh run list`. The gate existed when Actions minutes were scarce; the repository
+>    is public and CI is free.
+> 2. **Sole authorship, and no co-authorship of any kind.** No `Co-Authored-By` trailer, no
+>    "generated by" line, no attribution in a comment or doc. Commits are in Justin's name alone.
+> 3. **Consult him on anything hard to reverse** — the test is cost-to-undo, not visibility. An
 >    internal mechanism nobody would read still warrants asking if ripping it out later means
->    rewriting a lot. Both rules are in `CLAUDE.md` §5.
+>    rewriting a lot. Unchanged, and *not* widened by rule 1. All three are in `CLAUDE.md` §5.
 
 ---
 

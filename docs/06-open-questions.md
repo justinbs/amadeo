@@ -247,6 +247,32 @@ exit gate asked for anyway. It becomes blocking the first time a game needs a re
 
 ---
 
+## Q33 · P1 · Nothing lets a mesh ask to be flat-shaded
+
+**New in session 14, raised by ADR 0050's decision that Amadeo's own content is low-poly.**
+
+Low-poly depends on **per-face normals** — the faceting *is* the look. A surface whose vertices carry
+averaged normals shades as a smooth blob, which is the one thing low-poly must not do.
+
+`BoxMesh` already gets this right, tessellating twenty-four vertices rather than eight so every face
+carries its own normal, and `a_box_has_flat_faces_rather_than_averaged_corners` pins it. **Nothing
+else does.** A glTF exported with smooth normals imports smooth, and a generator has to remember to
+duplicate vertices per face. Raised to P1 because it blocks the look rather than merely limiting it.
+
+### The options
+
+- **A flag on the mesh asset**, so a `.mesh` file can say `flat true` and the loader splits vertices
+  and recomputes normals per face. Authorable, and it fits how `.mesh` already carries a shape.
+- **An import setting in the `.ama-meta` sidecar**, matching where `color_space` lives — the file's
+  own property rather than the scene's. But a mesh's shading is arguably content rather than import.
+- **The generator's job**, with the engine staying dumb. Cheapest, and it means every producer has to
+  remember — which is the shape of defect `docs/07` now has four entries about.
+
+Note the interaction with **ADR 0047**: splitting vertices per face changes the tangent frame too, so
+whichever option wins has to run *before* `generate_tangents` rather than after.
+
+---
+
 ## Q31 · P2 · Nothing warns when a normal map forgets to declare itself linear
 
 **New in session 14, and named in ADR 0047 as the sharpest edge that feature ships with.**

@@ -14,9 +14,9 @@
 //! # What this game is for
 //!
 //! It is the milestone's proof, not a product. `docs/05-roadmap.md` sets the bar: a complete small
-//! 2D game — "player moves, enemies patrol, collision, a score, a win state" — **built entirely by
-//! Claude with zero editor use**, authored through text files and RPC, and verified through
-//! `inspect`, headless runs, and `render.describe` rather than by looking at it.
+//! 2D game — "player moves, enemies patrol, collision, a score, a win state" — **built with zero
+//! editor use**, authored entirely through text files and RPC, and verified through `inspect`,
+//! headless runs, and `render.describe` rather than by looking at it.
 //!
 //! So the interesting thing here is not the game. It is that every claim about the game can be
 //! checked without eyes:

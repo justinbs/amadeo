@@ -7,9 +7,9 @@
 //! # What this game is for
 //!
 //! `docs/05-roadmap.md` sets the bar: a complete small 2D game — "player moves, enemies patrol,
-//! collision, a score, a win state" — **built entirely by Claude with zero editor use**, authored
-//! through text files and RPC, and verified through `inspect`, headless runs, and `render.describe`
-//! rather than by looking at it.
+//! collision, a score, a win state" — **built with zero editor use**, authored entirely through text
+//! files and RPC, and verified through `inspect`, headless runs, and `render.describe` rather than by
+//! looking at it.
 //!
 //! So the point is not the game. It is that every claim about the game is checkable without eyes,
 //! which is what `tests/plays_itself.rs` and `tests/verified_without_eyes.rs` do.
