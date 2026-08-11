@@ -198,11 +198,17 @@ fn sky_colour(direction: [f32; 3], sun: [f32; 3]) -> [f32; 4] {
         let ground = [0.085, 0.10, 0.065];
         let haze = [0.52, 0.60, 0.72];
         // Reaches the ground colour by about 25° below the horizon, and is nearly all haze at it.
+        //
+        // **Scaled here too**, which the first version forgot: this branch returned before the
+        // `SKY_SCALE` applied to the sky below, so the whole lower hemisphere came out about two and
+        // a half times too bright. It showed as a near-white band along the horizon and as a general
+        // wash over everything facing downward — read as the *terrain* being too pale rather than as
+        // the sky being wrong, which is why it survived a look.
         let blend = (depth * 4.0).min(1.0);
         return [
-            haze[0] + (ground[0] - haze[0]) * blend,
-            haze[1] + (ground[1] - haze[1]) * blend,
-            haze[2] + (ground[2] - haze[2]) * blend,
+            (haze[0] + (ground[0] - haze[0]) * blend) * SKY_SCALE,
+            (haze[1] + (ground[1] - haze[1]) * blend) * SKY_SCALE,
+            (haze[2] + (ground[2] - haze[2]) * blend) * SKY_SCALE,
             1.0,
         ];
     }

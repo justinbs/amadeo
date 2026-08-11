@@ -65,12 +65,23 @@ pub const DIG_TERRAIN: &str = "dig_terrain";
 
 /// How many cells across a chunk is, and how big a cell is in world units.
 ///
-/// Sixteen one-unit cells makes a chunk sixteen metres across, which is roughly what Minecraft and
-/// `godot_voxel` both settle on. Smaller chunks mean more of them and more per-chunk overhead;
-/// larger ones mean more work wasted whenever one is re-meshed after a dig.
+/// A chunk stays **sixteen metres** across, which is roughly what Minecraft and `godot_voxel` both
+/// settle on. Smaller chunks mean more of them and more per-chunk overhead; larger ones mean more
+/// work wasted whenever one is re-meshed after a dig.
+///
+/// **Eight two-metre cells rather than sixteen one-metre ones, and that is the low-poly decision
+/// showing up in content** (ADR 0050). Flat shading alone did not deliver the look: at a
+/// one-metre triangle a facet is a few pixels at any distance worth looking at, so the faceting was
+/// technically present and visually absent. Doubling the cell makes a triangle something you can
+/// see the edges of, which is what low-poly means.
+///
+/// Two consequences, both real. The ground is a **quarter** of the triangles, so chunks mesh faster
+/// and use less memory. And it is coarser underfoot: a two-metre cell cannot express a one-metre
+/// bump, so the collider a character walks on is blockier — which is the same trade every voxel game
+/// makes and is why this is a game's constant rather than an engine default.
 const CHUNK: ChunkShape = ChunkShape {
-    cells: 16,
-    cell_size: 1.0,
+    cells: 8,
+    cell_size: 2.0,
 };
 
 /// How far a dig reaches from the digger, in cells.
