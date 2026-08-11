@@ -1906,10 +1906,27 @@ impl WgpuBackend {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                // Back faces are culled, which is what makes the winding ADR 0035's tessellation
-                // tests assert on load-bearing rather than cosmetic: a face wound the wrong way
-                // becomes invisible here rather than merely mis-lit.
-                cull_mode: Some(wgpu::Face::Back),
+                // **Nothing is culled, and that fixes seeing the sky from underground.**
+                //
+                // Terrain from surface nets is an open *surface*, not a closed solid: it is the
+                // boundary between rock and air and it has no underside. Culling back faces meant
+                // that from below it vanished entirely — so a camera under the ground looked
+                // straight through the world to the skybox, which is what "digging down shows the
+                // sky" actually was.
+                //
+                // The reason this is safe rather than a trade is worth stating: **for a closed mesh
+                // it changes nothing at all.** A box's back faces are always behind its front faces,
+                // so the depth test rejects them and the picture is identical — the cost is
+                // rasterising fragments that early-Z then discards. The only views that change are
+                // exactly the ones that were wrong.
+                //
+                // The shader flips the normal for a back face (`@builtin(front_facing)`), without
+                // which the underside of the ground would be lit as though it faced the sky.
+                //
+                // Per-material would be the grown-up version and is deliberately not done yet: it is
+                // a field on every `.material` file (Q32) to buy back overdraw the frame budget says
+                // is nowhere near mattering.
+                cull_mode: None,
                 polygon_mode: wgpu::PolygonMode::Fill,
                 unclipped_depth: false,
                 conservative: false,

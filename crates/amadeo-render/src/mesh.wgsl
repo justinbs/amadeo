@@ -244,9 +244,14 @@ fn vs_main(vertex: VertexInput, instance: InstanceInput) -> VertexOutput {
 // what makes one image tile across a curved wall -- "lean left" means the same thing everywhere on
 // the surface, where a world direction would not. Converting one to the other is what the tangent
 // frame is for.
-fn shade_normal(in: VertexOutput) -> vec3<f32> {
+fn shade_normal(in: VertexOutput, facing: f32) -> vec3<f32> {
     // Interpolation across a triangle shortens both vectors, so both are re-normalised here.
-    let normal = normalize(in.normal);
+    //
+    // `facing` is -1 on a back face, which is what makes two-sided geometry light correctly. Terrain
+    // is an open surface with no underside, so standing beneath it you are looking at the *back* of
+    // triangles whose normals point at the sky -- and without the flip the underside of the ground
+    // would be lit as brightly as the top of it.
+    let normal = normalize(in.normal) * facing;
     let tangent = normalize(in.tangent.xyz);
 
     // Sampled and decoded from 0..1 to -1..1. A flat pixel is (0.5, 0.5, 1.0) stored, which comes
@@ -320,11 +325,19 @@ fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
 }
 
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+fn fs_main(
+    in: VertexOutput,
+    // Which side of the triangle is being shaded. The mesh pipeline culls nothing (ADR 0052), so a
+    // surface with no underside -- terrain -- can be seen from beneath, and its normal has to be
+    // turned round when it is.
+    @builtin(front_facing) front_facing: bool,
+) -> @location(0) vec4<f32> {
+    let facing = select(-1.0, 1.0, front_facing);
+
     // The geometric normal bent by the normal map — see `shade_normal`. Re-normalising the
     // interpolated inputs happens in there, which is also what absorbs whatever uniform scale the
     // model matrix applied.
-    let normal = shade_normal(in);
+    let normal = shade_normal(in, facing);
 
     // Light travels along `light_direction`, so the vector *towards* the light is its negative.
     // max() rather than abs(): a surface facing away is in shadow, not lit from behind.
@@ -361,7 +374,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // much depth one shadow-map texel spans, and the shadow map was drawn from the *geometry* --
     // a normal map does not move a single triangle. Using the bumpy normal would vary the bias
     // pixel to pixel across a flat wall and speckle it with acne.
-    let geometric_lambert = max(dot(normalize(in.normal), towards_light), 0.0);
+    let geometric_lambert = max(dot(normalize(in.normal) * facing, towards_light), 0.0);
     let shadow = shadow_factor(in.world_position, geometric_lambert);
 
     // The material's base colour times its texture. Multiplied rather than replaced, which is what

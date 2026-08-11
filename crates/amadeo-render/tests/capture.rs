@@ -802,6 +802,43 @@ fn a_metal_reflects_the_sky_rather_than_going_black() {
 }
 
 #[test]
+fn geometry_is_visible_from_the_inside_rather_than_transparent() {
+    // **What "digging down showed the sky" actually was** (ADR 0052).
+    //
+    // Terrain from surface nets is an open surface — the boundary between rock and air — with no
+    // underside. With back faces culled it vanished when seen from beneath, so a camera under the
+    // ground looked straight through the world to the skybox. It reads as the terrain having failed
+    // to stream, which is what made it hard to attribute.
+    //
+    // Tested with a box big enough that the camera is inside it, which is the same geometry
+    // question without needing a world: from within, every surface is a back face. Before the fix
+    // this capture was the clear colour.
+    let mut world = a_lit_box([0.9, 0.9, 0.9, 1.0], [20.0, 20.0, 20.0]);
+
+    let Some(image) = capture(&mut world, 64, 64) else {
+        return;
+    };
+
+    // The clear colour is a dark neutral around 69; a lit interior wall is far brighter.
+    let centre = pixel_at(&image, 32, 32);
+    assert!(
+        centre[0] > 120,
+        "from inside a box the far wall should be visible, got {centre:?} — which is the clear \
+         colour, meaning the camera is seeing straight through the geometry"
+    );
+
+    // And the corners too: being inside means being *surrounded*, so there should be no gap
+    // anywhere. A single-sided box would leak the background at every one of them.
+    for (x, y) in [(2u32, 2u32), (61, 2), (2, 61), (61, 61)] {
+        let corner = pixel_at(&image, x, y);
+        assert!(
+            corner[0] > 120,
+            "({x},{y}) shows {corner:?}, so the box is not enclosing the camera"
+        );
+    }
+}
+
+#[test]
 fn a_slanted_edge_is_anti_aliased_rather_than_a_staircase() {
     // **What ADR 0051 bought, and the only way to see it is to look at an edge.** Every other test
     // in this file samples the middle of something, where anti-aliasing changes nothing — so all of
