@@ -75,6 +75,7 @@ entity player "Walker"
       height 3.0
       min_distance 1.2
       radius 0.35
+      return_speed 6.0
     Transform
       rotation -16.0 0.0 0.0
       scale 1.0 1.0 1.0

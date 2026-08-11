@@ -13,6 +13,8 @@
 //! to stream", which is precisely the confusion the bug caused.
 
 use amadeo_app::App;
+use amadeo_character::MOVE_FORWARD;
+use amadeo_core::Tick;
 use amadeo_ecs::World;
 use amadeo_input::{InputDriver, ScriptedSource};
 use amadeo_render::Camera;
@@ -109,6 +111,65 @@ fn the_camera_is_pulled_in_when_the_sweep_hits_something() {
         (blocked - wanted.min_distance).abs() < 0.01,
         "and pull it all the way to the authored minimum of {}, got {blocked}",
         wanted.min_distance
+    );
+}
+
+#[test]
+fn the_camera_does_not_jump_between_distances_from_tick_to_tick() {
+    // **The flicker Justin reported**, which the first version of this system had and which its
+    // three tests all passed through.
+    //
+    // Two causes, both fixed. `move_shape` *slides* along what it hits, so measuring the
+    // straight-line distance travelled counted a sideways slide as progress — a camera brushing a
+    // slope got a distance with little to do with the axis it was pointed along, and it swung as the
+    // player moved. And the distance snapped in both directions, so noise in the sweep near an edge
+    // showed up directly as movement.
+    //
+    // Asserting on the *change* per tick rather than on any particular distance, because what makes
+    // this a bug is the jumping rather than the value. The ease-out rate is the cap in the outward
+    // direction; inward is allowed to snap, so the bound is one-sided.
+    // **The swing is forced rather than waited for**, and that is deliberate. Walking the player
+    // across open hillside was tried first and did not reproduce it: the camera is simply not
+    // obstructed often enough out there, so the target sat at its authored distance and the test
+    // passed with the easing removed — proving nothing.
+    //
+    // Alternating the sweep radius between "everything is in the way" and "nothing is" drives the
+    // target from the minimum to the maximum and back on every single tick, which is a harsher
+    // version of what noisy geometry does and needs no particular terrain to arrange. What is being
+    // tested is the response to a swinging target, and this swings it.
+    let mut app = build_simulation().expect("the game builds");
+    let mut source = ScriptedSource::new();
+    source.axis(Tick(120), MOVE_FORWARD, 1.0);
+    amadeo_input::install(&mut app.world, InputDriver::new(Box::new(source)));
+
+    app.run_ticks(240).expect("the world advances");
+
+    let wanted = follow(&app.world);
+    let mut previous = camera_distance(&app.world);
+    let mut worst_jump_outward = 0.0f32;
+
+    for tick in 0..120 {
+        set_follow(
+            &mut app.world,
+            FollowCamera {
+                radius: if tick % 2 == 0 { 4.0 } else { 0.05 },
+                ..wanted
+            },
+        );
+        app.run_ticks(1).expect("the world advances");
+
+        let now = camera_distance(&app.world);
+        worst_jump_outward = worst_jump_outward.max(now - previous);
+        previous = now;
+    }
+
+    // One tick of easing, plus a little slack for floating point.
+    let allowed = wanted.return_speed * amadeo_core::FIXED_DT + 1e-3;
+    assert!(
+        worst_jump_outward <= allowed,
+        "the camera moved outward by {worst_jump_outward} in one tick, which is more than the \
+         {allowed} the ease-out allows — it is snapping rather than easing, which is what the \
+         flicker was"
     );
 }
 

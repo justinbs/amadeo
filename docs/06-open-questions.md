@@ -247,6 +247,37 @@ exit gate asked for anyway. It becomes blocking the first time a game needs a re
 
 ---
 
+## Q34 · P2 · There is no pure shape cast, only a sliding move
+
+**New in session 14, found by using the wrong one for a camera.**
+
+`PhysicsBackend::move_shape` is a *character* move: it slides along whatever it hits, steps over
+small obstacles, and snaps to ground. That is exactly right for something walking, and it is the only
+query the engine has.
+
+A camera wants a different question — **how far along this ray before something is in the way** — and
+using the sliding move for it produced a distance with little relation to the axis asked for. A
+camera brushing a slope slid sideways, the straight-line distance travelled counted that as progress,
+and the result swung as the player moved. Projecting the result onto the desired direction gets most
+of the way there and is a workaround rather than an answer.
+
+Everything else that will want this wants it too: a bullet, a line of sight, a "can this fit here"
+placement check, a mouse pick in the editor.
+
+### The options
+
+- **`cast_shape` on `PhysicsBackend`**, returning the first hit and the fraction of the motion
+  reached. rapier has this directly; `NullPhysics` returns "no hit", which is the same honest
+  useless answer it gives everywhere else (ADR 0037 §5).
+- **A `slide: bool` on `ShapeMove`**, which is fewer concepts but muddles two questions in one type —
+  half its fields are meaningless when sliding is off.
+- **Leave it**, and let each caller project onto its own axis. Cheap, and it means every caller
+  repeats a correction for a behaviour it did not want.
+
+**Not blocking.** The camera works with the projection, and nothing else has needed a cast yet.
+
+---
+
 ## Q33 · P1 · Nothing lets a mesh ask to be flat-shaded
 
 **New in session 14, raised by ADR 0050's decision that Amadeo's own content is low-poly.**

@@ -143,9 +143,19 @@ pub struct FollowCamera {
     /// The radius of the sphere swept to find obstructions.
     ///
     /// Larger than nothing on purpose: a zero-radius ray would slip through the gap between two
-    /// triangles at a chunk boundary and report open space where there is rock.
+    /// triangles at a chunk boundary and report open space where there is rock. It also has to
+    /// exceed the near plane's half-diagonal, or geometry enters the frustum before the sphere
+    /// notices it — at a 65° field of view and a near plane of 0.1 that is about 0.13.
     #[reflect(min = 0.0, max = 10.0, unit = "world units")]
     pub radius: f32,
+    /// How fast the camera eases back out once nothing is in the way, in world units per second.
+    ///
+    /// **Only ever applies outward.** Coming *in* happens the same tick the obstruction appears,
+    /// because easing that direction means spending a frame inside a hill; going back out is eased,
+    /// because the sweep is noisy near an edge and a camera that snapped both ways flickered
+    /// visibly. Snap in, drift out is the standard answer and it is what fixed it here.
+    #[reflect(min = 0.0, max = 100.0, unit = "world units per second")]
+    pub return_speed: f32,
 }
 
 impl Default for FollowCamera {
@@ -155,6 +165,7 @@ impl Default for FollowCamera {
             distance: 7.0,
             min_distance: 1.2,
             radius: 0.35,
+            return_speed: 6.0,
         }
     }
 }
@@ -475,14 +486,16 @@ pub fn dig_terrain(world: &mut World) {
 pub fn keep_camera_out_of_the_ground(world: &mut World) {
     // Collected before touching the physics service, because the query borrows the world and the
     // sweep needs it mutably. The ordinary shape in this engine.
-    let cameras: Vec<(amadeo_ecs::Entity, FollowCamera, Transform)> = world
-        .query::<(&FollowCamera, &Parent)>()
-        .filter_map(|(entity, (follow, parent))| {
+    // The current distance is collected here too, because the ease-out below needs it and the
+    // physics service is borrowed mutably for the whole of the loop that does the sweeping.
+    let cameras: Vec<(amadeo_ecs::Entity, FollowCamera, Transform, f32)> = world
+        .query::<(&FollowCamera, &Parent, &Transform)>()
+        .filter_map(|(entity, (follow, parent, transform))| {
             // The parent's own transform, which *is* its world transform: a follow camera's parent
             // is a root entity. Reading `GlobalTransform` instead would be a tick behind, because
             // propagation runs at the end of the tick.
             let parent_transform = world.get::<Transform>(parent.0)?;
-            Some((entity, *follow, *parent_transform))
+            Some((entity, *follow, *parent_transform, transform.translation[2]))
         })
         .collect();
 
@@ -495,7 +508,7 @@ pub fn keep_camera_out_of_the_ground(world: &mut World) {
     };
 
     let mut results: Vec<(amadeo_ecs::Entity, Transform)> = Vec::with_capacity(cameras.len());
-    for (entity, follow, parent) in cameras {
+    for (entity, follow, parent, current) in cameras {
         // The parent's axes in world space. Column two is its local +Z, and a camera looks along its
         // own negative Z — so +Z is *behind* the thing being followed.
         let basis = amadeo_transform::Mat4::from_transform(
@@ -536,16 +549,33 @@ pub fn keep_camera_out_of_the_ground(world: &mut World) {
         };
         let landed = physics.move_shape(&request).translation;
 
-        // How far it actually got, which is the distance the camera may sit at.
-        let travelled = {
-            let delta = [
-                landed[0] - pivot[0],
-                landed[1] - pivot[1],
-                landed[2] - pivot[2],
-            ];
-            (delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]).sqrt()
+        // **Projected onto the direction asked for, rather than measured as a straight-line
+        // distance**, and that difference is what stopped the camera flickering.
+        //
+        // `move_shape` is a *character* move: it slides along whatever it hits, because that is what
+        // a body walking into a wall should do. A camera wants the other thing — how far along this
+        // one axis before something is in the way — and the engine has no pure shape cast to ask
+        // (**Q34**). Measuring `|landed - pivot|` treats a slide as progress, so a camera brushing a
+        // slope got a distance that had little to do with where it was pointed, and small movements
+        // swung it wildly. A dot product keeps only the component that was actually asked for.
+        let delta = [
+            landed[0] - pivot[0],
+            landed[1] - pivot[1],
+            landed[2] - pivot[2],
+        ];
+        let along = delta[0] * back[0] + delta[1] * back[1] + delta[2] * back[2];
+        let target = along.clamp(follow.min_distance, follow.distance);
+
+        // **In at once, out slowly**, which is the other half of the flicker and the standard answer
+        // to it. Geometry appearing between the camera and the player must be reacted to *this*
+        // tick, or the camera spends a frame inside a hill. Geometry going away must not yank the
+        // camera backwards, because the sweep result is noisy near an edge and easing turns a
+        // twitch into a drift nobody notices.
+        let distance = if target < current {
+            target
+        } else {
+            (current + follow.return_speed * amadeo_core::FIXED_DT).min(target)
         };
-        let distance = travelled.clamp(follow.min_distance, follow.distance);
 
         results.push((
             entity,
