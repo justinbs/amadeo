@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-10 (session 14)
+**Last updated:** 2026-08-11 (session 15)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE — all four exit gates met.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
@@ -24,7 +24,73 @@ always on), **0041** (parallelism is deterministic by construction or absent —
    8.3 µs per simulation tick, 125 µs of CPU-side frame preparation, and 2.7% of a frame at gate 3's
    200-body complexity.
 
-## ⚠️ Start here — M2.5 is complete, and M3's renderer work is two items in
+## ⚠️ Start here — session 15 fixed the camera and closed a determinism hole nobody knew was open
+
+**Justin played the Scarp and reported two things about the camera. Both were real, and the second
+one turned out to be sitting on top of an invariant violation.**
+
+1. **"Any movement in any direction makes the camera flicker close or far."** The upward sweep to the
+   camera's pivot starts at the parent's origin — which is the middle of **the parent's own capsule
+   collider** — and never said to ignore it. Rapier reads that penetration as a slope too steep to
+   stand on, reports `sliding_down_slope`, and cancels the motion, *intermittently*, because whether
+   it resolves that way depends on the contact normal and the normal moves as you walk. So on about
+   one tick in ten the pivot collapsed to the player's feet, the arm snapped to its 1.2 m minimum, and
+   the ease-out at 0.1 m/tick never covered the 5.8 m back before being knocked down again. **The
+   camera had never once reached its authored distance while moving.** One missing `.ignoring()` —
+   the call `modules/amadeo-character` had always made, one crate away, with a comment explaining why.
+
+2. **"Pointing the camera down means looking at the ground; up means looking up from where the camera
+   is."** Not a wrong line — a missing concept. The camera's position was the constant
+   `[0, height, distance]` and pitch reached it nowhere, so tilting spun the camera on the spot. It is
+   now an **arm**: pitch is an angle *around the pivot*, so tilting down lifts the camera over the top
+   to look down at the player and tilting up drops it. Unreal's spring arm and Cinemachine's orbital
+   rigs both work this way and it is what "the subject stays framed" means.
+
+**And the orbit is what found ADR 0053.** Placing something at an angle needs `sin`/`cos`, and the
+result lands in a **hashed** `Transform`, which ADR 0044 forbids. Looking for where to put a
+deterministic version turned up the fact that **the camera was already violating it**:
+`keep_camera_clear` built a matrix from the parent's rotation via `Mat4::from_euler_degrees`, which
+used `f32::sin_cos`, and wrote the projected result straight into hashed state.
+
+`crates/amadeo-transform/src/matrix.rs` **had described that exact route in its own header** as the
+"side door" back into the state hash — and guarded the lesser risk (SIMD) while leaving it open. See
+the general lesson in `docs/07`; the short version is that a documented hazard is not a mitigated one.
+
+> ### The scope decision, and it was Justin's
+>
+> Put to him as camera-only (safe, no pixel can move) versus engine-wide (`Mat4` adopts it, every
+> matrix in the engine shifts by about a bit, all 23 GPU capture tests at risk). **He chose
+> engine-wide**, and it is the better answer because the camera was not special — any system that
+> reads a `GlobalTransform` and writes it back into a `Transform` reopens the hole, and asking every
+> future caller to remember is the arrangement that had just failed.
+>
+> **The risk did not materialise.** The whole suite passed unchanged on the first run: all 23 capture
+> tests, the pinned rapier state hash, every golden replay. Rotations in those fixtures are zero or
+> quarter turns, where the two agree exactly — and where the new one is *exactly* right and the old
+> one was not.
+
+**Three things to know before touching the camera again:**
+
+- **`height` changed meaning.** It is now *the point the camera aims at*, not how high the camera
+  floats — so it decides what is in the middle of the screen. Both games came down (Scarp 3.0 → 1.6,
+  Atrium 2.8 → 1.5) to stop aiming a metre above the character's head. **Tuned by eye against a
+  capture, not derived.** Worth a look and a re-tune.
+- **`CameraArm` is a new component** and both scenes author it (Q32 churn, and honest churn). It holds
+  the smoothed arm length, which must survive to the next tick and cannot be recovered from the
+  transform once the arm leans — local `z` is `distance × cos(pitch)`, close enough to a distance to
+  pass a tolerance and wrong enough to make a test mean something else.
+- **One old test was passing because of the bug.** `the_camera_is_pulled_in_when_the_sweep_hits_
+  something` forced its obstruction with a four-metre probe sphere, which centred on a pivot three
+  metres up **contains the player's capsule** — so it hit the player, not the ground, and broke the
+  moment the sweep started ignoring the parent. It now forces the case geometrically instead.
+
+**Both new tests were watched failing**, and the messages are the reported symptoms almost verbatim:
+*"got 1.2 — the arm is being knocked down faster than it can ease out"* and *"tilting down must lift
+the camera above where it was (2.9999995 to 2.9999995)"*.
+
+**Next:** shadow cascades, still. Unchanged by this session and still planned in detail below.
+
+## M2.5 is complete, and M3's renderer work is two items in
 
 **M2.5's four exit gates are all met.** A generated world you walk on and dig into
 (`cargo run -p scarp`), reproducing at every thread count, drawing only what can be seen, at 61 µs of
@@ -484,7 +550,7 @@ first real case*, which is the state this project deliberately keeps them in:
 |---|---|---|
 | ~~Q29~~ | — | **Closed in session 13 by ADR 0046.** Terrain edits are a hashed resource; the streamer is a cache of them, and a dug world saves and reloads dug |
 | **Q32** | **P1** | **Raised from P2 — it has now bitten five times in three sessions.** A field added to a component invalidates every file that spells it out, and the failure is silent: the file is skipped, the lookup comes back empty, and the error surfaces layers away as a *missing service*. The churn is not the problem; the reporting is |
-| **Q34** | P2 | **New.** No pure shape cast, only `move_shape`, which *slides*. The camera projects onto its own axis to work round it. A bullet, a line of sight, a placement check and an editor mouse pick all want the real thing |
+| **Q34** | P2 | No pure shape cast, only `move_shape`, which *slides*. **Session 15 strengthened the argument**: the camera's flicker was a second symptom of borrowing a character-move — a cast that starts inside something has an obvious answer for "how far until blocked" and none for "where does this character end up". The workaround now carries two corrections (project onto the axis, exclude the parent), which is the usual sign the borrowed operation is wrong |
 | **Q31** | P2 | Nothing warns when a normal map's sidecar forgets `color_space = "linear"`. Silent, subtly wrong, and it becomes blocking the moment authored art ships |
 | ~~Q33~~ | — | **Closed in session 14.** `MeshData::flat_shade`, opted into per glTF part and per terrain |
 | ~~Q27~~ | — | **Closed in session 14.** The follow camera sweeps a sphere and pulls in; snaps inward, eases outward |
@@ -501,6 +567,10 @@ first real case*, which is the state this project deliberately keeps them in:
 **Remote:** `origin → https://github.com/justinbs/amadeo.git`. **The repository is public now**, so
 Actions minutes are free and unlimited — the Windows→Ubuntu cost optimisation discussed in session 13
 is no longer needed and should not be built. Green on every job.
+
+**Session 15 opened by checking CI and it was clean:** after a `git fetch`, `origin/main..HEAD` was
+empty and the last five runs were green 5/5, so session 14's fourteen commits are genuinely on the
+remote. The habit below is what makes that a fact rather than an assumption, and it stays.
 
 **Session 14 opened by checking CI and it was clean:** both of session 13's trailing commits
 (`6d6993f` mipmaps, `cea8ae4` docs) had landed, `origin/main..HEAD` was empty after a fetch, and the

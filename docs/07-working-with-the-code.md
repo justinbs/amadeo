@@ -1179,6 +1179,80 @@ move rather than aiming below it.
 small tolerance, compare the two numbers. If the per-tick movement exceeds the tolerance, it will
 tunnel, and it will do it slowly enough to be mistaken for a feel problem.
 
+### A shape cast that starts inside something has no answer, and rapier's is *unstable*
+
+**The bug:** *"any movement in any direction makes the camera flicker close or far"*, reported by
+Justin in session 15 and present since the follow camera was written.
+
+`keep_camera_clear` sweeps a sphere upward from the parent's origin to find its pivot. The parent's
+origin is the middle of the parent's own **capsule collider**, and the sweep did not say to ignore it.
+That is the degenerate case, and rapier does not resolve it the same way twice: it reads the
+penetration as a surface too steep to stand on, reports `sliding_down_slope`, and cancels the motion
+**depending on the exact contact normal**, which shifts as the parent walks.
+
+Measured, at the Scarp's ordinary walking speed:
+
+```
+PROBE rose=3.0000 slide=false | higher=3.0000 | ignoring=3.0000
+PROBE rose=0.0000 slide=true  | higher=3.0000 | ignoring=3.0000   <- about one tick in ten
+```
+
+`higher` is the same sweep started clear of the capsule and `ignoring` is the same sweep excluding it.
+Both succeed on **every** tick, including all the ones the real sweep fails — which is what attributes
+the failure to the start point rather than to the geometry overhead.
+
+What that looks like in the game is not "a sweep occasionally returns zero". The pivot collapsed to
+the player's feet, the arm snapped to its 1.2 m minimum, eased back out at 0.1 m per tick, and was
+knocked down again long before covering the 5.8 m. So the camera **never once reached its authored
+distance** and jittered near the player permanently.
+
+**The rule: every shape query names what it starts inside.** `modules/amadeo-character` had always
+called `.ignoring(entity)` — with a comment explaining exactly this — and the camera module, written
+later and one crate away, did not. A missing filter is not a missing optimisation.
+
+> **Why no test caught it.** The camera's own "is the sweep consulted at all?" test forced an
+> obstruction with a four-metre probe sphere — which, centred on a pivot three metres up, **contains
+> the player's capsule**. So it hit the player, reported a block, and asserted the right answer for
+> the wrong reason. It was passing *because of* the bug, and it broke when the bug was fixed. If a
+> test's forcing mechanism is "make the probe enormous", check what the probe is actually touching.
+
+### A third-person camera orbits its pivot; it does not sit at an offset and tilt
+
+The other half of the same report: *"pointing the camera downwards I end up looking at the ground,
+upwards I end up looking upwards from where the camera is"*.
+
+That one was not a bug in the sense of a wrong line. The camera's position was the constant
+`[0, height, distance]`, and pitch went into its **rotation** and reached its position nowhere — so
+tilting spun the camera on the spot and whatever it followed slid out of frame.
+
+A follow camera is an **arm**, and pitch is an angle *around the pivot* rather than a property of the
+camera alone. Both of the references worth copying work this way — Unreal's `USpringArmComponent` and
+Cinemachine's orbital rigs:
+
+```
+pivot  = parent + up × height          (swept for, so a ceiling shortens it)
+arm    = rotate(back, pitch)           (the orbit — this is the bit that was missing)
+camera = pivot + arm × distance
+```
+
+Tilt down and the camera rises and comes over the top, looking down *at* the thing it follows; tilt
+up and it drops and looks up past it. The subject stays framed at every angle **for free**, because
+the camera's forward is exactly the arm reversed — there is no "look at" step and nothing to keep in
+sync.
+
+**Two consequences worth knowing before tuning one:**
+
+`height` changes meaning. It is no longer "how high the camera floats" but "**the point the camera
+aims at**" — so a value that looked fine before now literally decides what is in the middle of the
+screen. Both games' cameras had to come down (3.0 → 1.6 and 2.8 → 1.5) to stop aiming a metre above
+the character's head, and those are eyeball numbers rather than derived ones.
+
+And **the arm length becomes real state**. It is smoothed across ticks, so it must survive to the next
+one, so it cannot be recovered from the transform — the transform's local `z` is `distance × cos
+(pitch)` once the arm leans, which is close enough to a distance to pass a tolerance and wrong enough
+to make a test mean something else. That is what `CameraArm` is, and it is `CharacterController` /
+`CharacterMotion` again: authored settings in one component, live state in another.
+
 ### How a shadow gets onto the floor
 
 Worth reading before touching lighting, because it is the first thing in the engine where one pass
@@ -1549,6 +1623,42 @@ let height = 6.0 + hills.sample_2d(x, z) * 11.0;
 
 `mul_add` is permitted and deliberately unused: it is correctly rounded and it is *a different
 number* from `a * b + c`, because it rounds once instead of twice.
+
+### …but you *can* place something at an angle, and there is one function for it
+
+**Use [`amadeo_core::sin_cos_degrees`], never `f32::sin_cos`** (ADR 0053). The ban above is on the
+standard library's transcendentals, which are unspecified — not on trigonometry, which is sometimes
+the only way to say what you mean. A camera orbiting a pivot has no arithmetic dodge.
+
+`amadeo_core::sin_cos_degrees` is built from `+ - * /` and `floor`, so it gives the same answer on
+every machine, and `Mat4::from_euler_degrees` uses it — meaning **composing a rotation matrix is now
+as reproducible as adding two numbers**, wherever it happens.
+
+It is also *more* accurate than the obvious route, which is worth knowing because it makes the
+obvious comparison misleading:
+
+```rust
+// Wrong, and wrong in a way that gets worse the larger the angle:
+let (s, c) = angle.to_radians().sin_cos();
+// Right:
+let (s, c) = amadeo_core::sin_cos_degrees(angle);
+```
+
+`to_radians()` in `f32` loses the digits that decide the answer before `sin` ever runs — past a few
+turns the engine's version is closer to the truth than the standard library's, so a test comparing
+the two at `f32` fails against the *reference*, not against the implementation. Compare at `f64` if
+you ever need to.
+
+**And the reason this rule exists at all is a bug that had already happened.** `keep_camera_clear`
+built a matrix from its parent's rotation, projected a distance onto one of its axes, and wrote the
+answer into the camera's **hashed** `Transform`. `matrix.rs` had described that exact route in its own
+header as the "side door" back into hashed state — and then guarded the lesser risk and left it open.
+Nothing caught it: the Scarp's determinism test compares a machine against itself, and the pinned
+cross-platform hashes live in physics and noise, neither of which rotates anything.
+
+> **The general shape: a documented hazard is not a mitigated one.** A comment saying "careful, this
+> could leak into the state hash" is a note for a reader who is already looking at the file. The thing
+> that actually closes it is making the arithmetic specified, so no caller has to have read the note.
 
 ### Two things that look right about a mesh and are independent
 

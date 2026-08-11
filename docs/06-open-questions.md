@@ -276,6 +276,17 @@ placement check, a mouse pick in the editor.
 
 **Not blocking.** The camera works with the projection, and nothing else has needed a cast yet.
 
+**Session 15 raised the priority of the argument without changing the priority of the question.** The
+camera's flicker turned out to be a *second* symptom of asking a character-move to answer a camera
+question: `move_shape` starting inside the followed body's own collider made rapier report
+`sliding_down_slope` and cancel the motion, intermittently. That is fixed by `.ignoring()` the parent
+and is a real fix — but a pure `cast_shape` would not have had the failure mode at all, because "how
+far until something blocks this" has an obvious answer when the start point is occupied and "where
+does this character end up" does not.
+
+So the workaround now has two corrections stacked on it (project onto the axis, and exclude the
+parent), which is the usual sign that the borrowed operation is the wrong one.
+
 ---
 
 ## Q33 · P1 · Nothing lets a mesh ask to be flat-shaded

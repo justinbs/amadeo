@@ -172,7 +172,17 @@ crates/
                      that is also what re-digs the world after a snapshot restore -- a snapshot
                      restores resources and never services (ADR 0009).
 — amadeo-math        vectors, matrices, quaternions, rects, curves. No engine deps.
-✅ amadeo-core        Tick, FIXED_DT, Rng (PCG32), StableHasher (FNV-1a), StableId/NetId/Authority
+✅ amadeo-core        Tick, FIXED_DT, Rng (PCG32), StableHasher (FNV-1a), StableId/NetId/Authority, and
+                     **`sin_cos_degrees` — the engine's own trigonometry** (ADR 0053). ADR 0044 banned
+                     the standard library's `sin`/`cos` because Rust does not specify them; this is the
+                     other half of that answer, built from `+ - * /` and `floor`, which IEEE 754 pins.
+                     `Mat4::from_euler_degrees` uses it, so **composing a rotation is reproducible
+                     wherever it happens** rather than only where somebody remembered. Reduces in
+                     *degrees* and converts last, which makes the quarter turns exact — and makes it
+                     more accurate than `angle.to_radians().sin_cos()`, so a test comparing the two at
+                     `f32` is testing the reference. A literal grid hash is pinned on both platforms.
+                     It exists here for the reason `Rng` does: determinism-critical things get written
+                     rather than depended on.
 ✅ amadeo-reflect     Value tree, TypeInfo schema, TypeRegistry. ADR 0012. Values include maps with
                      string keys (ADR 0027) — a key type implements ReflectKey, and `to_key` must be
                      injective. Also holds `Reflect for Tick`: a type below this crate cannot
@@ -362,6 +372,19 @@ modules/             optional, genre-flavored. Core NEVER depends on these. Crea
                      is inside the ceiling in any tunnel. The result is **projected onto the axis
                      asked for**, because `move_shape` slides (Q34); measuring the distance travelled
                      counts a slide as progress and the camera swings. Snap in, ease out.
+                     **It is an ARM, and pitch is an angle around the pivot** — session 15, and the
+                     thing it shipped without. A camera at a fixed `[0, height, distance]` that only
+                     *rotates* when you tilt points at the ground below itself and loses whatever it
+                     was following; the position has to come from the pitch. `height` therefore means
+                     **the point the camera aims at**, not how high it floats. `CameraArm` holds the
+                     smoothed arm length, because that must survive to the next tick and cannot be
+                     read back out of a transform once the arm leans — `CharacterController` /
+                     `CharacterMotion` again (ADR 0037).
+                     **Both sweeps `.ignoring()` the parent**, and *that* was the flicker: a sweep
+                     starting inside the followed body's own collider makes rapier report
+                     `sliding_down_slope` and cancel the motion, intermittently, so the camera never
+                     reached its authored distance at all. The orbit needs `sin`/`cos` of the pitch in
+                     a **hashed** component, which is what ADR 0053 exists for.
                      It lived in `games/scarp` first, on the rule that something moves to `modules/`
                      when a *second* game wants it — `games/atrium` is what moved it.
 🟡 amadeo-character   the first module. `CharacterController` (speed, acceleration, jump, turn, slope,
