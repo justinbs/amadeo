@@ -8,13 +8,20 @@
 //! surface backwards from its first caller is how a wrong abstraction gets locked in — so this is the
 //! small, obvious thing, and `amadeo-math` arrives when something needs a real surface.
 //!
-//! # Why scalar arithmetic
+//! # Why scalar arithmetic, and why the trigonometry is the engine's own
 //!
 //! ADR 0019 keeps `GlobalTransform` out of the state hash, so this arithmetic cannot move a replay
 //! on its own. But a gameplay system that reads a `GlobalTransform` and writes the result back into
 //! a `Transform` puts it back into hashed state through the side door — "place this child where its
 //! parent's hand is" is a real thing to want. Plain scalar `f32` evaluates identically everywhere;
 //! a SIMD path is not guaranteed to. The cost of being careful here is nothing.
+//!
+//! **That side door was not hypothetical, and it was open.** `modules/amadeo-camera` built a matrix
+//! from its parent's rotation, projected a swept distance onto one of its axes, and wrote the answer
+//! into the camera's hashed `Transform` — so the camera's position depended on `f32::sin_cos`, which
+//! Rust does not specify. ADR 0053 closes it at the source: [`amadeo_core::sin_cos_degrees`] is built
+//! from operations IEEE 754 pins exactly, so composing a matrix is now as reproducible as adding two
+//! numbers, and no caller has to know that it needed to be careful.
 
 /// A 4×4 transformation matrix, stored **column-major**.
 ///
@@ -75,11 +82,23 @@ impl Mat4 {
     }
 
     /// Builds a rotation matrix from Euler angles in degrees, applied Z, then X, then Y.
+    ///
+    /// # The trigonometry is the engine's own, not the standard library's
+    ///
+    /// [`amadeo_core::sin_cos_degrees`], for the reason this module's own header used to only warn
+    /// about: `f32::sin_cos` is not specified to give the same answer twice, so a system that reads a
+    /// [`GlobalTransform`](crate::GlobalTransform) and writes the result into a `Transform` puts an
+    /// unreproducible number into hashed state. ADR 0053 closed that door by making the arithmetic
+    /// specified rather than by asking callers to be careful.
+    ///
+    /// It is also *more* accurate here, and exactly so at quarter turns — a 90° rotation now produces
+    /// a matrix whose axes are exactly the unit axes, where before the off-diagonals held about
+    /// `4e-8` of dust.
     #[must_use]
     pub fn from_euler_degrees(degrees: [f32; 3]) -> Self {
-        let (sin_x, cos_x) = degrees[0].to_radians().sin_cos();
-        let (sin_y, cos_y) = degrees[1].to_radians().sin_cos();
-        let (sin_z, cos_z) = degrees[2].to_radians().sin_cos();
+        let (sin_x, cos_x) = amadeo_core::sin_cos_degrees(degrees[0]);
+        let (sin_y, cos_y) = amadeo_core::sin_cos_degrees(degrees[1]);
+        let (sin_z, cos_z) = amadeo_core::sin_cos_degrees(degrees[2]);
 
         // Written out rather than composed from three matrix multiplies. Three multiplies would be
         // clearer to derive and would also do 192 float operations to produce nine numbers, most of

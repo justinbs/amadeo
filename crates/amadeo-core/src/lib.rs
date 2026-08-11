@@ -9,6 +9,7 @@ pub mod hash;
 pub mod id;
 pub mod rng;
 pub mod time;
+pub mod trig;
 
 // The trait and its derive share a name, and that is deliberate: `use amadeo_core::StableHash;`
 // brings in both, exactly as it does for `Debug`. Rust keeps macros and types in separate
@@ -18,3 +19,4 @@ pub use hash::{StableHash, StableHasher, stable_hash_of};
 pub use id::{NetId, StableId};
 pub use rng::Rng;
 pub use time::{FIXED_DT, FIXED_DT_NANOS, TICK_RATE_HZ, Tick};
+pub use trig::{cos_degrees, sin_cos_degrees, sin_degrees};
