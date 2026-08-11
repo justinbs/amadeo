@@ -116,7 +116,54 @@ third-person shot.
 > **The rule worth carrying: two corrections on one call means the question is wrong.** By the end
 > that sweep carried both a projection and an exclusion filter. The general form is in `docs/07`.
 
-**Next:** shadow cascades, still. Unchanged by this session and still planned in detail below.
+### And then shadow cascades landed — ADR 0055, which completes ADR 0045's tier 1
+
+**The last item on the renderer list is done.** `ShadowMode::Cascaded { blend }` ships, `games/scarp`
+uses it, and the plan below is now a record of what was built rather than what to build.
+
+Everything the plan predicted held, including the trap it named: **the bias has to be per cascade**,
+because it lives in clip depth and a ten-metre box and a seventy-metre box turn the same authored
+offset into very different numbers. `fit_cascade` dividing through each box's own range gives that
+for free, and a test pins it.
+
+**Three things the plan did not predict**, all worth knowing:
+
+1. **The blend became a payload on the variant rather than a field on `DirectionalLight`** — which
+   ADR 0032's enum payloads make spellable in a scene file. That means **no `.scene` that did not opt
+   into cascades changed at all**, so Q32 did not bite a fourth time. First time the *shape* of a
+   change has dodged it rather than the churn being absorbed.
+2. **A shadow map is now always a texture array**, one layer when `Orthogonal`. That is what keeps
+   this to one shader and one pipeline — `texture_depth_2d` and `texture_depth_2d_array` are
+   different binding types. The layer count lives *inside* `TargetFormat::ShadowMap32`, so the
+   transient pool keeps a one-layer and a four-layer map apart with no new code.
+3. **Measured, both ways, on the same scene:** 71.7 µs → 113.7 µs of GPU time, about 1.6× and still
+   0.7% of a 60 Hz budget. The three extra shadow passes each cost *less* than the first, because
+   they draw the same casters into smaller boxes. Full table in `docs/10-frame-budget.md`.
+
+> ### ⚠️ The bug it shipped through, and it is the fourth of its kind
+>
+> The first capture with cascades on came back with **a huge dark wedge across the horizon**. Nothing
+> failed to compile, nothing failed wgpu validation, every headless test passed.
+>
+> `mesh.wgsl` and `sky.wgsl` read **the same uniform buffer at the same binding** and each declared
+> its own copy of the struct. Making `light_view_projection` an array of four grew that struct by 192
+> bytes in one copy and not the other, so the sky shader read its direction vectors from the wrong
+> offsets and drew the sky facing somewhere else.
+>
+> `view.wgsl` now holds the declaration once and is prepended to both at pipeline creation. **One
+> copy is left and cannot be removed this way**: `GpuMeshView` in Rust. A `#[repr(C)]` struct and a
+> WGSL struct are two statements of one layout in two languages, and only a wrong picture says they
+> disagree — so add a field to both, in the same position, and then capture something and look.
+>
+> This is the same shape as the winding/normals pair, the two-sided apron, and `format_float` being
+> borrowed rather than copied. **Two copies of one fact drift, and a comment saying "keep these in
+> step" is not a mechanism.**
+
+**Next:** ADR 0045's tier 1 is complete. The renderer's open items are now triplanar mapping for
+terrain (which also fixes the tangent-frame fallback on steep faces), bloom's blur passes, and
+per-camera post (**Q23**). None is blocking.
+
+## 📋 The plan cascades were built from — kept as a record
 
 ## M2.5 is complete, and M3's renderer work is two items in
 
@@ -293,7 +340,7 @@ trigger for going native: a **console** target.
 | ~~Two-sided rendering~~ | ✅ **Done — ADR 0052.** What "digging down showed the sky" actually was: terrain is an open surface with no underside, so culling made it vanish from below. Byte-identical from above; only the broken views changed |
 | ~~The camera in the ground~~ | ✅ **Done — Q27 closed, and it is now `modules/amadeo-camera`.** A swept sphere pulls the follow camera in, snapping inward and easing outward, plus right-click mouse look. Used by the Scarp *and* the Atrium |
 | ~~Silent asset failures~~ | ✅ **Done — half of Q32.** An asset naming a component it cannot build now says which asset, which component and which field. The optionality question stays open |
-| **Shadow cascades** | Still wanted for any outdoor scene. ADR 0038 reserved `ShadowMode`'s third variant; the split scheme and fitting are **built and tested**, the GPU half is not. **Planned in detail below** |
+| ~~Shadow cascades~~ | ✅ **Done — ADR 0055, and it completes ADR 0045's tier 1.** Four concentric cascades in four layers of one depth array. The near texel goes from ~7 cm to ~1 cm of ground, for 71.7 -> 113.7 µs of GPU time |
 | **Triplanar mapping** | Terrain UVs are a planar projection from world x/z, so anything steep stretches — *and* has zero UV area, so its tangent frame falls back to an arbitrary axis. One fix for both. Wants a `Material` field to opt in, which is another schema change to every `.material` file (**Q32**) |
 | **Ambient / sky light** | Still the hardcoded `0.12` constant (**Q28**). No ambient occlusion, no bounce, no sky colour. Flat lighting is the other half of why a scene reads as a prototype, and no amount of texture fixes it |
 
@@ -322,7 +369,13 @@ twenty-four vertices rather than eight so each face carries its own; **nothing e
 exported smooth imports smooth and shades as a blob. Note it interacts with ADR 0047: splitting
 vertices per face changes the tangent frame, so it has to run *before* `generate_tangents`.
 
-### 📋 Shadow cascades — researched and planned, not started
+### 📋 Shadow cascades — the plan they were built from, kept as a record
+
+**✅ Built in session 15 — ADR 0055.** Kept because the plan turned out to be accurate, including the
+trap it named, and because that is worth knowing next time something is planned before it is begun.
+Every "will" below is now a "did", with two exceptions noted in the session-15 entry above: the blend
+became a payload on the variant rather than a field on `DirectionalLight`, and the shadow map became
+a texture array in every mode rather than only the cascaded one.
 
 **The last item in ADR 0045's tier 1.** Deliberately not begun rather than begun badly: it touches
 the shadow fitting, the render graph's transient pool, the backend and the shader at once, and half

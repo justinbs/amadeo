@@ -1316,6 +1316,35 @@ slices with a map each — are what fixes blocky shadows over large outdoor scen
 a third variant. The mode being *data* is why that is an addition rather than a rewrite; ADR 0038 has
 the full argument, and it is the same one `PixelFormat` shipped with.
 
+### Two shaders reading one buffer must not each declare its layout
+
+**The bug:** turning on shadow cascades drew a huge dark wedge across the horizon. Nothing failed to
+compile, nothing failed wgpu validation, and every headless test passed.
+
+`mesh.wgsl` and `sky.wgsl` read the **same uniform buffer at the same binding**, and each declared its
+own copy of the struct. Cascades (ADR 0055) turned one `mat4x4` in it into an `array<mat4x4, 4>`,
+which grew the struct by 192 bytes in one copy and not the other. The sky shader therefore read the
+three vectors that turn a screen position into a world direction from 192 bytes too early, and drew
+the sky pointing somewhere else.
+
+The fix is `view.wgsl`: one declaration, prepended to both at pipeline creation.
+
+```rust
+source: wgpu::ShaderSource::Wgsl(
+    concat!(include_str!("view.wgsl"), include_str!("sky.wgsl")).into(),
+),
+```
+
+**One copy is left and cannot be removed this way**: `GpuMeshView` in `gpu.rs`. A `#[repr(C)]` struct
+and a WGSL struct are two statements of one layout in two languages, and nothing checks them — only a
+wrong picture does. If you add a field to one, add it to the other **in the same position**, and then
+capture something and look at it.
+
+> This is the same shape as three other findings in this file — normals versus winding, the two-sided
+> apron, `format_float` shared between `amadeo-scene` and `amadeo-snapshot`. **Two copies of one fact
+> drift, and a comment saying "keep these in step" is not a mechanism.** Where the two copies can be
+> made one, make them one.
+
 ### Three shadow defects with names, and what this engine does about each
 
 These have names because everyone hits them. If shadows ever look wrong, it is almost certainly one

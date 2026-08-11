@@ -71,7 +71,8 @@ fn frame(world: &mut World) -> FrameData {
 /// version would agree with it by construction and prove nothing.
 fn shadow_uv(frame: &FrameData, point: [f32; 3]) -> Option<[f32; 2]> {
     let shadow = frame.primary()?.lights.first()?.shadow?;
-    let clip = shadow.view_projection.project_point(point)?;
+    // Cascade zero: the nearest, and the only one an `Orthogonal` light has.
+    let clip = shadow.cascades[0].view_projection.project_point(point)?;
     Some([clip[0] * 0.5 + 0.5, clip[1] * -0.5 + 0.5])
 }
 
@@ -100,8 +101,12 @@ fn a_light_with_shadows_on_fits_one() {
         shadow.resolution,
         DirectionalLight::default().shadow_resolution
     );
+    assert_eq!(
+        shadow.count, 1,
+        "Orthogonal is one map — cascades are what the other mode is for"
+    );
     assert!(
-        shadow.bias > 0.0,
+        shadow.cascades[0].bias > 0.0,
         "some bias, or every lit surface gets acne"
     );
 }
@@ -318,4 +323,98 @@ fn only_one_light_casts_a_shadow() {
         .filter(|light| light.shadow.is_some())
         .count();
     assert_eq!(casting, 1, "two lights asked; exactly one should cast");
+}
+
+#[test]
+fn a_cascaded_light_fits_four_boxes_that_grow_outward() {
+    // The mode existing end to end, which the `cascade_radii` tests above cannot show: they check
+    // the split arithmetic in isolation, and this checks that asking for cascades in a component
+    // actually produces four fitted boxes on the frame a backend receives.
+    let mut world = sunlit_world([0.0, 2.0, 0.0], ShadowMode::Cascaded { blend: 0.5 });
+    let frame = frame(&mut world);
+    let shadow = frame.primary().expect("one view").lights[0]
+        .shadow
+        .expect("a fitted shadow");
+
+    assert_eq!(shadow.count, amadeo_render::CASCADE_COUNT);
+    for index in 1..shadow.count {
+        assert!(
+            shadow.cascades[index].far > shadow.cascades[index - 1].far,
+            "cascade {index} must reach further than the one before it, got {:?}",
+            shadow.cascades.map(|c| c.far)
+        );
+    }
+    assert!(
+        (shadow.cascades[shadow.count - 1].far - DirectionalLight::default().shadow_distance).abs()
+            < 0.01,
+        "the last cascade must reach exactly the light's shadow distance"
+    );
+}
+
+#[test]
+fn a_near_cascade_gets_a_larger_bias_than_a_far_one() {
+    // **The trap the plan named**, and the one that is invisible until a scene is big: a bias is
+    // expressed in the light's *clip* depth, which spans that cascade's own box. A near cascade
+    // covering ten metres and a far one covering seventy turn the same authored world-unit offset
+    // into very different clip-space numbers.
+    //
+    // Sharing one bias across all four therefore means picking which end to break — too little for
+    // the far cascades, which stipple themselves dark with acne, or too much for the near one, which
+    // detaches shadows from the things casting them. The per-cascade division in `fit_cascade` is
+    // what avoids the choice, and this is what says it is happening.
+    let mut world = sunlit_world([0.0, 2.0, 0.0], ShadowMode::Cascaded { blend: 0.5 });
+    let frame = frame(&mut world);
+    let shadow = frame.primary().expect("one view").lights[0]
+        .shadow
+        .expect("a fitted shadow");
+
+    for index in 1..shadow.count {
+        assert!(
+            shadow.cascades[index].bias < shadow.cascades[index - 1].bias,
+            "cascade {index} covers more depth than the one before it, so the same authored offset \
+             must come out as a smaller share of its clip range — got {:?}",
+            shadow.cascades.map(|c| c.bias)
+        );
+    }
+}
+
+#[test]
+fn every_mode_agrees_about_how_many_maps_it_needs() {
+    // One place decides this, so a texture's layer count, the number of shadow passes and the
+    // shader's loop bound cannot disagree. Duplicating the match is exactly how those three drift.
+    assert_eq!(ShadowMode::Off.map_count(), 0);
+    assert_eq!(ShadowMode::Orthogonal.map_count(), 1);
+    assert_eq!(
+        ShadowMode::Cascaded { blend: 0.5 }.map_count(),
+        amadeo_render::CASCADE_COUNT
+    );
+}
+
+#[test]
+fn cascades_make_the_near_shadow_map_far_finer_than_a_single_one() {
+    // **The actual reason cascades exist**, stated as a number rather than as "edges look better".
+    //
+    // A shadow-map texel covers `2 × radius / resolution` world units. One map over the Scarp's
+    // 70-metre box at 2048 pixels gives about seven centimetres of ground per texel, which is what
+    // makes its edges visibly blocky. The near cascade covers a fraction of that distance at the
+    // same resolution, so its texels are proportionally smaller — and near the camera is exactly
+    // where shadow edges are looked at.
+    //
+    // Asserting a ratio rather than an absolute size, so this stays true if the resolution or the
+    // distance is retuned. What it is really pinning is that the near cascade is *meaningfully*
+    // tighter: a split scheme that produced four nearly-equal radii would satisfy
+    // `cascade_radii_grow_and_end_exactly_at_the_shadow_distance` and buy almost nothing.
+    let distance = 70.0;
+    let radii = amadeo_render::cascade_radii(distance, 0.5);
+
+    let single_texel = 2.0 * distance;
+    let near_texel = 2.0 * radii[0];
+
+    assert!(
+        near_texel * 4.0 < single_texel,
+        "the near cascade should give at least four times the resolution of one map over the whole \
+         distance — {distance} against a near radius of {}, which is only {:.1}x",
+        radii[0],
+        single_texel / near_texel
+    );
 }

@@ -12,23 +12,9 @@
 // wrong picture with two candidate causes. RenderBackend isolates this file completely, so upgrading
 // it to PBR later is the cheap change four ADRs have found it to be.
 
-struct MeshView {
-    // World to clip space: the camera's inverse transform, then its projection.
-    view_projection: mat4x4<f32>,
-    // World to the *light's* clip space, for looking up the shadow map (ADR 0038).
-    light_view_projection: mat4x4<f32>,
-    // xyz = the direction light travels, normalised. w unused.
-    light_direction: vec4<f32>,
-    // rgb = light colour with intensity already folded in. a unused.
-    light_colour: vec4<f32>,
-    // x = depth bias, y = one shadow-map texel in UV, z = 1 when a real shadow map is bound.
-    shadow_params: vec4<f32>,
-    // xyz = the camera's world position. Needed only since PBR: diffuse light looks the same from
-    // everywhere, but a specular highlight is a reflection and moves with the viewer.
-    eye: vec4<f32>,
-};
-
-@group(0) @binding(0) var<uniform> view: MeshView;
+// `MeshView` and `view` come from `view.wgsl`, which is prepended to this file at pipeline
+// creation. One declaration, shared with the sky pipeline, because the two read the same buffer at
+// the same binding and hand-written copies of it drifted apart once already.
 
 // The shadow map, and a sampler that *compares* rather than returning a value.
 //
@@ -39,7 +25,10 @@ struct MeshView {
 //
 // Always bound, even with shadows off — a 1×1 placeholder stands in, so there is one pipeline rather
 // than two. `shadow_params.z` is what tells the difference.
-@group(1) @binding(0) var shadow_map: texture_depth_2d;
+// **An array, always** — one layer for `Orthogonal`, four for `Cascaded` (ADR 0055). Declaring it
+// as an array unconditionally is what keeps this to one pipeline: a `texture_depth_2d` and a
+// `texture_depth_2d_array` are different binding types, so supporting both would mean two shaders.
+@group(1) @binding(0) var shadow_map: texture_depth_2d_array;
 @group(1) @binding(1) var shadow_sampler: sampler_comparison;
 
 // The material's base colour texture, multiplied into `base_colour` (ADR 0033).
@@ -105,13 +94,39 @@ fn environment_brdf(n_dot_v: f32, roughness: f32) -> vec2<f32> {
     return vec2<f32>(-1.04, 1.04) * a004 + vec2<f32>(r.z, r.w);
 }
 
+// Which cascade covers a point this far from the camera — ADR 0055.
+//
+// The nearest one whose reach exceeds the distance. Cascades are concentric rings around the camera
+// and `cascade_far` is ascending, so the first match is the tightest map that covers the point,
+// which is the sharpest available.
+//
+// Returns the last cascade for anything beyond them all. That is deliberate rather than a fallback:
+// a fragment past the final cascade is also past `shadow_distance`, so its lookup lands outside the
+// map's box and `shadow_factor` returns "lit" from the bounds check below.
+fn cascade_for(distance: f32) -> i32 {
+    let count = i32(view.shadow_params.z);
+    for (var index = 0; index < count; index = index + 1) {
+        if distance <= view.cascade_far[index] {
+            return index;
+        }
+    }
+    return max(count - 1, 0);
+}
+
 // How much light reaches this point: 1.0 in full light, 0.0 fully shadowed.
 fn shadow_factor(world: vec3<f32>, lambert: f32) -> f32 {
-    if view.shadow_params.z < 0.5 {
+    if view.shadow_params.y < 0.5 {
         return 1.0;
     }
 
-    let light_clip = view.light_view_projection * vec4<f32>(world, 1.0);
+    // **Radial distance from the camera, not view-space depth.** The cascades are concentric boxes
+    // around the eye rather than slices of the view frustum, so the thing that decides which one
+    // covers a point is how far away it is, full stop. Using depth along the view axis would put a
+    // point off to the side into a cascade that does not reach it.
+    let distance = length(world - view.eye.xyz);
+    let cascade = cascade_for(distance);
+
+    let light_clip = view.light_view_projection[cascade] * vec4<f32>(world, 1.0);
     // The light's projection is orthographic, so w is always 1 and there is no perspective divide to
     // do. Dividing anyway would be harmless and would also imply this works for a spot light, which
     // it does not yet.
@@ -131,19 +146,29 @@ fn shadow_factor(world: vec3<f32>, lambert: f32) -> f32 {
     // shadow-map texel than one facing it square, so it needs proportionally more offset. Using one
     // flat bias for both is what forces the choice between acne on slopes and peter-panning on flat
     // ground -- this needs neither.
+    //
+    // **The base bias is this cascade's own**, which is what stops the far cascades acneing: they
+    // span far more depth per texel, and a bias tuned for the near map is a fraction of what they
+    // need.
     let slope = clamp(1.0 - lambert, 0.0, 1.0);
-    let bias = view.shadow_params.x * (1.0 + slope * 3.0);
+    let bias = view.cascade_bias[cascade] * (1.0 + slope * 3.0);
     let reference = projected.z - bias;
 
     // Three by three comparisons rather than one, each already hardware-filtered across four texels.
     // One sample gives a stair-stepped edge that follows the shadow map's pixels rather than the
     // geometry; this softens it to something that reads as a shadow.
-    let texel = view.shadow_params.y;
+    let texel = view.shadow_params.x;
     var total = 0.0;
     for (var y = -1; y <= 1; y = y + 1) {
         for (var x = -1; x <= 1; x = x + 1) {
             let offset = vec2<f32>(f32(x), f32(y)) * texel;
-            total = total + textureSampleCompare(shadow_map, shadow_sampler, uv + offset, reference);
+            total = total + textureSampleCompare(
+                shadow_map,
+                shadow_sampler,
+                uv + offset,
+                cascade,
+                reference,
+            );
         }
     }
     return total / 9.0;

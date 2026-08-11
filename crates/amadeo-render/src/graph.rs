@@ -105,7 +105,22 @@ pub(crate) enum TargetFormat {
     ///   then be missing the usage it needs.
     ///
     /// The same argument the enum's own doc makes: the tag is the load-bearing part.
-    ShadowMap32,
+    ///
+    /// # Always an array, and the layer count is part of the format
+    ///
+    /// Cascades (ADR 0055) need four maps and one map is still right for an interior, so the layer
+    /// count varies. It sits **inside the variant** rather than beside it because that is exactly
+    /// what makes `assign_transients` do the right thing for free: two transients differing in it
+    /// must never share a physical texture, and the pool already matches on the whole format.
+    ///
+    /// A one-layer array rather than a plain 2D texture when there is one cascade, so the mesh
+    /// shader always declares `texture_depth_2d_array` and there is **one** pipeline rather than a
+    /// cascaded one and a single-map one that can drift apart. Same argument as the white 1×1
+    /// placeholder for an untextured material.
+    ShadowMap32 {
+        /// How many cascades, from one to [`CASCADE_COUNT`](crate::CASCADE_COUNT).
+        layers: u32,
+    },
     /// The scene depth buffer: how far away each pixel is, so nearer geometry hides further
     /// geometry. **Multisampled**, to match the anti-aliased colour target (ADR 0051).
     ///
@@ -181,6 +196,14 @@ pub(crate) enum PassKind {
     Shadow {
         /// Which view's light this belongs to, indexing [`FrameData::views`](crate::FrameData).
         view: usize,
+        /// Which cascade, indexing `ShadowData::cascades` and the layer of the target it draws into.
+        ///
+        /// **One pass per cascade**, rather than one pass drawing four layers. A render pass in wgpu
+        /// attaches exactly one texture view, and a layer of an array is its own view — so four
+        /// layers is four passes by construction rather than by choice. It also means the profiler
+        /// reports each cascade separately, which is what makes "the far cascade is the expensive
+        /// one" something you can read rather than guess.
+        cascade: usize,
     },
     /// Put a finished image onto the destination.
     ///
@@ -651,16 +674,29 @@ pub(crate) fn frame_graph(frame: &crate::FrameData, width: u32, height: u32) -> 
                     &shadow_name,
                     shadow.resolution,
                     shadow.resolution,
-                    TargetFormat::ShadowMap32,
+                    TargetFormat::ShadowMap32 {
+                        // Only as many layers as this light actually uses, so an interior with one
+                        // map does not allocate three it never samples.
+                        layers: shadow.count.max(1) as u32,
+                    },
                 );
-                // Written by the shadow pass and read by the view pass, which is what puts them in
+                // Written by the shadow passes and read by the view pass, which is what puts them in
                 // that order -- the dependency is declared rather than the order being asserted.
-                graph.pass(
-                    &format!("shadow {index}"),
-                    PassKind::Shadow { view: index },
-                    &[],
-                    &[shadow_name.as_str()],
-                );
+                //
+                // **Every cascade writes the same transient**, which is what makes them all land
+                // before the view pass without any of them being ordered against each other. They
+                // are independent: each draws into its own layer.
+                for cascade in 0..shadow.count.max(1) {
+                    graph.pass(
+                        &format!("shadow {index}.{cascade}"),
+                        PassKind::Shadow {
+                            view: index,
+                            cascade,
+                        },
+                        &[],
+                        &[shadow_name.as_str()],
+                    );
+                }
             }
 
             // Reading the shadow map is what orders this pass after the one that draws it.
@@ -1083,17 +1119,26 @@ mod tests {
         let plan = graph.compile().expect("a frame graph is always valid");
         assert_eq!(plan.destination_source(), Some(OUTPUT));
     }
+    /// A single-cascade shadow at a given resolution — what `Orthogonal` produces.
+    fn one_cascade(resolution: u32) -> crate::ShadowData {
+        crate::ShadowData {
+            cascades: [crate::ShadowCascade {
+                view_projection: amadeo_transform::Mat4::IDENTITY,
+                far: 50.0,
+                bias: 0.001,
+            }; crate::CASCADE_COUNT],
+            count: 1,
+            resolution,
+        }
+    }
+
     /// A 3D frame whose light casts a shadow.
     fn frame_with_a_shadow() -> FrameData {
         let mut frame = frame_in_3d();
         frame.views[0].lights = vec![crate::LightData {
             direction: [0.0, -1.0, 0.0],
             colour: [1.0, 1.0, 1.0],
-            shadow: Some(crate::ShadowData {
-                view_projection: amadeo_transform::Mat4::IDENTITY,
-                resolution: 512,
-                bias: 0.001,
-            }),
+            shadow: Some(one_cascade(512)),
         }];
         frame
     }
@@ -1109,7 +1154,7 @@ mod tests {
             graph
                 .transients()
                 .iter()
-                .all(|t| t.format != TargetFormat::ShadowMap32)
+                .all(|t| !matches!(t.format, TargetFormat::ShadowMap32 { .. }))
         );
         assert!(
             graph
@@ -1127,7 +1172,7 @@ mod tests {
         let map = graph
             .transients()
             .iter()
-            .find(|t| t.format == TargetFormat::ShadowMap32)
+            .find(|t| matches!(t.format, TargetFormat::ShadowMap32 { .. }))
             .expect("a casting light needs somewhere to put its depths");
         // Square, and at the light's resolution rather than the window's -- a shadow map is not a
         // full-screen image and sizing it like one would tie shadow quality to window size.
@@ -1166,11 +1211,7 @@ mod tests {
         // is what prevents it -- `assign_transients` matches on (width, height, format).
         let mut frame = frame_with_a_shadow();
         // Force the awkward case: a shadow map exactly the size of the window's depth buffer.
-        frame.views[0].lights[0].shadow = Some(crate::ShadowData {
-            view_projection: amadeo_transform::Mat4::IDENTITY,
-            resolution: 64,
-            bias: 0.001,
-        });
+        frame.views[0].lights[0].shadow = Some(one_cascade(64));
         let graph = frame_graph(&frame, 64, 64);
 
         let depth = graph
@@ -1181,7 +1222,7 @@ mod tests {
         let map = graph
             .transients()
             .iter()
-            .find(|t| t.format == TargetFormat::ShadowMap32)
+            .find(|t| matches!(t.format, TargetFormat::ShadowMap32 { .. }))
             .expect("declared");
 
         assert_eq!((depth.width, depth.height), (map.width, map.height));

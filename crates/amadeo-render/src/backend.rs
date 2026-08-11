@@ -189,15 +189,44 @@ pub struct LightData {
 /// with no GPU.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ShadowData {
-    /// World space to the light's clip space: what the shadow pass draws with, and what the mesh
-    /// pass transforms each pixel by to look its depth up.
-    pub view_projection: amadeo_transform::Mat4,
-    /// How many pixels across the shadow map is.
-    pub resolution: u32,
-    /// How far to push a depth comparison away from the surface, in the light's clip depth.
+    /// The cascades, **nearest first**. Only the first [`ShadowData::count`] are meaningful.
     ///
-    /// Already converted out of world units by dividing through the depth range the light's
+    /// A fixed array rather than a `Vec` because [`CASCADE_COUNT`](crate::CASCADE_COUNT) is fixed,
+    /// and because keeping this `Copy` is what lets a backend hold one without a lifetime.
+    pub cascades: [ShadowCascade; crate::CASCADE_COUNT],
+    /// How many of [`ShadowData::cascades`] are used: `1` for
+    /// [`ShadowMode::Orthogonal`](crate::ShadowMode::Orthogonal), otherwise
+    /// [`CASCADE_COUNT`](crate::CASCADE_COUNT).
+    ///
+    /// **A count rather than always four**, so an interior pays for one map and one pass. M3's exit
+    /// gate is indoor and would otherwise allocate three shadow maps it never samples.
+    pub count: usize,
+    /// How many pixels across each shadow map is. Shared: every cascade is a layer of one texture.
+    pub resolution: u32,
+}
+
+/// One cascade: where it looks from, how far it reaches, and how much to nudge its comparison.
+///
+/// Split out of [`ShadowData`] because the three of these vary per cascade and the resolution does
+/// not — and because the bias genuinely has to. A bias tuned for the near map is far too small for
+/// the far one, which is what makes distant shadows acne up.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct ShadowCascade {
+    /// World space to this cascade's light clip space: what the shadow pass draws with, and what the
+    /// mesh pass transforms a pixel by to look its depth up.
+    pub view_projection: amadeo_transform::Mat4,
+    /// How far from the camera this cascade stops covering, in world units.
+    ///
+    /// What the mesh shader picks a cascade *by*: a fragment further from the camera than this falls
+    /// through to the next one. The last cascade's value is the light's `shadow_distance`.
+    pub far: f32,
+    /// How far to push a depth comparison away from the surface, in this cascade's clip depth.
+    ///
+    /// Already converted out of world units by dividing through the depth range this cascade's
     /// projection covers, because the shader compares clip depths and the author writes world ones.
+    /// **That division is per cascade, and it is what makes the bias scale** — a near cascade
+    /// spanning ten metres and a far one spanning seventy turn the same authored offset into very
+    /// different clip-space numbers, which is exactly right.
     pub bias: f32,
 }
 

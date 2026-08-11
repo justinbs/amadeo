@@ -6,22 +6,24 @@
 // of the pipeline from the clip position this vertex stage produces, so a fragment stage would have
 // nothing to return. Leaving it out is not an optimisation; it is what the pass is.
 //
-// # Why it shares MeshView with mesh.wgsl
+// # It used to share MeshView with mesh.wgsl, and cascades ended that
 //
-// The same uniform buffer at the same offset feeds both passes, so a view's light matrix is written
-// once per frame rather than twice into two buffers that could disagree. This stage reads
-// `light_view_projection` where the mesh stage reads `view_projection` — the same geometry, seen from
-// two places.
+// One buffer meant a view's light matrix was written once rather than into two places that could
+// disagree. But cascades (ADR 0055) made that matrix an *array* of four, and this pass draws exactly
+// one of them — so sharing would mean telling the pass which, which is a uniform of its own under
+// another name.
+//
+// The "cannot disagree" property is kept differently: the backend fills both buffers in one loop
+// from one `ShadowData`, so there is still a single source.
+//
+// One slot per (view, cascade), reached by dynamic offset.
 
-struct MeshView {
+struct ShadowView {
+    // World to this cascade's light clip space.
     view_projection: mat4x4<f32>,
-    light_view_projection: mat4x4<f32>,
-    light_direction: vec4<f32>,
-    light_colour: vec4<f32>,
-    shadow_params: vec4<f32>,
 };
 
-@group(0) @binding(0) var<uniform> view: MeshView;
+@group(0) @binding(0) var<uniform> view: ShadowView;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -49,5 +51,5 @@ fn vs_main(vertex: VertexInput, instance: InstanceInput) -> @builtin(position) v
         instance.model_2,
         instance.model_3,
     );
-    return view.light_view_projection * (model * vec4<f32>(vertex.position, 1.0));
+    return view.view_projection * (model * vec4<f32>(vertex.position, 1.0));
 }

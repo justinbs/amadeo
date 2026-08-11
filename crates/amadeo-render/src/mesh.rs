@@ -670,7 +670,9 @@ impl Component for GltfPart {}
 /// it is the field on an authored, hashed component that scene files carry. Getting that shape right
 /// once means cascades arrive as a new variant rather than as a change to every scene that has a sun
 /// in it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+// No `Eq`: `Cascaded` carries an `f32` and floats are not totally ordered. Nothing compared two of
+// these for equality outside tests, and a mode is matched on rather than compared.
+#[derive(Debug, Clone, Copy, PartialEq, Default, StableHash, Reflect)]
 pub enum ShadowMode {
     /// No shadows. Everything is lit purely by how it faces the light.
     ///
@@ -687,9 +689,52 @@ pub enum ShadowMode {
     ///
     /// Its limitation is inherent and worth stating plainly: one map stretched over a large outdoor
     /// scene gives every shadow-map pixel a lot of ground to cover, and edges go visibly blocky.
-    /// That is what cascades — splitting the camera's range into slices with a map each — exist to
-    /// fix, and where they will arrive as a third variant.
+    /// That is what [`ShadowMode::Cascaded`] fixes, and it stays here rather than being superseded:
+    /// an interior does not need cascades and one map is cheaper.
     Orthogonal,
+    /// Four shadow maps, each covering a ring further from the camera than the last.
+    ///
+    /// What outdoor scenes need. One map over a seventy-metre box gives a shadow-map pixel about
+    /// seven centimetres of ground and edges go visibly blocky; splitting the range means the near
+    /// cascade covers a few metres at the same resolution, which is where detail is actually looked
+    /// at.
+    ///
+    /// # The payload is the one number worth authoring
+    ///
+    /// Where the splits fall is a real trade and the right answer depends on the scene, so it is a
+    /// field. How *many* splits there are is [`CASCADE_COUNT`](crate::CASCADE_COUNT) and is not:
+    /// four is what nearly everything ships, and making it authored would mean a variable-length
+    /// texture array and a variable shader loop bound to buy flexibility nothing has asked for.
+    ///
+    /// **A payload on the variant rather than a field on [`DirectionalLight`]**, which ADR 0032's
+    /// enum payloads make spellable in a scene file. That is deliberate and it sidesteps **Q32**:
+    /// a light that does not opt into cascades does not change at all, so no existing `.scene` is
+    /// invalidated by this feature.
+    Cascaded {
+        /// How the four splits are spaced, from `0.0` to `1.0`.
+        ///
+        /// Conventionally called lambda. `0.0` spaces them **evenly by distance**, which starves the
+        /// near cascade where detail is looked at; `1.0` spaces them **evenly by ratio**, which
+        /// matches how perspective compresses distance and spends so little on the far cascade that
+        /// it covers almost nothing. Around `0.5` is the usual choice and mixes the two — see
+        /// [`cascade_radii`](crate::cascade_radii).
+        blend: f32,
+    },
+}
+
+impl ShadowMode {
+    /// How many shadow maps this mode needs: none, one, or [`CASCADE_COUNT`](crate::CASCADE_COUNT).
+    ///
+    /// Exists so nothing downstream has to match on the variant to size a texture or count passes,
+    /// which is the sort of duplicated `match` that ends up disagreeing with itself.
+    #[must_use]
+    pub fn map_count(self) -> usize {
+        match self {
+            ShadowMode::Off => 0,
+            ShadowMode::Orthogonal => 1,
+            ShadowMode::Cascaded { .. } => crate::CASCADE_COUNT,
+        }
+    }
 }
 
 /// A light shining from a direction rather than from a place — the sun, or the moon.

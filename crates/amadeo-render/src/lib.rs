@@ -55,7 +55,7 @@ mod textures;
 
 pub use backend::{
     FrameData, LightData, MeshInstance, NullBackend, QuadInstance, RenderBackend, RenderError,
-    ShadowData, SpriteBatch, SpriteInstance, View,
+    ShadowCascade, ShadowData, SpriteBatch, SpriteInstance, View,
 };
 pub use components::{Camera, Projection, Quad, SortOrder, Sprite};
 pub use describe::{
@@ -542,10 +542,29 @@ fn fit_shadow(
     direction: [f32; 3],
     camera: [f32; 3],
 ) -> Option<ShadowData> {
-    if light.shadows == ShadowMode::Off {
+    let count = light.shadows.map_count();
+    if count == 0 {
         return None;
     }
-    fit_cascade(light, direction, camera, light.shadow_distance)
+
+    // One radius per cascade. `Orthogonal` is the degenerate case of the same arithmetic — a single
+    // cascade covering the whole distance — rather than a separate path, so the two modes cannot
+    // fit their boxes differently.
+    let radii = match light.shadows {
+        ShadowMode::Cascaded { blend } => cascade_radii(light.shadow_distance, blend),
+        _ => [light.shadow_distance; CASCADE_COUNT],
+    };
+
+    let mut cascades = [ShadowCascade::default(); CASCADE_COUNT];
+    for index in 0..count {
+        cascades[index] = fit_cascade(light, direction, camera, radii[index])?;
+    }
+
+    Some(ShadowData {
+        cascades,
+        count,
+        resolution: light.shadow_resolution.clamp(16, 8192),
+    })
 }
 
 /// How many shadow maps a cascaded light uses.
@@ -620,7 +639,7 @@ fn fit_cascade(
     direction: [f32; 3],
     camera: [f32; 3],
     radius: f32,
-) -> Option<ShadowData> {
+) -> Option<ShadowCascade> {
     let half = radius.max(0.1);
     let resolution = light.shadow_resolution.clamp(16, 8192);
 
@@ -651,12 +670,16 @@ fn fit_cascade(
 
     let projection = Mat4::orthographic(half, half, near, far);
 
-    Some(ShadowData {
+    Some(ShadowCascade {
         view_projection: projection.mul(&view),
-        resolution,
+        // What the shader selects by. The radius asked for, not the clamped `half`: a cascade
+        // reporting a shorter reach than it was given would leave a ring covered by nothing.
+        far: radius,
         // The author writes a world-unit offset because that is the unit everything else in the
         // scene is in; the shader compares clip depths, which span `far - near` world units across
-        // 0 to 1. Converting here means the field keeps its honest unit.
+        // 0 to 1. Converting here means the field keeps its honest unit — **and it is what makes the
+        // bias scale per cascade**, since a near cascade's depth range is a fraction of the far
+        // one's and the same authored offset becomes a proportionally larger clip-space nudge.
         bias: light.shadow_bias / (far - near).max(1e-6),
     })
 }
@@ -905,8 +928,13 @@ pub fn render_quads(world: &mut World) {
                         .iter()
                         .find_map(|light| light.shadow)
                         .map(|shadow| {
+                            // Culled to the **largest** cascade, which contains all the others — so
+                            // one caster list serves every shadow pass. Culling per cascade would be
+                            // tighter and would mean four lists and four culling passes to save
+                            // draws that each cascade's own projection already clips.
+                            let widest = shadow.cascades[shadow.count.saturating_sub(1)];
                             let box_of_light =
-                                Frustum::from_view_projection(&shadow.view_projection);
+                                Frustum::from_view_projection(&widest.view_projection);
                             visible_meshes(&meshes, &box_of_light)
                         })
                         .unwrap_or_default();

@@ -1176,3 +1176,64 @@ fn the_same_scene_without_shadows_is_evenly_lit() {
         "with shadows off, one flat floor should be evenly lit; centre {centre:?}, edge {edge:?}"
     );
 }
+
+#[test]
+fn a_cascaded_shadow_reaches_the_pixels_too() {
+    // **The GPU half of ADR 0055**, and the reason it needs its own test rather than trusting the
+    // Orthogonal one: cascades changed the shadow map from a plain texture to a texture *array*,
+    // the shadow pass from one to four, and the mesh shader from sampling one layer to selecting
+    // one. Every one of those can be wrong in a way that still compiles, binds and draws.
+    //
+    // The failure mode worth naming is the quiet one: a cascade selection that always picks layer
+    // zero looks perfect in a scene small enough to fit inside the near cascade, which is exactly
+    // what a unit-sized test scene is. So this asserts the same thing the single-map test does —
+    // the shadow is there — and the *arithmetic* differences between cascades are pinned headlessly
+    // in `shadows.rs`, where they can be checked rather than squinted at.
+    let mut world = a_floor_under_a_floating_box(ShadowMode::Cascaded { blend: 0.5 });
+
+    let Some(image) = capture(&mut world, 64, 64) else {
+        return;
+    };
+
+    let shadowed = pixel_at(&image, 32, 32);
+    let lit = pixel_at(&image, 10, 32);
+
+    assert!(
+        lit[0] > 60,
+        "the far floor should be lit by the sun, got {lit:?}"
+    );
+    assert!(
+        shadowed[0] + 20 < lit[0],
+        "the floor under the block should be clearly darker with cascades on as well; \
+         shadowed {shadowed:?}, lit {lit:?}"
+    );
+}
+
+#[test]
+fn the_sky_still_faces_the_right_way_with_cascades_on() {
+    // **The bug that cost this feature its first capture**, pinned so it cannot come back.
+    //
+    // `sky.wgsl` kept its own copy of the per-view uniform struct. Cascades turned one matrix in it
+    // into an array of four, and the copy was not updated — so the three vectors that turn a screen
+    // position into a world direction were read 192 bytes early. Nothing failed to compile and
+    // nothing failed validation: the sky was simply drawn facing somewhere else, which showed as a
+    // vast dark wedge across the horizon.
+    //
+    // Both shaders now share one declaration (`view.wgsl`). This checks the property that broke:
+    // with the camera level, the top of the frame is sky and the sky above the horizon is *bright*.
+    // A misread direction sends it somewhere dark, which is what made the bug visible in the first
+    // place.
+    let mut world = a_floor_under_a_floating_box(ShadowMode::Cascaded { blend: 0.5 });
+
+    let Some(image) = capture(&mut world, 64, 64) else {
+        return;
+    };
+
+    // Well above the horizon, where nothing but sky can be.
+    let sky = pixel_at(&image, 32, 2);
+    assert!(
+        sky[2] > 40,
+        "the sky above the horizon should be visibly blue; got {sky:?}. A dark value here is the \
+         sky shader reading its direction vectors from the wrong offset — see view.wgsl"
+    );
+}

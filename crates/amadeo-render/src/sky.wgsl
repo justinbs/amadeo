@@ -17,21 +17,11 @@
 // edge for the rasteriser to process twice — the same reason `quad.wgsl` derives its corners rather
 // than reading them.
 
-struct MeshView {
-    view_projection: mat4x4<f32>,
-    light_view_projection: mat4x4<f32>,
-    light_direction: vec4<f32>,
-    light_colour: vec4<f32>,
-    shadow_params: vec4<f32>,
-    eye: vec4<f32>,
-    // Turn a screen position into a world direction. The first two already carry the field of view
-    // and the aspect ratio, so nothing here needs trigonometry.
-    sky_right: vec4<f32>,
-    sky_up: vec4<f32>,
-    sky_forward: vec4<f32>,
-};
-
-@group(0) @binding(0) var<uniform> view: MeshView;
+// `MeshView` and `view` come from `view.wgsl`, prepended at pipeline creation.
+//
+// **This file used to declare its own copy**, and that copy is what broke when cascades made
+// `light_view_projection` an array: every field after it, including the three vectors below, was
+// read from 192 bytes too early. Nothing failed — the sky was simply drawn facing the wrong way.
 
 // The environment, at group **1** rather than the mesh shader's group 3 — this pipeline declares
 // only the two groups it reads, because the sky has to draw for a camera with no meshes at all,

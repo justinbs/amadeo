@@ -105,23 +105,62 @@ struct GpuMeshInstance {
     surface: [f32; 4],
 }
 
+/// What one shadow pass needs: the one matrix it draws with.
+///
+/// # Why the shadow pass stopped sharing `GpuMeshView`
+///
+/// It used to read the mesh view's `light_view_projection`, which was a single matrix, and sharing
+/// meant a view's light matrix was written once rather than into two buffers that could disagree.
+/// Cascades made that matrix an *array* (ADR 0055), and a shadow pass draws exactly one of them — so
+/// sharing would need the pass to be told which, which is a uniform of its own by another name.
+///
+/// The "cannot disagree" property is kept a different way: both are filled in the same loop from the
+/// same [`ShadowData`](crate::ShadowData), so there is still one source.
+///
+/// Indexed by `view * CASCADE_COUNT + cascade`, which is why it is a dynamic offset like the mesh
+/// view rather than a uniform rewritten between passes.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct GpuShadowView {
+    /// World to this cascade's light clip space.
+    view_projection: [[f32; 4]; 4],
+}
+
 /// What one 3D view needs that is the same for every instance in it.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct GpuMeshView {
     view_projection: [[f32; 4]; 4],
-    /// World to the light's clip space (ADR 0038). Identity when nothing casts a shadow, which
-    /// costs a matrix multiply the shader then ignores — cheaper than a second pipeline variant.
-    light_view_projection: [[f32; 4]; 4],
+    /// World to each cascade's light clip space, nearest first (ADR 0038, ADR 0055).
+    ///
+    /// Always [`CASCADE_COUNT`](crate::CASCADE_COUNT) of them whatever the mode: an unused slot holds
+    /// the identity, which costs a matrix the shader never selects. `shadow_params.w` says how many
+    /// are real.
+    light_view_projection: [[[f32; 4]; 4]; crate::CASCADE_COUNT],
     light_direction: [f32; 4],
     light_colour: [f32; 4],
-    /// x = depth bias, y = one shadow-map texel in UV, z = 1 when a shadow map is bound and 0 when
-    /// the placeholder is, w unused.
+    /// x = one shadow-map texel in UV, y = 1 when a shadow map is bound and 0 when the placeholder
+    /// is, z = how many cascades are real, w unused.
     ///
-    /// `z` is what stops the placeholder being *sampled* as though it were real. It is a number
+    /// `y` is what stops the placeholder being *sampled* as though it were real. It is a number
     /// rather than a separate pipeline because a branch that every pixel takes the same way is
     /// nearly free on a GPU, where a second pipeline is a real state change.
+    ///
+    /// **The bias left this field when cascades landed**, because there is one per cascade now — see
+    /// `cascade_bias`.
     shadow_params: [f32; 4],
+    /// Where each cascade stops covering, as a distance from the camera. Nearest first.
+    ///
+    /// What the fragment stage selects a cascade *by*. A `vec4` rather than four floats because WGSL
+    /// pads a `f32` in a uniform to sixteen bytes anyway, so four of them cost exactly this.
+    cascade_far: [f32; 4],
+    /// Each cascade's depth bias, in its own clip space. Nearest first.
+    ///
+    /// **Per cascade rather than shared, and this is the one that bites.** A bias tuned for a near
+    /// cascade spanning ten metres is a quarter of what a far one spanning seventy needs, and too
+    /// little bias is shadow acne — a surface stippling itself dark. The conversion in `fit_cascade`
+    /// produces this for free by dividing through each cascade's own depth range.
+    cascade_bias: [f32; 4],
     /// The camera's world position, xyz. w unused.
     ///
     /// New with PBR (ADR 0048) and not needed before it: diffuse lighting looks the same from every
@@ -212,7 +251,7 @@ fn wgpu_format(format: TargetFormat) -> wgpu::TextureFormat {
         TargetFormat::Hdr16 => SCENE_FORMAT,
         // The same wgpu format as the scene depth buffer. What differs is the usage it is created
         // with and the layout it is bound through -- see `TargetFormat::ShadowMap32`.
-        TargetFormat::ShadowMap32 | TargetFormat::Depth32Ms => DEPTH_FORMAT,
+        TargetFormat::ShadowMap32 { .. } | TargetFormat::Depth32Ms => DEPTH_FORMAT,
     }
 }
 
@@ -313,6 +352,13 @@ struct PooledTexture {
     format: TargetFormat,
     texture: wgpu::Texture,
     view: wgpu::TextureView,
+    /// One view per array layer, for **attaching** rather than sampling. Empty unless this is a
+    /// shadow map.
+    ///
+    /// A render pass attaches exactly one texture view, and a layer of an array is its own view — so
+    /// four cascades means four of these and four passes (ADR 0055). Built here rather than per frame
+    /// for the same reason the bind group is: creating a view is a driver-side allocation.
+    layer_views: Vec<wgpu::TextureView>,
     /// Built once at creation so a later pass can sample it, for the same reason an uploaded
     /// texture's bind group is: creating one is a driver-side allocation.
     ///
@@ -880,6 +926,12 @@ pub struct WgpuBackend {
     mesh_view_stride: u64,
     mesh_view_capacity: usize,
     mesh_view_layout: wgpu::BindGroupLayout,
+    /// One aligned slot per (view, cascade), addressed by dynamic offset — ADR 0055.
+    shadow_view_buffer: wgpu::Buffer,
+    shadow_view_bind_group: wgpu::BindGroup,
+    shadow_view_stride: u64,
+    shadow_view_capacity: usize,
+    shadow_view_layout: wgpu::BindGroupLayout,
     /// Per-instance model matrices and material colours.
     mesh_instance_buffer: wgpu::Buffer,
     mesh_instance_capacity: usize,
@@ -1565,7 +1617,9 @@ impl WgpuBackend {
         // hide further geometry rather than whatever drew last winning.
         let mesh_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("amadeo mesh shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("mesh.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(
+                concat!(include_str!("view.wgsl"), include_str!("mesh.wgsl")).into(),
+            ),
         });
 
         let mesh_view_stride = {
@@ -1608,6 +1662,50 @@ impl WgpuBackend {
             }],
         });
 
+        // The shadow pass's own uniform: one matrix per (view, cascade). Mirrors the mesh view
+        // buffer above in every respect except size — see `GpuShadowView` for why it is separate.
+        let shadow_view_stride = {
+            let alignment = u64::from(device.limits().min_uniform_buffer_offset_alignment).max(1);
+            let size = size_of::<GpuShadowView>() as u64;
+            size.div_ceil(alignment) * alignment
+        };
+
+        let shadow_view_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("amadeo shadow view layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    // Vertex only: a shadow pass has no fragment stage at all.
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: true,
+                        min_binding_size: wgpu::BufferSize::new(size_of::<GpuShadowView>() as u64),
+                    },
+                    count: None,
+                }],
+            });
+
+        let shadow_view_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("amadeo shadow view uniforms"),
+            size: shadow_view_stride * (INITIAL_VIEW_CAPACITY * crate::CASCADE_COUNT) as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let shadow_view_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("amadeo shadow view bind group"),
+            layout: &shadow_view_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &shadow_view_buffer,
+                    offset: 0,
+                    size: wgpu::BufferSize::new(size_of::<GpuShadowView>() as u64),
+                }),
+            }],
+        });
+
         // --- Shadow maps (ADR 0038). ---
         //
         // A depth texture bound for *comparison*: the sampler is told what to compare against and
@@ -1622,7 +1720,10 @@ impl WgpuBackend {
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Depth,
-                        view_dimension: wgpu::TextureViewDimension::D2,
+                        // **An array, always** — one layer when there is one cascade (ADR 0055). One
+                        // declaration in the shader and one pipeline, rather than a cascaded variant
+                        // and a single-map variant that can drift apart.
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
                         multisampled: false,
                     },
                     count: None,
@@ -1675,8 +1776,14 @@ impl WgpuBackend {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         });
+        // Bound through the same array layout as a real shadow map, so the placeholder is a
+        // one-layer array rather than a plain 2D texture. wgpu infers `D2` here otherwise, and the
+        // bind group would fail at *creation* with a dimension mismatch.
         let shadow_placeholder_view =
-            shadow_placeholder.create_view(&wgpu::TextureViewDescriptor::default());
+            shadow_placeholder.create_view(&wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::D2Array),
+                ..Default::default()
+            });
         let shadow_placeholder_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("amadeo shadow placeholder bind group"),
             layout: &shadow_layout,
@@ -1770,7 +1877,7 @@ impl WgpuBackend {
         let shadow_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("amadeo shadow pipeline layout"),
-                bind_group_layouts: &[Some(&mesh_view_layout)],
+                bind_group_layouts: &[Some(&shadow_view_layout)],
                 immediate_size: 0,
             });
 
@@ -1953,7 +2060,12 @@ impl WgpuBackend {
         // groups is what this shader actually reads, so it is also what it declares.
         let sky_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("amadeo sky shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("sky.wgsl").into()),
+            // Prepended with the shared view declaration, exactly as the mesh shader is — the two
+            // read the same buffer at the same binding, and one declaration is what stops them
+            // disagreeing about its layout. See `view.wgsl` for the bug that caused.
+            source: wgpu::ShaderSource::Wgsl(
+                concat!(include_str!("view.wgsl"), include_str!("sky.wgsl")).into(),
+            ),
         });
         let sky_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("amadeo sky pipeline layout"),
@@ -2138,6 +2250,11 @@ impl WgpuBackend {
             mesh_view_stride,
             mesh_view_capacity: INITIAL_VIEW_CAPACITY,
             mesh_view_layout,
+            shadow_view_buffer,
+            shadow_view_bind_group,
+            shadow_view_stride,
+            shadow_view_capacity: INITIAL_VIEW_CAPACITY * crate::CASCADE_COUNT,
+            shadow_view_layout,
             mesh_instance_buffer,
             mesh_instance_capacity: INITIAL_INSTANCE_CAPACITY,
             post_pipeline,
@@ -2280,6 +2397,37 @@ impl WgpuBackend {
         self.mesh_view_capacity = capacity;
     }
 
+    /// The same doubling growth for the shadow pass's uniform, sized in (view, cascade) slots.
+    fn ensure_shadow_view_capacity(&mut self, needed: usize) {
+        if needed <= self.shadow_view_capacity {
+            return;
+        }
+        let mut capacity = self.shadow_view_capacity.max(1);
+        while capacity < needed {
+            capacity *= 2;
+        }
+
+        self.shadow_view_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("amadeo shadow view uniforms"),
+            size: self.shadow_view_stride * capacity as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.shadow_view_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("amadeo shadow view bind group"),
+            layout: &self.shadow_view_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &self.shadow_view_buffer,
+                    offset: 0,
+                    size: wgpu::BufferSize::new(size_of::<GpuShadowView>() as u64),
+                }),
+            }],
+        });
+        self.shadow_view_capacity = capacity;
+    }
+
     /// The same doubling growth for the mesh instance buffer.
     fn ensure_mesh_instance_capacity(&mut self, needed: usize) {
         if needed <= self.mesh_instance_capacity {
@@ -2314,7 +2462,7 @@ impl WgpuBackend {
         // buffer deliberately does without.
         let usage = match format {
             TargetFormat::Depth32Ms => wgpu::TextureUsages::RENDER_ATTACHMENT,
-            TargetFormat::ShadowMap32 => {
+            TargetFormat::ShadowMap32 { .. } => {
                 wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING
             }
             TargetFormat::Srgb8 | TargetFormat::Hdr16 => {
@@ -2324,12 +2472,18 @@ impl WgpuBackend {
             }
         };
 
+        // Only a shadow map has more than one, and it has one per cascade (ADR 0055).
+        let layers = match format {
+            TargetFormat::ShadowMap32 { layers } => layers.max(1),
+            _ => 1,
+        };
+
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("amadeo transient target"),
             size: wgpu::Extent3d {
                 width,
                 height,
-                depth_or_array_layers: 1,
+                depth_or_array_layers: layers,
             },
             mip_level_count: 1,
             sample_count: match format {
@@ -2341,7 +2495,35 @@ impl WgpuBackend {
             usage,
             view_formats: &[],
         });
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // A shadow map is *sampled* as an array — always, even with one layer, so the mesh shader
+        // has one declaration and the backend one pipeline. wgpu infers `D2` for a one-layer texture
+        // unless told otherwise, and a `texture_depth_2d_array` binding refuses a `D2` view at bind
+        // group creation, so this cannot be left to the default.
+        let view = texture.create_view(&wgpu::TextureViewDescriptor {
+            dimension: match format {
+                TargetFormat::ShadowMap32 { .. } => Some(wgpu::TextureViewDimension::D2Array),
+                _ => None,
+            },
+            ..Default::default()
+        });
+
+        // One view per layer, because a render pass attaches exactly one — so drawing four cascades
+        // is four passes into four views of one texture. Empty for everything else.
+        let layer_views = match format {
+            TargetFormat::ShadowMap32 { .. } => (0..layers)
+                .map(|layer| {
+                    texture.create_view(&wgpu::TextureViewDescriptor {
+                        label: Some("amadeo shadow cascade layer"),
+                        dimension: Some(wgpu::TextureViewDimension::D2),
+                        base_array_layer: layer,
+                        array_layer_count: Some(1),
+                        ..Default::default()
+                    })
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
         // Three cases, and each is a different answer to "how would a later pass sample this".
         // See `PooledTexture::bind_group`.
         let bind_group = match format {
@@ -2351,7 +2533,7 @@ impl WgpuBackend {
             // A shadow map is sampled through the *comparison* layout, not the colour one: its
             // sample type is `Depth`, and building a colour bind group against it fails at
             // creation rather than at draw.
-            TargetFormat::ShadowMap32 => {
+            TargetFormat::ShadowMap32 { .. } => {
                 Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some("amadeo shadow map bind group"),
                     layout: &self.shadow_layout,
@@ -2391,6 +2573,7 @@ impl WgpuBackend {
             format,
             texture,
             view,
+            layer_views,
             bind_group,
         }
     }
@@ -2408,16 +2591,30 @@ impl WgpuBackend {
         encoder: &mut wgpu::CommandEncoder,
         declared: &graph::Pass,
         assigned: &BTreeMap<String, usize>,
-        view_index: usize,
         draws: Option<&Vec<(&str, MaterialTextures, std::ops::Range<u32>)>>,
         timestamp_writes: Option<wgpu::RenderPassTimestampWrites<'_>>,
     ) {
+        // Read from the declaration rather than passed alongside it: the pass already says which
+        // view and which cascade it is, and handing those in as well would be two statements of one
+        // fact that a call site could get out of step.
+        let PassKind::Shadow {
+            view: view_index,
+            cascade,
+        } = declared.kind
+        else {
+            return;
+        };
+
         // The map it draws into is declared in `writes`, which is what orders this pass before the
         // view pass that reads it — but it is bound as depth, not as colour.
         let Some(pooled) = declared.writes.first().and_then(|name| assigned.get(name)) else {
             return;
         };
-        let map = &self.transients[*pooled].view;
+        // **This cascade's layer**, not the whole array: attaching the array view would fail, since
+        // a depth attachment must be a single 2D view (ADR 0055).
+        let Some(map) = self.transients[*pooled].layer_views.get(cascade) else {
+            return;
+        };
 
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(declared.label.as_str()),
@@ -2448,10 +2645,12 @@ impl WgpuBackend {
         }
 
         pass.set_pipeline(&self.shadow_pipeline);
+        // The slot for this (view, cascade), which is the flat index the upload above wrote to.
+        let slot = view_index * crate::CASCADE_COUNT + cascade;
         pass.set_bind_group(
             0,
-            &self.mesh_view_bind_group,
-            &[view_index as u32 * self.mesh_view_stride as u32],
+            &self.shadow_view_bind_group,
+            &[slot as u32 * self.shadow_view_stride as u32],
         );
         pass.set_vertex_buffer(1, self.mesh_instance_buffer.slice(..));
 
@@ -2990,6 +3189,11 @@ impl RenderBackend for WgpuBackend {
         // a queue write lands before the single submit, so writing per view would overwrite rather
         // than follow. `mesh_draws` records each view's slice and which mesh each run uses.
         let mut mesh_views: Vec<u8> = vec![0; self.mesh_view_stride as usize * frame.views.len()];
+        // One slot per (view, cascade), whether or not the view casts shadows — sized flat so the
+        // dynamic offset is plain arithmetic rather than a lookup. Unused slots stay zeroed and are
+        // never bound, because the graph declares no pass for them.
+        let mut shadow_views: Vec<u8> =
+            vec![0; self.shadow_view_stride as usize * frame.views.len() * crate::CASCADE_COUNT];
         let mut mesh_instances: Vec<GpuMeshInstance> = Vec::new();
         let mut mesh_draws: Vec<Vec<(&str, MaterialTextures, std::ops::Range<u32>)>> =
             Vec::with_capacity(frame.views.len());
@@ -3044,11 +3248,25 @@ impl RenderBackend for WgpuBackend {
             // is a fill light and whose second is the sun still gets its shadows.
             let shadow = view.lights.iter().find_map(|light| light.shadow);
 
+            // The cascades, unpacked into the flat arrays the uniform wants. An unused slot keeps
+            // the identity matrix and a `far` of zero, which the shader's selection never picks
+            // because it only looks at the first `count`.
+            let mut light_view_projection =
+                [amadeo_transform::Mat4::IDENTITY.columns; crate::CASCADE_COUNT];
+            let mut cascade_far = [0.0f32; crate::CASCADE_COUNT];
+            let mut cascade_bias = [0.0f32; crate::CASCADE_COUNT];
+            if let Some(shadow) = shadow {
+                for index in 0..shadow.count {
+                    let cascade = shadow.cascades[index];
+                    light_view_projection[index] = cascade.view_projection.columns;
+                    cascade_far[index] = cascade.far;
+                    cascade_bias[index] = cascade.bias;
+                }
+            }
+
             let uniform = GpuMeshView {
                 view_projection: view_projection.columns,
-                light_view_projection: shadow
-                    .map_or(amadeo_transform::Mat4::IDENTITY, |s| s.view_projection)
-                    .columns,
+                light_view_projection,
                 light_direction: [
                     light.direction[0],
                     light.direction[1],
@@ -3058,14 +3276,16 @@ impl RenderBackend for WgpuBackend {
                 light_colour: [light.colour[0], light.colour[1], light.colour[2], 0.0],
                 shadow_params: match shadow {
                     Some(shadow) => [
-                        shadow.bias,
                         1.0 / shadow.resolution.max(1) as f32,
                         // The flag the shader tests to tell a real shadow map from the placeholder.
                         1.0,
+                        shadow.count as f32,
                         0.0,
                     ],
                     None => [0.0, 0.0, 0.0, 0.0],
                 },
+                cascade_far,
+                cascade_bias,
                 // The camera's world position is the translation column of its world transform —
                 // column 3. Taken from `eye_matrix` rather than from `View::eye`, which is the 2D
                 // path's two numbers and has no height in it.
@@ -3086,6 +3306,20 @@ impl RenderBackend for WgpuBackend {
             let at = index * self.mesh_view_stride as usize;
             mesh_views[at..at + size_of::<GpuMeshView>()]
                 .copy_from_slice(bytemuck::bytes_of(&uniform));
+
+            // The shadow passes' matrices, filled from the same `shadow` this uniform just used —
+            // which is what keeps the two buffers agreeing without them being one buffer.
+            if let Some(shadow) = shadow {
+                for cascade in 0..shadow.count {
+                    let slot = index * crate::CASCADE_COUNT + cascade;
+                    let at = slot * self.shadow_view_stride as usize;
+                    let uniform = GpuShadowView {
+                        view_projection: shadow.cascades[cascade].view_projection.columns,
+                    };
+                    shadow_views[at..at + size_of::<GpuShadowView>()]
+                        .copy_from_slice(bytemuck::bytes_of(&uniform));
+                }
+            }
 
             // Consecutive instances sharing a mesh **and a texture** become one draw call. The
             // collection pass sorts by `SortOrder`, so this groups within an order rather than
@@ -3256,6 +3490,12 @@ impl RenderBackend for WgpuBackend {
                 .write_buffer(&self.mesh_view_buffer, 0, &mesh_views);
         }
 
+        self.ensure_shadow_view_capacity(frame.views.len() * crate::CASCADE_COUNT);
+        if !shadow_views.is_empty() {
+            self.queue
+                .write_buffer(&self.shadow_view_buffer, 0, &shadow_views);
+        }
+
         self.ensure_mesh_instance_capacity(mesh_instances.len());
         if !mesh_instances.is_empty() {
             self.queue.write_buffer(
@@ -3311,7 +3551,12 @@ impl RenderBackend for WgpuBackend {
             // rather than where an image does (ADR 0038). Handled before the colour path below
             // because that path would otherwise attach a depth texture as a colour target, which is
             // a validation error a long way from its cause.
-            if let PassKind::Shadow { view: view_index } = declared.kind {
+            // The cascade is read inside `run_shadow_pass`, from the same declaration; only the view
+            // is needed out here, to pick this view's list of casters.
+            if let PassKind::Shadow {
+                view: view_index, ..
+            } = declared.kind
+            {
                 // Timed like any other pass. It used to be skipped simply because it takes a
                 // different code path, and the omission showed: the per-pass breakdown summed to
                 // 27 µs of a 37 µs frame with nothing accounting for the difference. A profiler
@@ -3325,7 +3570,6 @@ impl RenderBackend for WgpuBackend {
                     &mut encoder,
                     declared,
                     &assigned,
-                    view_index,
                     shadow_draws.get(view_index),
                     writes,
                 );

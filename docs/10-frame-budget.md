@@ -194,6 +194,41 @@ exactly what this one is: the GPU spends more time waiting to be given the next 
 > The breakdown summed to 27 µs of a 37 µs frame with nothing accounting for the difference. A
 > profiler that silently loses a pass is worse than one that reports only a total.
 
+## What shadow cascades cost — measured in session 15
+
+Cascades (ADR 0055) draw the casters **four times** instead of once and add a selection to the mesh
+shader's fragment stage. Both halves are visible, and the same scene measured both ways is the only
+honest way to say how much:
+
+| Pass | `Orthogonal` | `Cascaded { blend 0.5 }` |
+|---|---:|---:|
+| `shadow 0.0` | 7.2 µs | 8.2 µs |
+| `shadow 0.1` | — | 5.1 µs |
+| `shadow 0.2` | — | 5.1 µs |
+| `shadow 0.3` | — | 5.1 µs |
+| `view 0` | 37.9 µs | 45.1 µs |
+| `post` | 3.9 µs | 3.9 µs |
+| `present` | 3.1 µs | 4.1 µs |
+| **Total** | **71.7 µs** | **113.7 µs** |
+
+**About 1.6× the GPU frame, and still 0.7% of a 60 Hz budget.** One sample each, on the machine above,
+at 640×360 — the numbers are quantised by the timestamp period and move by a microsecond or two
+between runs, so treat the shape rather than the digits as the result.
+
+Two things worth reading out of it. The three extra shadow passes cost **less** than the first one
+each, because they draw the same casters into smaller boxes and more of the geometry falls outside.
+And `view 0` grew by 7 µs, which is the fragment stage's cascade selection — a loop over at most four
+comparisons per pixel, and the price of the whole feature at the shading end.
+
+**What is bought for that**: the near cascade covers about a seventh of the distance at the same
+resolution, so a shadow-map texel near the camera is about **1 cm of ground rather than 7 cm**.
+`cascades_make_the_near_shadow_map_far_finer_than_a_single_one` pins that ratio.
+
+The measurement is also the first time the per-pass breakdown has earned its keep as a *design*
+check rather than a budget one: four separately-labelled shadow passes is what says the layers are
+being drawn independently, and a single pass reporting four times the cost would have meant the
+loop was in the wrong place.
+
 ## What these numbers are worth
 
 The target is small and the world is one material with no textures beyond a single ground image, so

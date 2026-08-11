@@ -267,9 +267,24 @@ crates/
                      back faces are always behind front faces — and the Scarp's capture is
                      byte-identical, which was checked rather than assumed.
                      **Shadows (ADR 0038)** are the first thing that *reads* a depth texture rather
-                     than only writing one. `ShadowMode` on `DirectionalLight` is an enum shipping
-                     `Off | Orthogonal`; cascades arrive as a third variant, which is why one map now
-                     is not a shortcut to undo. The box is centred on the camera and snapped to a
+                     than only writing one. `ShadowMode` on `DirectionalLight` ships
+                     `Off | Orthogonal | Cascaded { blend }` — **ADR 0055 filled the variant ADR 0038
+                     reserved**, which is that enum paying off: no `.scene` that did not opt in
+                     changed, so Q32 did not bite a fourth time. Four concentric cascades, drawn into
+                     four **layers of one depth array**; the layer count lives inside
+                     `TargetFormat::ShadowMap32` so the transient pool keeps a one-layer and a
+                     four-layer map apart for free. **A shadow map is ALWAYS an array**, one layer
+                     when `Orthogonal`, so there is one shader and one pipeline. One pass per
+                     cascade, because a render pass attaches one view. **The bias is per cascade and
+                     that is the trap** — it is in clip depth, so a near box and a far box turn the
+                     same authored offset into very different numbers; `fit_cascade` divides through
+                     each box's own range. Selection is by **radial distance**, since the boxes are
+                     concentric rather than frustum slices. Costs 71.7 -> 113.7 µs of GPU time on the
+                     Scarp and buys a near texel of ~1 cm against ~7 cm (docs/10).
+                     **`view.wgsl` is prepended to `mesh.wgsl` and `sky.wgsl`** and must stay that
+                     way: they read one buffer at one binding, and the hand-written copies drifted
+                     the moment cascades grew the struct -- the sky drew facing the wrong way and
+                     nothing failed. `GpuMeshView` in Rust is the one copy left. The box is centred on the camera and snapped to a
                      grid anchored at the **world origin** -- anchoring it on the camera is snapping
                      to something that moves, and shadow edges crawl. A shadow map is its own
                      `TargetFormat` variant, not a flag: it needs `TEXTURE_BINDING` and the scene
