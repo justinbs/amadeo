@@ -302,6 +302,14 @@ crates/
                      knows nothing about characters. It answers from an index `step` builds, so it
                      MUST be called after `step_physics` in the same tick -- asking first queries an
                      empty index and the shape passes through the level on tick 1 only.
+                     **`cast_shape` is the fourth (ADR 0054, closing Q34)**: sweep a shape along a
+                     line and report the first thing in the way, or `None` for clear. **A cast is not
+                     a move** -- it does not slide, so its answer is ON the line by construction,
+                     which is the guarantee `move_shape` cannot give. Borrowing the move to ask this
+                     question failed twice: a sideways slide counted as progress, and then a slide
+                     *along* the query direction counted as nearly all of it and put the follow
+                     camera under the terrain. Takes `&self`, because a cast is a question. Same
+                     after-`step` rule as `move_shape`.
                      **`insert_static_mesh` is the third (ADR 0043)**: a triangle mesh handed over
                      ONCE, by id, and held between steps -- because `Shape` is `Copy` and
                      `StableHash` and a world's worth of vertices is exactly what ADR 0042 refuses to
@@ -370,8 +378,9 @@ modules/             optional, genre-flavored. Core NEVER depends on these. Crea
                      everywhere. **Two sweeps, not one** — the second goes *upward* to the pivot,
                      because a cast that starts inside geometry has no reliable answer and the pivot
                      is inside the ceiling in any tunnel. The result is **projected onto the axis
-                     asked for**, because `move_shape` slides (Q34); measuring the distance travelled
-                     counts a slide as progress and the camera swings. Snap in, ease out.
+                     asked for**, because `move_shape` slides -- **superseded: both sweeps are now
+                     `cast_shape` (ADR 0054)**, so there is no slide to reinterpret and no projection
+                     left. Snap in, ease out.
                      **It is an ARM, and pitch is an angle around the pivot** — session 15, and the
                      thing it shipped without. A camera at a fixed `[0, height, distance]` that only
                      *rotates* when you tilt points at the ground below itself and loses whatever it

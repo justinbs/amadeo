@@ -88,6 +88,34 @@ the general lesson in `docs/07`; the short version is that a documented hazard i
 *"got 1.2 — the arm is being knocked down faster than it can ease out"* and *"tilting down must lift
 the camera above where it was (2.9999995 to 2.9999995)"*.
 
+### Then Justin played it again, and the third report closed Q34
+
+**"Pointing the camera upwards, the view always ends up showing the skybox."** With a screenshot: a
+dark mass filling the frame over a pale band. That is the camera **under the terrain**, looking at its
+unlit underside (ADR 0052) with sky past the edge — the third time this session a camera in the wrong
+place read as a rendering fault.
+
+**It was the projection workaround failing on its own terms**, and it is a good worked example.
+Session 14 fixed the camera's first flicker by projecting the swept travel onto the arm, because
+`move_shape` *slides* and a sideways slide was counting as progress. That correction cannot survive
+the case where the slide goes **along** the query direction: tilted up, the arm points down and back,
+it hits the ground, slides *backward*, and backward is 0.87 of the arm. Measured — the arm shortened
+from 7.0 to 6.86 for a shape that had gone nowhere, and the camera was placed 0.057 m **below** the
+surface where its own 0.35 m probe radius should have held it clear.
+
+**ADR 0054 gives `PhysicsBackend` its fourth operation, `cast_shape`, and closes Q34.** Sweep a shape
+along a line, get the fraction travelled, the position — *on the line by construction* — and the
+surface normal. `None` means clear. The camera uses it for both sweeps and has **no workarounds left**:
+the projection is gone, and `.ignoring()` is now a plain statement about which body the sweep starts
+inside rather than a dodge around an unstable answer.
+
+Same case after the fix: **0.371 m above the ground**, which is the probe radius plus the skin — the
+sphere resting exactly on the surface. Captured and looked at, and it is an ordinary low-angle
+third-person shot.
+
+> **The rule worth carrying: two corrections on one call means the question is wrong.** By the end
+> that sweep carried both a projection and an exclusion filter. The general form is in `docs/07`.
+
 **Next:** shadow cascades, still. Unchanged by this session and still planned in detail below.
 
 ## M2.5 is complete, and M3's renderer work is two items in
@@ -550,7 +578,7 @@ first real case*, which is the state this project deliberately keeps them in:
 |---|---|---|
 | ~~Q29~~ | — | **Closed in session 13 by ADR 0046.** Terrain edits are a hashed resource; the streamer is a cache of them, and a dug world saves and reloads dug |
 | **Q32** | **P1** | **Raised from P2 — it has now bitten five times in three sessions.** A field added to a component invalidates every file that spells it out, and the failure is silent: the file is skipped, the lookup comes back empty, and the error surfaces layers away as a *missing service*. The churn is not the problem; the reporting is |
-| **Q34** | P2 | No pure shape cast, only `move_shape`, which *slides*. **Session 15 strengthened the argument**: the camera's flicker was a second symptom of borrowing a character-move — a cast that starts inside something has an obvious answer for "how far until blocked" and none for "where does this character end up". The workaround now carries two corrections (project onto the axis, exclude the parent), which is the usual sign the borrowed operation is wrong |
+| ~~Q34~~ | — | **Closed in session 15 by ADR 0054.** `PhysicsBackend::cast_shape` — sweep a shape along a line, get the fraction, a position *on the line*, and the normal. Closed because the workaround produced a visible bug: two corrections on one call was the signal |
 | **Q31** | P2 | Nothing warns when a normal map's sidecar forgets `color_space = "linear"`. Silent, subtly wrong, and it becomes blocking the moment authored art ships |
 | ~~Q33~~ | — | **Closed in session 14.** `MeshData::flat_shade`, opted into per glTF part and per terrain |
 | ~~Q27~~ | — | **Closed in session 14.** The follow camera sweeps a sphere and pulls in; snaps inward, eases outward |

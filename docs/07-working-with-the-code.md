@@ -1216,6 +1216,38 @@ later and one crate away, did not. A missing filter is not a missing optimisatio
 > the wrong reason. It was passing *because of* the bug, and it broke when the bug was fixed. If a
 > test's forcing mechanism is "make the probe enormous", check what the probe is actually touching.
 
+### Moving a shape and casting a shape are different questions — ask the right one
+
+The engine has two ways to ask physics about a line through the world, and picking the wrong one is
+not a performance mistake, it is a correctness one.
+
+| | Asks | Answers by | Ends up |
+|---|---|---|---|
+| `move_shape` (ADR 0037) | *where does this body end up?* | **sliding** along what it hits | anywhere |
+| `cast_shape` (ADR 0054) | *how far along this line before something blocks it?* | stopping | **on the line** |
+
+If you want a distance, a clearance, a line of sight, or "can this fit here", you want `cast_shape`.
+If you are moving a character, you want `move_shape`. Both must be called **after** `step_physics` in
+the same tick, because both read an index the step builds and an empty index reports everything clear.
+
+> **A correction layered on a borrowed operation has its own failure mode**, and this is the worked
+> example. The follow camera asked the cast question with the move operation, and the slide made the
+> answer wrong. Projecting the travel onto the query axis fixed the case where the slide went
+> *sideways* — and could not fix the case where it went *along* the axis. Tilted up, the camera's arm
+> points down and back; it hit the ground, slid backward, and backward was 0.87 of the arm, so the
+> projection reported nearly a full arm of clearance for a shape that had gone nowhere. The camera
+> ended up 0.06 m under the terrain, where its own 0.35 m probe should have held it clear.
+>
+> By the end that one call carried two corrections — project onto the axis, and exclude the parent
+> body. **Two corrections on one call is the signal that the question is wrong**, not that a third is
+> needed.
+
+And the symptom is worth recognising, because it is the third time this session that a camera in the
+wrong place read as a rendering fault: **a dark mass filling the frame over a band of sky is the
+underside of the terrain.** Surfaces are two-sided since ADR 0052, and an underside faces away from
+the sky so it picks up almost no light. "I am seeing the skybox" and "I am under the ground" look the
+same from inside the frame.
+
 ### A third-person camera orbits its pivot; it does not sit at an offset and tilt
 
 The other half of the same report: *"pointing the camera downwards I end up looking at the ground,

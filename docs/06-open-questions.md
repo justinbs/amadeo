@@ -247,7 +247,27 @@ exit gate asked for anyway. It becomes blocking the first time a game needs a re
 
 ---
 
-## Q34 · P2 · There is no pure shape cast, only a sliding move
+## ~~Q34~~ · CLOSED in session 15 by ADR 0054 · There is no pure shape cast, only a sliding move
+
+**Raised in session 14, closed in session 15 when the workaround produced a visible bug.**
+
+`PhysicsBackend::cast_shape` exists: sweep a shape along a line, get back the fraction travelled, the
+position — **on the line, by construction** — and the surface normal. `None` means clear. The camera
+uses it for both sweeps and has no projection left.
+
+What closed it was the second failure of the workaround, and it is worth keeping because the shape
+recurs: **a correction layered on a borrowed operation has its own failure mode.** Projecting the
+travel onto the query axis fixed the case where a slide went sideways. It could not fix the case where
+the slide went *along* the axis — the camera tilted up has an arm pointing down and back, it slid
+backward along the ground, and backward was 0.87 of the arm, so the projection reported nearly full
+progress for a shape that had gone nowhere. The camera ended up under the terrain, and what you see
+from there is its unlit underside, which reads as sky.
+
+By the end the call carried two corrections. That is the signal.
+
+The original text follows.
+
+---
 
 **New in session 14, found by using the wrong one for a camera.**
 
