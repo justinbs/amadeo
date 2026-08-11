@@ -119,7 +119,46 @@ impl Default for FollowCamera {
 
 impl Component for FollowCamera {}
 
-/// Registers [`FollowCamera`] and both of its systems.
+/// Where the camera's arm actually is right now, as opposed to where [`FollowCamera`] wants it.
+///
+/// # Why this is a second component rather than another field
+///
+/// ADR 0037 split `CharacterController` from `CharacterMotion` on exactly this line, and the same
+/// line applies here: [`FollowCamera`] is **authored** and this module never writes it, while this is
+/// **written every tick** and a person authoring a scene has no business setting it. Folding the two
+/// together would produce a component half of whose fields are ignored on load.
+///
+/// # Why it cannot just be read back out of the `Transform`
+///
+/// The camera's local position is `pivot + arm × distance`, so recovering the distance means knowing
+/// where the pivot was — and the pivot *moves* when a ceiling stops the upward sweep short. Deriving
+/// it from this tick's pivot would give a wrong answer on exactly the ticks the smoothing exists to
+/// handle, which is the class of bug this rig has already shipped once.
+///
+/// Hashed, because it genuinely is simulation state: it must survive to the next tick, which is the
+/// test [`amadeo_ecs::Component::DERIVED`] states.
+#[derive(Debug, Clone, Copy, PartialEq, amadeo_core::StableHash, amadeo_reflect::Reflect)]
+pub struct CameraArm {
+    /// How far the camera currently is from its pivot, in world units.
+    ///
+    /// Eased toward [`FollowCamera::distance`] and cut short by whatever the sweep hits. Authored
+    /// once as a starting value — usually the same as `distance`, so a scene opens with the camera
+    /// already out rather than easing outward through the first second of play.
+    #[reflect(min = 0.0, max = 100.0, unit = "world units")]
+    pub distance: f32,
+}
+
+impl Default for CameraArm {
+    fn default() -> Self {
+        Self {
+            distance: FollowCamera::default().distance,
+        }
+    }
+}
+
+impl Component for CameraArm {}
+
+/// Registers [`FollowCamera`], [`CameraArm`], and both systems.
 ///
 /// # Ordering, and both constraints are load-bearing
 ///
@@ -132,11 +171,25 @@ impl Component for FollowCamera {}
 /// Systems with no declared constraint run in *alphabetical* order, so neither of these can be left
 /// to chance: `keep_camera_clear` sorts before `look_with_mouse`, which is the wrong way round.
 ///
+/// # And one ordering that is correct by luck rather than by declaration
+///
+/// Whatever moves the parent this tick must run *before* [`keep_camera_clear`], or the camera
+/// follows where the parent was last tick and lags visibly. In practice that is
+/// `amadeo_character::DRIVE_CHARACTERS`, which is also `.after(STEP_PHYSICS)` and which sorts
+/// alphabetically before this — so the schedule is right today and nothing states it.
+///
+/// It is **not** declared here, because this module deliberately does not depend on
+/// `amadeo-character` (trap 10: a camera rig must not assume a character exists). Naming the label as
+/// a bare string would couple them just as tightly while also compiling when it is wrong. So
+/// `the_camera_reads_the_parent_after_it_has_moved` in the Scarp's tests pins the resolved order
+/// instead, and a rename turns CI red rather than producing a camera that trails by one tick.
+///
 /// # Errors
 ///
-/// [`RegistryError`] if [`FollowCamera`] is already registered under a different type.
+/// [`RegistryError`] if either component is already registered under a different type.
 pub fn install(app: &mut App) -> Result<(), RegistryError> {
     app.register_component::<FollowCamera>()?;
+    app.register_component::<CameraArm>()?;
 
     app.add_system(
         Stage::Simulation,
@@ -205,16 +258,44 @@ pub fn look_with_mouse(world: &mut World) {
     }
 }
 
-/// Pulls each [`FollowCamera`] in until nothing is between it and what it follows.
+/// Swings each [`FollowCamera`] round its pivot to match its pitch, and pulls it in when something
+/// gets in the way.
+///
+/// # The camera orbits its pivot; it does not sit at a fixed offset and tilt
+///
+/// This is the difference between a third-person camera and a camera that happens to be behind
+/// something, and getting it wrong is what **Justin reported in session 15**: tilting down looked at
+/// the ground immediately below the camera and tilting up looked at the sky, with the player leaving
+/// the frame in both directions.
+///
+/// The cause was that the camera's position was the constant `[0, height, distance]` — pitch went
+/// into its *rotation* and reached its position nowhere. So the arm never moved. What a spring arm
+/// does instead (Unreal's `USpringArmComponent` and Cinemachine's orbital rigs both work this way) is
+/// treat pitch as an angle **around the pivot**: tilting down lifts the camera up and over so it
+/// looks down *at* the thing it follows, and tilting up drops it so it looks up past it. The camera
+/// stays framed at every angle, for free, because its forward direction is exactly the arm reversed.
 ///
 /// # Two sweeps, not one
 ///
-/// The obvious one goes backwards from the pivot to where the camera wants to be. The second goes
-/// **upward from the parent to the pivot**, and skipping it is a bug that only shows up indoors or
-/// underground: the pivot is a point some distance above the parent, and in a tunnel or a low
-/// corridor that point is inside the ceiling. A shape cast that *starts* embedded in geometry has no
-/// good answer — solvers differ on whether they report an immediate hit, no hit, or push out — so
-/// what comes back is arbitrary, and arbitrary per tick is a flicker.
+/// The obvious one goes backwards along the arm from the pivot to where the camera wants to be. The
+/// second goes **upward from the parent to the pivot**, and skipping it is a bug that only shows up
+/// indoors or underground: the pivot is a point some distance above the parent, and in a tunnel or a
+/// low corridor that point is inside the ceiling.
+///
+/// # Both sweeps ignore the thing being followed, and that was the flicker
+///
+/// A shape cast that *starts* embedded in geometry has no good answer, and the pivot sweep starts at
+/// the parent's own origin — which is the middle of the parent's own collider. Rapier reads that
+/// penetration as a surface too steep to stand on, reports `sliding_down_slope`, and cancels the
+/// motion entirely.
+///
+/// **It does so intermittently**, because whether the contact resolves that way depends on the exact
+/// penetration normal, which shifts as the parent moves. So the pivot collapsed to the parent's feet
+/// on roughly one tick in ten, the camera snapped to its minimum distance, eased back out at
+/// `return_speed`, and was knocked down again long before it arrived. That is
+/// *"any movement in any direction makes the camera flicker close or far"*, and it is one missing
+/// [`ShapeMove::ignoring`] — the same call `modules/amadeo-character` has always made, for the same
+/// reason, one crate away.
 ///
 /// # Why the result is projected rather than measured
 ///
@@ -226,15 +307,23 @@ pub fn look_with_mouse(world: &mut World) {
 /// was actually asked for.
 pub fn keep_camera_clear(world: &mut World) {
     // Collected before touching the physics service, because the query borrows the world and the
-    // sweeps need it mutably. The current distance comes along because the ease-out below needs it.
-    let cameras: Vec<(Entity, FollowCamera, Transform, f32)> = world
-        .query::<(&FollowCamera, &Parent, &Transform)>()
-        .filter_map(|(entity, (follow, parent, transform))| {
+    // sweeps need it mutably. Everything the loop reads comes along, including the parent's entity —
+    // the sweeps have to name it to exclude it.
+    let cameras: Vec<Rig> = world
+        .query::<(&FollowCamera, &CameraArm, &Parent, &Transform)>()
+        .filter_map(|(entity, (follow, arm, parent, transform))| {
             // The parent's own transform, which *is* its world transform: a follow camera's parent
             // is a root entity. Reading `GlobalTransform` would be a tick behind, because
             // propagation runs at the end of the tick.
             let parent_transform = world.get::<Transform>(parent.0)?;
-            Some((entity, *follow, *parent_transform, transform.translation[2]))
+            Some(Rig {
+                entity,
+                follow: *follow,
+                parent: *parent_transform,
+                parent_entity: parent.0,
+                distance: arm.distance,
+                pitch: transform.rotation[0],
+            })
         })
         .collect();
 
@@ -245,65 +334,132 @@ pub fn keep_camera_clear(world: &mut World) {
         return;
     };
 
-    let mut results: Vec<(Entity, [f32; 3])> = Vec::with_capacity(cameras.len());
-    for (entity, follow, parent, current) in cameras {
+    let mut results: Vec<(Entity, [f32; 3], f32)> = Vec::with_capacity(cameras.len());
+    for rig in cameras {
+        let follow = rig.follow;
         let sphere = Shape::Sphere {
             radius: follow.radius,
         };
         // Stepping and ground snapping are off throughout: a camera does not walk, and either would
-        // pull it somewhere the geometry did not ask for.
+        // pull it somewhere the geometry did not ask for. Ignoring the parent is what stops the
+        // sweep starting inside the followed body's own collider — see this function's docs.
         let sweep = |from: [f32; 3], motion: [f32; 3]| ShapeMove {
             step_height: 0.0,
             snap_distance: 0.0,
-            ..ShapeMove::new(sphere, from, motion)
+            ..ShapeMove::new(sphere, from, motion).ignoring(rig.parent_entity)
         };
 
-        // Upward first, so the pivot is in open air — see this function's docs.
+        // Upward first, so the pivot is in open air.
         let pivot = physics
-            .move_shape(&sweep(parent.translation, [0.0, follow.height, 0.0]))
+            .move_shape(&sweep(rig.parent.translation, [0.0, follow.height, 0.0]))
             .translation;
 
-        // The parent's axes in world space. Column two is its local +Z, and a camera looks along its
-        // own negative Z — so +Z is *behind* the thing being followed.
-        let basis = Mat4::from_transform(parent.translation, parent.rotation, [1.0, 1.0, 1.0]);
-        let back = [
-            basis.columns[2][0],
-            basis.columns[2][1],
-            basis.columns[2][2],
-        ];
-        let wanted = [
-            back[0] * follow.distance,
-            back[1] * follow.distance,
-            back[2] * follow.distance,
+        // The parent's axes in world space, as a pure rotation — scale is forced to one so the
+        // columns stay unit vectors and the dot products below are projections rather than
+        // projections-times-something.
+        let basis = Mat4::from_transform(rig.parent.translation, rig.parent.rotation, [1.0; 3]);
+        let up = column(&basis, 1);
+        let back = column(&basis, 2);
+
+        // **The arm, and this is the orbit.** Pitch rotates the arm about the parent's local +X, so
+        // it leans out of the horizontal plane instead of the camera merely tilting in place.
+        // Negative pitch is downward, and a downward look must raise the camera — hence `-sin`.
+        //
+        // Deterministic trigonometry (ADR 0053): this reaches the camera's `Transform`, which is
+        // hashed, and `f32::sin_cos` is not specified to give the same answer on two machines.
+        let (sin_pitch, cos_pitch) = amadeo_core::sin_cos_degrees(rig.pitch);
+        let arm = [
+            up[0] * -sin_pitch + back[0] * cos_pitch,
+            up[1] * -sin_pitch + back[1] * cos_pitch,
+            up[2] * -sin_pitch + back[2] * cos_pitch,
         ];
 
+        let wanted = [
+            arm[0] * follow.distance,
+            arm[1] * follow.distance,
+            arm[2] * follow.distance,
+        ];
         let landed = physics.move_shape(&sweep(pivot, wanted)).translation;
-        let delta = [
+        let travelled = [
             landed[0] - pivot[0],
             landed[1] - pivot[1],
             landed[2] - pivot[2],
         ];
-        let along = delta[0] * back[0] + delta[1] * back[1] + delta[2] * back[2];
+        let along = dot(travelled, arm);
         let target = along.clamp(follow.min_distance, follow.distance);
 
         // Snap in, drift out — see `FollowCamera::return_speed`.
-        let distance = if target < current {
+        let distance = if target < rig.distance {
             target
         } else {
-            (current + follow.return_speed * amadeo_core::FIXED_DT).min(target)
+            (rig.distance + follow.return_speed * amadeo_core::FIXED_DT).min(target)
         };
 
-        // The height the pivot *reached*, not the one it asked for. A ceiling stops it short, and
-        // using the requested height would put the camera back inside what the sweep just avoided.
-        results.push((entity, [0.0, pivot[1] - parent.translation[1], distance]));
+        // Back into the parent's frame, because the camera is a child and its `Transform` is a local
+        // one. The basis is a pure rotation, so its inverse is its transpose — which is what
+        // dotting the offset against each column comes to. Done properly rather than assuming the
+        // parent is upright: it *is* upright today, since only yaw is ever written to it, and an
+        // assumption that holds by coincidence is the kind this rig has already been bitten by.
+        let world_position = [
+            pivot[0] + arm[0] * distance,
+            pivot[1] + arm[1] * distance,
+            pivot[2] + arm[2] * distance,
+        ];
+        let offset = [
+            world_position[0] - rig.parent.translation[0],
+            world_position[1] - rig.parent.translation[1],
+            world_position[2] - rig.parent.translation[2],
+        ];
+        let local = [
+            dot(offset, column(&basis, 0)),
+            dot(offset, up),
+            dot(offset, back),
+        ];
+
+        results.push((rig.entity, local, distance));
     }
 
-    for (entity, translation) in results {
+    for (entity, translation, distance) in results {
         // Rotation and scale are the scene's and `look_with_mouse`'s to own — this only ever moves
-        // the camera along the axes it is allowed to move along.
+        // the camera, never aims it. The camera's forward is its own local −Z, which after pitching
+        // is exactly the arm reversed, so it already points at the pivot with nothing else to do.
         if let Some(mut transform) = world.get::<Transform>(entity).copied() {
             transform.translation = translation;
             world.insert(entity, transform);
         }
+        world.insert(entity, CameraArm { distance });
     }
+}
+
+/// One camera's inputs, gathered before the physics service is borrowed.
+///
+/// A named struct rather than a tuple because six positional fields at a `for` loop is where
+/// "the third one is the pitch, I think" starts costing debugging time.
+struct Rig {
+    /// The camera entity.
+    entity: Entity,
+    /// What it is asking for.
+    follow: FollowCamera,
+    /// The world transform of whatever it follows.
+    parent: Transform,
+    /// That parent's entity, so the sweeps can exclude its collider.
+    parent_entity: Entity,
+    /// The arm length carried over from last tick.
+    distance: f32,
+    /// The camera's tilt in degrees, negative downward.
+    pitch: f32,
+}
+
+/// One column of a matrix as a 3-vector, dropping the homogeneous row.
+fn column(matrix: &Mat4, index: usize) -> [f32; 3] {
+    [
+        matrix.columns[index][0],
+        matrix.columns[index][1],
+        matrix.columns[index][2],
+    ]
+}
+
+/// The dot product of two 3-vectors.
+fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
