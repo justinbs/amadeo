@@ -99,6 +99,68 @@ const CHUNK: ChunkShape = ChunkShape {
 /// converting is what makes the cell size free to change again.
 const DIG_RADIUS_METRES: f32 = 2.0;
 
+/// The label [`keep_camera_out_of_the_ground`] is registered under.
+pub const KEEP_CAMERA_OUT_OF_THE_GROUND: &str = "keep_camera_out_of_the_ground";
+
+/// A third-person camera that pulls in when something is between it and what it follows — **Q27**.
+///
+/// # The bug this exists to stop, which is worse than it sounds
+///
+/// A follow camera is a child entity sitting a fixed distance behind its parent (ADR 0031), and
+/// nothing stopped that spot being *inside the ground*. Walk into a dip, or dig down, and the camera
+/// ends up under the terrain.
+///
+/// What you then see is not "the inside of a hill". Surface nets meshes only the boundary between
+/// solid and air, so **solid rock contains no geometry at all** — and the boundary's faces point
+/// outward, so from underneath they are backface-culled and vanish. The camera looks straight
+/// through the world to the skybox. Reported as "digging down shows the sky", which is exactly what
+/// it looks like and not at all where the cause is.
+///
+/// # Why it lives in this game rather than in `modules/`
+///
+/// It is the second occupant that layer would want, and `games/atrium` has the same camera and the
+/// same problem. But the rule this project uses is the one `bin/turf` states: something lives in a
+/// game until a *second* game wants it, and that is the moment to promote rather than the moment to
+/// guess at an interface. The Atrium wanting this is what should move it — and moving a component
+/// and one system is a file move, where designing a camera-rig crate around one caller is not.
+///
+/// Trap 10 is the constraint to keep in mind when it does move: a camera rig must not assume a
+/// character exists. Nothing here does — it follows a `Parent`, whatever that parent is.
+#[derive(Debug, Clone, Copy, PartialEq, amadeo_core::StableHash, amadeo_reflect::Reflect)]
+pub struct FollowCamera {
+    /// How far above the parent's origin the camera pivots, in world units.
+    #[reflect(min = 0.0, max = 100.0, unit = "world units")]
+    pub height: f32,
+    /// How far behind the parent the camera sits when nothing is in the way.
+    #[reflect(min = 0.0, max = 100.0, unit = "world units")]
+    pub distance: f32,
+    /// How close it is allowed to come when something is.
+    ///
+    /// Never zero: a camera pulled all the way to the pivot sits inside the thing it is following,
+    /// which is its own kind of wrong.
+    #[reflect(min = 0.0, max = 100.0, unit = "world units")]
+    pub min_distance: f32,
+    /// The radius of the sphere swept to find obstructions.
+    ///
+    /// Larger than nothing on purpose: a zero-radius ray would slip through the gap between two
+    /// triangles at a chunk boundary and report open space where there is rock.
+    #[reflect(min = 0.0, max = 10.0, unit = "world units")]
+    pub radius: f32,
+}
+
+impl Default for FollowCamera {
+    fn default() -> Self {
+        Self {
+            height: 3.0,
+            distance: 7.0,
+            min_distance: 1.2,
+            radius: 0.35,
+        }
+    }
+}
+
+impl amadeo_ecs::Component for FollowCamera {}
+
 /// What a dug sample is set to.
 ///
 /// Positive is outside the surface (air), and a couple of cells' worth of it is solidly outside
@@ -234,6 +296,7 @@ pub fn build_with_workers(workers: usize) -> anyhow::Result<App> {
     app.register_component::<PlaneMesh>()?;
     app.register_component::<Material>()?;
     app.register_component::<Environment>()?;
+    app.register_component::<FollowCamera>()?;
 
     app.scan_assets(ASSET_DIRECTORY)?;
     app.insert_service(TextureCache::new());
@@ -280,6 +343,16 @@ pub fn build_with_workers(workers: usize) -> anyhow::Result<App> {
     app.add_system(
         Stage::Simulation,
         system(DIG_TERRAIN, dig_terrain).before(STREAM_TERRAIN),
+    );
+
+    // **After the physics step, explicitly** (Q27). `move_shape` answers from an index `step_physics`
+    // builds, so asking before it has run queries an empty world and finds open space everywhere —
+    // which is this system doing nothing at all, silently. The same ordering `amadeo-character`
+    // needs, for the same reason.
+    app.add_system(
+        Stage::Simulation,
+        system(KEEP_CAMERA_OUT_OF_THE_GROUND, keep_camera_out_of_the_ground)
+            .after(amadeo_physics::STEP_PHYSICS),
     );
 
     let document = amadeo_scene::parse(SCENE)
@@ -377,6 +450,124 @@ pub fn dig_terrain(world: &mut World) {
                     edits.set([centre[0] + dx, centre[1] + dy, centre[2] + dz], DUG);
                 }
             }
+        }
+    }
+}
+
+/// Pulls each [`FollowCamera`] in until nothing is between it and what it follows — **Q27**.
+///
+/// # Must run after `step_physics`, in the same tick
+///
+/// `move_shape` answers from an index that `step_physics` builds, so asking before it has run
+/// queries an empty world and reports open space everywhere — which is exactly the bug this system
+/// exists to fix, silently reintroduced. The same ordering `amadeo-character` documents and for the
+/// same reason.
+///
+/// # Why it writes a local translation rather than a world position
+///
+/// The camera is a **child** of what it follows (ADR 0031), so its `Transform` is already in the
+/// parent's space: pulling it in is one number, and the parent's own rotation carries it round as
+/// the player turns. Writing a world position would fight the propagation that runs at the end of
+/// the tick.
+///
+/// It is also safe to write, where writing a *physics body's* `Transform` is not (**Q30**) — nothing
+/// steps a camera, so nothing reads it back stale and overwrites it.
+pub fn keep_camera_out_of_the_ground(world: &mut World) {
+    // Collected before touching the physics service, because the query borrows the world and the
+    // sweep needs it mutably. The ordinary shape in this engine.
+    let cameras: Vec<(amadeo_ecs::Entity, FollowCamera, Transform)> = world
+        .query::<(&FollowCamera, &Parent)>()
+        .filter_map(|(entity, (follow, parent))| {
+            // The parent's own transform, which *is* its world transform: a follow camera's parent
+            // is a root entity. Reading `GlobalTransform` instead would be a tick behind, because
+            // propagation runs at the end of the tick.
+            let parent_transform = world.get::<Transform>(parent.0)?;
+            Some((entity, *follow, *parent_transform))
+        })
+        .collect();
+
+    if cameras.is_empty() {
+        return;
+    }
+
+    let Some(physics) = world.service_mut::<Physics>() else {
+        return;
+    };
+
+    let mut results: Vec<(amadeo_ecs::Entity, Transform)> = Vec::with_capacity(cameras.len());
+    for (entity, follow, parent) in cameras {
+        // The parent's axes in world space. Column two is its local +Z, and a camera looks along its
+        // own negative Z — so +Z is *behind* the thing being followed.
+        let basis = amadeo_transform::Mat4::from_transform(
+            parent.translation,
+            parent.rotation,
+            [1.0, 1.0, 1.0],
+        );
+        let back = [
+            basis.columns[2][0],
+            basis.columns[2][1],
+            basis.columns[2][2],
+        ];
+
+        let pivot = [
+            parent.translation[0],
+            parent.translation[1] + follow.height,
+            parent.translation[2],
+        ];
+        let wanted = [
+            back[0] * follow.distance,
+            back[1] * follow.distance,
+            back[2] * follow.distance,
+        ];
+
+        // A sphere swept from the pivot towards where the camera wants to be. Stepping and ground
+        // snapping are off: a camera does not walk, and either would pull it somewhere the geometry
+        // did not ask for.
+        let request = amadeo_physics::ShapeMove {
+            step_height: 0.0,
+            snap_distance: 0.0,
+            ..amadeo_physics::ShapeMove::new(
+                amadeo_physics::Shape::Sphere {
+                    radius: follow.radius,
+                },
+                pivot,
+                wanted,
+            )
+        };
+        let landed = physics.move_shape(&request).translation;
+
+        // How far it actually got, which is the distance the camera may sit at.
+        let travelled = {
+            let delta = [
+                landed[0] - pivot[0],
+                landed[1] - pivot[1],
+                landed[2] - pivot[2],
+            ];
+            (delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]).sqrt()
+        };
+        let distance = travelled.clamp(follow.min_distance, follow.distance);
+
+        results.push((
+            entity,
+            Transform {
+                translation: [0.0, follow.height, distance],
+                // Rotation and scale are the scene's to author — this only ever moves the camera
+                // along the one axis it is allowed to move along.
+                ..Transform::default()
+            },
+        ));
+    }
+
+    for (entity, transform) in results {
+        // The authored rotation has to survive: the Scarp's camera is pitched down 16°, and
+        // replacing the whole transform would level it every tick.
+        if let Some(existing) = world.get::<Transform>(entity) {
+            let kept = Transform {
+                translation: transform.translation,
+                rotation: existing.rotation,
+                scale: existing.scale,
+            };
+            world.insert(entity, kept);
         }
     }
 }
