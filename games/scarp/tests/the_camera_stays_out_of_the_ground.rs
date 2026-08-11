@@ -39,6 +39,24 @@ fn camera_distance(world: &World) -> f32 {
         .expect("the scene authors one follow camera")
 }
 
+/// The player's yaw, in degrees.
+fn player_yaw(world: &World) -> f32 {
+    world
+        .query::<(&amadeo_terrain::TerrainViewer, &Transform)>()
+        .map(|(_, (_, transform))| transform.rotation[1])
+        .next()
+        .expect("the scene authors one player")
+}
+
+/// The camera's pitch, in degrees.
+fn camera_pitch(world: &World) -> f32 {
+    world
+        .query::<(&FollowCamera, &Transform)>()
+        .map(|(_, (_, transform))| transform.rotation[0])
+        .next()
+        .expect("the scene authors one follow camera")
+}
+
 /// What the camera asked for, as authored.
 fn follow(world: &World) -> FollowCamera {
     world
@@ -170,6 +188,69 @@ fn the_camera_does_not_jump_between_distances_from_tick_to_tick() {
         "the camera moved outward by {worst_jump_outward} in one tick, which is more than the \
          {allowed} the ease-out allows — it is snapping rather than easing, which is what the \
          flicker was"
+    );
+}
+
+#[test]
+fn the_mouse_turns_the_player_and_tilts_only_the_camera() {
+    // **The split that makes a third-person view feel right**, and the thing most likely to be wired
+    // the wrong way round. Yaw belongs on the player, so walking forward goes where you are looking
+    // and the camera comes round for free as a child entity. Pitch belongs on the camera alone — a
+    // character that pitched would lean over and walk into the ground.
+    //
+    // Driven through the scripted source rather than by writing `InputState`, because `sample_input`
+    // rebuilds that resource every tick in `PreSimulation` and a poked value never survives to be
+    // read. The same path a real mouse takes.
+    let mut app = build_simulation().expect("the game builds");
+    let mut source = ScriptedSource::new();
+    source.press(Tick(2), scarp::LOOK, true);
+    source.axis(Tick(2), scarp::LOOK_X, 100.0);
+    source.axis(Tick(2), scarp::LOOK_Y, 50.0);
+    amadeo_input::install(&mut app.world, InputDriver::new(Box::new(source)));
+
+    let yaw_before = player_yaw(&app.world);
+    let pitch_before = camera_pitch(&app.world);
+
+    app.run_ticks(4).expect("the world advances");
+
+    let yaw_after = player_yaw(&app.world);
+    let pitch_after = camera_pitch(&app.world);
+
+    // Moving the mouse right turns the view right, which is *negative* yaw — the character's own
+    // turn axis is positive for left.
+    assert!(
+        yaw_after < yaw_before - 1.0,
+        "dragging right should turn the player right: yaw went from {yaw_before} to {yaw_after}"
+    );
+    // And down should tilt the view down, which is negative pitch.
+    assert!(
+        pitch_after < pitch_before - 1.0,
+        "dragging down should tilt the camera down: pitch went from {pitch_before} to {pitch_after}"
+    );
+}
+
+#[test]
+fn the_camera_cannot_be_tilted_past_vertical() {
+    // Clamped short of straight up and straight down, because at exactly vertical the camera's
+    // forward direction is parallel to the world up its basis is built from, the basis collapses,
+    // and the view rolls unpredictably. Driven with an absurd drag so the clamp is what stops it
+    // rather than the drag running out.
+    let mut app = build_simulation().expect("the game builds");
+    let mut source = ScriptedSource::new();
+    source.press(Tick(2), scarp::LOOK, true);
+    source.axis(Tick(2), scarp::LOOK_Y, 4000.0);
+    amadeo_input::install(&mut app.world, InputDriver::new(Box::new(source)));
+
+    app.run_ticks(30).expect("the world advances");
+
+    let pitch = camera_pitch(&app.world);
+    assert!(
+        (-90.0..=90.0).contains(&pitch),
+        "the camera must never tip past vertical, got {pitch}"
+    );
+    assert!(
+        pitch > -89.0,
+        "and should stop short of it rather than sitting exactly there, got {pitch}"
     );
 }
 

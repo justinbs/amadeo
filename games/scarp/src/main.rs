@@ -17,12 +17,12 @@ use amadeo_app::{Stage, system};
 use amadeo_character::{JUMP, MOVE_FORWARD, MOVE_RIGHT, TURN};
 use amadeo_input::{InputDriver, LiveSource};
 use amadeo_render::{RENDER_QUADS, Renderer, WgpuBackend, render_quads};
-use scarp::{DIG, build_headless, build_simulation};
+use scarp::{DIG, LOOK, LOOK_X, LOOK_Y, build_headless, build_simulation};
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, KeyEvent, WindowEvent};
+use winit::event::{DeviceEvent, DeviceId, ElementState, KeyEvent, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
-use winit::window::{Window, WindowId};
+use winit::window::{CursorGrabMode, Window, WindowId};
 
 /// The windowed game: the shared simulation, plus live input and a GPU renderer.
 fn build_app(backend: WgpuBackend) -> anyhow::Result<App> {
@@ -59,6 +59,28 @@ struct HeldKeys {
     turn_right: bool,
     jump: bool,
     dig: bool,
+    /// The right mouse button, which gates turning the view.
+    look: bool,
+}
+
+/// Mouse movement waiting to be handed to the simulation.
+///
+/// # Why it accumulates rather than being read when a tick asks
+///
+/// A mouse reports *displacement since the last report*, and those reports arrive on the window's
+/// schedule rather than the simulation's. The event loop runs uncapped (`ControlFlow::Poll`), so
+/// several frames can pass between two ticks — and if each frame simply overwrote an action's value,
+/// every report but the last would be thrown away and the view would move a fraction of how far the
+/// mouse did.
+///
+/// So movement is summed here and **cleared only once a tick has actually consumed it**, which
+/// `advance_real_time`'s tick count is what makes knowable.
+#[derive(Debug, Default)]
+struct MouseLook {
+    /// Pixels across the screen since the last tick ran.
+    dx: f32,
+    /// Pixels up and down the screen since the last tick ran.
+    dy: f32,
 }
 
 /// Everything that exists only once a window has been created.
@@ -74,6 +96,7 @@ struct Running {
 struct Scarp {
     running: Option<Running>,
     keys: HeldKeys,
+    look: MouseLook,
 }
 
 impl Scarp {
@@ -83,6 +106,7 @@ impl Scarp {
             return;
         };
         let keys = &self.keys;
+        let look = &self.look;
 
         running
             .app
@@ -97,7 +121,41 @@ impl Scarp {
                 live.set_axis_from_keys(TURN, keys.turn_right, keys.turn_left);
                 live.set_button(JUMP, keys.jump);
                 live.set_button(DIG, keys.dig);
+
+                // Pixels rather than a deflection, which is why these are set directly instead of
+                // through `set_axis_from_keys`. A mouse is a displacement; a key is a rate.
+                live.set_button(LOOK, keys.look);
+                live.set_axis(LOOK_X, look.dx);
+                live.set_axis(LOOK_Y, look.dy);
             });
+    }
+
+    /// Confines and hides the pointer while the right button is held, and lets it go afterwards.
+    ///
+    /// Without this the pointer wanders off the window mid-drag and the turn stops dead at the edge
+    /// of the screen. The motion itself comes from `DeviceEvent`, which is raw and unaffected either
+    /// way — this is purely so the cursor does not get in the way of what it is steering.
+    ///
+    /// Failures are ignored deliberately. Grabbing is a request the platform may refuse, and a
+    /// refusal means the pointer stays visible — mildly annoying, and not a reason to take the game
+    /// down.
+    fn grab_pointer(&self, held: bool) {
+        let Some(running) = self.running.as_ref() else {
+            return;
+        };
+        let window = &running.window;
+
+        if held {
+            // `Confined` keeps it inside the window and is what Windows supports; `Locked` pins it in
+            // place and is what X11 and Wayland support. Trying both means one line rather than a
+            // platform branch.
+            let _ = window
+                .set_cursor_grab(CursorGrabMode::Confined)
+                .or_else(|_| window.set_cursor_grab(CursorGrabMode::Locked));
+        } else {
+            let _ = window.set_cursor_grab(CursorGrabMode::None);
+        }
+        window.set_cursor_visible(!held);
     }
 }
 
@@ -188,6 +246,16 @@ impl ApplicationHandler for Scarp {
                 }
             }
 
+            WindowEvent::MouseInput {
+                button: MouseButton::Right,
+                state,
+                ..
+            } => {
+                let held = state == ElementState::Pressed;
+                self.keys.look = held;
+                self.grab_pointer(held);
+            }
+
             WindowEvent::RedrawRequested => {
                 self.publish_input();
 
@@ -199,10 +267,20 @@ impl ApplicationHandler for Scarp {
                     // Real time in, whole ticks out. The accumulator is capped inside `App`, so a
                     // stall falls behind rather than spiralling — which matters more here than in
                     // the Atrium, since a burst of chunk colliders deliberately blocks the tick.
-                    if let Err(error) = running.app.advance_real_time(elapsed.as_nanos() as u64) {
-                        eprintln!("simulation error: {error}");
-                        event_loop.exit();
-                        return;
+                    let ticks = match running.app.advance_real_time(elapsed.as_nanos() as u64) {
+                        Ok(ticks) => ticks,
+                        Err(error) => {
+                            eprintln!("simulation error: {error}");
+                            event_loop.exit();
+                            return;
+                        }
+                    };
+
+                    // **Cleared only once something has read it.** The loop runs uncapped, so most
+                    // frames advance no tick at all — and zeroing regardless would throw away every
+                    // mouse report that happened to land between two ticks, which is most of them.
+                    if ticks > 0 {
+                        self.look = MouseLook::default();
                     }
                     if let Err(error) = running.app.render() {
                         eprintln!("render error: {error}");
@@ -212,6 +290,23 @@ impl ApplicationHandler for Scarp {
             }
 
             _ => {}
+        }
+    }
+
+    /// Raw pointer movement, which is what steering a view wants.
+    ///
+    /// `DeviceEvent::MouseMotion` rather than `WindowEvent::CursorMoved`, and the difference matters:
+    /// `CursorMoved` reports a *position inside the window*, so it stops changing the moment the
+    /// pointer reaches an edge and the view stops turning with it. This reports how far the device
+    /// moved, which has no edge to hit and is unaffected by pointer acceleration settings.
+    ///
+    /// Accumulated whether or not the button is held, and read only when it is — a couple of
+    /// additions on an event that arrives anyway, against a branch that would have to be kept in step
+    /// with the button state.
+    fn device_event(&mut self, _event_loop: &ActiveEventLoop, _id: DeviceId, event: DeviceEvent) {
+        if let DeviceEvent::MouseMotion { delta: (dx, dy) } = event {
+            self.look.dx += dx as f32;
+            self.look.dy += dy as f32;
         }
     }
 }

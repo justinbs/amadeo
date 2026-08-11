@@ -5,7 +5,8 @@
 //! cargo run -p scarp
 //! ```
 //!
-//! WASD to walk, Q and E to turn, Space to jump, F to dig, Escape to quit.
+//! WASD to walk, Q and E to turn, **hold the right mouse button to steer the view**, Space to jump,
+//! F to dig, Escape to quit.
 //!
 //! # What this is for
 //!
@@ -98,6 +99,33 @@ const CHUNK: ChunkShape = ChunkShape {
 /// quantity expressed in units of something else that later moved. Stating it in metres and
 /// converting is what makes the cell size free to change again.
 const DIG_RADIUS_METRES: f32 = 2.0;
+
+/// Held to steer the camera with the mouse. The right button.
+pub const LOOK: &str = "look";
+
+/// Mouse movement across the screen while [`LOOK`] is held, in pixels this tick.
+pub const LOOK_X: &str = "look_x";
+
+/// Mouse movement up and down the screen while [`LOOK`] is held, in pixels this tick.
+pub const LOOK_Y: &str = "look_y";
+
+/// The label [`look_with_mouse`] is registered under.
+pub const LOOK_WITH_MOUSE: &str = "look_with_mouse";
+
+/// How far a pixel of mouse movement turns the view, in degrees.
+///
+/// A touch under a fifth of a degree, so a 400-pixel drag sweeps about 70° — roughly what a desktop
+/// game feels like without a sensitivity setting. It is a constant rather than a component because
+/// nothing has asked to vary it yet; when something does it belongs beside `FollowCamera`.
+const LOOK_DEGREES_PER_PIXEL: f32 = 0.18;
+
+/// How far up and down the camera may be tilted, in degrees.
+///
+/// Stopping short of straight up and straight down on purpose. At exactly vertical the camera's
+/// forward direction becomes parallel to the world up it is built from, the basis collapses, and the
+/// view rolls unpredictably — the gimbal problem ADR 0018 names. Clamping short of it is the
+/// standard answer and costs nothing anyone notices.
+const PITCH_LIMITS: (f32, f32) = (-75.0, 30.0);
 
 /// The label [`keep_camera_out_of_the_ground`] is registered under.
 pub const KEEP_CAMERA_OUT_OF_THE_GROUND: &str = "keep_camera_out_of_the_ground";
@@ -356,10 +384,23 @@ pub fn build_with_workers(workers: usize) -> anyhow::Result<App> {
         system(DIG_TERRAIN, dig_terrain).before(STREAM_TERRAIN),
     );
 
+    // **Before the character reads its own rotation**, so a mouse turn is in effect the same tick
+    // rather than the next one. Systems with no declared constraint run alphabetically, and
+    // `look_with_mouse` sorting after `drive_characters` would be a one-tick lag that reads as the
+    // controls feeling slightly loose — the kind of thing nobody attributes to ordering.
+    app.add_system(
+        Stage::Simulation,
+        system(LOOK_WITH_MOUSE, look_with_mouse).before(amadeo_character::DRIVE_CHARACTERS),
+    );
+
     // **After the physics step, explicitly** (Q27). `move_shape` answers from an index `step_physics`
     // builds, so asking before it has run queries an empty world and finds open space everywhere —
     // which is this system doing nothing at all, silently. The same ordering `amadeo-character`
     // needs, for the same reason.
+    //
+    // Also after the mouse turn above, which the `before` there already guarantees: the sweep has to
+    // use the direction the player is facing *now*, or the camera is fitted to where it was looking
+    // last tick and lags visibly while turning.
     app.add_system(
         Stage::Simulation,
         system(KEEP_CAMERA_OUT_OF_THE_GROUND, keep_camera_out_of_the_ground)
@@ -462,6 +503,65 @@ pub fn dig_terrain(world: &mut World) {
                 }
             }
         }
+    }
+}
+
+/// Turns the view with the mouse while the right button is held.
+///
+/// # Yaw goes on the player, pitch goes on the camera
+///
+/// That split is what makes a third-person camera feel right rather than a trick. Turning left and
+/// right rotates **what you are controlling**, so walking forward goes where you are looking and the
+/// follow camera comes round with it for free — it is a child entity (ADR 0031), so its offset is
+/// already in the player's space. Tilting up and down rotates **only the camera**, because a
+/// character that pitched would lean over and walk into the ground.
+///
+/// # Why this writes rotation directly rather than feeding the `turn` action
+///
+/// [`amadeo_character::TURN`] is a *rate*: the character multiplies it by `turn_speed` and the
+/// timestep, so its full deflection is a fixed degrees-per-second. A mouse is a *displacement* — a
+/// fast flick should turn further than a slow drag covering the same time — and squeezing one into
+/// the other would cap how fast the view can move at whatever `turn_speed` happens to be. Q and E
+/// still use the rate, which is correct for a key that is either held or not.
+///
+/// Writing the player's rotation is safe where writing its *translation* would not be (**Q30**):
+/// `move_shape` is handed the rotation and returns only a position, so nothing reads this back and
+/// overwrites it.
+pub fn look_with_mouse(world: &mut World) {
+    let Some(input) = world.resource::<InputState>() else {
+        return;
+    };
+    if !input.pressed(ActionId::new(LOOK)) {
+        return;
+    }
+    let dx = input.axis(ActionId::new(LOOK_X));
+    let dy = input.axis(ActionId::new(LOOK_Y));
+    if dx == 0.0 && dy == 0.0 {
+        return;
+    }
+
+    // Yaw onto whatever carries the camera, which is the same entity the terrain streams around.
+    let players: Vec<_> = world
+        .query::<(&TerrainViewer, &Transform)>()
+        .map(|(entity, (_, transform))| (entity, *transform))
+        .collect();
+    for (entity, mut transform) in players {
+        // Subtracted, because the character's own turn axis is positive for *left* and moving the
+        // mouse right should look right.
+        transform.rotation[1] -= dx * LOOK_DEGREES_PER_PIXEL;
+        world.insert(entity, transform);
+    }
+
+    let cameras: Vec<_> = world
+        .query::<(&FollowCamera, &Transform)>()
+        .map(|(entity, (_, transform))| (entity, *transform))
+        .collect();
+    for (entity, mut transform) in cameras {
+        // Also subtracted: a window's y grows *downward*, so pushing the mouse away from you is
+        // negative and should raise the view.
+        transform.rotation[0] = (transform.rotation[0] - dy * LOOK_DEGREES_PER_PIXEL)
+            .clamp(PITCH_LIMITS.0, PITCH_LIMITS.1);
+        world.insert(entity, transform);
     }
 }
 
