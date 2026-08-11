@@ -19,7 +19,7 @@
 //! which is enough to keep a headless test meaningful and cheap enough to be the default.
 
 use crate::components::{BodyKind, Collider, RigidBody, Velocity};
-use crate::query::{ShapeMotion, ShapeMove};
+use crate::query::{ShapeCast, ShapeHit, ShapeMotion, ShapeMove};
 use amadeo_core::FIXED_DT;
 use amadeo_ecs::Entity;
 
@@ -222,6 +222,30 @@ pub trait PhysicsBackend: std::fmt::Debug + Send + Sync {
     /// [`ShapeMotion::unobstructed`], which is an honest answer rather than an error.
     fn move_shape(&mut self, request: &ShapeMove) -> ShapeMotion;
 
+    /// Sweeps one shape along a straight line and reports the first thing in the way — ADR 0054.
+    ///
+    /// `None` means the whole motion is clear.
+    ///
+    /// # Why this is a third operation rather than a flag on `move_shape`
+    ///
+    /// [`move_shape`](Self::move_shape) answers *"where does this body end up?"* and slides to do it.
+    /// This answers *"how far along this line before something blocks it?"* and does not. Half of
+    /// `ShapeMove`'s fields — `step_height`, `snap_distance`, `max_slope_degrees`, `up` — are
+    /// meaningless to the second question, and a `slide: bool` that silently voided four of them was
+    /// the alternative **Q34** rejected.
+    ///
+    /// # It must run after `step`, for `move_shape`'s reason
+    ///
+    /// Same spatial index, same failure: asking before the first step queries an empty world and
+    /// finds everything clear.
+    ///
+    /// # `&self`, unlike its neighbours
+    ///
+    /// A cast is a question. It reads the index `step` built and changes nothing, and saying so in
+    /// the signature is what lets a caller hold it alongside a world query rather than taking the
+    /// service mutably to ask something read-only.
+    fn cast_shape(&self, cast: &ShapeCast) -> Option<ShapeHit>;
+
     /// Throws away everything cached between steps, so the next step rebuilds from the bodies.
     ///
     /// # This exists because of ADR 0028, not because of physics
@@ -393,6 +417,15 @@ impl PhysicsBackend for NullPhysics {
     /// measuring collision response and not an accidentally-correct constant. ADR 0037 §5.
     fn move_shape(&mut self, request: &ShapeMove) -> ShapeMotion {
         ShapeMotion::unobstructed(request)
+    }
+
+    /// Finds nothing, ever, which is the same honest uselessness as everything else here.
+    ///
+    /// Pointed at this backend a follow camera keeps its full arm length inside solid rock, which is
+    /// what makes the passing rapier test evidence that the sweep is consulted rather than evidence
+    /// that the authored distance happened to be right.
+    fn cast_shape(&self, _cast: &ShapeCast) -> Option<ShapeHit> {
+        None
     }
 
     /// Records the geometry and collides with none of it — the same posture as `step` and

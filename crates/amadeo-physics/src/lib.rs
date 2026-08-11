@@ -48,7 +48,7 @@ pub use backend::{
     BodyResult, BodyState, NullPhysics, PhysicsBackend, PhysicsError, StaticMesh, StaticMeshId,
 };
 pub use components::{BodyKind, Collider, RigidBody, Shape, Velocity};
-pub use query::{ShapeMotion, ShapeMove};
+pub use query::{ShapeCast, ShapeHit, ShapeMotion, ShapeMove};
 #[cfg(feature = "rapier")]
 pub use rapier::RapierPhysics;
 
@@ -182,6 +182,20 @@ impl Physics {
     /// through the level exactly once.
     pub fn move_shape(&mut self, request: &ShapeMove) -> ShapeMotion {
         self.backend.move_shape(request)
+    }
+
+    /// The gameplay-facing half of [`PhysicsBackend::cast_shape`] — ADR 0054. `None` means clear.
+    ///
+    /// **Call this after [`step_physics`] has run this tick**, for the reason [`Physics::move_shape`]
+    /// gives: a backend answers from an index the step builds, and an empty index finds nothing in
+    /// the way anywhere.
+    ///
+    /// Takes `&self`, so a system can reach it with
+    /// [`World::service`](amadeo_ecs::World::service) and ask alongside a query rather than taking
+    /// the service mutably to ask a read-only question.
+    #[must_use]
+    pub fn cast_shape(&self, cast: &ShapeCast) -> Option<ShapeHit> {
+        self.backend.cast_shape(cast)
     }
 }
 

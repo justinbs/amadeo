@@ -33,12 +33,14 @@ use crate::backend::{
     BodyResult, BodyState, PhysicsBackend, PhysicsError, StaticMesh, StaticMeshId,
 };
 use crate::components::{BodyKind, Shape, Velocity};
-use crate::query::{ShapeMotion, ShapeMove};
+use crate::query::{ShapeCast, ShapeHit, ShapeMotion, ShapeMove};
 use amadeo_core::FIXED_DT;
 use amadeo_ecs::Entity;
 use amadeo_transform::Mat4;
 use rapier3d::control::{CharacterAutostep, CharacterLength, KinematicCharacterController};
 use rapier3d::math::{Matrix, Pose, Rotation, Vector};
+// Shape casting lives in parry, which rapier re-exports rather than duplicating.
+use rapier3d::parry::query::ShapeCastOptions;
 use rapier3d::prelude::*;
 use std::collections::BTreeMap;
 
@@ -355,6 +357,75 @@ impl PhysicsBackend for RapierPhysics {
             grounded: movement.grounded,
             sliding_down_slope: movement.is_sliding_down_slope,
         }
+    }
+
+    fn cast_shape(&self, cast: &ShapeCast) -> Option<ShapeHit> {
+        // A zero-length sweep has no direction, so there is no line to ask about. Answering "clear"
+        // is the only honest option -- a hit would have to invent a normal.
+        let length_squared = cast.motion[0] * cast.motion[0]
+            + cast.motion[1] * cast.motion[1]
+            + cast.motion[2] * cast.motion[2];
+        if length_squared == 0.0 {
+            return None;
+        }
+
+        let shape = Self::shape_for(cast.shape);
+        let pose = Pose::from_parts(
+            Vector::new(
+                cast.translation[0],
+                cast.translation[1],
+                cast.translation[2],
+            ),
+            Self::rotation_of(cast.rotation),
+        );
+
+        let mut filter = QueryFilter::default();
+        if let Some(handle) = cast.ignore.and_then(|entity| self.handles.get(&entity)) {
+            filter = filter.exclude_rigid_body(*handle);
+        }
+
+        let queries = self.broad_phase.as_query_pipeline(
+            self.narrow_phase.query_dispatcher(),
+            &self.bodies,
+            &self.colliders,
+            filter,
+        );
+
+        // The velocity is the **whole motion** and time runs to one, so the time of impact rapier
+        // returns is directly the fraction of the motion travelled. Passing a unit direction and a
+        // length would work too and would make the caller convert back.
+        let options = ShapeCastOptions {
+            max_time_of_impact: 1.0,
+            // The skin, in rapier's terms: treat the shapes as touching once they are this close, so
+            // the caller's shape is left with a gap rather than exactly grazing.
+            target_distance: cast.skin,
+            // **False, deliberately.** `true` reports an immediate hit whenever the sweep starts
+            // inside something, whatever direction it was going. A cast that begins touching a
+            // surface and points *away* from it is not blocked, and saying it is would reproduce the
+            // flicker this operation exists to remove -- the pivot of a follow camera can be resting
+            // against a ceiling while the arm points down and back into open air.
+            stop_at_penetration: false,
+            compute_impact_geometry_on_penetration: true,
+        };
+
+        let motion = Vector::new(cast.motion[0], cast.motion[1], cast.motion[2]);
+        let (_, hit) = queries.cast_shape(&pose, motion, shape.as_ref(), options)?;
+
+        // Clamped because `target_distance` can put the reported impact fractionally before zero on
+        // a shape that starts within the skin, and a negative fraction would move a caller backwards
+        // along its own axis.
+        let fraction = hit.time_of_impact.clamp(0.0, 1.0);
+        Some(ShapeHit {
+            fraction,
+            translation: [
+                cast.translation[0] + cast.motion[0] * fraction,
+                cast.translation[1] + cast.motion[1] * fraction,
+                cast.translation[2] + cast.motion[2] * fraction,
+            ],
+            // `normal1` is the world collider's outward normal -- the surface that was hit, which is
+            // what a caller wanting to bounce or to classify floor-versus-wall needs.
+            normal: [hit.normal1.x, hit.normal1.y, hit.normal1.z],
+        })
     }
 
     fn step(

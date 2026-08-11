@@ -138,6 +138,89 @@ impl ShapeMotion {
     }
 }
 
+/// A request to sweep a shape along a straight line and find the first thing in the way — ADR 0054.
+///
+/// # How this differs from [`ShapeMove`], which is the whole point
+///
+/// `ShapeMove` asks *"I am a body that wants to go there; where do I end up?"* and answers by
+/// **sliding** along whatever it hits, because that is what a character walking into a wall should
+/// do. This asks *"how far along this line before something is in the way?"* and answers with a
+/// distance. Nothing slides, nothing steps, nothing snaps to the ground.
+///
+/// Using the first to answer the second is what **Q34** recorded and what session 15 watched fail
+/// twice. A camera arm pointing down and back hits the ground, slides *backward* along it, and the
+/// backward part of that slide is most of the direction the arm was pointing — so projecting the
+/// travel onto the arm reported six metres of progress for a shape that had gone almost nowhere in
+/// the direction asked for, and put the camera underground.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShapeCast {
+    /// The shape being swept.
+    pub shape: Shape,
+    /// Where the sweep starts, in world units.
+    pub translation: [f32; 3],
+    /// How the shape is oriented throughout, in Euler degrees (ADR 0018). A cast does not rotate.
+    pub rotation: [f32; 3],
+    /// How far to sweep, in world units. The hit's [`ShapeHit::fraction`] is a fraction *of this*.
+    pub motion: [f32; 3],
+    /// A gap kept between the shape and what it hits, in world units.
+    ///
+    /// The same idea as [`ShapeMove::skin`] and for the same reason: a shape left exactly touching a
+    /// surface is the degenerate case for the next query against it. Unlike `ShapeMove`'s, this one
+    /// **may** be zero, because a cast does not have to leave the shape anywhere.
+    pub skin: f32,
+    /// A body to ignore, which is usually whatever the sweep starts on or inside.
+    pub ignore: Option<Entity>,
+}
+
+impl ShapeCast {
+    /// A sweep of `shape` from `translation` along `motion`, unrotated, with a small skin.
+    #[must_use]
+    pub fn new(shape: Shape, translation: [f32; 3], motion: [f32; 3]) -> Self {
+        Self {
+            shape,
+            translation,
+            rotation: [0.0, 0.0, 0.0],
+            motion,
+            skin: 0.01,
+            ignore: None,
+        }
+    }
+
+    /// The same sweep, ignoring a body — in practice whatever it starts inside.
+    #[must_use]
+    pub fn ignoring(mut self, entity: Entity) -> Self {
+        self.ignore = Some(entity);
+        self
+    }
+}
+
+/// What a [`ShapeCast`] ran into.
+///
+/// Absent — a `None` from [`PhysicsBackend::cast_shape`](crate::PhysicsBackend::cast_shape) — means
+/// the whole motion is clear. That is a different statement from a hit at `fraction == 1.0`, which
+/// means something is exactly at the far end, and callers that care about the difference get to see
+/// it rather than having it flattened into a number.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShapeHit {
+    /// How much of [`ShapeCast::motion`] was travelled before the hit, from `0.0` to `1.0`.
+    ///
+    /// A fraction rather than a distance because it is the unit-free answer: multiplying by the
+    /// motion's length gives a distance, and a caller that wants a position gets one below without
+    /// having to reconstruct it.
+    pub fraction: f32,
+    /// Where the shape's origin ends up, in world units.
+    ///
+    /// **The start plus `fraction` of the motion**, so it is always on the line asked about. That is
+    /// the property [`ShapeMotion::translation`] cannot offer, since a slide leaves the line.
+    pub translation: [f32; 3],
+    /// The surface normal at the point of contact, pointing out of the thing that was hit.
+    ///
+    /// Nothing in the engine reads this yet. It is here because every other caller Q34 named — a
+    /// bullet that should ricochet, a placement check that wants to know if it landed on a floor or
+    /// a wall — needs it, and adding it later would change a returned type rather than extend one.
+    pub normal: [f32; 3],
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
