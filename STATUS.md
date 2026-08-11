@@ -30,13 +30,35 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 (`cargo run -p scarp`), reproducing at every thread count, drawing only what can be seen, at 61 µs of
 GPU time.
 
-**Session 14 landed normal mapping (ADR 0047), PBR (ADR 0048) and image-based lighting (ADR 0049)** —
-items two, three and four on ADR 0045's list, and **Q28 is closed**. The engine's ambient light is no
-longer a constant.
+**Session 14 was long and mostly renderer.** ADR 0045's tier 1 is **complete** — mipmaps, normal
+mapping (0047), PBR (0048), image-based lighting (0049), the sky, and anti-aliasing (0051) — plus the
+two items ADR 0050 added when the art direction became low-poly, and three bug fixes that came out of
+Justin actually playing it.
 
-**The sky is drawn too.** ADR 0045's tier 1 is complete except **shadow cascades**, which is the
-natural next item: one shadow map over 70 m of outdoor scene is visibly blocky, and ADR 0038 reserved
-`ShadowMode`'s third variant for it rather than leaving it a rewrite.
+**Four questions closed: Q27, Q28, Q29 and Q33.** One opened: **Q34**.
+
+**The one remaining tier-1 item is shadow cascades.** Its split scheme and fitting are built and
+tested; the GPU half is planned in detail below.
+
+> ### ⚠️ The three bugs Justin found by playing, and what they have in common
+>
+> None was found by a test, and two were misdiagnosed before a screenshot settled them. All three are
+> written up where they belong, but the shared shape is worth carrying:
+>
+> 1. **"Digging down shows the sky."** Diagnosed twice wrongly — first as the dig radius (which
+>    *had* doubled and *was* a real bug), then as the camera being underground (true, and a
+>    different statement). It was **ADR 0052**: terrain is an open surface with no underside, so
+>    culling made it invisible from below and the sky pass filled the gap.
+> 2. **The camera flickering near and far.** `move_shape` *slides*, so measuring straight-line
+>    distance counted a sideways slide as progress. Now projected onto the axis asked for, and eased
+>    outward. **Q34** records what is actually missing: a pure shape cast.
+> 3. **The sky's lower hemisphere 2.5× too bright.** Its branch in `bin/sky` returned before the
+>    scale the sky above it got. It read as *the terrain* being pale, and survived two looks —
+>    switching the ground to flat colour is what exposed it, because there was no texture variation
+>    left to blame.
+>
+> **The common thread is that each looked like a different subsystem's fault than it was**, and the
+> thing that resolved all three was a picture plus somebody saying what they actually saw.
 
 **Two things about the sky worth knowing before changing it.** It is *content* and was tuned by eye —
 `bin/sky.rs`'s `SKY_SCALE` exists because the Scarp's sun intensity was tuned against the old `0.12`
@@ -167,8 +189,10 @@ trigger for going native: a **console** target.
 | ~~Metallic-roughness PBR~~ | ✅ **Done — M3's third (ADR 0048).** Cook-Torrance/GGX, and a glTF-packed metallic-roughness map. **Changed the picture almost not at all**, because every material in the repo is a rough dielectric — which is exactly where a full BRDF and Lambert agree. Scaffolding for the next item rather than a win on its own |
 | ~~Sky and image-based lighting~~ | ✅ **Done — M3's fourth (ADR 0049), and it closes Q28.** The ambient constant is gone. Shadows are filled by the sky, metals reflect their surroundings. **Does not draw the sky** — that is a separate pass and is now the largest visual gap |
 | ~~Drawing the sky~~ | ✅ **Done.** One oversized triangle at the far plane, depth-tested with depth-write off, drawn **only when a camera names a sky** — naming none means "do not draw one", which is what keeps the 2D games' backgrounds intact |
-| **Anti-aliasing** | **Moved to the top by ADR 0050.** Low-poly is nothing but hard silhouette edges, and jagged ones are the loudest tell that something is unfinished. ADR 0045 had this in tier 2 for a stylised-realistic target; under low-poly it is first |
-| **Flat shading (Q33)** | Low-poly needs per-face normals. `BoxMesh` does it; nothing else does, so an imported model shades as a blob. **P1, because it blocks the look rather than limiting it** |
+| ~~Anti-aliasing~~ | ✅ **Done — 4× MSAA (ADR 0051).** MSAA over a post filter on purpose: it fixes geometry edges and leaves flat colour alone, where FXAA would smear exactly the facets low-poly depends on. All 21 existing capture tests passed with it *off*, which is why the new one scans across a silhouette |
+| ~~Flat shading~~ | ✅ **Done — Q33 closed.** `MeshData::flat_shade`, `GltfPart::flat` to ask for it, and `Terrain::flat_shaded` for a generated world. Runs **before** tangent generation, which is load-bearing |
+| ~~Two-sided rendering~~ | ✅ **Done — ADR 0052.** What "digging down showed the sky" actually was: terrain is an open surface with no underside, so culling made it vanish from below. Byte-identical from above; only the broken views changed |
+| ~~The camera in the ground~~ | ✅ **Done — Q27 closed.** A swept sphere pulls the follow camera in, snapping inward and easing outward. Plus right-click mouse look |
 | **Shadow cascades** | Still wanted for any outdoor scene. ADR 0038 reserved `ShadowMode`'s third variant; the split scheme and fitting are **built and tested**, the GPU half is not. **Planned in detail below** |
 | **Triplanar mapping** | Terrain UVs are a planar projection from world x/z, so anything steep stretches — *and* has zero UV area, so its tangent frame falls back to an arbitrary axis. One fix for both. Wants a `Material` field to opt in, which is another schema change to every `.material` file (**Q32**) |
 | **Ambient / sky light** | Still the hardcoded `0.12` constant (**Q28**). No ambient occlusion, no bounce, no sky colour. Flat lighting is the other half of why a scene reads as a prototype, and no amount of texture fixes it |
@@ -347,7 +371,9 @@ workspace that noticed.
 
 ### What `games/scarp` is, in one paragraph
 
-`cargo run -p scarp`. WASD to walk, Q/E to turn, Space to jump, **F to dig**. Nothing is authored but
+`cargo run -p scarp`. WASD to walk, Q/E to turn, **hold right-click to steer the view**, Space to
+jump, **F to dig**. Since session 14 it is also **low-poly**: eight two-metre cells per chunk, flat
+shaded, flat colour, under a generated sky. Nothing is authored but
 the player, the camera and the sun — the ground is a function of the seed, sampled into chunks as you
 approach, dropped as you leave, meshed on a job pool, made solid on the tick you need it. Gate 2 is
 `a_walk_reproduces_at_every_thread_count`: five worlds at 1, 2, 3, 5 and 8 workers, advanced **in
@@ -445,21 +471,24 @@ Q3, Q4, Q7, Q10, Q13, Q14, Q16, Q17, Q19, Q21 and Q22 are all closed.
 **Q9 closed in session 11 — ADR 0041 — which was the oldest one open**, raised in session 2 and
 answered the way it asked to be: before the first background task rather than after.
 
-**Nothing is blocked.** Nine questions are open and every one of them is a *decision waiting for its
+**Nothing is blocked.** Seven questions are open and every one of them is a *decision waiting for its
 first real case*, which is the state this project deliberately keeps them in:
 
 | | | |
 |---|---|---|
 | ~~Q29~~ | — | **Closed in session 13 by ADR 0046.** Terrain edits are a hashed resource; the streamer is a cache of them, and a dug world saves and reloads dug |
-| **Q31** | P2 | **New.** Nothing warns when a normal map's sidecar forgets `color_space = "linear"`. Silent, subtly wrong, and it becomes blocking the moment authored art ships |
-| **Q32** | P2 | **New.** Every field added to `Material` rewrites every `.material` file. Five files today; PBR and IBL want four or five more slots |
+| **Q32** | **P1** | **Raised from P2 — it has now bitten five times in three sessions.** A field added to a component invalidates every file that spells it out, and the failure is silent: the file is skipped, the lookup comes back empty, and the error surfaces layers away as a *missing service*. The churn is not the problem; the reporting is |
+| **Q34** | P2 | **New.** No pure shape cast, only `move_shape`, which *slides*. The camera projects onto its own axis to work round it. A bullet, a line of sight, a placement check and an editor mouse pick all want the real thing |
+| **Q31** | P2 | Nothing warns when a normal map's sidecar forgets `color_space = "linear"`. Silent, subtly wrong, and it becomes blocking the moment authored art ships |
+| ~~Q33~~ | — | **Closed in session 14.** `MeshData::flat_shade`, opted into per glTF part and per terrain |
+| ~~Q27~~ | — | **Closed in session 14.** The follow camera sweeps a sphere and pulls in; snaps inward, eases outward |
 | **Q30** | P2 | **No way to move a physics body from outside the tick.** Writing a `Transform` is silently reverted — `step_physics` prefers `GlobalTransform` and propagation runs last. Blocks respawns and fast travel |
 | **Q25** | P1 | LOD across chunks — **better posed** by ADR 0043 and still open: may a chunk's mesh depend on its neighbours' resolutions? |
 | **Q23** | P1 | One environment per frame, when a world may hold several cameras |
 | **Q15** | P1 | Modding, and whether ADR 0011 still holds |
 | **Q12** | P1 | `Service: Send + Sync` — ADR 0041 changed the argument without closing it |
 | ~~Q26~~ | — | **Closed in session 13.** `render.describe` sees meshes through a real perspective projection |
-| **Q27** | P2 | A third-person camera clips through walls |
+| ~~Q27~~ | — | **Closed in session 14.** The follow camera sweeps a sphere and pulls in, and the mouse steers it |
 | ~~Q28~~ | — | **Closed in session 14 by ADR 0049.** The sky is a light source; the ambient constant is gone |
 | **Q6, Q8, Q11, Q18, Q20** | P2 | Editor process model, entity relations, netcode introspection, unreadable `ActionId`, gate 4's stronger test |
 
@@ -516,7 +545,8 @@ compiler-enforced bound on resources and events and shipping `world.resources`, 
 `amadeo-gltf`, `amadeo-jobs`, `amadeo-noise`, `amadeo-voxel`, `amadeo-terrain`,
 `amadeo-app`, `amadeo-cli`, plus **`modules/amadeo-character`** — the first occupant of a layer
 reserved since session 1 — and `games/quad-demo`, `games/vault`, `games/atrium` and `games/scarp`.
-**1217 tests passing with `--all-features`** (22 of them GPU capture tests, 7 rapier, 9 character,
+**1233 tests passing with `--all-features`** (23 of them GPU capture tests, 6 the follow camera,
+7 rapier, 9 character,
 7 shadow fitting, 12 the Atrium, 15 the Scarp, 9 deterministic noise, 7 frustum culling, 6 mip
 chains, 13 glTF, 5 profiling, 8 jobs, 6 parallel iteration, 4 parallel loading, 10 surface nets,
 13 chunk residency, 10 the terrain source, 9 static trimesh colliders, 18 the terrain streamer,
