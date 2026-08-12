@@ -92,3 +92,60 @@ amadeo assets
 
 If you would rather see your own stand-in, ship an asset with the id `placeholder` and it is used
 instead.
+
+## Sound formats
+
+Sounds are **uncompressed `.wav`**, decoded into samples the first time something plays them. 16-bit
+PCM, 24-bit PCM and 32-bit float all work, mono or stereo, along with the `WAVE_FORMAT_EXTENSIBLE`
+variant a Windows tool writes above 16 bits.
+
+**A compressed file is refused by name** rather than silently ignored, so an `.mp3` or an `.ogg`
+dropped in gives you a message saying what it found. Adding those formats means adding `symphonia`,
+and that is a deliberate decision nobody has needed to make yet.
+
+**A placed sound should be mono.** This surprises people: a stereo recording already has its own left
+and right, so a position has nothing left to decide, and a backend given a stereo sound to put
+somewhere can only pick one of a few wrong answers. Music and narration are the opposite — those are
+not placed at all, and stereo is exactly right for them.
+
+## When a sound is not heard
+
+**There is no placeholder sound, and that is a decision rather than an omission** (ADR 0060). A
+missing texture draws magenta because nobody ships magenta — it is unmistakably not content. Nothing
+audible has that property: a beep, a tone, a click are each indistinguishable from something a game
+might legitimately play, and unlike magenta it would repeat, at the volume and in the position the
+missing asset would have had.
+
+So a sound that will not load is **silent**, and the report is the whole diagnosis. Same command:
+
+```
+amadeo assets
+```
+
+If the file is there and catalogued, the next suspects are, in order:
+
+1. **The scene's `assets` block does not declare the id.** Nothing loads bytes it was not asked for.
+2. **Nothing in the world has an `AudioListener`.** A world with no ears submits no voices at all —
+   it does not guess where to hear from, because guessing is what puts a sound on the wrong side.
+3. **`AudioSource::playing` is false, or its `gain` is zero.** Either one removes the voice before it
+   reaches a backend.
+4. **The game installed `NullAudio`.** Every headless build does, deliberately, and it makes no
+   sound by design. Only a windowed build swaps in the real one.
+
+## Generating an asset instead of committing one
+
+Two games do this, and it is a pattern rather than a one-off:
+
+```
+cargo run -p vault  --bin pix     # .pix text  -> PNG sprites
+cargo run -p atrium --bin tone    # a table of frequencies -> .wav
+```
+
+The reasoning is invariant I1's. A PNG and a `.wav` are both undiffable binaries, so where the
+content is simple enough to describe in text, the **text is the source** and the binary is derived.
+Both tools are idempotent: run them twice and the files are byte-identical, so a diff shows only what
+actually changed.
+
+Neither is a substitute for real art or real sound design. They exist so a demo is self-contained and
+so the thing being tested is the engine rather than somebody's asset pipeline. Drop a real file in
+with the same id and it is used instead, with nothing else to change.

@@ -2114,6 +2114,55 @@ is a different problem again.
    rotation directly instead, and Q/E keep the rate — which is correct for a key that is either held
    or not.
 
+### When nothing can test it, commit the procedure instead of the intention
+
+The kira audio backend is the first thing in this engine that **no test can verify**. CI has no sound
+card, a headless run has no sound card, and even on a machine with a device nothing in the process
+can read back what left through the operating system. There is no `render.capture` for audio and
+there cannot be one.
+
+The temptation is to write tests that *look* like they cover it — a test that submits a frame and
+asserts no error, named `sound_plays`. That is worse than nothing, because it converts "unverified"
+into "verified" in the mind of whoever reads the test list next.
+
+What this engine does instead is two things, and both are worth copying for anything else that ends
+outside the process:
+
+**1. Move the judgement somewhere testable, and leave the untestable part mechanical.**
+`VoiceTracker` exists for this. Deciding which voices are new, which have gone, and which merely
+moved is fiddly and every mistake in it is inaudible until it is not — a voice restarted every frame
+is a stutter at sixty hertz; a voice never stopped is a hum that outlives the thing making it. All of
+that is in `tracker.rs` and is exercised headlessly. What is left in `kira_backend.rs` is "start
+this, stop that, set the other", which is reviewable by reading.
+
+The rule that follows: **when adding an audio feature, ask which of the two files it belongs in, and
+the answer is almost always the tracker.**
+
+**2. Write the listening procedure down, as an `#[ignore]`d test.**
+`crates/amadeo-audio/tests/you_can_hear_it.rs`:
+
+```
+cargo test -p amadeo-audio --features kira --test you_can_hear_it -- --ignored --nocapture
+```
+
+It opens a real device, plays for a few seconds, and **prints the acceptance criteria before it
+starts** — "it should circle you, get quieter as it swings away, and stop without a click". The
+`#[ignore]` keeps it out of `cargo test --workspace`, so CI never tries; `--nocapture` is what makes
+the printed criteria visible.
+
+It is not a test in the sense the rest of the suite is. It is a procedure, and keeping it in the
+repository rather than in somebody's shell history is the whole point: the next person to touch the
+backend gets the check handed to them.
+
+It still asserts everything up to the speaker — a device opens, a sound uploads, no frame submission
+errors — so it catches real failures. And where a claim the procedure is watching for *can* be
+checked one layer down, it is: `the_tracker_agrees_with_what_that_procedure_expects` is not ignored,
+and if it is red there is no point listening.
+
+**A note on how these read.** Every one of those files says plainly that the last step is a person's.
+That is not modesty; it is the load-bearing part. A file named as though it covered more is how an
+unverified subsystem becomes a verified one without anybody deciding.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

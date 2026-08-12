@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-12 (session 15)
+**Last updated:** 2026-08-12 (session 16)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE — all four exit gates met.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
@@ -31,54 +31,73 @@ then `git log --oneline origin/main..HEAD`. **The fetch is the load-bearing half
 network failure where the fetch died and the comparison ran against a stale ref, printing "all
 pushed" without having checked anything. Read the fetch's exit code, not just the log's output.
 
+### ⚠️ The one thing to do before anything else: **listen to it**
+
+Session 16 wrote the kira backend, and **it is the first thing in this engine that no test can
+verify.** Everything up to the speaker is checked; whether a sound actually comes out is not, and
+cannot be. So the first task is thirty seconds long:
+
+```
+cargo test -p amadeo-audio --features kira --test you_can_hear_it -- --ignored --nocapture
+```
+
+Two procedures, about fifteen seconds total, printing what you should hear before each one. Then:
+
+```
+cargo run -p atrium
+```
+
+The lamp in the north-west corner hums *from where it is* — walk toward and away from it, and turn on
+the spot — and a room tone plays from nowhere in particular and should never pan. **Those are the
+backend's two code paths and no test can tell them apart.**
+
+If either is wrong, the likeliest culprit is `VoiceTracker`, not `kira_backend.rs` — that split is
+deliberate and `tracker.rs` is where CI can reach.
+
 ### Where things actually are
 
-M2.5 is complete. **The renderer is now past what M3's exit gate asks of it** — cascades, bloom, point
-and spot lights, and spot shadows all landed in session 15, finishing ADR 0045's tier 1 and then some.
-What M3 still needs is the subsystems that barely exist:
+M2.5 is complete, the renderer is past what M3's exit gate asks of it, and **audio now makes a
+sound.** What M3 still needs:
 
 | | |
 |---|---|
-| `amadeo-audio` | **Started.** Trait, `NullAudio`, buses, components, collection pass, `VoiceTracker`, WAV decoder. **No sound comes out** — the kira backend is not written |
+| `amadeo-audio` | **Working.** Trait, `NullAudio`, `KiraAudio`, buses, components, collection pass, `VoiceTracker`, WAV decoder, `SoundCache`. Missing: **one-shots**, ducking, occlusion, compressed audio |
 | `amadeo-ui` | **Nothing.** A title screen and a pause menu are exit-gate items |
 | `amadeo-anim` | **Nothing.** |
 
-### The obvious next task, and the honest warning attached to it
+**`amadeo-ui` is the obvious next one**, and it is the biggest single unbuilt thing between here and
+M3's exit gate — "title screen → playable loop → lose state → win state → pause → save → quit →
+resume" is gate item 1, and four of those seven are UI. `docs/04` §13 has the open questions on it;
+the layout model and retained-vs-immediate both want deciding before code, and retained is close to
+settled already because immediate-mode UI is invisible to introspection.
 
-**Write the kira backend** (`kira 0.12`, behind a `kira` feature, off by default like `gpu` and
-`rapier`). Everything it needs is in place: `VoiceTracker::reconcile` hands back `stopped`/`started`/
-`updated`, and applying them is mechanical.
+**The other candidate is one-shots**, which is smaller and unblocks sound design. A footstep is an
+*event*, not a property of the world, and `AudioSource` describes only the latter. The tempting wrong
+fix is named in ADR 0059: a `play_once` flag plus a system that clears it, which puts a write into
+gameplay state for something that must not be in the state hash at all. `amadeo-events` is where the
+answer lives.
 
-> **It is the one thing in this engine that no test can verify.** CI has no sound card and neither
-> does a development machine's headless run, so nothing can prove it works — only Justin listening
-> can. Session 15 deliberately stopped short of it rather than write a large unverifiable chunk and
-> claim it worked. **Do it when he is around to hear the result**, and say plainly in the summary that
-> the verification is his ears.
->
-> The parts that *can* be wrong invisibly were pulled out into `VoiceTracker` precisely so this is not
-> true of them. Do not put reconciliation logic back into the backend.
+### Q12 did not bite, and that is a finding rather than a non-event
 
-Two things it will need that do not exist yet: a way to get a `.wav` **off disk** into
-`Audio::upload` (the decoder exists; nothing calls it from the asset system), and a game to hear it
-in. `games/atrium` is the natural candidate — it already has a lamp and a lantern from session 15.
+Five sessions of notes predicted `kira::AudioManager` would be the first thing unable to satisfy
+`Service: Send + Sync`. **It satisfies it fine** — manager and every handle — so no `LocalService`, no
+`Mutex`, no relaxed bound. Checked by compiling the bound with a control case that fails, and pinned
+by `the_backend_fits_in_a_service_without_a_mutex_or_a_local_store`.
 
-> ### ⚠️ **Q12 will bite the moment you add kira, and it should be decided first**
->
-> `Service` requires `Send + Sync`, `Audio` is a `Service`, and `AudioBackend` inherits the bound.
-> `NullAudio` satisfies it trivially; **`kira::AudioManager` is precisely the offender Q12 predicted
-> back in the Q1 spike.** Decide before writing the backend rather than halfway through it.
->
-> Q12's standing prior is a separate `LocalService` store. But there is a cheaper option that only
-> became visible once the backend's shape settled, and it is now written into Q12: `submit` is called
-> **exactly once per frame from one place**, so a `Mutex` around kira costs one uncontended lock per
-> frame rather than one per access. That may make the cheap answer the right one here, and leave
-> `LocalService` for a genuinely per-access case like a file watcher.
+**The reason is the reusable part**: kira's desktop backend hands the `cpal` stream to its own thread
+and keeps a controller, and a library that already owns a thread has usually had to become
+`Send + Sync` in order to. So aim the suspicion at libraries that want to be driven from *your*
+thread — a script VM, a `wgpu` surface tied to a window — not at libraries that feel low level. Q12
+stays open with kira struck off; see ADR 0060 §3.
 
-### Three eyeball calls waiting on Justin
+### Four eyeball calls waiting on Justin
 
-None is blocking; all are cheap to change and all were tuned by looking at a capture rather than
+None is blocking; all are cheap to change and all were tuned by looking (or listening) rather than
 derived.
 
+- **The two generated sounds** — a 60 Hz lamp hum at peak 0.5 and a 55 Hz room tone at 0.16, both
+  from `cargo run -p atrium --bin tone`. They are placeholders and are meant to be replaced: drop a
+  real `.wav` in with the same id and nothing else changes. The levels in particular are a guess.
 - **Camera `height`** — Scarp 1.6, Atrium 1.5. It now means *the point the camera aims at*, so it
   decides what sits mid-screen.
 - **The Atrium's two demo lights** — a warm `PointLight` at intensity 22 and a shadow-casting
@@ -101,7 +120,112 @@ test and passes regardless, so a green Ubuntu job says nothing about a shader.
 
 ---
 
-## ⚠️ Start here — session 15 fixed the camera and closed a determinism hole nobody knew was open
+## Session 16 — the engine makes a sound, and the wall Q12 predicted was not there
+
+**`KiraAudio` is written and works**, behind a `kira` feature that is off by default like `gpu` and
+`rapier`. `games/atrium` turns it on, on the same trade it already makes for rapier: a demo of the
+audio system that makes no sound is not a demo.
+
+The mechanical part was as advertised — `VoiceTracker::reconcile` hands back
+`stopped`/`started`/`updated` and applying them is a loop each. What took the thinking was three
+things ADR 0060 records, none of which is about kira.
+
+### 1. Q12 was wrong about kira, and the reason is worth more than the answer
+
+Five sessions of notes said `kira::AudioManager` would be the first thing unable to satisfy
+`Service: Send + Sync`, and offered three ways to cope. **It satisfies the bound**, along with
+`StaticSoundHandle`, `TrackHandle`, `SpatialTrackHandle` and `ListenerHandle`.
+
+Checked by compiling the bound rather than by reading kira's source — **and with a control case,
+because a probe that cannot fail proves nothing.** The control (`Cell<u32>`) failed and nothing else
+did.
+
+The reason: kira's desktop backend does not hold the `cpal` stream. It hands it to a stream-manager
+thread and keeps a controller. **A library that already owns a thread has usually had to become
+`Send + Sync` in order to** — which points the suspicion, for the next candidate, at libraries that
+expect to be driven from *your* thread rather than at libraries that feel low level. `mlua::Lua` and
+`wasmtime::Store`, the two that genuinely failed in the Q1 spike, are both the former.
+
+Q12 stays open with one example struck off. Deciding it now would be deciding it speculatively, which
+its own entry has warned against since it was written.
+
+### 2. There is no placeholder sound, and there must not be one
+
+ADR 0021 wants a **visible stand-in plus a structured report** for a missing asset, and `TextureCache`
+ends its fallback chain in a magenta check built in code so the last resort cannot itself be missing.
+`SoundCache` implements only the second half.
+
+Magenta works because **nobody ships magenta** — it is unmistakably not content. Nothing audible has
+that property. A beep, a tone, a click: each is indistinguishable from something a game might
+legitimately play, and unlike magenta it would *repeat*, at the volume and in the position the
+missing asset would have had. A placeholder sound turns a broken asset into a design choice.
+
+So a sound that will not load is silent and `SoundCache::failures` is the whole diagnosis. That is a
+real weakening — a silent game is less obviously broken than a magenta one — taken because the
+alternative is worse in the case that matters. ADR 0060 states it as the general rule rather than as
+an audio exception: **ADR 0021 wants a stand-in that is legible as a stand-in, and where no such
+thing exists, the report is the whole answer.**
+
+### 3. When nothing can test it, commit the procedure instead of the intention
+
+This is the first subsystem in the engine whose output leaves the process. The tempting move is a
+test that *looks* like it covers the backend — submit a frame, assert no error, call it `sound_plays`
+— and that is worse than nothing, because it turns "unverified" into "verified" for whoever reads the
+test list next.
+
+Two things instead, and both generalise:
+
+- **The judgement lives where CI can reach it.** `VoiceTracker` was pulled out in session 15 for
+  exactly this, and `kira_backend.rs` is left with "start this, stop that, set the other". **Do not
+  move reconciliation back in.** When adding an audio feature, ask which of the two files it belongs
+  in; the answer is almost always the tracker.
+- **The listening procedure is committed**, as two `#[ignore]`d tests in
+  `crates/amadeo-audio/tests/you_can_hear_it.rs`. They open a real device, play for a few seconds,
+  and print the acceptance criteria before starting. `#[ignore]` keeps them out of CI; being in the
+  repository rather than in a shell history is the point. They still assert everything up to the
+  speaker, and where a claim they watch for *can* be checked one layer down, it is —
+  `the_tracker_agrees_with_what_that_procedure_expects` is not ignored, and if it is red there is no
+  point listening.
+
+Every one of those files says plainly that the last step is a person's. That is the load-bearing
+part, not modesty.
+
+### What else landed
+
+- **`SoundCache`** — id → bytes → samples, `TextureCache`'s third instance. This is what was missing
+  for a `.wav` to get off disk: the decoder existed and nothing called it from the asset system.
+  Decoding is lazy for the same reason texture decoding is, and a failure is remembered so a broken
+  file costs one decode rather than one per frame forever.
+- **The Atrium hears things.** A `lamp_hum` on the lamp (spatial) and a `room_tone` from nowhere
+  (non-spatial) — **the backend's two code paths, chosen deliberately because no test can tell them
+  apart.** Ears on the **camera** rather than the character: third person, so the viewer hears what
+  they can see. `the_room_is_heard.rs` pins that choice, since moving it would be legitimate and
+  would sound different.
+- **`cargo run -p atrium --bin tone`** generates both `.wav` files from a table of frequencies —
+  `games/vault`'s `pix` argument applied to audio, since a `.wav` is not diffable either. It uses
+  `amadeo_core::sin_cos_degrees` rather than `f32::sin`, **not** for ADR 0044's reason (nothing here
+  reaches the state hash) but for the mundane one that a generator whose output can differ from
+  itself is not a build step. Every partial completes a whole number of cycles, which is what stops
+  the loop clicking; the generator refuses a frequency that would not, naming the one to change.
+- **CI installs `libasound2-dev` on Linux.** `cpal` links ALSA there, and feature unification means
+  the whole workspace build wants it. A build requirement, not a runtime one — the runner still has
+  no device.
+- **`WavError` gained `Clone`**, because `SoundFailure` holds one and a remembered failure is handed
+  out to whoever asks why a sound is silent.
+
+### One process note worth not repeating
+
+The `walking_away_from_the_lamp` test's threshold was checked against measured numbers rather than
+guessed — session 15's lesson about capture thresholds, applied. It is 11.56 → 13.81 metres against a
+1.0 metre margin, and the margin is now written next to the assertion.
+
+Getting those numbers cost a self-inflicted wound: reading the file back through PowerShell's
+`Set-Content` to patch the assertion silently mangled every em-dash in it. **Use the Edit tool for
+files with non-ASCII text**; this is at least the second time.
+
+---
+
+## Session 15 — the camera fixed, and a determinism hole nobody knew was open
 
 **Justin played the Scarp and reported two things about the camera. Both were real, and the second
 one turned out to be sitting on top of an invariant violation.**

@@ -378,11 +378,37 @@ the deterministic boundary.
 
 **Job:** sound. Consistently underestimated, and a huge share of perceived game quality.
 
-⚠️ **Library choice.** `kira` (game-oriented, good mixing/tweening) vs `rodio` (simpler) vs direct
-`cpal`. Leaning kira.
-⚠️ **Audio must not affect simulation.** Mixing runs on its own thread at its own rate; simulation
-fires events, audio consumes them. If simulation ever waits on audio, determinism is gone.
-⚠️ Buses, ducking, 2D/3D spatialization, and a null backend for headless (I7).
+✅ **Library choice — `kira`, behind the trait.** ADR 0059 decided it and session 16 built it. The
+deciding argument was that audio is outside the state hash, so unlike physics there is no determinism
+reason to own the mixing: the engine owns the *interface* and delegates the work. ADR 0036 §4's rule
+applies unchanged — **no kira type may cross `AudioBackend`**, which is what keeps the choice
+reversible.
+✅ **Audio does not affect simulation, structurally.** `Audio` is a `Service`, and ADR 0009 puts
+services outside the state hash by trait bound. Nothing anyone has to remember.
+The shape is a little different from what this entry originally imagined: simulation does **not**
+fire events that audio consumes. An `AudioFrame` is a *state* — "these are the sounds that should be
+audible now" — and a backend diffs it, so a hum stops because its entity stopped existing.
+✅ **Buses** (`Effects`, `Music`, `Dialogue`, `Interface`), **3D spatialization**, and `NullAudio`
+for headless (I7). The backend makes one mixer track per bus even though gain is already applied per
+voice, which is what makes ducking a change to one track's volume later.
+✅ **The null backend is how audio is tested at all.** Nothing can assert on a sound; everything can
+assert on the frame that would have produced one.
+
+⚠️ **Ducking** is now cheap to add and is not added. "Quiet effects while dialogue plays" is a rule
+about two named things (ADR 0059) and needs somewhere to be authored.
+⚠️ **One-shots have no home.** A footstep is an event, not a property of the world, and `AudioSource`
+describes only the latter. Wiring `amadeo-events` to audio is the other half of this subsystem. The
+tempting wrong fix is a `play_once` flag and a system that clears it, which puts a write into
+gameplay state for something that must not be in the state hash at all.
+⚠️ **Compressed audio.** Only uncompressed `.wav` decodes today, and `symphonia` is the intended
+answer — kira ships it behind a feature this engine deliberately turns off.
+⚠️ **Occlusion.** M3's exit gate asks for "occlusion or at least attenuation", and only attenuation
+exists. A sound muffled by a wall needs a physics query per voice, which is a real design question
+rather than a setting.
+⚠️ **Nothing verifies the real backend but a person.** ADR 0060: CI has no device, so the fiddly part
+lives in `VoiceTracker` where it can be tested, and the listening procedure is committed as two
+`#[ignore]`d tests. Any new feature in `kira_backend.rs` should ask which of those two places it
+belongs in, and the answer is usually the tracker.
 
 ## 13. Game UI — `amadeo-ui` · M3
 
