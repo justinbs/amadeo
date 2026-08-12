@@ -18,10 +18,21 @@
 
 // The shadow map, and a sampler that *compares* rather than returning a value.
 //
-// `texture_depth_2d` with a `sampler_comparison` is what makes hardware PCF available: rather than
-// reading a depth and comparing it here, `textureSampleCompare` does four comparisons across the
-// neighbouring texels and returns how many passed. That is a soft edge for the price of one sample,
-// and it is why the sampler is declared this way rather than as an ordinary one.
+// A `sampler_comparison` is what makes hardware PCF available: rather than reading a depth and
+// comparing it here, the sampler does four comparisons across the neighbouring texels and returns
+// how many passed. That is a soft edge for the price of one sample, and it is why the sampler is
+// declared this way rather than as an ordinary one.
+//
+// # Every sample below is `textureSampleCompare**Level**`, and that is not an optimisation
+//
+// `textureSampleCompare` picks a mip level from the **implicit derivatives** of its coordinates,
+// which means it is a gradient instruction — and HLSL forbids those in non-uniform control flow. The
+// punctual-light loop is bounded by a uniform, so FXC calls it "a loop with varying iteration",
+// tries to unroll it, and **fails to compile the shader at all**.
+//
+// It cost a red CI: this compiles on a real GPU through DXC or Vulkan and fails on Windows CI's WARP
+// device, which goes through FXC. `Level` names mip zero explicitly, takes no derivatives, and is
+// identical in result — a shadow map has exactly one mip level.
 //
 // Always bound, even with shadows off — a 1×1 placeholder stands in, so there is one pipeline rather
 // than two. `shadow_params.z` is what tells the difference.
@@ -175,7 +186,7 @@ fn spot_shadow_factor(world: vec3<f32>, slot: i32, layer: i32, bias: f32) -> f32
     for (var y = -1; y <= 1; y = y + 1) {
         for (var x = -1; x <= 1; x = x + 1) {
             let offset = vec2<f32>(f32(x), f32(y)) * texel;
-            total = total + textureSampleCompare(
+            total = total + textureSampleCompareLevel(
                 shadow_map,
                 shadow_sampler,
                 uv + offset,
@@ -255,7 +266,7 @@ fn shadow_factor(world: vec3<f32>, lambert: f32) -> f32 {
     for (var y = -1; y <= 1; y = y + 1) {
         for (var x = -1; x <= 1; x = x + 1) {
             let offset = vec2<f32>(f32(x), f32(y)) * texel;
-            total = total + textureSampleCompare(
+            total = total + textureSampleCompareLevel(
                 shadow_map,
                 shadow_sampler,
                 uv + offset,

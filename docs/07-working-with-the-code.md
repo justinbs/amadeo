@@ -1316,6 +1316,42 @@ slices with a map each — are what fixes blocky shadows over large outdoor scen
 a third variant. The mode being *data* is why that is an addition rather than a rewrite; ADR 0038 has
 the full argument, and it is the same one `PixelFormat` shipped with.
 
+### A shader that compiles on your GPU can fail on CI — run the other compiler
+
+**Before pushing any change to a `.wgsl` file:**
+
+```bash
+WGPU_BACKEND=dx12 WGPU_DX12_COMPILER=fxc cargo test -p amadeo-render --all-features --test capture
+```
+
+A real GPU compiles these shaders through DXC or Vulkan. **Windows CI has no GPU**, so it falls back
+to WARP — Direct3D's software device — which compiles through **FXC**, an older and much stricter
+compiler. The two disagree, and when they do, every GPU capture test fails at once with a wall of
+identical warnings.
+
+The one that cost a red build: a shadow sample inside the punctual-light loop.
+
+```
+warning X3570: gradient instruction used in a loop with varying iteration,
+               attempting to unroll the loop
+→ FXC D3DCompile error (Unspecified error (0x80004005))
+```
+
+`textureSample` and `textureSampleCompare` pick a mip level from the **implicit derivatives** of
+their coordinates — they are *gradient instructions*, and HLSL forbids those in non-uniform control
+flow. The light loop is bounded by a uniform, so FXC calls that "varying", tries to unroll, and gives
+up. **The `Level` variants take no derivatives**: `textureSampleCompareLevel` and
+`textureSampleLevel` name the mip explicitly and are legal anywhere.
+
+> **The rule: never sample with an implicit mip level inside a loop whose bounds are not a compile-
+> time constant.** A shadow map has one mip level anyway, so `…Level` costs nothing there. For a
+> material texture the level genuinely matters — so sample it *outside* the loop and use the value
+> inside.
+
+**Ubuntu CI passes regardless**, because it has no software fallback at all: `WgpuBackend::offscreen`
+fails, and these tests report that and skip. So a green Ubuntu job says nothing about shader
+validity, and a red Windows job is the only signal.
+
 ### An absolute pixel threshold in a lit scene is measuring the ambient
 
 Writing the first spot-light capture test, I asserted the floor **outside** the cone was darker than

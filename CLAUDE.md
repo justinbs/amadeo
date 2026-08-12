@@ -506,6 +506,18 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 Golden replays live in `crates/amadeo-app/tests/golden/`. If one fails, read
 `docs/07-working-with-the-code.md` § Golden replays **before** regenerating it.
 
+**A fifth check, and only when a `.wgsl` file changed:**
+
+```
+WGPU_BACKEND=dx12 WGPU_DX12_COMPILER=fxc cargo test -p amadeo-render --all-features --test capture
+```
+
+Windows CI has no GPU, so it uses WARP and compiles shaders through **FXC**, which is far stricter
+than the DXC or Vulkan path a real GPU takes -- a shader that builds on your machine can fail every
+GPU test at once on CI. This runs the same compiler locally. Ubuntu CI is no help: with no software
+fallback it skips these tests entirely, so a green Ubuntu job says nothing about a shader.
+See `docs/07` for the one that caught this out.
+
 **Where does new code go?** If it needs to know what a game *is about*, it belongs in `modules/` or
 `games/`. If it's a mechanism with no opinion about genre, it belongs in a crate. When in doubt,
 put it higher up the stack — pushing things down later is easy; pulling them out is not.
