@@ -436,7 +436,35 @@ crates/
                      by both backends** and most chunks of a real world are empty, so filter with
                      `StaticMesh::is_empty`. Inserting a known id REPLACES; `reset` drops them all.
 — amadeo-anim        sprite anim, skeletal, state machines, tweens
-— amadeo-ui          retained-mode game UI: layout, theming, focus navigation
+🟡 amadeo-ui         retained-mode game UI (ADR 0062). **Layout is built**: `Anchor` (one `Align` per
+                     axis -- Start/Centre/End/Stretch, so sixteen useful placements from four names),
+                     `Flow` (None/Row/Column) with `gap`, `align_children` and `grow`, and
+                     `layout_ui` writing a `ComputedRect` per node.
+                     **Anchors AND flow, because there are two problems.** A HUD is placement -- a
+                     health bar belongs at a corner whatever else exists. A menu is flow -- the
+                     buttons take their positions from each other. Unity, Unreal and Godot all ship
+                     both, independently. Written here rather than taken from `taffy`: flexbox is a
+                     *document* spec and most of it is machinery a HUD never touches.
+                     **One top-down pass, no measure step and no intrinsic sizing** -- that is what
+                     makes it followable, and it is the deliberate difference from flexbox, which
+                     needs multiple passes because content can size its own container.
+                     **A flow node has NO size of its own**, so a bare `UiNode { flow: Column }` is a
+                     0x0 box whose children centre in nothing and land at negative coordinates.
+                     `UiNode::column`/`row` therefore also set `Anchor::fill()` -- three decisions
+                     that go together, made together. Found by a failing test, not by reasoning.
+                     **Screen space: +Y is DOWN, origin top-left** -- the opposite of ADR 0018's
+                     world convention, deliberately, because "twenty pixels from the top" is what a
+                     person means. The seam most likely to be got wrong, and a layout with the flip
+                     backwards is plausible and upside down.
+                     `ComputedRect` is `DERIVED`, which matters more here than usual: layout depends
+                     on the **window size**, so a game at 1920x1080 and the same game at 1280x720
+                     must not be two different worlds.
+                     **Retained, not immediate** -- an immediate-mode widget exists only for the
+                     duration of a call, so an agent cannot inspect it (I5) and a file cannot author
+                     it (I1). `egui` stays the *editor's* UI and this is not it.
+                     Still to come: drawing, text (**`cosmic-text`**, ADR 0062 -- full shaping, bidi
+                     and font fallback, chosen over a glyph atlas because the only argument for the
+                     smaller option was scope), theming, and focus navigation.
 ✅ amadeo-snapshot    the .snapshot text format (ADR 0028): capture a whole world to a file and put
                      it back. Sits above amadeo-scene because it borrows that crate's scalar
                      encoding — format_float is subtle and two copies would drift. **It captures the

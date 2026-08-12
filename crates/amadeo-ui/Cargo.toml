@@ -1,0 +1,23 @@
+[package]
+name = "amadeo-ui"
+description = "Retained-mode game UI for the Amadeo engine: anchors, flow layout, and text."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-reflect.workspace = true
+# A widget is drawn through the sprite path -- a panel is a quad and a glyph is a textured quad
+# (ADR 0062), so `SortOrder` is what stacks UI over the world rather than a separate hierarchy.
+amadeo-render.workspace = true
+# A UI node sits in a parent, which is the same `Parent` every other hierarchy uses. Reusing it is
+# what lets `propagate_transforms` and the editor's scene tree work on UI unchanged.
+amadeo-transform.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

@@ -423,13 +423,27 @@ belongs in, and the answer is usually the tracker.
 animated, and navigable by controller. Different requirements, different system. Conflating them is a
 mistake worth naming twice.
 
-⚠️ **Layout model.** Flexbox-like, constraint-based, or anchor-based. Flex is familiar to both authors
-and well-understood.
-⚠️ **Retained vs immediate mode.** Retained, to be authorable in scene files and inspectable by the
-agent. Immediate-mode UI is invisible to introspection, which breaks the whole observability story.
+✅ **Layout — anchors plus flow, written here (ADR 0062).** An `Anchor` places a node in its parent;
+a `Flow` arranges a parent's children in a row or column. Both, because a HUD is a placement problem
+and a menu is a flow problem, and Unity, Unreal and Godot all ship the pair independently. One
+top-down pass with no measure step, which is what makes it readable and is the deliberate difference
+from flexbox.
+✅ **Retained**, settled by argument rather than preference: an immediate-mode widget exists only for
+the duration of a call, so an agent cannot inspect it (I5) and a scene file cannot author it (I1).
+
+⚠️ **Text rendering — decided, unbuilt.** `cosmic-text` (ADR 0062): full shaping, bidirectional text,
+line breaking and font fallback. Chosen over the smaller glyph-atlas option because the only argument
+for the smaller one was scope, and "localisation later" is exactly the deferred problem that shape
+describes. Still the largest remaining piece of this subsystem.
+⚠️ **Drawing.** A panel is a quad and a glyph is a textured quad, so the sprite path already covers it
+and `SortOrder` already stacks UI over the world — but nothing is wired up yet.
 ⚠️ **Focus navigation.** Controller/keyboard focus traversal. Always an afterthought, always painful
-to add later.
-⚠️ **Text rendering and font handling.** Deceptively large: shaping, atlasing, SDF vs raster.
+to add later. Deliberately left open until the layout tree exists, which it now does.
+⚠️ **Theming.** A default theme is an M3 item and `CLAUDE.md` §6 constrains it heavily — no Inter, no
+gradients, no uniform rounded cards. Reference the tools, not the landing pages.
+⚠️ **Wrapping and intrinsic sizing** are both absent by design. Neither is needed by a title screen, a
+pause menu or a HUD, and both are additive. Adding them speculatively is building what `taffy` already
+does better.
 
 ## 14. Animation — `amadeo-anim` · M3
 

@@ -317,6 +317,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "amadeo-ui"
+version = "0.1.0"
+dependencies = [
+ "amadeo-core",
+ "amadeo-ecs",
+ "amadeo-reflect",
+ "amadeo-render",
+ "amadeo-transform",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "amadeo-voxel"
 version = "0.1.0"
 

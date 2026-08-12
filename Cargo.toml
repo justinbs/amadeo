@@ -52,6 +52,10 @@ amadeo-physics = { path = "crates/amadeo-physics", version = "0.1.0" }
 # Beside those two for the same reason (ADR 0059): audio needs transforms, to place a sound in the
 # world and a listener to hear it, and nothing else at this layer needs anything audio has.
 amadeo-audio = { path = "crates/amadeo-audio", version = "0.1.0" }
+# Retained-mode game UI (ADR 0062). ABOVE amadeo-render, unlike the three above it, because a widget
+# is drawn through the sprite path and a glyph is a textured quad -- it needs what the renderer has.
+# Still below amadeo-scene, because authoring a menu in a `.scene` file is that crate's business.
+amadeo-ui = { path = "crates/amadeo-ui", version = "0.1.0" }
 amadeo-scene = { path = "crates/amadeo-scene", version = "0.1.0" }
 # Above amadeo-scene, because it borrows that crate's scalar encoding (ADR 0028).
 amadeo-snapshot = { path = "crates/amadeo-snapshot", version = "0.1.0" }

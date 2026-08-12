@@ -64,28 +64,32 @@ sound.** What M3 still needs:
 | | |
 |---|---|
 | `amadeo-audio` | **Working, and complete enough for a game.** Trait, `NullAudio`, `KiraAudio`, buses, components, collection pass, `VoiceTracker`, WAV decoder, `SoundCache`, **one-shots**, `audio.describe`. Missing: ducking, occlusion, compressed audio, a voice cap |
-| `amadeo-ui` | **Nothing.** A title screen and a pause menu are exit-gate items |
+| `amadeo-ui` | **Layout is built** (ADR 0062): anchors, flow, `grow`, `ComputedRect`, 18 tests. Missing: **drawing**, **text**, theming, focus navigation |
 | `amadeo-anim` | **Nothing.** |
 
-**`amadeo-ui` is the obvious next one**, and it is now the biggest single unbuilt thing between here
-and M3's exit gate — "title screen → playable loop → lose state → win state → pause → save → quit →
-resume" is gate item 1, and four of those seven are UI.
+**`amadeo-ui` is the next one, and its two hard decisions are made** — Justin settled both in session
+16 and ADR 0062 records them. **Layout is built and tested; nothing is drawn yet.**
 
-> ### ⚠️ It has two open decisions and both want settling before code
->
-> `docs/04` §13 carries them. **Neither should be decided by whoever starts typing.**
->
-> 1. **Retained or immediate mode.** This one is nearly settled and the reasoning is already
->    written down: immediate-mode UI is invisible to introspection, which breaks invariant I5 and
->    the whole observability story — an agent cannot inspect a widget that exists only for the
->    duration of a function call. Retained also lets a menu be authored in a `.scene` file, which
->    is invariant I1. Expect to confirm this rather than debate it.
-> 2. **The layout model** — flexbox-like, constraint-based, or anchor-based. **This is the real
->    decision**, it is expensive to undo (it shapes every widget and every scene file that authors
->    one), and it deserves the research-then-recommend treatment rather than a coin toss.
->
-> Also unlisted and larger than it looks: **text rendering.** Shaping, atlasing, and SDF-versus-raster
-> are a project in themselves, and a title screen needs exactly one of them working.
+The next piece, in order:
+
+1. **Text, via `cosmic-text`.** The largest remaining part of the subsystem and the one a title
+   screen cannot do without. Full shaping, bidirectional text, line breaking and font fallback.
+   A font becomes an asset, and it is the first asset whose decoded form is neither pixels nor
+   samples. `cosmic-text`'s types must not cross the boundary — ADR 0036 §4, fourth application.
+2. **Drawing.** Cheap by comparison and deliberately so: a panel is a quad, a glyph is a textured
+   quad, `SortOrder` already stacks UI over the world (ADR 0018 anticipated exactly this), and the
+   sprite batcher already exists. No new pipeline.
+3. **Focus navigation**, the third ⚠️ in `docs/04` §13. Left open until the layout tree existed,
+   which it now does. Always painful to add later.
+4. **A default theme**, and `CLAUDE.md` §6 constrains it hard — no Inter, no gradients, no uniform
+   rounded cards, no emoji. Look at Blender, Houdini, Reaper; not at landing pages.
+
+> **On the text decision, because it is a calibration signal worth keeping.** I recommended the
+> lighter option (rasterise a TTF into a glyph atlas) and listed `cosmic-text` as the heavier
+> alternative. **Justin chose `cosmic-text`**, and he was right: the only argument for the lighter
+> one was *scope*, and `CLAUDE.md` §5 has said since session 6 that he would rather have a complete
+> engine than one that accumulates problems. When the sole case for the smaller option is effort,
+> recommend the complete one.
 
 ### Q12 did not bite, and that is a finding rather than a non-event
 
@@ -271,6 +275,35 @@ them. The module knows how to move, the game knows what moving sounds like.
 > after it worked. Nearly undiagnosable by ear. The fix is the half-open bound (`next`, `>=`), which
 > has no special case at zero, and
 > `the_very_first_one_shot_a_world_ever_sends_is_heard` is the regression test.
+
+### 6. `amadeo-ui` exists, and its layout works
+
+ADR 0062 settled the two decisions `docs/04` §13 had carried since M0, and the layout half is built:
+anchors, flow, `grow`, and a `ComputedRect` per node, with eighteen tests.
+
+**Anchors *and* flow, because there are two problems.** A HUD is placement — a health bar belongs at
+a screen corner regardless of what else exists. A menu is flow — the buttons take their positions
+from each other. Unity, Unreal and Godot all ship the pair, independently, and that convergence is
+the argument.
+
+Three things worth knowing before touching it:
+
+- **A flow node has no size of its own.** There is no intrinsic sizing, deliberately, so a bare
+  `UiNode { flow: Column }` is a 0×0 box whose children are centred in *nothing* and land at negative
+  coordinates. `UiNode::column`/`row` therefore also set `Anchor::fill()`. **Found by a failing test
+  rather than by reasoning**, which is why the constructor now bundles the three decisions.
+- **Screen space here is +Y down, origin top-left** — the opposite of ADR 0018's world convention, on
+  purpose, because "twenty pixels from the top" is what a person means. It is the seam most likely to
+  be got wrong and a layout with the flip backwards is plausible and upside down;
+  `each_corner_anchors_where_its_name_says` is what catches it.
+- **`ComputedRect` is `DERIVED`**, and it matters more here than for most derived data: layout depends
+  on the *window size*, so a game at 1920×1080 and the same game at 1280×720 must not be two
+  different worlds.
+
+Written here rather than taken from `taffy`, and the reason is not invented-here: flexbox is a
+*document* layout spec, most of it is machinery a HUD never touches, and adopting it would put a model
+we did not design at the centre of the UI system. The subset that matters is one top-down pass with
+no measure step — which is what makes it followable, and `CLAUDE.md` §6 makes that a real constraint.
 
 ### What else landed
 
