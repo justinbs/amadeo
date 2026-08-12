@@ -20,6 +20,8 @@ amadeo-app = { workspace = true, features = ["gpu"] }
 amadeo-audio = { workspace = true, features = ["kira"] }
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
+# A footstep is an event, not a state (ADR 0059). This game is what sends them.
+amadeo-events.workspace = true
 amadeo-input.workspace = true
 # The whole point of this game: the module walks, and the renderer draws its shadow.
 amadeo-camera.workspace = true

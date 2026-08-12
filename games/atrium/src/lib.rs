@@ -30,9 +30,16 @@
 
 use amadeo_app::{App, Stage, system};
 
-use amadeo_audio::{Audio, AudioListener, AudioSource, COLLECT_AUDIO, SoundCache, collect_audio};
+use amadeo_audio::{
+    Audio, AudioListener, AudioSource, COLLECT_AUDIO, SoundCache, SoundPlayed, collect_audio,
+};
+use amadeo_character::CharacterMotion;
+use amadeo_core::StableHash;
+use amadeo_ecs::Resource;
+use amadeo_events::WorldEvents;
 use amadeo_input::{InputDriver, NullSource};
 use amadeo_physics::{Collider, Gravity, Physics, RapierPhysics, RigidBody, Velocity};
+use amadeo_reflect::Reflect;
 use amadeo_render::{
     BoxMesh, Camera, DirectionalLight, Environment, Material, Mesh, PlaneMesh, PointLight,
     SortOrder, SpotLight, TextureCache,
@@ -43,6 +50,84 @@ use amadeo_transform::{
 
 /// Where this game's assets live, relative to the project root (ADR 0022).
 const ASSET_DIRECTORY: &str = "games/atrium/assets";
+
+/// How far the character walks between footsteps, in metres.
+///
+/// A stride rather than a timer, so footsteps slow down when the character does instead of marching
+/// at a fixed rate while they creep. Tuned by ear against a 5 m/s walk speed, which puts them a bit
+/// under half a second apart.
+///
+/// Public so a test can derive how many footsteps a given walk should produce, rather than hard-code
+/// a number — the first version of that test expected five, got three, and the difference was the
+/// plinth stopping the character early. A magic number would have made the level layout part of the
+/// audio test's contract.
+pub const STRIDE: f32 = 1.9;
+
+/// The label [`play_footsteps`] is registered under.
+pub const PLAY_FOOTSTEPS: &str = "play_footsteps";
+
+/// How far the character has walked since the last footstep.
+///
+/// # Why this is a resource and not a service
+///
+/// It is **gameplay state**. Where you are in your stride decides when the next footstep happens,
+/// and ADR 0059's whole point is that the *decision* to play a sound is simulation while the playing
+/// is not. So this is hashed, it reproduces in a replay, and a snapshot restores you mid-stride —
+/// where a service would silently reset your gait every time a save was loaded.
+#[derive(Debug, Default, Clone, PartialEq, StableHash, Reflect)]
+pub struct Stride {
+    /// Metres walked since the last footstep.
+    #[reflect(unit = "m")]
+    pub since_last: f32,
+}
+
+impl Resource for Stride {}
+
+/// Emits a [`SoundPlayed`] every [`STRIDE`] metres the character walks on the ground.
+///
+/// # Why this lives in the game rather than in `modules/amadeo-character`
+///
+/// **A footstep is content.** How often one happens, what it sounds like, and whether a character
+/// makes one at all are questions about *this* game — a floating drone and a person in boots share a
+/// character controller and should not share a gait. Invariant I4's rule one level up: the module
+/// knows how to move, and the game knows what moving sounds like.
+///
+/// # It only counts horizontal distance, and only on the ground
+///
+/// Falling is not walking, so `grounded` gates it; and vertical speed must not count towards a
+/// stride, or a character jumping on the spot would tap out footsteps in mid-air.
+pub fn play_footsteps(world: &mut amadeo_ecs::World) {
+    let walked: Vec<(f32, [f32; 3])> = world
+        .query::<(&CharacterMotion, &Transform)>()
+        .filter(|(_, (motion, _))| motion.grounded)
+        .map(|(_, (motion, transform))| {
+            // Horizontal only — see above.
+            let speed = (motion.velocity[0] * motion.velocity[0]
+                + motion.velocity[2] * motion.velocity[2])
+                .sqrt();
+            (speed * amadeo_core::FIXED_DT, transform.translation)
+        })
+        .collect();
+
+    let mut steps: Vec<[f32; 3]> = Vec::new();
+    if let Some(stride) = world.resource_mut::<Stride>() {
+        for (distance, position) in walked {
+            stride.since_last += distance;
+            // `while` rather than `if`, so a tick that covers more than one stride emits more than
+            // one footstep. It cannot happen at this speed and it is one character; it can happen
+            // the moment somebody adds a sprint or a debug teleport, and a silent cap is the kind of
+            // thing nobody thinks to look for.
+            while stride.since_last >= STRIDE {
+                stride.since_last -= STRIDE;
+                steps.push(position);
+            }
+        }
+    }
+
+    for position in steps {
+        world.send_event(SoundPlayed::at("footstep", position));
+    }
+}
 
 /// The room, as text. Compiled in rather than read at runtime, so the binary carries its own level
 /// and a capture cannot silently be taken against an edited one — the same choice `games/vault`
@@ -110,6 +195,11 @@ pub fn build_simulation() -> anyhow::Result<App> {
     // up, and `Render` is after `PostSimulation`.
     app.add_system(Stage::Render, system(COLLECT_AUDIO, collect_audio));
 
+    // The one-shot half (ADR 0059's named gap, filled in session 16). Registering the event is what
+    // arranges for its buffers to swap each tick; without that a footstep is sent and never read.
+    app.register_event::<SoundPlayed>();
+    app.insert_resource(Stride::default());
+
     // Rapier rather than `NullPhysics`. Against the null backend the character walks through the
     // walls — which is a deliberate and useful control case in a test, and a broken demo here.
     app.insert_service(Physics::new(Box::new(RapierPhysics::new())));
@@ -155,6 +245,15 @@ pub fn build_simulation() -> anyhow::Result<App> {
     app.add_system(
         Stage::PostSimulation,
         system(PROPAGATE_TRANSFORMS, propagate_transforms),
+    );
+
+    // **In `PostSimulation`, which puts it inside the deterministic zone on purpose.** Deciding that
+    // a footstep happened is gameplay: it depends on how far the character walked, it goes into the
+    // state hash as a queued event, and it has to reproduce in a replay. Only the *playing* is
+    // machinery, and that is `collect_audio` in the `Render` stage.
+    app.add_system(
+        Stage::PostSimulation,
+        system(PLAY_FOOTSTEPS, play_footsteps).after(PROPAGATE_TRANSFORMS),
     );
 
     Ok(app)

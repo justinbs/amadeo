@@ -123,6 +123,111 @@ impl AudioSource {
 
 impl Component for AudioSource {}
 
+/// A sound that happens once and is over — a footstep, a door, a gunshot.
+///
+/// # Why this is an event and [`AudioSource`] is a component
+///
+/// ADR 0059 named this gap and refused the obvious fix. An `AudioSource` says *"this entity is
+/// making this sound"*, which is a property of the world: it survives a save, `describe` can see it,
+/// and it stops when the entity does. **A footstep is none of those things.** It is not true of the
+/// world a moment later, there is nothing for it to be attached to, and a component that represented
+/// one would have to be added and then removed by somebody remembering to.
+///
+/// The tempting wrong fix, named in ADR 0059 so it would not get built by accident, is a `play_once`
+/// flag on the component plus a system that clears it. That puts a **write into gameplay state** for
+/// something that must not be in the state hash at all — and it makes every entity that has ever
+/// made a noise carry a field about it forever.
+///
+/// # It is deterministic, and that is the whole reason it works
+///
+/// The *decision* to play a footstep is gameplay and belongs in the state hash; the *playing* is
+/// machinery and must not be. An [`Event`](amadeo_events::Event) splits exactly there: it requires
+/// [`StableHash`], so a queued `SoundPlayed` is part of simulation state and two runs that disagree
+/// about footsteps have genuinely diverged — while the backend that plays it is a `Service` and
+/// outside the hash entirely (ADR 0009).
+///
+/// ```
+/// # use amadeo_audio::{Bus, SoundPlayed};
+/// # use amadeo_ecs::World;
+/// # use amadeo_events::WorldEvents;
+/// # let mut world = World::new();
+/// # world.register_event::<SoundPlayed>();
+/// world.send_event(SoundPlayed::at("footstep", [3.0, 0.0, -2.0]));
+/// world.send_event(SoundPlayed {
+///     bus: Bus::Interface,
+///     ..SoundPlayed::everywhere("menu_click")
+/// });
+/// ```
+#[derive(Debug, Clone, PartialEq, StableHash, Reflect)]
+pub struct SoundPlayed {
+    /// The declared asset id of the sound (ADR 0020).
+    pub sound: String,
+    /// Which mix it belongs to.
+    pub bus: Bus,
+    /// Linear gain before the bus and master are applied.
+    #[reflect(min = 0.0, max = 4.0)]
+    pub gain: f32,
+    /// Playback rate. `1.0` is as recorded.
+    #[reflect(min = 0.05, max = 8.0)]
+    pub pitch: f32,
+    /// Whether it is heard *from somewhere*, in which case `position` says where.
+    ///
+    /// A `bool` beside a plain `[f32; 3]` rather than an `Option<[f32; 3]>`, matching
+    /// [`AudioSource::spatial`] exactly — one spelling for one idea, and ADR 0032 left `Option::None`
+    /// without a spelling in the value tree anyway.
+    pub spatial: bool,
+    /// Where it happened, in world space. Ignored when `spatial` is false.
+    ///
+    /// **A place, not an entity.** A one-shot is over in a fraction of a second, so following
+    /// something would buy a pan change of a metre or so and cost a lifetime question nobody wants
+    /// to answer — what a footstep should do when the thing that made it is despawned mid-sound.
+    /// Unreal draws the same line (`PlaySoundAtLocation` against `SpawnSoundAttached`), and adding a
+    /// `follow` field later is additive if a game ever needs one.
+    pub position: [f32; 3],
+}
+
+impl Default for SoundPlayed {
+    fn default() -> Self {
+        Self {
+            sound: String::new(),
+            bus: Bus::Effects,
+            gain: 1.0,
+            pitch: 1.0,
+            spatial: true,
+            position: [0.0; 3],
+        }
+    }
+}
+
+impl SoundPlayed {
+    /// A sound that happened at a place.
+    #[must_use]
+    pub fn at(sound: &str, position: [f32; 3]) -> Self {
+        Self {
+            sound: sound.to_string(),
+            position,
+            ..Self::default()
+        }
+    }
+
+    /// A sound heard from everywhere — a menu click, a stinger.
+    ///
+    /// Defaults to [`Bus::Interface`] rather than `Effects`, because that is what a sound with no
+    /// place in the world almost always is, and because a menu click that ducks under a waterfall is
+    /// the exact failure `Interface` exists to prevent.
+    #[must_use]
+    pub fn everywhere(sound: &str) -> Self {
+        Self {
+            sound: sound.to_string(),
+            bus: Bus::Interface,
+            spatial: false,
+            ..Self::default()
+        }
+    }
+}
+
+impl amadeo_events::Event for SoundPlayed {}
+
 /// The ears. Put it on whatever should hear the world — usually the camera, sometimes the player.
 ///
 /// # Why it is a marker with no fields

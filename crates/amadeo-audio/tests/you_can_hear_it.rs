@@ -27,7 +27,7 @@
 #![cfg(feature = "kira")]
 
 use amadeo_audio::{
-    AudioBackend, AudioFrame, Bus, KiraAudio, Listener, SoundData, Voice, VoiceTracker,
+    AudioBackend, AudioFrame, Bus, KiraAudio, Listener, OneShot, SoundData, Voice, VoiceTracker,
 };
 use amadeo_core::sin_cos_degrees;
 use amadeo_ecs::World;
@@ -105,6 +105,7 @@ fn a_sound_moves_around_the_listener() {
 
         let frame = AudioFrame {
             listener: Some(listener),
+            one_shots: Vec::new(),
             voices: vec![Voice {
                 source,
                 sound: "circling".to_string(),
@@ -188,6 +189,7 @@ fn two_sounds_start_and_stop_independently() {
                 .submit(&AudioFrame {
                     listener: Some(listener),
                     voices: voices.clone(),
+                    one_shots: Vec::new(),
                 })
                 .expect("submitting should not fail");
             std::thread::sleep(FRAME);
@@ -208,6 +210,92 @@ fn two_sounds_start_and_stop_independently() {
     std::thread::sleep(std::time::Duration::from_millis(200));
 
     println!("\n--- done. ---\n");
+}
+
+#[test]
+#[ignore = "opens a real audio device and needs a person to listen; see the module docs"]
+fn one_shots_fire_once_each_and_from_where_they_happened() {
+    println!("\n--- the third listening test: one-shots ---");
+    println!("You should hear, over about five seconds:");
+    println!("  1. eight separate blips, evenly spaced — **eight, not sixteen and not one**.");
+    println!("     Each is a single event; hearing doubles means the same one played twice;");
+    println!("  2. they walk from your left to your right as they go;");
+    println!("  3. then two more from directly in front, with no gap of silence swallowing them;");
+    println!("  4. nothing keeps playing afterwards — a one-shot ends by itself.");
+    println!("Counting is the point of this one. Headphones for point 2.\n");
+
+    let mut backend = match KiraAudio::new() {
+        Ok(backend) => backend,
+        Err(error) => {
+            println!("no audio device on this machine: {error}");
+            return;
+        }
+    };
+
+    // Short and percussive, so eight of them are countable. A one-second drone would blur.
+    backend
+        .upload("blip", a_tone(880.0, 0.12, 48_000))
+        .expect("uploads");
+
+    let listener = Listener {
+        position: [0.0; 3],
+        forward: [0.0, 0.0, -1.0],
+        up: [0.0, 1.0, 0.0],
+    };
+
+    let blip = |x: f32| OneShot {
+        sound: "blip".to_string(),
+        bus: Bus::Effects,
+        gain: 0.8,
+        pitch: 1.0,
+        position: Some([x, 0.0, -1.0]),
+    };
+
+    // Eight events over four seconds, each carried by exactly one frame. Every other frame carries
+    // an empty list, which is what a backend must treat as "nothing new happened" rather than as
+    // "stop what you started".
+    let total_frames = (4.0 / FRAME.as_secs_f32()).round() as u32;
+    for step in 0..total_frames {
+        let every = total_frames / 8;
+        let one_shots = if every > 0 && step % every == 0 {
+            let progress = f32::from(u16::try_from(step / every).unwrap_or(0)) / 7.0;
+            vec![blip(-3.0 + progress * 6.0)]
+        } else {
+            Vec::new()
+        };
+
+        backend
+            .submit(&AudioFrame {
+                listener: Some(listener),
+                voices: Vec::new(),
+                one_shots,
+            })
+            .expect("submitting should not fail");
+        std::thread::sleep(FRAME);
+    }
+
+    // Two in one frame, which is what a busy tick produces and the case where a backend that keyed
+    // one-shots by anything would collapse them into one.
+    backend
+        .submit(&AudioFrame {
+            listener: Some(listener),
+            voices: Vec::new(),
+            one_shots: vec![
+                OneShot {
+                    position: None,
+                    ..blip(0.0)
+                },
+                OneShot {
+                    pitch: 0.75,
+                    position: None,
+                    ..blip(0.0)
+                },
+            ],
+        })
+        .expect("submitting should not fail");
+
+    std::thread::sleep(std::time::Duration::from_millis(800));
+    println!("\n--- done. If you counted eight then two, the one-shot path works. ---\n");
 }
 
 #[test]
@@ -238,6 +326,7 @@ fn the_tracker_agrees_with_what_that_procedure_expects() {
             up: [0.0, 1.0, 0.0],
         }),
         voices,
+        one_shots: Vec::new(),
     };
 
     let mut tracker = VoiceTracker::new();

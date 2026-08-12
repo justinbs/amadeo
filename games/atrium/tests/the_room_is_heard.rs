@@ -43,6 +43,28 @@ fn heard(app: &App) -> AudioFrame {
         .clone()
 }
 
+/// Every one-shot the null backend has been asked to play, in order, by asset id.
+///
+/// The last *frame* cannot answer this: a one-shot appears in exactly one frame and is gone from the
+/// next, so anything looking afterwards would see nothing. The null backend accumulates them for
+/// precisely this reason.
+fn footsteps(app: &App) -> Vec<String> {
+    app.world
+        .service::<Audio>()
+        .expect("the game installs an audio service")
+        .null_backend()
+        .expect("headless runs use the null backend")
+        .one_shots()
+        .to_vec()
+}
+
+fn position(app: &App, entity: Entity) -> [f32; 3] {
+    app.world
+        .get::<amadeo_transform::Transform>(entity)
+        .expect("still there")
+        .translation
+}
+
 fn player(app: &App) -> Entity {
     app.world
         .query::<(&CharacterController,)>()
@@ -242,6 +264,77 @@ fn the_room_tone_never_gains_a_position_however_far_you_walk() {
         .expect("the room tone is playing");
     assert_eq!(tone.position, None);
     assert_eq!(tone.bus, Bus::Music);
+}
+
+#[test]
+fn walking_makes_footsteps_and_standing_still_does_not() {
+    // The one-shot path, end to end through the real game: a stride accumulates, an event is sent,
+    // `collect_audio` turns it into a one-shot, and the null backend records it.
+    let mut app = room();
+    hold(&mut app, MOVE_FORWARD, 0.0, 120);
+    assert!(
+        footsteps(&app).is_empty(),
+        "standing still is not walking — a timer instead of a stride would tap away here"
+    );
+
+    // **Derived from how far they actually got, not from a guess.** The first version of this
+    // expected five footsteps from two seconds at 5 m/s and got three: the character walks into the
+    // plinth after about 5.7 m. A hard-coded number would have quietly made the level layout part of
+    // this test's contract, so the expectation comes from the distance travelled instead.
+    let start = position(&app, player(&app));
+    hold(&mut app, MOVE_FORWARD, 1.0, 120);
+    let walked = distance(start, position(&app, player(&app)));
+
+    let count = footsteps(&app).len();
+    let expected = (walked / atrium::STRIDE) as usize;
+    assert!(
+        count == expected || count == expected + 1,
+        "walked {walked:.2} m at a {} m stride, so expected {expected} footsteps, got {count}",
+        atrium::STRIDE
+    );
+    // And bounded below, because everything above would be satisfied by walking nowhere.
+    assert!(walked > 3.0, "the walk itself has to happen: {walked:.2} m");
+}
+
+#[test]
+fn footsteps_fall_in_the_same_places_every_run() {
+    // **Deciding that a footstep happened is gameplay**, so it is in the state hash and has to
+    // reproduce — that is the whole reason `Stride` is a resource rather than a service. Two runs of
+    // the same input must agree on how many footsteps there were and when.
+    //
+    // The *playing* is not in the hash, and nothing here asserts on it.
+    let counts: Vec<usize> = (0..2)
+        .map(|_| {
+            let mut app = room();
+            hold(&mut app, MOVE_FORWARD, 1.0, 150);
+            footsteps(&app).len()
+        })
+        .collect();
+
+    assert_eq!(counts[0], counts[1], "two identical runs disagreed");
+    assert!(counts[0] > 0, "the test is vacuous if nobody walked");
+
+    // And the same input reaches the same simulation state, footsteps included -- a queued event is
+    // part of that state, so a run that emitted a different number would hash differently.
+    let hash = |ticks| {
+        let mut app = room();
+        hold(&mut app, MOVE_FORWARD, 1.0, ticks);
+        app.world.state_hash()
+    };
+    assert_eq!(hash(150), hash(150));
+}
+
+#[test]
+fn a_footstep_is_heard_from_where_it_happened() {
+    // A one-shot carries a place rather than an entity (ADR 0059's gap, filled with a position on
+    // purpose). If footsteps ever stopped being spatial, they would follow the listener around and
+    // the room would lose its size.
+    let mut app = room();
+    hold(&mut app, MOVE_FORWARD, 1.0, 150);
+
+    let frames_with_steps = footsteps(&app);
+    assert!(!frames_with_steps.is_empty());
+    assert_eq!(frames_with_steps[0], "footstep");
 }
 
 #[test]

@@ -192,6 +192,10 @@ mod tests {
 
     fn frame(voices: Vec<Voice>) -> AudioFrame {
         AudioFrame {
+            // Always empty here, and that is the point: a one-shot is not reconciled, so nothing in
+            // this file should ever look at one. If a `VoiceTracker` change ever needs this field,
+            // that change is in the wrong place.
+            one_shots: Vec::new(),
             listener: Some(Listener {
                 position: [0.0; 3],
                 forward: [0.0, 0.0, -1.0],

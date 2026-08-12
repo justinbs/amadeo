@@ -2132,6 +2132,36 @@ is a different problem again.
    rotation directly instead, and Q/E keep the rate — which is correct for a key that is either held
    or not.
 
+### A high-water mark against a zero-based counter drops the first item
+
+**The bug:** the first sound a world ever made was silent. Every one after it worked.
+
+One-shot audio plays each `SoundPlayed` event once, tracked by a mark on the `Audio` service, because
+the render rate is not the tick rate and the same event sits in the readable buffer across every
+frame drawn during a tick. The first version stored *"the highest sequence already played"*,
+initialised to `0`, and filtered with `sequence > mark`.
+
+`EventClock` hands out sequence numbers **starting at zero**. So event zero — the first event of any
+kind a world ever sends — is never greater than the mark, and is dropped forever.
+
+```rust
+// Wrong: "the highest already played", starting at 0.
+.filter(|record| record.sequence > mark)
+
+// Right: "the lowest not yet played", a half-open bound.
+.filter(|record| record.sequence >= next)
+```
+
+**The general rule: express a watermark as the half-open bound, not the inclusive one.** `next` and
+`>=` has no special case at zero; `last` and `>` needs the field to be an `Option` or the counter to
+start at one, and both of those are things somebody has to remember.
+
+What makes this worth its own entry is the *shape of the symptom*. It is not "one-shots are broken" —
+it is one missing sound at the very start of a session, which a person would blame on anything else.
+`the_very_first_one_shot_a_world_ever_sends_is_heard` exists so the next person gets a failing test
+instead of a hunch, and it asserts the world has sent no events first so it cannot quietly stop
+testing the boundary.
+
 ### When nothing can test it, commit the procedure instead of the intention
 
 The kira audio backend is the first thing in this engine that **no test can verify**. CI has no sound

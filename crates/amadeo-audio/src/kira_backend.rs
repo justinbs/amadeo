@@ -39,7 +39,7 @@
 //!   would not be writing them, and the collection pass deliberately does not pre-attenuate.
 //! - a **non-spatial** voice plays directly on its bus track, so nothing pans it.
 
-use crate::backend::{AudioBackend, AudioError, AudioFrame, Listener, SoundData, Voice};
+use crate::backend::{AudioBackend, AudioError, AudioFrame, Listener, OneShot, SoundData, Voice};
 use crate::components::Bus;
 use crate::tracker::VoiceTracker;
 use amadeo_ecs::Entity;
@@ -247,6 +247,59 @@ impl KiraAudio {
         Ok(())
     }
 
+    /// Starts a one-shot and keeps no handle to it.
+    ///
+    /// # Why nothing is kept
+    ///
+    /// A one-shot ends by itself, so there is nothing to stop, update or reconcile — which is the
+    /// whole difference between it and a [`Voice`]. Dropping the handles immediately is therefore
+    /// correct rather than careless: kira's sounds and tracks keep playing once started, and a
+    /// spatial track built with `persist_until_sounds_finish` outlives its handle by exactly as long
+    /// as the sound does.
+    ///
+    /// **That flag is load-bearing.** Without it the track is freed when the handle drops, which is
+    /// the same instant the sound starts, and every placed one-shot is silent while every
+    /// non-spatial one works — a difference no test in this repository could see.
+    fn play_once(&mut self, one_shot: &OneShot, spatialise: bool) -> Result<(), AudioError> {
+        let Some(data) = self.sounds.get(&one_shot.sound) else {
+            return Err(AudioError::UnknownSound {
+                id: one_shot.sound.clone(),
+            });
+        };
+
+        let data = data
+            .volume(gain_to_decibels(one_shot.gain))
+            .playback_rate(f64::from(one_shot.pitch));
+
+        let bus = &mut self.buses[one_shot.bus as usize];
+
+        match (spatialise, one_shot.position, self.listener.as_ref()) {
+            (true, Some(position), Some(listener)) => {
+                let mut track = bus
+                    .add_spatial_sub_track(
+                        listener.id(),
+                        position,
+                        SpatialTrackBuilder::new().persist_until_sounds_finish(true),
+                    )
+                    .map_err(|error| AudioError::BadSound {
+                        id: one_shot.sound.clone(),
+                        reason: format!("no room for another spatial voice: {error}"),
+                    })?;
+                track.play(data).map_err(|error| AudioError::BadSound {
+                    id: one_shot.sound.clone(),
+                    reason: error.to_string(),
+                })?;
+            }
+            _ => {
+                bus.play(data).map_err(|error| AudioError::BadSound {
+                    id: one_shot.sound.clone(),
+                    reason: error.to_string(),
+                })?;
+            }
+        }
+        Ok(())
+    }
+
     /// Stops one voice and forgets it.
     ///
     /// Dropping the handles is what actually frees the track; the explicit `stop` is what makes it
@@ -330,6 +383,17 @@ impl AudioBackend for KiraAudio {
         }
         for voice in &changes.updated {
             self.update(voice);
+        }
+
+        // **Not reconciled, and not from `changes`.** A one-shot is a thing that happened, so every
+        // entry in this list is played exactly once and the tracker never sees it. `collect_audio`
+        // is what guarantees the list does not repeat across frames drawn within one tick.
+        for one_shot in &frame.one_shots {
+            if let Err(error) = self.play_once(one_shot, spatialise)
+                && first_error.is_none()
+            {
+                first_error = Some(error);
+            }
         }
 
         match first_error {

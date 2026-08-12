@@ -381,8 +381,18 @@ crates/
                      listener BEFORE no voices (a world with no ears submits none, so the second is
                      the symptom), and the null backend LAST (almost always true headlessly, so
                      reporting it first buries real faults).
-                     Still to come: one-shots, which are events rather than state and have no home
-                     yet.
+                     **One-shots landed (ADR 0061)**, closing ADR 0059's named gap. A `SoundPlayed`
+                     **event**, not a component -- which splits the problem exactly where it already
+                     splits: `Event` requires `StableHash`, so *deciding* a footstep happened is in
+                     the state hash and reproduces, while *playing* it is a Service and is not.
+                     Carries a **place, not an entity**: a one-shot is over in a fraction of a second,
+                     and an identity would invite a backend to decide a footstep is "still playing".
+                     **Played once per event SEQUENCE, not once per frame** -- `collect_audio` runs
+                     in Render, buffers swap per TICK, and the loop renders uncapped, so a naive read
+                     plays one footstep per drawn frame. The watermark is **half-open** ("the lowest
+                     not yet played") because `EventClock` starts at zero and a `> highest_played`
+                     bound drops the first sound a world ever makes -- it did.
+                     Still to come: ducking, occlusion, compressed audio, and a voice cap.
 🟡 amadeo-physics    RigidBody/Collider/Velocity/Gravity as reflected, HASHED data, the
                      PhysicsBackend trait, and NullPhysics -- which integrates velocity and gravity
                      for real rather than doing nothing, so a headless determinism test is
@@ -541,6 +551,11 @@ games/               actual games built with the engine
                    `.wav` files are generated from a table of frequencies by
                    `cargo run -p atrium --bin tone`, which is `pix`'s argument for audio, so it now
                    sets `default-run` too.
+                   **Footsteps are its one-shot demo (ADR 0061)**: `Stride` is a hashed RESOURCE, not
+                   a service, because where you are in your gait decides when the next step happens
+                   and a save must restore you mid-stride. `play_footsteps` lives here rather than in
+                   `modules/amadeo-character` -- the module knows how to move, the game knows what
+                   moving sounds like (I4, one level up).
 docs/                design docs and ADRs
 spikes/              separate cargo workspaces holding the evidence behind an ADR. Frozen once
                      written; excluded from the engine workspace. See spikes/README.md.

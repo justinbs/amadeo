@@ -122,6 +122,31 @@ pub struct Voice {
     pub position: Option<[f32; 3]>,
 }
 
+/// A sound to start once and then forget about.
+///
+/// # Why this is not a [`Voice`]
+///
+/// A `Voice` has an identity, because it *continues* — a backend has to tell "this is still going"
+/// from "this started again". A one-shot has no such problem: it is started and it ends by itself,
+/// so there is nothing to reconcile against and no entity to key it on. Giving it an identity would
+/// invite exactly the wrong behaviour, which is a backend deciding a footstep is "still playing" and
+/// declining to play the next one.
+///
+/// It also means [`VoiceTracker`](crate::VoiceTracker) does not look at these at all.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OneShot {
+    /// The declared asset id of the sound (ADR 0020).
+    pub sound: String,
+    /// Which bus it is mixed on.
+    pub bus: Bus,
+    /// Linear gain, with the bus and master gain already applied.
+    pub gain: f32,
+    /// Playback rate.
+    pub pitch: f32,
+    /// Where it happened, or `None` for a sound heard from everywhere.
+    pub position: Option<[f32; 3]>,
+}
+
 /// Everything a backend needs to produce one moment of sound.
 ///
 /// The audio equivalent of `FrameData`, and it carries the same promise: a backend is handed
@@ -138,6 +163,17 @@ pub struct AudioFrame {
     pub listener: Option<Listener>,
     /// Every audible sound, in a reproducible order.
     pub voices: Vec<Voice>,
+    /// Sounds to start once, and the **one part of this frame that is not a state**.
+    ///
+    /// The rest of an `AudioFrame` describes how the world should sound *now*, and handing a backend
+    /// the same frame twice must produce the same sound once. These are the exception: each one is a
+    /// thing that happened, so a backend plays every entry exactly once and never diffs them.
+    ///
+    /// **That makes not sending one twice the caller's problem**, and it is a real one — the render
+    /// rate is not the tick rate, so a naive read of the event buffer plays a footstep on every frame
+    /// until the next tick. `collect_audio` filters by event sequence for exactly this reason; see
+    /// `Audio::last_one_shot`.
+    pub one_shots: Vec<OneShot>,
 }
 
 /// What a backend has to be able to do.
@@ -194,6 +230,8 @@ pub struct NullAudio {
     sounds: std::collections::BTreeMap<String, f32>,
     last_frame: Option<AudioFrame>,
     submissions: u64,
+    /// Every one-shot it has ever been asked to play, in order, by asset id.
+    one_shots: Vec<String>,
 }
 
 impl NullAudio {
@@ -219,6 +257,17 @@ impl NullAudio {
     #[must_use]
     pub fn duration_of(&self, id: &str) -> Option<f32> {
         self.sounds.get(id).copied()
+    }
+
+    /// Every one-shot it has been asked to play since it was made, in order, by asset id.
+    ///
+    /// **The only way to test that a footstep happened.** A one-shot appears in a single frame and
+    /// then is gone, so `last_frame` cannot answer "did this play" a moment later — and *how many
+    /// times* is the question that catches the bug this whole path is shaped around, which is one
+    /// event turning into a sound per rendered frame rather than one sound.
+    #[must_use]
+    pub fn one_shots(&self) -> &[String] {
+        &self.one_shots
     }
 }
 
@@ -260,6 +309,15 @@ impl AudioBackend for NullAudio {
     fn submit(&mut self, frame: &AudioFrame) -> Result<(), AudioError> {
         self.last_frame = Some(frame.clone());
         self.submissions += 1;
+        // **Accumulated rather than overwritten**, unlike the frame. A one-shot appears in exactly
+        // one frame and is gone from the next, so a test that submitted twice and then looked would
+        // find nothing — which is the shape of "did the footstep play" a test most wants to ask.
+        self.one_shots.extend(
+            frame
+                .one_shots
+                .iter()
+                .map(|one_shot| one_shot.sound.clone()),
+        );
         Ok(())
     }
 
@@ -325,6 +383,7 @@ mod tests {
                     up: [0.0, 1.0, 0.0],
                 }),
                 voices: Vec::new(),
+                one_shots: Vec::new(),
             })
             .expect("accepted");
 
@@ -356,6 +415,7 @@ mod tests {
                 looping: false,
                 position: None,
             }],
+            one_shots: Vec::new(),
         };
         assert!(backend.submit(&frame).is_ok());
     }

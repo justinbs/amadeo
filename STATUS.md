@@ -41,7 +41,8 @@ cannot be. So the first task is thirty seconds long:
 cargo test -p amadeo-audio --features kira --test you_can_hear_it -- --ignored --nocapture
 ```
 
-Two procedures, about fifteen seconds total, printing what you should hear before each one. Then:
+**Three** procedures now, about twenty seconds total, printing what you should hear before each one.
+The third is footsteps and asks you to **count**: eight blips, not sixteen and not one. Then:
 
 ```
 cargo run -p atrium
@@ -49,7 +50,8 @@ cargo run -p atrium
 
 The lamp in the north-west corner hums *from where it is* — walk toward and away from it, and turn on
 the spot — and a room tone plays from nowhere in particular and should never pan. **Those are the
-backend's two code paths and no test can tell them apart.**
+backend's two code paths and no test can tell them apart.** Walking now also makes **footsteps**, one
+every 1.9 m; they should stop when you do and not tap while you stand still or jump on the spot.
 
 If either is wrong, the likeliest culprit is `VoiceTracker`, not `kira_backend.rs` — that split is
 deliberate and `tracker.rs` is where CI can reach.
@@ -61,21 +63,29 @@ sound.** What M3 still needs:
 
 | | |
 |---|---|
-| `amadeo-audio` | **Working.** Trait, `NullAudio`, `KiraAudio`, buses, components, collection pass, `VoiceTracker`, WAV decoder, `SoundCache`. Missing: **one-shots**, ducking, occlusion, compressed audio |
+| `amadeo-audio` | **Working, and complete enough for a game.** Trait, `NullAudio`, `KiraAudio`, buses, components, collection pass, `VoiceTracker`, WAV decoder, `SoundCache`, **one-shots**, `audio.describe`. Missing: ducking, occlusion, compressed audio, a voice cap |
 | `amadeo-ui` | **Nothing.** A title screen and a pause menu are exit-gate items |
 | `amadeo-anim` | **Nothing.** |
 
-**`amadeo-ui` is the obvious next one**, and it is the biggest single unbuilt thing between here and
-M3's exit gate — "title screen → playable loop → lose state → win state → pause → save → quit →
-resume" is gate item 1, and four of those seven are UI. `docs/04` §13 has the open questions on it;
-the layout model and retained-vs-immediate both want deciding before code, and retained is close to
-settled already because immediate-mode UI is invisible to introspection.
+**`amadeo-ui` is the obvious next one**, and it is now the biggest single unbuilt thing between here
+and M3's exit gate — "title screen → playable loop → lose state → win state → pause → save → quit →
+resume" is gate item 1, and four of those seven are UI.
 
-**The other candidate is one-shots**, which is smaller and unblocks sound design. A footstep is an
-*event*, not a property of the world, and `AudioSource` describes only the latter. The tempting wrong
-fix is named in ADR 0059: a `play_once` flag plus a system that clears it, which puts a write into
-gameplay state for something that must not be in the state hash at all. `amadeo-events` is where the
-answer lives.
+> ### ⚠️ It has two open decisions and both want settling before code
+>
+> `docs/04` §13 carries them. **Neither should be decided by whoever starts typing.**
+>
+> 1. **Retained or immediate mode.** This one is nearly settled and the reasoning is already
+>    written down: immediate-mode UI is invisible to introspection, which breaks invariant I5 and
+>    the whole observability story — an agent cannot inspect a widget that exists only for the
+>    duration of a function call. Retained also lets a menu be authored in a `.scene` file, which
+>    is invariant I1. Expect to confirm this rather than debate it.
+> 2. **The layout model** — flexbox-like, constraint-based, or anchor-based. **This is the real
+>    decision**, it is expensive to undo (it shapes every widget and every scene file that authors
+>    one), and it deserves the research-then-recommend treatment rather than a coin toss.
+>
+> Also unlisted and larger than it looks: **text rendering.** Shaping, atlasing, and SDF-versus-raster
+> are a project in themselves, and a title screen needs exactly one of them working.
 
 ### Q12 did not bite, and that is a finding rather than a non-event
 
@@ -95,9 +105,11 @@ stays open with kira struck off; see ADR 0060 §3.
 None is blocking; all are cheap to change and all were tuned by looking (or listening) rather than
 derived.
 
-- **The two generated sounds** — a 60 Hz lamp hum at peak 0.5 and a 55 Hz room tone at 0.16, both
-  from `cargo run -p atrium --bin tone`. They are placeholders and are meant to be replaced: drop a
-  real `.wav` in with the same id and nothing else changes. The levels in particular are a guess.
+- **The three generated sounds** — a 60 Hz lamp hum at peak 0.5, a 55 Hz room tone at 0.16, and a
+  180 ms footstep thud at 0.45, all from `cargo run -p atrium --bin tone`. Placeholders, meant to be
+  replaced: drop a real `.wav` in with the same id and nothing else changes. The levels are a guess.
+- **`STRIDE`, 1.9 m** — how far you walk between footsteps. Decides whether the gait feels like
+  walking or like jogging, and it was set by arithmetic against a 5 m/s walk rather than by ear.
 - **Camera `height`** — Scarp 1.6, Atrium 1.5. It now means *the point the camera aims at*, so it
   decides what sits mid-screen.
 - **The Atrium's two demo lights** — a warm `PointLight` at intensity 22 and a shadow-casting
@@ -228,6 +240,37 @@ prevent, sitting in the oldest introspection method in the engine. `render.descr
 Worth noticing *how* that was found: not by auditing, but by building the audio equivalent and
 noticing the shape was missing next door. **The general form is in `docs/07` now** — an introspection
 method must share the code it describes, and a structured report with no reader is not a report.
+
+### 5. One-shots, which closes the gap ADR 0059 named and refused to guess at
+
+ADR 0061. A footstep is not a state, so it is a **`SoundPlayed` event** — and the reason that works
+is that the boundary the problem has is already the boundary the mechanism has. `Event` requires
+`StableHash` because *"queued events are part of simulation state at a tick boundary"*, so **deciding
+a footstep happened is in the state hash and reproduces in a replay**, while playing it is a service
+and is not. Nothing had to be invented.
+
+Three things to know:
+
+- **It carries a place, not an entity.** A `Voice` is keyed on the entity making it because a voice
+  continues; a one-shot has no identity on purpose, because an identity invites a backend to decide a
+  footstep is "still playing" and decline the next one. Following is refused for now with the
+  reasoning written down — every major engine offers both and defaults to the fixed position.
+- **Played once per event *sequence*, not once per frame.** `collect_audio` runs in `Render`, buffers
+  swap per *tick*, and the loop renders uncapped — so one footstep sits in the readable buffer across
+  every frame drawn that tick. Read naively it plays five overlapping copies at 300 fps and one at
+  60, which is a bug whose symptom depends on the frame rate.
+- **`Stride` is a hashed resource, not a service**, so a save restores you mid-gait rather than
+  resetting it.
+
+`games/atrium` owns `Stride` and `play_footsteps`; `modules/amadeo-character` knows nothing about
+them. The module knows how to move, the game knows what moving sounds like.
+
+> **A bug worth not re-introducing, and it is now in `docs/07`.** The first version tracked "the
+> highest sequence already played", initialised to 0, filtered with `>`. `EventClock` starts at
+> **zero**, so event zero — the first sound a world ever makes — was dropped forever, and everything
+> after it worked. Nearly undiagnosable by ear. The fix is the half-open bound (`next`, `>=`), which
+> has no special case at zero, and
+> `the_very_first_one_shot_a_world_ever_sends_is_heard` is the regression test.
 
 ### What else landed
 

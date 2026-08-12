@@ -56,8 +56,10 @@ mod wav;
 #[cfg(feature = "kira")]
 mod kira_backend;
 
-pub use backend::{AudioBackend, AudioError, AudioFrame, Listener, NullAudio, SoundData, Voice};
-pub use components::{AudioListener, AudioSource, Bus};
+pub use backend::{
+    AudioBackend, AudioError, AudioFrame, Listener, NullAudio, OneShot, SoundData, Voice,
+};
+pub use components::{AudioListener, AudioSource, Bus, SoundPlayed};
 pub use sounds::{SoundCache, SoundFailure};
 
 /// The label `audio.describe` is served under, so a host and the CLI cannot disagree about it.
@@ -70,6 +72,7 @@ pub use kira_backend::KiraAudio;
 
 use amadeo_assets::Assets;
 use amadeo_ecs::{Service, World};
+use amadeo_events::WorldEvents;
 use amadeo_transform::{GlobalTransform, Transform};
 
 /// The label the app layer registers [`collect_audio`] under.
@@ -92,6 +95,27 @@ pub struct Audio {
     pub buses: [f32; Bus::COUNT],
     /// Set when the last submission failed. Cleared on the next success.
     last_error: Option<AudioError>,
+    /// The lowest [`SoundPlayed`] sequence number **not yet** handed to a backend.
+    ///
+    /// A half-open bound — "everything below this has played" — rather than "the highest that has".
+    /// That is not a stylistic choice: `EventClock` hands out sequence numbers **starting at zero**,
+    /// so a `last_played` field initialised to 0 with a `sequence > last_played` filter drops the
+    /// very first event a world ever sends. It did, and the symptom was the first footstep in the
+    /// game being silent and every one after it working — which is close to undiagnosable by ear.
+    ///
+    /// # The bug this exists to prevent
+    ///
+    /// **The render rate is not the tick rate.** `collect_audio` runs in the `Render` stage, the
+    /// event buffers swap at the *tick* boundary, and the windowed loop renders as fast as it can —
+    /// so a single footstep event sits in the readable buffer across every frame drawn during that
+    /// tick. Reading it naively plays one footstep per rendered frame, which at 300 fps against a
+    /// 60 Hz tick is five overlapping copies of the same sound.
+    ///
+    /// `EventRecord::sequence` is strictly increasing across every event type, so a high-water mark
+    /// is all that is needed. It lives here rather than in a resource because it is machinery: a
+    /// service is outside the state hash (ADR 0009), and how many times a frame happened to be drawn
+    /// is exactly the sort of thing that must never reach a replay.
+    next_one_shot: u64,
 }
 
 impl Service for Audio {}
@@ -105,6 +129,7 @@ impl Audio {
             master: 1.0,
             buses: [1.0; Bus::COUNT],
             last_error: None,
+            next_one_shot: 0,
         }
     }
 
@@ -178,7 +203,34 @@ impl Audio {
 /// an event, and events are what `amadeo-events` is for — see ADR 0059's consequences.
 pub fn collect_audio(world: &mut World) {
     let frame = build_frame(world);
+
+    // **Advance the high-water mark before submitting, not after.** These have now been handed over,
+    // and a backend that failed on one should not be given it again on the next frame — a failing
+    // one-shot re-offered every frame is a stutter on top of whatever the original problem was.
+    if let Some(highest) = highest_one_shot_sequence(world)
+        && let Some(audio) = world.service_mut::<Audio>()
+    {
+        audio.next_one_shot = highest + 1;
+    }
+
     submit(world, frame);
+}
+
+/// The largest sequence number among the one-shot events this frame will carry.
+///
+/// Separate from [`build_frame`] because that function is shared with [`describe_audio`], which must
+/// not advance anything — describing a world is a question, and a question that consumed the thing it
+/// asked about would make an agent's introspection part of the game.
+fn highest_one_shot_sequence(world: &World) -> Option<u64> {
+    let from = world
+        .service::<Audio>()
+        .map_or(0, |audio| audio.next_one_shot);
+    world
+        .read_events::<SoundPlayed>()
+        .iter()
+        .map(|record| record.sequence)
+        .filter(|sequence| *sequence >= from)
+        .max()
 }
 
 /// Reads the world and works out what should be audible, gains included.
@@ -192,6 +244,9 @@ fn build_frame(world: &World) -> AudioFrame {
         // No listener means nothing can hear anything. A frame of voices with no ears to put them in
         // would make a backend guess at a position, and guessing is what produces a sound that comes
         // from the wrong side.
+        //
+        // **One-shots are dropped here too, deliberately.** A footstep in a world with no ears is
+        // not a footstep heard from nowhere; it is a footstep nobody was there for.
         return AudioFrame::default();
     };
 
@@ -227,9 +282,32 @@ fn build_frame(world: &World) -> AudioFrame {
     // simulation — but a test that asserts on a frame is worthless if the order wobbles.
     voices.sort_by_key(|(entity, _)| (entity.index(), entity.generation()));
 
+    // One-shots that have not been handed over yet, in send order — which `EventRecord::sequence`
+    // gives for free and which is the order they actually happened in.
+    let from = world
+        .service::<Audio>()
+        .map_or(0, |audio| audio.next_one_shot);
+    let one_shots: Vec<OneShot> = world
+        .read_events::<SoundPlayed>()
+        .iter()
+        .filter(|record| record.sequence >= from)
+        .map(|record| OneShot {
+            sound: record.event.sound.clone(),
+            bus: record.event.bus,
+            gain: record.event.gain,
+            pitch: record.event.pitch,
+            position: if record.event.spatial {
+                Some(record.event.position)
+            } else {
+                None
+            },
+        })
+        .collect();
+
     let mut frame = AudioFrame {
         listener: Some(listener),
         voices: voices.into_iter().map(|(_, voice)| voice).collect(),
+        one_shots,
     };
 
     // **Bus and master gain are applied here, not in a backend.** A backend that applied them would
@@ -241,6 +319,12 @@ fn build_frame(world: &World) -> AudioFrame {
     if let Some(audio) = world.service::<Audio>() {
         for voice in &mut frame.voices {
             voice.gain *= audio.gain_for(voice.bus);
+        }
+        // The same multiply, for the same reason. Easy to forget precisely because one-shots were
+        // added later, and what it sounds like when forgotten is a footstep that ignores the volume
+        // slider.
+        for one_shot in &mut frame.one_shots {
+            one_shot.gain *= audio.gain_for(one_shot.bus);
         }
     }
     frame
@@ -370,8 +454,10 @@ pub fn describe_audio(world: &World) -> AudioDescription {
             let decoded: std::collections::BTreeSet<String> = frame
                 .voices
                 .iter()
-                .filter(|voice| cache.is_decoded(&voice.sound))
-                .map(|voice| voice.sound.clone())
+                .map(|voice| &voice.sound)
+                .chain(frame.one_shots.iter().map(|shot| &shot.sound))
+                .filter(|sound| cache.is_decoded(sound))
+                .cloned()
                 .collect();
             (
                 decoded.into_iter().collect(),
@@ -461,25 +547,36 @@ fn collect_listener(world: &World) -> Option<Listener> {
 /// protecting. The same trade `TextureCache` takes, with the same cost: a possible hitch the first
 /// time a sound is heard, left untuned until one is measured.
 fn ensure_sounds(world: &mut World, frame: &AudioFrame) {
-    if !world.has_service::<SoundCache>() || frame.voices.is_empty() {
+    if !world.has_service::<SoundCache>() || (frame.voices.is_empty() && frame.one_shots.is_empty())
+    {
         return;
     }
 
+    // Every id this frame names, from both lists. **A one-shot is the case that suffers most from
+    // being loaded late**: a hum that starts a frame after it should have is inaudible, where a
+    // footstep that arrives after the frame carrying it is simply never heard at all.
+    let wanted: Vec<&str> = frame
+        .voices
+        .iter()
+        .map(|voice| voice.sound.as_str())
+        .chain(frame.one_shots.iter().map(|shot| shot.sound.as_str()))
+        .collect();
+
     world.with_service_taken::<SoundCache, ()>(|world, cache| {
         if let Some(assets) = world.service::<Assets>() {
-            for voice in &frame.voices {
-                cache.ensure(&voice.sound, assets);
+            for sound in &wanted {
+                cache.ensure(sound, assets);
             }
         }
 
         let Some(audio) = world.service_mut::<Audio>() else {
             return;
         };
-        for voice in &frame.voices {
-            if audio.has(&voice.sound) {
+        for sound in &wanted {
+            if audio.has(sound) {
                 continue;
             }
-            let Some(sound) = cache.get(&voice.sound) else {
+            let Some(decoded) = cache.get(sound) else {
                 // Missing or undecodable. Silence plus the report in `SoundCache::failures`, which
                 // is the whole of the diagnosis — see the note there about why there is no
                 // placeholder sound.
@@ -489,7 +586,7 @@ fn ensure_sounds(world: &mut World, frame: &AudioFrame) {
             // backend — a device lost and reacquired re-uploads from here rather than re-reading
             // the file. Once per id, not once per frame: the `has` check above is what makes that
             // true.
-            let error = audio.upload(&voice.sound, sound.clone()).err();
+            let error = audio.upload(sound, decoded.clone()).err();
             if error.is_some() {
                 audio.last_error = error;
             }
@@ -689,6 +786,179 @@ mod tests {
         let listener = last(&world).listener.expect("one listener");
         assert_eq!(listener.forward, [0.0, 0.0, -1.0]);
         assert_eq!(listener.up, [0.0, 1.0, 0.0]);
+    }
+
+    /// A world with ears and the one-shot event registered.
+    fn world_that_can_hear_one_shots() -> World {
+        let mut world = world_with_ears();
+        world.register_event::<SoundPlayed>();
+        world
+    }
+
+    fn heard_one_shots(world: &World) -> Vec<String> {
+        world
+            .service::<Audio>()
+            .expect("installed")
+            .null_backend()
+            .expect("null")
+            .one_shots()
+            .to_vec()
+    }
+
+    #[test]
+    fn a_sent_event_becomes_a_one_shot_once_the_buffers_swap() {
+        // Double-buffered: sent this tick, readable next (ADR's `amadeo-events` model). That is one
+        // tick of latency on a footstep, which is 16 ms and inaudible.
+        let mut world = world_that_can_hear_one_shots();
+        world.send_event(SoundPlayed::at("footstep", [1.0, 0.0, 2.0]));
+
+        collect_audio(&mut world);
+        assert!(
+            heard_one_shots(&world).is_empty(),
+            "not readable until the buffers swap"
+        );
+
+        world.swap_events::<SoundPlayed>();
+        collect_audio(&mut world);
+
+        assert_eq!(heard_one_shots(&world), vec!["footstep".to_string()]);
+        let frame = last(&world);
+        assert_eq!(frame.one_shots[0].position, Some([1.0, 0.0, 2.0]));
+    }
+
+    #[test]
+    fn the_very_first_one_shot_a_world_ever_sends_is_heard() {
+        // **Written after watching it fail.** `EventClock` hands out sequence numbers starting at
+        // **zero**, so a high-water mark called "the highest already played", initialised to 0 and
+        // filtered with `sequence > mark`, drops event number zero — the first sound the game ever
+        // makes. Every one after it works, which is what makes it nearly undiagnosable by ear: you
+        // would conclude the *first* footstep of a session was swallowed by something else.
+        //
+        // The field is now a half-open bound ("everything below this has played") and the filter is
+        // `>=`, which is the standard way not to have this bug. This test is what says so.
+        let mut world = world_that_can_hear_one_shots();
+        assert_eq!(
+            world
+                .resource::<amadeo_events::EventClock>()
+                .expect("registered")
+                .sent_count(),
+            0,
+            "this test is only meaningful in a world that has never sent an event"
+        );
+
+        world.send_event(SoundPlayed::at("first", [0.0, 0.0, 0.0]));
+        world.swap_events::<SoundPlayed>();
+        collect_audio(&mut world);
+
+        assert_eq!(heard_one_shots(&world), vec!["first".to_string()]);
+    }
+
+    #[test]
+    fn one_event_is_one_sound_however_many_times_the_frame_is_drawn() {
+        // **The bug this whole path is shaped around.** `collect_audio` runs in the `Render` stage,
+        // buffers swap at the *tick* boundary, and the windowed loop renders as fast as it can — so
+        // one footstep event sits in the readable buffer across every frame drawn during that tick.
+        // Without the sequence high-water mark, a 300 fps machine plays five overlapping copies and
+        // a 60 fps machine plays one, which is the worst kind of bug: it depends on the hardware.
+        let mut world = world_that_can_hear_one_shots();
+        world.send_event(SoundPlayed::at("footstep", [0.0, 0.0, 0.0]));
+        world.swap_events::<SoundPlayed>();
+
+        for _ in 0..5 {
+            collect_audio(&mut world);
+        }
+
+        assert_eq!(
+            heard_one_shots(&world),
+            vec!["footstep".to_string()],
+            "five renders of one tick must be one footstep"
+        );
+    }
+
+    #[test]
+    fn two_events_in_one_tick_are_two_sounds() {
+        // The other half of the same guarantee, and the one a naive "have I seen this?" flag gets
+        // wrong: deduplicating too eagerly turns a burst of gunfire into a single shot.
+        let mut world = world_that_can_hear_one_shots();
+        world.send_event(SoundPlayed::at("shot", [0.0, 0.0, 0.0]));
+        world.send_event(SoundPlayed::at("shot", [1.0, 0.0, 0.0]));
+        world.send_event(SoundPlayed::everywhere("shell"));
+        world.swap_events::<SoundPlayed>();
+
+        collect_audio(&mut world);
+        collect_audio(&mut world);
+
+        assert_eq!(heard_one_shots(&world).len(), 3);
+    }
+
+    #[test]
+    fn a_one_shot_gets_the_bus_and_master_gain_like_everything_else() {
+        // Easy to miss because one-shots were added after voices, and what it sounds like when
+        // missed is a footstep that ignores the volume slider.
+        let mut world = world_that_can_hear_one_shots();
+        {
+            let audio = world.service_mut::<Audio>().expect("installed");
+            audio.master = 0.5;
+            audio.buses[Bus::Interface as usize] = 0.5;
+        }
+        world.send_event(SoundPlayed::everywhere("click"));
+        world.swap_events::<SoundPlayed>();
+
+        collect_audio(&mut world);
+
+        let frame = last(&world);
+        assert_eq!(frame.one_shots.len(), 1);
+        assert!((frame.one_shots[0].gain - 0.25).abs() < 1e-6);
+        // `everywhere` puts it on `Interface` on purpose: a menu click must not duck under a
+        // waterfall, which is the whole reason that bus is separate.
+        assert_eq!(frame.one_shots[0].bus, Bus::Interface);
+        assert_eq!(frame.one_shots[0].position, None);
+    }
+
+    #[test]
+    fn a_one_shot_in_a_world_with_no_ears_is_not_heard() {
+        // Not "heard from nowhere" — nobody was there for it. A world with no listener submits an
+        // empty frame, and a one-shot smuggled through that would be the one sound in the game that
+        // did not need ears.
+        let mut world = World::new();
+        world.insert_service(Audio::new(Box::new(NullAudio::new())));
+        world.register_event::<SoundPlayed>();
+        world.send_event(SoundPlayed::at("footstep", [0.0, 0.0, 0.0]));
+        world.swap_events::<SoundPlayed>();
+
+        collect_audio(&mut world);
+        assert!(heard_one_shots(&world).is_empty());
+    }
+
+    #[test]
+    fn describing_a_world_does_not_consume_its_one_shots() {
+        // **A question must not change the answer.** `describe_audio` shares `build_frame` with
+        // `collect_audio`, so it sees the pending one-shot — and it must leave the high-water mark
+        // alone, or an agent asking what the game sounds like would silence the next footstep.
+        let mut world = world_that_can_hear_one_shots();
+        world.send_event(SoundPlayed::at("footstep", [0.0, 0.0, 0.0]));
+        world.swap_events::<SoundPlayed>();
+
+        assert_eq!(describe_audio(&world).frame.one_shots.len(), 1);
+        assert_eq!(describe_audio(&world).frame.one_shots.len(), 1);
+
+        collect_audio(&mut world);
+        assert_eq!(heard_one_shots(&world), vec!["footstep".to_string()]);
+    }
+
+    #[test]
+    fn a_one_shot_cannot_move_the_state_hash_when_it_plays() {
+        // The event itself *is* hashed — that is the point, since deciding to play a footstep is
+        // gameplay. What must not move the hash is the **playing**, which happens in the `Render`
+        // stage and touches only services.
+        let mut world = world_that_can_hear_one_shots();
+        world.send_event(SoundPlayed::at("footstep", [0.0, 0.0, 0.0]));
+        world.swap_events::<SoundPlayed>();
+
+        let before = world.state_hash();
+        collect_audio(&mut world);
+        collect_audio(&mut world);
+        assert_eq!(before, world.state_hash());
     }
 
     #[test]

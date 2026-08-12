@@ -13,6 +13,9 @@ rust-version.workspace = true
 amadeo-assets.workspace = true
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
+# A one-shot is an event, not a state (ADR 0059's named gap). `Event` requires `StableHash`, which is
+# what puts the *decision* to play a footstep in the state hash while the playing stays out of it.
+amadeo-events.workspace = true
 amadeo-reflect.workspace = true
 # For where a sound is and where the listener is. The only reason this crate sits at the transform
 # layer rather than below it.

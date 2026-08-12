@@ -55,6 +55,13 @@ struct Drone {
     /// The loudest sample in the finished clip, linear. Deliberately well below 1.0: these are
     /// ambience, and a background sound at full scale leaves nothing for anything else.
     peak: f32,
+    /// Whether the clip is meant to run end-to-start forever.
+    ///
+    /// Decides two things at once. A looping clip is checked for whole-cycle partials, because a
+    /// loop that does not join cleanly clicks once per lap; a **one-shot** is given an envelope
+    /// instead, because a clip that starts and stops at full amplitude clicks at both ends.
+    /// Neither treatment makes sense for the other kind.
+    looping: bool,
     partials: &'static [Partial],
 }
 
@@ -71,6 +78,7 @@ const DRONES: &[Drone] = &[
         id: "lamp_hum",
         seconds: 1.0,
         peak: 0.5,
+        looping: true,
         partials: &[
             Partial {
                 hertz: 60.0,
@@ -96,6 +104,7 @@ const DRONES: &[Drone] = &[
         id: "room_tone",
         seconds: 2.0,
         peak: 0.16,
+        looping: true,
         partials: &[
             Partial {
                 hertz: 55.0,
@@ -112,6 +121,38 @@ const DRONES: &[Drone] = &[
             Partial {
                 hertz: 164.5,
                 level: 0.12,
+            },
+        ],
+    },
+    // A footstep, and the first **one-shot** in the engine. A soft thud rather than a real footstep
+    // recording: low partials with a fast decay is what a foot on stone reads as, and it is what can
+    // be built from sines. This is the placeholder these two paragraphs of the module docs are about.
+    //
+    // Short on purpose. A footstep long enough to notice as a *tone* is a footstep that sounds wrong,
+    // and at 180 ms two of them can overlap slightly at a run without turning into a drone.
+    Drone {
+        id: "footstep",
+        seconds: 0.18,
+        peak: 0.45,
+        looping: false,
+        partials: &[
+            Partial {
+                hertz: 90.0,
+                level: 1.0,
+            },
+            Partial {
+                hertz: 150.0,
+                level: 0.45,
+            },
+            // A little top end, so it reads as a *contact* rather than as a hum. Without this the
+            // envelope alone makes it sound like something being switched off.
+            Partial {
+                hertz: 640.0,
+                level: 0.22,
+            },
+            Partial {
+                hertz: 1150.0,
+                level: 0.1,
             },
         ],
     },
@@ -159,7 +200,10 @@ fn render(drone: &Drone) -> Vec<f32> {
 
     for partial in drone.partials {
         let cycles = partial.hertz * drone.seconds;
-        if (cycles - cycles.round()).abs() > 1e-4 {
+        // Only a *looping* clip has a seam to get wrong. A one-shot ends in silence because of the
+        // envelope below, so demanding whole cycles of it would be an arbitrary constraint on which
+        // frequencies a footstep may be built from.
+        if drone.looping && (cycles - cycles.round()).abs() > 1e-4 {
             eprintln!(
                 "{}: {} Hz over {} s is {cycles} cycles, which does not loop cleanly and will \
                  click once per loop. Choose a frequency that is a whole multiple of {} Hz.",
@@ -189,7 +233,46 @@ fn render(drone: &Drone) -> Vec<f32> {
     for sample in &mut samples {
         *sample *= scale;
     }
+
+    if !drone.looping {
+        apply_envelope(&mut samples);
+    }
     samples
+}
+
+/// Shapes a one-shot so it starts and ends at silence.
+///
+/// # Why a one-shot needs this and a loop does not
+///
+/// A looping clip never starts or stops — it runs off its end onto its own beginning, so an envelope
+/// would be an audible fade in the middle of continuous sound. A **one-shot** does start and stop,
+/// and a waveform that begins at full amplitude is a step from silence, which is a click. Both ends.
+///
+/// # Why the curve is a polynomial
+///
+/// The obvious decay is exponential, and `exp` is exactly what ADR 0053 declines to depend on: Rust
+/// does not specify its precision, so a generator using it could write a different file on a
+/// different machine for no visible reason. `(1 - t)³` is three multiplications, it is exactly
+/// specified by IEEE 754, and at this length nobody can tell the difference.
+fn apply_envelope(samples: &mut [f32]) {
+    let count = samples.len();
+    if count == 0 {
+        return;
+    }
+
+    // Two milliseconds of attack at 44.1 kHz. Long enough to remove the step, short enough that a
+    // percussive sound still reads as a hit rather than as a swell.
+    let attack = ((SAMPLE_RATE as f32 * 0.002) as usize).clamp(1, count);
+
+    for (index, sample) in samples.iter_mut().enumerate() {
+        let progress = index as f32 / count as f32;
+        let decay = 1.0 - progress;
+        let mut gain = decay * decay * decay;
+        if index < attack {
+            gain *= index as f32 / attack as f32;
+        }
+        *sample *= gain;
+    }
 }
 
 /// Wraps mono samples in a 16-bit PCM WAV container.

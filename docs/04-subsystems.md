@@ -396,15 +396,20 @@ assert on the frame that would have produced one.
 
 ⚠️ **Ducking** is now cheap to add and is not added. "Quiet effects while dialogue plays" is a rule
 about two named things (ADR 0059) and needs somewhere to be authored.
-⚠️ **One-shots have no home.** A footstep is an event, not a property of the world, and `AudioSource`
-describes only the latter. Wiring `amadeo-events` to audio is the other half of this subsystem. The
-tempting wrong fix is a `play_once` flag and a system that clears it, which puts a write into
-gameplay state for something that must not be in the state hash at all.
+✅ **One-shots — a `SoundPlayed` event (ADR 0061).** A footstep is not a property of the world, and
+the event system splits it exactly where it needs splitting: `Event` requires `StableHash`, so
+deciding one happened is in the state hash and reproduces in a replay, while playing it is a service
+and is not. Carries a place rather than an entity, and is played **once per event sequence number**
+rather than once per rendered frame — see the ADR for why that distinction is a correctness
+requirement and not an optimisation.
 ⚠️ **Compressed audio.** Only uncompressed `.wav` decodes today, and `symphonia` is the intended
 answer — kira ships it behind a feature this engine deliberately turns off.
 ⚠️ **Occlusion.** M3's exit gate asks for "occlusion or at least attenuation", and only attenuation
 exists. A sound muffled by a wall needs a physics query per voice, which is a real design question
 rather than a setting.
+⚠️ **No voice cap.** Nothing limits how many one-shots a frame may carry, so a game emitting a
+thousand asks the mixer for a thousand tracks and is refused once per sound. Reported rather than
+fatal, and a cap is a tuning question best answered when something real hits it.
 ⚠️ **Nothing verifies the real backend but a person.** ADR 0060: CI has no device, so the fiddly part
 lives in `VoiceTracker` where it can be tested, and the listening procedure is committed as two
 `#[ignore]`d tests. Any new feature in `kira_backend.rs` should ask which of those two places it
