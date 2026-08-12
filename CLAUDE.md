@@ -509,8 +509,12 @@ crates/
                      height, eye at (w/2, -h/2), so `x ∈ 0..w` and `y ∈ -h..0` and a pixel IS a unit.
                      Screen-to-world is one line, `[sx, -sy]`, in ONE file -- a flip applied twice or
                      in half the cases is a layout that is plausible and upside down.
-                     ⚠️ **Nothing has actually drawn a UI yet.** The numbers are asserted; no capture
-                     has been looked at. See the "look at the output" lesson in docs/07.
+                     **`tests/it_draws.rs` renders it offscreen and reads the pixels** (behind a `gpu`
+                     feature) -- top-left, bottom-right, stretch-with-insets, order, and hidden. Both
+                     axes are pinned by opposite corners, because either alone passes against a
+                     picture flipped on the other. **Panels are verified; TEXT IS NOT** -- drawing a
+                     label needs a font asset and the only font in the repo is the one-glyph test
+                     font, so glyph placement on screen has still never been looked at.
                      Still to come: theming, focus navigation, and a game that shows a menu.
 ✅ amadeo-snapshot    the .snapshot text format (ADR 0028): capture a whole world to a file and put
                      it back. Sits above amadeo-scene because it borrows that crate's scalar

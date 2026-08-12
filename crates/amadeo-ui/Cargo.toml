@@ -35,5 +35,11 @@ cosmic-text = { version = "0.19", default-features = false, features = [
     "swash",
 ] }
 
+[features]
+default = []
+# Lets `tests/it_draws.rs` render the interface offscreen and look at the pixels. Off by default so a
+# headless build does not link a graphics stack (I7); CI turns it on with `--all-features`.
+gpu = ["amadeo-render/gpu"]
+
 [lints]
 workspace = true

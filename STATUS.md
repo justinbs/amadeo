@@ -64,7 +64,7 @@ sound.** What M3 still needs:
 | | |
 |---|---|
 | `amadeo-audio` | **Working, and complete enough for a game.** Trait, `NullAudio`, `KiraAudio`, buses, components, collection pass, `VoiceTracker`, WAV decoder, `SoundCache`, **one-shots**, `audio.describe`. Missing: ducking, occlusion, compressed audio, a voice cap |
-| `amadeo-ui` | **Layout, shaping, atlas and draw pass are written** (ADR 0062): anchors, flow, `grow`, `FontCache`, `GlyphAtlas`, `Panel`, `Text`, `collect_ui`, 49 tests. **Never actually drawn** — see the box below. Missing: theming, focus navigation |
+| `amadeo-ui` | **Layout, shaping, atlas and draw pass** (ADR 0062): anchors, flow, `grow`, `FontCache`, `GlyphAtlas`, `Panel`, `Text`, `collect_ui`, 54 tests. **Panels verified on a real GPU; text never drawn** — see the box below. Missing: theming, focus navigation |
 | `amadeo-anim` | **Nothing.** |
 
 **`amadeo-ui` is the next one, and its two hard decisions are made** — Justin settled both in session
@@ -73,17 +73,20 @@ sound.** What M3 still needs:
 **Text shaping landed too** — `FontCache` over `cosmic-text`, with a real font generated in code so
 the tests need no fixture. What is left, in order:
 
-1. > ### ⚠️ **Look at it.** Nothing has drawn a UI, and that is the highest-value next hour.
+1. > ### ⚠️ **Panels have been looked at. Text has not.**
    >
-   > `Panel`, `Text` and `collect_ui` are written and every number is asserted — panel centres, the
-   > y-flip, glyph advance, one batch on the atlas. **No capture has been taken and no window has
-   > shown a menu.** This is precisely the position that hid an inside-out mesher for two sessions
-   > (`docs/07`, "two things that look right about a mesh and are independent"), and the failure mode
-   > here is the same shape: a layout can be numerically correct and upside down, or drawn behind the
-   > world, or sampling the wrong corner of the atlas.
+   > `tests/it_draws.rs` renders the interface offscreen and reads the pixels — a panel anchored
+   > top-left really is in the top-left, bottom-right really is bottom-right, a stretched panel sits
+   > exactly inside its insets, and order decides what is on top. **Both axes are pinned by opposite
+   > corners**, because either alone would pass against a picture flipped on the other.
    >
-   > The cheapest check is a GPU capture: put a panel and a label in `games/atrium`, run
-   > `amadeo capture ui.png --package atrium`, and **open the file**.
+   > **No glyph has ever been drawn on a screen.** Shaping is tested, the atlas is tested down to the
+   > pixel, and the sprite positions are asserted — but the same argument that made the panel capture
+   > worth writing applies to text and has not been discharged. It needs a **real font asset**; the
+   > only font in the repo is the one-glyph box in `test_font.rs`, which cannot spell anything.
+   >
+   > So the next step is: put a `.ttf` in `games/atrium/assets/fonts/`, add a label, capture it, and
+   > **open the file**. Picking that typeface is a `CLAUDE.md` §6 decision, not a technical one.
 
 2. **Focus navigation**, the third ⚠️ in `docs/04` §13. Left open until the layout tree existed,
    which it now does. Always painful to add later.
@@ -386,6 +389,17 @@ paragraph of text would move the state hash — and move it *differently at two 
 
 Screen-to-world is one line (`[sx, -sy]`) in one file, because a flip applied twice, or in half the
 cases, gives a layout that is plausible and upside down.
+
+**And then somebody looked at it.** `tests/it_draws.rs` renders the interface offscreen and reads the
+pixels back. That was written because every other assertion about UI is about *numbers*, and the
+numbers and the picture are joined by a projection, a camera and a shader that no unit test touches —
+which is exactly how a voxel mesher kept correct normals and inside-out winding for two sessions with
+a green suite.
+
+It passed first run, which is worth recording rather than glossing: the y-flip, the pixel-is-a-unit
+projection, the overlay merge and `Panel::order` were all right the first time. **Opposite corners
+are asserted in two separate tests**, because a single corner passes against a picture flipped on the
+other axis.
 
 ### What else landed
 
