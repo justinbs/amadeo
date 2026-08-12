@@ -324,7 +324,18 @@ crates/
                      `TargetFormat` variant, not a flag: it needs `TEXTURE_BINDING` and the scene
                      depth buffer must not ask for it, and the transient pool matches on format.
                      One casting light per view, directional only.
-— amadeo-audio       mixer, buses, spatialization (null backend required)
+🟡 amadeo-audio      the AudioBackend trait, NullAudio, buses, and the collection pass (ADR 0059).
+                     **Simulation never waits on audio and audio never touches simulation**, and that
+                     is structural rather than remembered: `Audio` is a Service, so ADR 0009 puts it
+                     outside the state hash. An `AudioFrame` is a **state** -- "these are the sounds
+                     that should be audible now" -- not commands, so a backend diffs it and a sound
+                     stops because its entity stopped existing. `Bus` is an ENUM (Effects, Music,
+                     Dialogue, Interface), because a bus is the fixed set of things a player has a
+                     slider for; `Interface` is separate so a menu click does not duck near a
+                     waterfall. Gain is applied by the collection pass, so two backends cannot
+                     disagree about the order. **kira goes behind the trait** and ADR 0036 §4 applies
+                     unchanged -- no kira type may cross it. Still to come: the kira backend itself,
+                     and one-shots, which are events rather than state and have no home yet.
 🟡 amadeo-physics    RigidBody/Collider/Velocity/Gravity as reflected, HASHED data, the
                      PhysicsBackend trait, and NullPhysics -- which integrates velocity and gravity
                      for real rather than doing nothing, so a headless determinism test is

@@ -1,0 +1,26 @@
+[package]
+name = "amadeo-audio"
+description = "Audio abstraction for the Amadeo engine, with a required null backend."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# A sound names its asset by declared id (ADR 0020), exactly as a sprite names its texture — so this
+# crate is the layer that turns an id into something audible.
+amadeo-assets.workspace = true
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-reflect.workspace = true
+# For where a sound is and where the listener is. The only reason this crate sits at the transform
+# layer rather than below it.
+amadeo-transform.workspace = true
+thiserror.workspace = true
+
+[features]
+default = []
+
+[lints]
+workspace = true

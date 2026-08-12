@@ -260,11 +260,62 @@ Point lights still cast nothing — a cube shadow is six faces and six passes, a
 gate needs. `games/atrium` gained a shadow-casting lantern beside the warm lamp; the pool and the
 pillar shadow inside it are in the capture.
 
-**Next:** the renderer is now past what M3's gate asks of it. The unbuilt subsystems are the gate's
-real remaining cost — `amadeo-audio` (*"horror lives or dies here"*), `amadeo-ui` (a title screen and
-a pause menu), and `amadeo-anim`, none of which exist at all. Also open and non-blocking: triplanar
-mapping for terrain (which also fixes the tangent-frame fallback on steep faces), bloom's downsample
-chain, point-light cube shadows, and per-camera post (**Q23**).
+### A red build, and the check that came out of it
+
+**The spot-shadow commit went 3/5.** Every GPU capture test failed on Windows at once — the signature
+of a shader that will not compile rather than a wrong picture.
+
+`textureSampleCompare` picks its mip level from the **implicit derivatives** of its coordinates, which
+makes it a gradient instruction, and HLSL forbids those in non-uniform control flow. The punctual-light
+loop is bounded by a uniform, so FXC called it varying, tried to unroll it, and failed at
+8 lights × 9 PCF samples = 72 iterations. Two error codes, one cause: 1479 × `X3570` and one `X3511`.
+`textureSampleCompareLevel` names mip zero and takes no derivatives; a shadow map has one mip level,
+so the result is identical.
+
+> ### ⚠️ Half the CI matrix was silent about shaders, and that is the real finding
+>
+> A real GPU compiles through DXC or Vulkan. **Windows CI has no GPU**, falls back to WARP, and
+> compiles through **FXC** — much stricter. And **Ubuntu CI has no software fallback at all**, so it
+> skips every GPU test and passes regardless.
+>
+> So a green Ubuntu job says *nothing* about whether a shader is valid, and the only signal was a red
+> Windows job discovered by tripping it. That is now a command, in CLAUDE.md §4b as a conditional
+> fifth check and in `docs/07` with the general rule:
+>
+> ```
+> WGPU_BACKEND=dx12 WGPU_DX12_COMPILER=fxc \
+>     cargo test -p amadeo-render --all-features --test capture
+> ```
+>
+> **Verified both ways** — it fails on the bad shader and passes on the good one — so it is a check
+> that has been watched failing, which is the standard this codebase holds its tests to and had not
+> held its own build steps to.
+
+### `amadeo-audio` exists — ADR 0059, and kira is decided
+
+Justin chose **kira behind the trait**, settling the ⚠️ that `docs/04` §12 has carried since M0. The
+deciding argument: audio is *outside the state hash*, so unlike physics there is no determinism reason
+to own the mixing — ADR 0036 owns rapier's interface because a solver's results reach a replay, and
+nothing kira does can. ADR 0036 §4's rule applies unchanged: no kira type may cross `AudioBackend`.
+
+What landed is the **engine-owned half**: the trait, `NullAudio`, buses, the components, the collection
+pass, and sixteen tests. Third instance of the same shape as rendering and physics, which is what makes
+invariant I7 hold — the engine runs with no window, no GPU **and no sound card**.
+
+Two things worth knowing before touching it:
+
+- **An `AudioFrame` is a state, not commands.** *"These are the sounds that should be audible now"*, so
+  a backend diffs it and a hum stops because its entity stopped existing. That is what makes
+  `AudioSource` authorable, visible to `describe`, and correct after a snapshot restore.
+- **A one-shot has no home yet, and the tempting fix is wrong.** A footstep is an event, not a state.
+  The obvious `play_once` flag plus a system that clears it would put a write into *gameplay state* for
+  something that must not be in the state hash at all. Events are what `amadeo-events` is for.
+
+**Next:** the kira backend, so sound actually comes out — deliberately separate, because the interface
+is the expensive-to-change part and should be exercised before a dependency shapes it. Then `amadeo-ui`
+(a title screen and a pause menu) and `amadeo-anim`, neither of which exists. Also open and
+non-blocking: triplanar mapping for terrain (which also fixes the tangent-frame fallback on steep
+faces), bloom's downsample chain, point-light cube shadows, and per-camera post (**Q23**).
 
 ## 📋 The plan cascades were built from — kept as a record
 

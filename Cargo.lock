@@ -86,6 +86,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "amadeo-audio"
+version = "0.1.0"
+dependencies = [
+ "amadeo-assets",
+ "amadeo-core",
+ "amadeo-ecs",
+ "amadeo-reflect",
+ "amadeo-transform",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "amadeo-camera"
 version = "0.1.0"
 dependencies = [
