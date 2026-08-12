@@ -306,3 +306,18 @@ entity lamp "Warm lamp"
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation -4.0 2.6 -3.0
+
+entity lantern "Hanging lantern"
+  SpotLight
+    colour 0.86 0.92 1.0
+    inner_angle 26.0
+    intensity 38.0
+    outer_angle 38.0
+    range 14.0
+    shadow_bias 0.03
+    shadow_resolution 1024
+    shadows true
+  Transform
+    rotation -90.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 3.0 5.4 2.0

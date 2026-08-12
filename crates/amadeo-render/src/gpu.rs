@@ -123,6 +123,8 @@ struct GpuPunctualLight {
     direction_outer: [f32; 4],
     /// rgb = colour with intensity folded in, a = cosine of the inner half-angle.
     colour_inner: [f32; 4],
+    /// x = shadow layer, or -1 for a light that casts none. y = its bias. zw unused.
+    shadow: [f32; 4],
 }
 
 /// What one shadow pass needs: the one matrix it draws with.
@@ -137,7 +139,7 @@ struct GpuPunctualLight {
 /// The "cannot disagree" property is kept a different way: both are filled in the same loop from the
 /// same [`ShadowData`](crate::ShadowData), so there is still one source.
 ///
-/// Indexed by `view * CASCADE_COUNT + cascade`, which is why it is a dynamic offset like the mesh
+/// Indexed by `view * MAX_SHADOW_LAYERS + layer`, which is why it is a dynamic offset like the mesh
 /// view rather than a uniform rewritten between passes.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -205,6 +207,9 @@ struct GpuMeshView {
     punctual_count: [f32; 4],
     /// Point and spot lights, nearest first (ADR 0057). Unused slots are zeroed and never read.
     punctual: [GpuPunctualLight; crate::MAX_PUNCTUAL_LIGHTS],
+    /// World to each shadow-casting spot light's clip space (ADR 0058), indexed by that light's
+    /// shadow layer minus the number of cascades.
+    spot_shadow: [[[f32; 4]; 4]; crate::MAX_SHADOW_SPOTS],
 }
 
 /// One uploaded mesh's buffers.
@@ -1736,7 +1741,7 @@ impl WgpuBackend {
 
         let shadow_view_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("amadeo shadow view uniforms"),
-            size: shadow_view_stride * (INITIAL_VIEW_CAPACITY * crate::CASCADE_COUNT) as u64,
+            size: shadow_view_stride * (INITIAL_VIEW_CAPACITY * crate::MAX_SHADOW_LAYERS) as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -2409,7 +2414,7 @@ impl WgpuBackend {
             shadow_view_buffer,
             shadow_view_bind_group,
             shadow_view_stride,
-            shadow_view_capacity: INITIAL_VIEW_CAPACITY * crate::CASCADE_COUNT,
+            shadow_view_capacity: INITIAL_VIEW_CAPACITY * crate::MAX_SHADOW_LAYERS,
             shadow_view_layout,
             mesh_instance_buffer,
             mesh_instance_capacity: INITIAL_INSTANCE_CAPACITY,
@@ -2761,7 +2766,7 @@ impl WgpuBackend {
         // fact that a call site could get out of step.
         let PassKind::Shadow {
             view: view_index,
-            cascade,
+            layer,
         } = declared.kind
         else {
             return;
@@ -2774,7 +2779,7 @@ impl WgpuBackend {
         };
         // **This cascade's layer**, not the whole array: attaching the array view would fail, since
         // a depth attachment must be a single 2D view (ADR 0055).
-        let Some(map) = self.transients[*pooled].layer_views.get(cascade) else {
+        let Some(map) = self.transients[*pooled].layer_views.get(layer) else {
             return;
         };
 
@@ -2808,7 +2813,7 @@ impl WgpuBackend {
 
         pass.set_pipeline(&self.shadow_pipeline);
         // The slot for this (view, cascade), which is the flat index the upload above wrote to.
-        let slot = view_index * crate::CASCADE_COUNT + cascade;
+        let slot = view_index * crate::MAX_SHADOW_LAYERS + layer;
         pass.set_bind_group(
             0,
             &self.shadow_view_bind_group,
@@ -3355,7 +3360,10 @@ impl RenderBackend for WgpuBackend {
         // dynamic offset is plain arithmetic rather than a lookup. Unused slots stay zeroed and are
         // never bound, because the graph declares no pass for them.
         let mut shadow_views: Vec<u8> =
-            vec![0; self.shadow_view_stride as usize * frame.views.len() * crate::CASCADE_COUNT];
+            vec![
+                0;
+                self.shadow_view_stride as usize * frame.views.len() * crate::MAX_SHADOW_LAYERS
+            ];
         let mut mesh_instances: Vec<GpuMeshInstance> = Vec::new();
         let mut mesh_draws: Vec<Vec<(&str, MaterialTextures, std::ops::Range<u32>)>> =
             Vec::with_capacity(frame.views.len());
@@ -3456,7 +3464,27 @@ impl RenderBackend for WgpuBackend {
                         light.colour[2],
                         light.cone_inner_cos,
                     ],
+                    // `-1` for a light that casts nothing, which is what the shader tests. A float
+                    // rather than an integer because everything else here is one and a lone `i32`
+                    // would take its own sixteen-byte slot anyway.
+                    shadow: light.shadow.map_or([-1.0, 0.0, 0.0, 0.0], |spot| {
+                        [spot.layer as f32, spot.bias, 0.0, 0.0]
+                    }),
                 };
+            }
+
+            // Each shadow-casting spot's matrix, at its layer minus the cascade count — the same
+            // arithmetic the shader does, so the two index the same slot.
+            let mut spot_shadow =
+                [amadeo_transform::Mat4::IDENTITY.columns; crate::MAX_SHADOW_SPOTS];
+            let cascades = shadow.map_or(0, |shadow| shadow.count);
+            for light in &view.punctual {
+                let Some(spot) = light.shadow else {
+                    continue;
+                };
+                if let Some(slot) = spot_shadow.get_mut(spot.layer as usize - cascades) {
+                    *slot = spot.view_projection.columns;
+                }
             }
 
             let uniform = GpuMeshView {
@@ -3499,6 +3527,7 @@ impl RenderBackend for WgpuBackend {
                 sky_forward: scaled_axis(&view.eye_matrix, 2, -1.0),
                 punctual_count: [punctual_count as f32, 0.0, 0.0, 0.0],
                 punctual,
+                spot_shadow,
             };
             let at = index * self.mesh_view_stride as usize;
             mesh_views[at..at + size_of::<GpuMeshView>()]
@@ -3508,7 +3537,7 @@ impl RenderBackend for WgpuBackend {
             // which is what keeps the two buffers agreeing without them being one buffer.
             if let Some(shadow) = shadow {
                 for cascade in 0..shadow.count {
-                    let slot = index * crate::CASCADE_COUNT + cascade;
+                    let slot = index * crate::MAX_SHADOW_LAYERS + cascade;
                     let at = slot * self.shadow_view_stride as usize;
                     let uniform = GpuShadowView {
                         view_projection: shadow.cascades[cascade].view_projection.columns,
@@ -3516,6 +3545,22 @@ impl RenderBackend for WgpuBackend {
                     shadow_views[at..at + size_of::<GpuShadowView>()]
                         .copy_from_slice(bytemuck::bytes_of(&uniform));
                 }
+            }
+
+            // And each shadow-casting spot light's, into the layers after the cascades (ADR 0058).
+            // The layer was decided at collection, so this writes where the light says rather than
+            // recomputing the arithmetic and risking the two disagreeing.
+            for light in &view.punctual {
+                let Some(spot) = light.shadow else {
+                    continue;
+                };
+                let slot = index * crate::MAX_SHADOW_LAYERS + spot.layer as usize;
+                let at = slot * self.shadow_view_stride as usize;
+                let uniform = GpuShadowView {
+                    view_projection: spot.view_projection.columns,
+                };
+                shadow_views[at..at + size_of::<GpuShadowView>()]
+                    .copy_from_slice(bytemuck::bytes_of(&uniform));
             }
 
             // Consecutive instances sharing a mesh **and a texture** become one draw call. The
@@ -3687,7 +3732,7 @@ impl RenderBackend for WgpuBackend {
                 .write_buffer(&self.mesh_view_buffer, 0, &mesh_views);
         }
 
-        self.ensure_shadow_view_capacity(frame.views.len() * crate::CASCADE_COUNT);
+        self.ensure_shadow_view_capacity(frame.views.len() * crate::MAX_SHADOW_LAYERS);
         if !shadow_views.is_empty() {
             self.queue
                 .write_buffer(&self.shadow_view_buffer, 0, &shadow_views);

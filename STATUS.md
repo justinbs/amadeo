@@ -227,9 +227,44 @@ looked at.
 > unlit baseline. **An absolute pixel threshold in a lit scene is almost always measuring the
 > ambient.**
 
-**Next:** shadows for spot lights, which finishes the flashlight and is the remaining half of the M3
-renderer exam. Also open and non-blocking: triplanar mapping for terrain (which also fixes the
-tangent-frame fallback on steep faces), bloom's downsample chain, and per-camera post (**Q23**).
+### And then spot lights started casting — ADR 0058, which finishes the flashlight
+
+The other half of the scope decision. A spot light's shadow is **a layer of the same texture array
+the cascades use**, because all four bind groups are already spoken for — view, shadow, material,
+environment — and a second shadow texture would have nowhere to bind.
+
+`View::shadow_atlas` is the single place that decides how many layers a view needs and how big they
+are, so the graph's declaration, the backend's layer arithmetic and the shader's indexing cannot
+drift apart. The cost is a **shared resolution**: `SpotLight::shadow_resolution` is a request and the
+largest wins, because a texture array has one size.
+
+The fitting is trivial where a cascade's is not — a spot light *is* a camera, so its matrix is
+`perspective(2 × outer_angle) × look_along` with no fitting at all. **Two things differ from the
+cascaded path and would be wrong if copied**: the perspective divide is real here (a cascade's
+projection is orthographic, so `mesh.wgsl` skips it), and the bias divides through the *range* rather
+than the depth span, because perspective clip depth is compressed towards the far plane.
+
+> ### ⚠️ The bug it shipped through, and it looked like nothing at all
+>
+> `shadow_casters` was culled to the **directional** light's box alone. A scene lit only by a torch
+> therefore produced an **empty caster list** — every shadow pass cleared its layer, drew nothing, and
+> every surface came out fully lit.
+>
+> **A shadow map with nothing in it does not look broken. It looks like no shadows** — which is
+> precisely the thing the feature exists to change, so "it isn't working" and "it isn't wired up" are
+> the same picture. It is now the union of every shadow volume, deliberately loose: a pass whose own
+> light cannot see a mesh clips it anyway, so a generous list costs a few vertices where a tight one
+> costs a missing shadow.
+
+Point lights still cast nothing — a cube shadow is six faces and six passes, and it is not what the
+gate needs. `games/atrium` gained a shadow-casting lantern beside the warm lamp; the pool and the
+pillar shadow inside it are in the capture.
+
+**Next:** the renderer is now past what M3's gate asks of it. The unbuilt subsystems are the gate's
+real remaining cost — `amadeo-audio` (*"horror lives or dies here"*), `amadeo-ui` (a title screen and
+a pause menu), and `amadeo-anim`, none of which exist at all. Also open and non-blocking: triplanar
+mapping for terrain (which also fixes the tangent-frame fallback on steep faces), bloom's downsample
+chain, point-light cube shadows, and per-camera post (**Q23**).
 
 ## 📋 The plan cascades were built from — kept as a record
 

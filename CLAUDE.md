@@ -271,9 +271,20 @@ crates/
                      `direct_light` in `mesh.wgsl` is the shared BRDF: a sun and a torch differ only
                      in direction and radiance, and two copies would drift into a material that looks
                      right under one and wrong under the other.
-                     **They cast NO shadows** -- everything they light, they light through walls.
-                     Deliberate, and Justin's call: ship the lights first so the component shape
-                     settles before shadows complicate it.
+                     **A spot light casts (ADR 0058); a point light still does not** -- a point's
+                     shadow is a cube, six faces and six passes. Its map is a **layer of the same
+                     array the cascades use**, because all four bind groups are taken and a second
+                     shadow texture would have nowhere to bind; `View::shadow_atlas` is the one place
+                     that decides layers and size, so the graph, the backend and the shader cannot
+                     disagree. The cost is a **shared resolution** -- `shadow_resolution` is a
+                     request and the largest wins. A `bool` rather than a `ShadowMode`, since a spot
+                     bounds itself and has nothing for cascades to spread over. **Two casters max.**
+                     Two things not to copy from the cascaded path: the perspective **divide is
+                     real** here, and the bias divides through the **range** rather than the depth
+                     span, because perspective clip depth is compressed towards the far plane.
+                     **`shadow_casters` is the union of every shadow volume** -- culling it to the
+                     directional light alone made a torch-lit scene draw an empty shadow map, which
+                     reads as no shadows rather than as a bug.
                      **Session 14 finished ADR 0045's tier 1.** Normal mapping (**ADR 0047**):
                      `Vertex` gained a tangent, read from glTF's `TANGENT` when the file has one and
                      generated at load when it does not — which is why **no `mikktspace` dependency**

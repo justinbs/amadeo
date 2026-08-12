@@ -55,7 +55,7 @@ mod textures;
 
 pub use backend::{
     FrameData, LightData, MeshInstance, NullBackend, PunctualLight, QuadInstance, RenderBackend,
-    RenderError, ShadowCascade, ShadowData, SpriteBatch, SpriteInstance, View,
+    RenderError, ShadowCascade, ShadowData, SpotShadow, SpriteBatch, SpriteInstance, View,
 };
 pub use components::{Camera, Projection, Quad, SortOrder, Sprite};
 pub use describe::{
@@ -70,8 +70,9 @@ pub use ibl::{
     SPECULAR_SIZE, SkyCache, irradiance, prefilter_specular,
 };
 pub use mesh::{
-    BoxMesh, DirectionalLight, GltfPart, MAX_PUNCTUAL_LIGHTS, Material, MaterialCache, Mesh,
-    MeshCache, MeshData, PlaneMesh, PointLight, ShadowMode, SpotLight, Vertex,
+    BoxMesh, DirectionalLight, GltfPart, MAX_PUNCTUAL_LIGHTS, MAX_SHADOW_LAYERS, MAX_SHADOW_SPOTS,
+    Material, MaterialCache, Mesh, MeshCache, MeshData, PlaneMesh, PointLight, ShadowMode,
+    SpotLight, Vertex,
 };
 pub use sprites::{COLLECT_SPRITES, collect_sprites};
 pub use textures::{
@@ -489,7 +490,11 @@ fn active_cameras(world: &World) -> Vec<(Camera, [f32; 2], Mat4)> {
 /// differ from another's. Rendering is outside the state hash (ADR 0031), so this is about a
 /// reproducible *picture* rather than a reproducible simulation, and `render.describe` and a capture
 /// are both worthless if it wobbles.
-fn collect_punctual(world: &World, eye: [f32; 3]) -> Vec<PunctualLight> {
+fn collect_punctual(world: &World, eye: [f32; 3], first_free_layer: u32) -> Vec<PunctualLight> {
+    // Carried alongside each light so the sort below can keep it: a spot's *authored* settings are
+    // needed to fit its shadow, and fitting has to happen after the sort, because a layer is only
+    // assigned to the lights that survive the cut.
+    let mut shadow_wanted: BTreeMap<amadeo_ecs::Entity, SpotLight> = BTreeMap::new();
     let mut found: Vec<(f32, amadeo_ecs::Entity, PunctualLight)> = Vec::new();
 
     let placement = |transform: &Transform, global: Option<&GlobalTransform>| match global {
@@ -526,6 +531,9 @@ fn collect_punctual(world: &World, eye: [f32; 3]) -> Vec<PunctualLight> {
                 range: light.range,
                 cone_inner_cos: -1.0,
                 cone_outer_cos: -1.0,
+                // A point light's shadow is a cube — six faces and six passes — which ADR 0058
+                // leaves out. Nothing here can cast.
+                shadow: None,
             },
         ));
     }
@@ -551,6 +559,9 @@ fn collect_punctual(world: &World, eye: [f32; 3]) -> Vec<PunctualLight> {
         // gets a hard-edged beam rather than a divide by a negative width, which would invert the
         // falloff and light everything *outside* the cone.
         let outer = light.outer_angle.max(light.inner_angle);
+        if light.shadows {
+            shadow_wanted.insert(entity, *light);
+        }
         found.push((
             0.0,
             entity,
@@ -567,6 +578,9 @@ fn collect_punctual(world: &World, eye: [f32; 3]) -> Vec<PunctualLight> {
                 // with the engine's own trigonometry (ADR 0053), so two machines agree.
                 cone_inner_cos: amadeo_core::cos_degrees(light.inner_angle),
                 cone_outer_cos: amadeo_core::cos_degrees(outer),
+                // Filled in after the sort, for the ones near enough to survive the cut and to be
+                // among the first `MAX_SHADOW_SPOTS` of those.
+                shadow: None,
             },
         ));
     }
@@ -589,7 +603,80 @@ fn collect_punctual(world: &World, eye: [f32; 3]) -> Vec<PunctualLight> {
     // there is no unwrap and no arm that cannot happen. The entity breaks ties.
     found.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.index().cmp(&b.1.index())));
     found.truncate(MAX_PUNCTUAL_LIGHTS);
+
+    // Shadows are fitted **after** the sort and the cut, and layers hand out in that order — so the
+    // nearest shadow-casting spot gets one and a distant one does not. Fitting before would waste
+    // work on lights about to be dropped, and would assign layers to lights that never reach a
+    // backend.
+    let mut layer = first_free_layer;
+    for (_, entity, light) in &mut found {
+        if layer >= first_free_layer + MAX_SHADOW_SPOTS as u32 {
+            break;
+        }
+        let Some(authored) = shadow_wanted.get(entity) else {
+            continue;
+        };
+        light.shadow = fit_spot_shadow(authored, light.position, light.direction, layer);
+        if light.shadow.is_some() {
+            layer += 1;
+        }
+    }
+
     found.into_iter().map(|(_, _, light)| light).collect()
+}
+
+/// Fits one spot light's shadow map — ADR 0058.
+///
+/// # Why this is so much simpler than a cascade
+///
+/// A directional light has no position and no bound, so ADR 0055 has to invent one: a box centred on
+/// the camera, snapped to a texel grid, split four ways because no single box covers both a
+/// footprint and a horizon. A spot light bounds itself — it stands somewhere, it points somewhere,
+/// and it stops at its range. So its shadow is exactly the view *from the light*, which is one
+/// perspective matrix and no fitting at all.
+///
+/// The cone's outer angle is the field of view, doubled because a field of view is measured across
+/// where a cone's angle is measured from its axis.
+fn fit_spot_shadow(
+    light: &SpotLight,
+    position: [f32; 3],
+    direction: [f32; 3],
+    layer: u32,
+) -> Option<SpotShadow> {
+    // A light aimed straight up or down is parallel to the usual up axis, which collapses the basis
+    // and rolls the map. Switching to a different reference axis there is the same fix a camera
+    // looking straight down needs, and it is invisible in the result because a shadow map has no
+    // orientation anyone can see.
+    let up = if direction[1].abs() > 0.999 {
+        [0.0, 0.0, 1.0]
+    } else {
+        [0.0, 1.0, 0.0]
+    };
+    let view = Mat4::look_along(position, direction, up);
+
+    let far = light.range.max(0.1);
+    // Near is derived rather than authored, to keep the component to the fields an author has an
+    // opinion about. It has to be small enough not to clip geometry right in front of a torch and
+    // large enough that clip depth keeps some precision — a hundredth of the range, floored, is the
+    // usual compromise.
+    let near = (far * 0.01).clamp(0.02, 0.5);
+
+    // Doubled: a field of view spans the cone, where `outer_angle` is measured from its axis. Capped
+    // just under a hemisphere, which is where a perspective projection stops being usable at all.
+    let fov = (light.outer_angle.max(light.inner_angle) * 2.0).clamp(1.0, 175.0);
+    let projection = Mat4::perspective(fov, 1.0, near, far);
+
+    Some(SpotShadow {
+        view_projection: projection.mul(&view),
+        requested_resolution: light.shadow_resolution.clamp(16, 8192),
+        layer,
+        // **Divided through the range rather than through `far - near`**, which is what
+        // `fit_cascade` does, and the difference is that this projection is *perspective*. Clip depth
+        // is compressed towards the far plane, so a world-unit offset is a far larger share of it out
+        // at the range than up close — and the range is where precision is worst and where acne shows
+        // first, so that is the end to size the bias for.
+        bias: light.shadow_bias / far.max(1e-6),
+    })
 }
 
 /// Every directional light in the world, in a reproducible order.
@@ -1027,6 +1114,19 @@ pub fn render_quads(world: &mut World) {
                     })
                     .collect();
 
+                // Spot shadows take the layers **after** the directional light's cascades, because
+                // the two share one texture array — see `View::shadow_atlas`. Collected before the
+                // culling below, which has to know where every shadow-casting light looks.
+                let after_cascades = view_lights
+                    .iter()
+                    .find_map(|light| light.shadow)
+                    .map_or(0, |shadow| shadow.count as u32);
+                let punctual = if flat {
+                    Vec::new()
+                } else {
+                    collect_punctual(world, eye_matrix.translation(), after_cascades)
+                };
+
                 // Culled per camera, because what can be seen depends entirely on who is looking.
                 // A 2D camera draws no meshes at all, so it skips the work rather than culling
                 // everything away one box at a time.
@@ -1049,20 +1149,46 @@ pub fn render_quads(world: &mut World) {
                     let view_projection =
                         projection.mul(&eye_matrix.inverse_rigid().unwrap_or(Mat4::IDENTITY));
 
-                    let casters = view_lights
-                        .iter()
-                        .find_map(|light| light.shadow)
-                        .map(|shadow| {
-                            // Culled to the **largest** cascade, which contains all the others — so
-                            // one caster list serves every shadow pass. Culling per cascade would be
-                            // tighter and would mean four lists and four culling passes to save
-                            // draws that each cascade's own projection already clips.
-                            let widest = shadow.cascades[shadow.count.saturating_sub(1)];
-                            let box_of_light =
-                                Frustum::from_view_projection(&widest.view_projection);
-                            visible_meshes(&meshes, &box_of_light)
-                        })
-                        .unwrap_or_default();
+                    // **One caster list, culled to everything that casts.**
+                    //
+                    // For the sun that is its *largest* cascade, which contains all the others, so
+                    // one list serves four passes; culling per cascade would be tighter and would
+                    // mean four lists to save draws each cascade's own projection already clips.
+                    //
+                    // Spot lights then **widen** it, and getting that wrong is a bug worth naming:
+                    // this list used to come from the directional light alone, so a scene lit only
+                    // by a torch produced an empty caster list, every shadow pass cleared its layer
+                    // and drew nothing, and every surface came out fully lit. A shadow map with
+                    // nothing in it does not look broken — it looks like no shadows.
+                    let mut volumes: Vec<Frustum> = Vec::new();
+                    if let Some(shadow) = view_lights.iter().find_map(|light| light.shadow) {
+                        let widest = shadow.cascades[shadow.count.saturating_sub(1)];
+                        volumes.push(Frustum::from_view_projection(&widest.view_projection));
+                    }
+                    volumes.extend(
+                        punctual
+                            .iter()
+                            .filter_map(|light| light.shadow)
+                            .map(|spot| Frustum::from_view_projection(&spot.view_projection)),
+                    );
+
+                    // A mesh casts if **any** of them can see it. The union is deliberately loose:
+                    // a pass whose own light cannot see a mesh clips it anyway, so the cost of a
+                    // generous list is a few vertices and the cost of a tight one is a missing
+                    // shadow.
+                    let casters = if volumes.is_empty() {
+                        Vec::new()
+                    } else {
+                        meshes
+                            .iter()
+                            .filter(|drawable| {
+                                volumes.iter().any(|volume| {
+                                    volume.intersects_aabb(drawable.min, drawable.max)
+                                })
+                            })
+                            .map(|drawable| drawable.instance.clone())
+                            .collect()
+                    };
 
                     (
                         visible_meshes(&meshes, &Frustum::from_view_projection(&view_projection)),
@@ -1083,11 +1209,7 @@ pub fn render_quads(world: &mut World) {
                     // Empty for a 2D view: a sprite has no normal and no position in depth, so
                     // nothing about it could respond to a light at a place. The same reason `flat`
                     // skips shadow fitting above.
-                    punctual: if flat {
-                        Vec::new()
-                    } else {
-                        collect_punctual(world, eye_matrix.translation())
-                    },
+                    punctual,
                 }
             })
             .collect(),

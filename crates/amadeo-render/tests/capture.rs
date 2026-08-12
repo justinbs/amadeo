@@ -1475,6 +1475,7 @@ fn a_spot_light_lights_a_cone_and_not_the_rest() {
             range: 12.0,
             inner_angle: 15.0,
             outer_angle: 20.0,
+            ..SpotLight::default()
         },
     );
 
@@ -1534,5 +1535,107 @@ fn a_scene_with_no_punctual_lights_is_unchanged_by_them_existing() {
     assert_eq!(
         before.pixels, after.pixels,
         "a light with no intensity must contribute nothing at all"
+    );
+}
+
+#[test]
+fn a_spot_light_casts_a_shadow() {
+    // **ADR 0058, and the second half of M3's renderer exam.** A flashlight that lights a corridor
+    // but shines *through* the crate in front of it is exactly the moment a horror scene stops
+    // working, and until now that is what every point and spot light did.
+    //
+    // A blocker between the torch and the floor. The floor directly beneath it must be darker than
+    // the same floor with the torch not casting — and the comparison is against **the same scene
+    // with `shadows: false`**, not against a number, so the only difference between the two captures
+    // is the shadow itself.
+    let build = |shadows: bool| {
+        let mut world = an_unlit_floor();
+
+        let torch = world.spawn();
+        world.insert(
+            torch,
+            Transform {
+                translation: [0.0, 6.0, 0.0],
+                rotation: [-90.0, 0.0, 0.0],
+                ..Transform::default()
+            },
+        );
+        world.insert(
+            torch,
+            SpotLight {
+                colour: [1.0, 1.0, 1.0],
+                intensity: 8.0,
+                range: 20.0,
+                inner_angle: 30.0,
+                outer_angle: 38.0,
+                shadows,
+                shadow_resolution: 1024,
+                shadow_bias: 0.02,
+            },
+        );
+
+        // Between the torch and the floor, and small enough that its shadow lands well inside the
+        // cone rather than at the soft edge where the falloff is doing the darkening.
+        let mut meshes = MeshCache::new();
+        meshes.insert(
+            "floor",
+            BoxMesh {
+                size: [20.0, 0.2, 20.0],
+            }
+            .tessellate(),
+        );
+        meshes.insert(
+            "blocker",
+            BoxMesh {
+                size: [2.0, 0.4, 2.0],
+            }
+            .tessellate(),
+        );
+        world.insert_service(meshes);
+
+        let blocker = world.spawn();
+        world.insert(blocker, Transform::at_xyz(0.0, 5.0, 0.0));
+        world.insert(blocker, Mesh::new("blocker", "pale"));
+        world
+    };
+
+    // **Three captures, because two cannot say what "shadowed" means.** The unlit floor is the
+    // value a fully shadowed pixel must return *to* — see the note in `docs/07` about absolute
+    // thresholds measuring the ambient.
+    let (Some(unlit), Some(off), Some(on)) = (
+        capture(&mut an_unlit_floor(), 64, 64),
+        capture(&mut build(false), 64, 64),
+        capture(&mut build(true), 64, 64),
+    ) else {
+        return;
+    };
+
+    // The camera looks straight down and the blocker is centred, so it covers screen centre in both.
+    // The floor to the side is inside the cone and inside the blocker's shadow.
+    let baseline = pixel_at(&unlit, 16, 32);
+    let unshadowed = pixel_at(&off, 16, 32);
+    let shadowed = pixel_at(&on, 16, 32);
+
+    // The torch reaches this pixel at all, which is what makes the next assertion mean something.
+    assert!(
+        i32::from(unshadowed[0]) > i32::from(baseline[0]) + 10,
+        "the torch should light this pixel when it is not casting: {unshadowed:?} against an \
+         unlit {baseline:?}"
+    );
+    // And casting takes it **all the way back** to unlit — the blocker is directly between, so the
+    // right answer is not "darker" but "none of this light arrives".
+    assert!(
+        shadowed[0].abs_diff(baseline[0]) <= 2,
+        "with the torch casting, this pixel is behind the blocker and should get none of its \
+         light: {shadowed:?} against an unlit {baseline:?}"
+    );
+
+    // And well outside the blocker's shadow the two must agree, or this is measuring the light
+    // getting dimmer overall rather than a shadow with a *shape*.
+    let clear_on = pixel_at(&on, 32, 60);
+    let clear_off = pixel_at(&off, 32, 60);
+    assert!(
+        clear_on[0].abs_diff(clear_off[0]) < 8,
+        "outside the blocker's shadow the two should match: {clear_on:?} against {clear_off:?}"
     );
 }

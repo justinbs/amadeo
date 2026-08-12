@@ -899,6 +899,27 @@ pub struct SpotLight {
     /// falloff collapses to a hard edge rather than misbehaving.
     #[reflect(min = 0.0, max = 89.0, unit = "degrees")]
     pub outer_angle: f32,
+    /// Whether this light casts a shadow — ADR 0058.
+    ///
+    /// **A `bool` rather than a [`ShadowMode`]**, because a spot light has exactly one sensible
+    /// arrangement: one perspective map from where it stands, looking where it points. Cascades exist
+    /// to spread resolution over a range a *directional* light cannot bound, and a spot light already
+    /// bounds itself with [`SpotLight::range`].
+    ///
+    /// Off by default, so a light costs a pass and a shadow-map layer only when asked. At most
+    /// [`MAX_SHADOW_SPOTS`] of them cast in one view; past that the nearest win, like the lights
+    /// themselves.
+    pub shadows: bool,
+    /// How many pixels across this light's shadow map is.
+    ///
+    /// **Advisory rather than exact**, and that is a real limitation: every shadow map in a view
+    /// lives in one texture array (ADR 0058), which has one size, so the largest request wins and the
+    /// rest are drawn at that size. A 512-pixel spot in a scene whose sun asks for 2048 costs 2048.
+    #[reflect(min = 16.0, max = 8192.0, unit = "pixels")]
+    pub shadow_resolution: u32,
+    /// How far to push a depth comparison away from the surface, in world units.
+    #[reflect(min = 0.0, max = 10.0, unit = "world units")]
+    pub shadow_bias: f32,
 }
 
 impl Default for SpotLight {
@@ -912,9 +933,30 @@ impl Default for SpotLight {
             // between them has nothing left to interpolate over.
             inner_angle: 20.0,
             outer_angle: 28.0,
+            shadows: false,
+            // Smaller than a directional light's, deliberately: a spot covers a cone a few metres
+            // across where a sun covers the whole visible world, so it needs far fewer pixels to
+            // reach the same sharpness on the ground.
+            shadow_resolution: 1024,
+            shadow_bias: 0.02,
         }
     }
 }
+
+/// How many spot lights may cast a shadow in one view — ADR 0058.
+///
+/// **Two.** Every one is a full extra pass over the scene's geometry *and* a layer of a shadow-map
+/// array whose size is shared with the sun's cascades, so this is the most expensive constant in the
+/// renderer per unit increment. Two covers the case M3's exit gate actually needs — a flashlight,
+/// plus one fixed light in a room — and the third light in a scene is still *lit*, just not casting.
+pub const MAX_SHADOW_SPOTS: usize = 2;
+
+/// How many layers a view's shadow-map array can ever need — ADR 0058.
+///
+/// The directional light's cascades plus every shadow-casting spot light. One number, so the shadow
+/// pass's uniform buffer and the layer arithmetic in the backend cannot disagree with what the graph
+/// declares.
+pub const MAX_SHADOW_LAYERS: usize = crate::CASCADE_COUNT + MAX_SHADOW_SPOTS;
 
 impl Component for SpotLight {}
 

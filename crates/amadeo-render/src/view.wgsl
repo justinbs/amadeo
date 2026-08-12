@@ -32,6 +32,9 @@ struct PunctualLight {
     direction_outer: vec4<f32>,
     // rgb = colour with intensity folded in. a = cosine of the inner half-angle.
     colour_inner: vec4<f32>,
+    // x = which layer of the shadow array this light drew into, or -1 for a light that casts none
+    // (ADR 0058). y = its depth bias, in its own clip space. zw unused.
+    shadow: vec4<f32>,
 };
 
 struct MeshView {
@@ -67,6 +70,12 @@ struct MeshView {
     // Point and spot lights, nearest first (ADR 0057). Unused slots are zeroed and never read,
     // because the loop stops at `punctual_count`.
     punctual: array<PunctualLight, 8>,
+    // World to each shadow-casting spot light's clip space (ADR 0058).
+    //
+    // Indexed by the light's shadow layer **minus the number of cascades**, because the cascades
+    // take the first layers of the shared array and these follow them. `cascade_count` is
+    // `shadow_params.z`.
+    spot_shadow: array<mat4x4<f32>, 2>,
 };
 
 @group(0) @binding(0) var<uniform> view: MeshView;

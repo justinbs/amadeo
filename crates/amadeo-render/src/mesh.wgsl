@@ -144,6 +144,49 @@ fn direct_light(
     return (diffuse + specular) * radiance * lambert * PI;
 }
 
+// How much of one spot light reaches this point: 1.0 lit, 0.0 fully shadowed — ADR 0058.
+//
+// Far simpler than the cascaded case: a spot light has one map and no cascade to select, so this is
+// the projection, the bounds check and the same three-by-three comparison.
+//
+// `slot` indexes `spot_shadow`; `layer` is where that light drew in the shared array.
+fn spot_shadow_factor(world: vec3<f32>, slot: i32, layer: i32, bias: f32) -> f32 {
+    let clip = view.spot_shadow[slot] * vec4<f32>(world, 1.0);
+    // **The perspective divide is real here**, unlike the directional case. A spot light's
+    // projection is perspective, so w is the distance along the light's axis rather than 1 — skipping
+    // this is a shadow that stretches away from the light and looks like a bias problem.
+    if clip.w <= 0.0 {
+        return 1.0;
+    }
+    let projected = clip.xyz / clip.w;
+
+    var uv = projected.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5, 0.5);
+    // Outside the light's own frustum there is no information. Nothing is shadowed there, and it
+    // does not matter what this returns for a point outside the cone, because the cone falloff has
+    // already taken its contribution to zero.
+    if projected.z > 1.0 || projected.z < 0.0
+        || uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
+        return 1.0;
+    }
+
+    let reference = projected.z - bias;
+    let texel = view.shadow_params.x;
+    var total = 0.0;
+    for (var y = -1; y <= 1; y = y + 1) {
+        for (var x = -1; x <= 1; x = x + 1) {
+            let offset = vec2<f32>(f32(x), f32(y)) * texel;
+            total = total + textureSampleCompare(
+                shadow_map,
+                shadow_sampler,
+                uv + offset,
+                layer,
+                reference,
+            );
+        }
+    }
+    return total / 9.0;
+}
+
 // Which cascade covers a point this far from the camera — ADR 0055.
 //
 // The nearest one whose reach exceeds the distance. Cascades are concentric rings around the camera
@@ -529,7 +572,18 @@ fn fs_main(
         let cone = clamp((along - outer) / max(inner - outer, 1e-4), 0.0, 1.0);
         // Squared, so the beam's edge falls off smoothly rather than linearly — a linear ramp has a
         // visible crease where it reaches full brightness.
-        let radiance = light.colour_inner.rgb * windowed * cone * cone;
+        var radiance = light.colour_inner.rgb * windowed * cone * cone;
+
+        // This light's shadow, if it casts one (ADR 0058). `-1` means it does not — a point light
+        // never does, and a spot only when its scene asked.
+        let layer = i32(light.shadow.x);
+        if layer >= 0 {
+            // The cascades take the first layers of the shared array, so a spot's own matrix sits at
+            // its layer minus however many of those there are.
+            let slot = layer - i32(view.shadow_params.z);
+            radiance = radiance
+                * spot_shadow_factor(in.world_position, slot, layer, light.shadow.y);
+        }
 
         direct = direct
             + direct_light(

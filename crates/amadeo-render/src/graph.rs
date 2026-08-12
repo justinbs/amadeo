@@ -220,14 +220,18 @@ pub(crate) enum PassKind {
     Shadow {
         /// Which view's light this belongs to, indexing [`FrameData::views`](crate::FrameData).
         view: usize,
-        /// Which cascade, indexing `ShadowData::cascades` and the layer of the target it draws into.
+        /// Which layer of the view's shadow-map array this draws into.
         ///
-        /// **One pass per cascade**, rather than one pass drawing four layers. A render pass in wgpu
+        /// The directional light's cascades take the first layers and each shadow-casting spot light
+        /// one after them — see [`View::shadow_atlas`](crate::View::shadow_atlas) for why they share
+        /// one array rather than having one texture each.
+        ///
+        /// **One pass per layer**, rather than one pass drawing several. A render pass in wgpu
         /// attaches exactly one texture view, and a layer of an array is its own view — so four
         /// layers is four passes by construction rather than by choice. It also means the profiler
-        /// reports each cascade separately, which is what makes "the far cascade is the expensive
-        /// one" something you can read rather than guess.
-        cascade: usize,
+        /// reports each separately, which is what makes "the far cascade is the expensive one"
+        /// something you can read rather than guess.
+        layer: usize,
     },
     /// Put a finished image onto the destination.
     ///
@@ -706,32 +710,32 @@ pub(crate) fn frame_graph(frame: &crate::FrameData, width: u32, height: u32) -> 
             // A shadow map is declared only when a light in this view actually casts one, on the
             // same reasoning as the depth buffer above: a game with no shadows should allocate no
             // shadow map and run no extra pass over its geometry.
-            let shadow = view.lights.iter().find_map(|light| light.shadow);
+            // Every shadow map in this view: the directional light's cascades first, then one layer
+            // per shadow-casting spot light (ADR 0058). One array, because all four bind groups are
+            // already spoken for and a second shadow texture would have nowhere to bind.
+            let atlas = view.shadow_atlas();
             let shadow_name = format!("shadow {index}");
-            if let Some(shadow) = shadow {
+            if let Some((resolution, layers)) = atlas {
                 graph.transient(
                     &shadow_name,
-                    shadow.resolution,
-                    shadow.resolution,
+                    resolution,
+                    resolution,
                     TargetFormat::ShadowMap32 {
-                        // Only as many layers as this light actually uses, so an interior with one
+                        // Only as many layers as this view actually casts, so an interior with one
                         // map does not allocate three it never samples.
-                        layers: shadow.count.max(1) as u32,
+                        layers,
                     },
                 );
                 // Written by the shadow passes and read by the view pass, which is what puts them in
                 // that order -- the dependency is declared rather than the order being asserted.
                 //
-                // **Every cascade writes the same transient**, which is what makes them all land
+                // **Every layer writes the same transient**, which is what makes them all land
                 // before the view pass without any of them being ordered against each other. They
                 // are independent: each draws into its own layer.
-                for cascade in 0..shadow.count.max(1) {
+                for layer in 0..layers as usize {
                     graph.pass(
-                        &format!("shadow {index}.{cascade}"),
-                        PassKind::Shadow {
-                            view: index,
-                            cascade,
-                        },
+                        &format!("shadow {index}.{layer}"),
+                        PassKind::Shadow { view: index, layer },
                         &[],
                         &[shadow_name.as_str()],
                     );
@@ -739,7 +743,7 @@ pub(crate) fn frame_graph(frame: &crate::FrameData, width: u32, height: u32) -> 
             }
 
             // Reading the shadow map is what orders this pass after the one that draws it.
-            let reads: Vec<&str> = match shadow {
+            let reads: Vec<&str> = match atlas {
                 Some(_) => vec![shadow_name.as_str()],
                 None => Vec::new(),
             };

@@ -210,6 +210,38 @@ pub struct PunctualLight {
     pub cone_inner_cos: f32,
     /// Cosine of the outer half-angle, where it fades to nothing. `-1.0` for a point light.
     pub cone_outer_cos: f32,
+    /// This light's shadow, if it casts one — ADR 0058. Spot lights only.
+    pub shadow: Option<SpotShadow>,
+}
+
+/// One spot light's shadow map — ADR 0058.
+///
+/// Far simpler than a directional light's (ADR 0055): a spot already bounds itself with its range and
+/// its cone, so there is nothing for cascades to spread resolution over. One perspective projection
+/// from where the light stands, looking where it points.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpotShadow {
+    /// World space to this light's clip space.
+    pub view_projection: amadeo_transform::Mat4,
+    /// How many pixels across this light asked its map to be.
+    ///
+    /// **A request, not the answer.** Every shadow map in a view shares one texture array and a
+    /// texture array has one size, so [`View::shadow_atlas`] takes the largest request and every
+    /// layer is drawn at it.
+    pub requested_resolution: u32,
+    /// Which layer of the view's shadow-map array this light drew into.
+    ///
+    /// **The array is shared with the directional light's cascades**, which occupy the first layers
+    /// (ADR 0058). All four bind groups are already spoken for — view, shadow, material, environment
+    /// — so a second shadow texture would have nowhere to bind, and one array is what that forces.
+    pub layer: u32,
+    /// How far to push a depth comparison away from the surface, in this light's clip depth.
+    ///
+    /// Converted out of world units here, as `fit_cascade` does — but the conversion is **not** the
+    /// same, because this projection is perspective. Clip depth is non-linear, so a fixed world-unit
+    /// offset is a much larger share of it far from the light than near it. The conversion uses the
+    /// range, which is where precision is worst and where acne would show first.
+    pub bias: f32,
 }
 
 /// Everything a backend needs to render and sample one shadow map — ADR 0038.
@@ -353,6 +385,51 @@ pub struct View {
     /// It also keeps the shadow path untouched. Shadows are a property of `lights` today and this
     /// list casts none — which is a real limitation and is `ShadowMode`'s to fix, not this list's.
     pub punctual: Vec<PunctualLight>,
+}
+
+impl View {
+    /// The shadow-map array this view needs: how many pixels across, and how many layers.
+    ///
+    /// `None` when nothing in this view casts a shadow, which is what a backend reads as "allocate no
+    /// shadow map and run no shadow pass".
+    ///
+    /// # One array, one size, and the size is the largest anyone asked for
+    ///
+    /// The directional light's cascades take the first layers and each shadow-casting spot light
+    /// takes one after them (ADR 0058) — because all four bind groups are already spoken for, so a
+    /// second shadow texture would have nowhere to bind.
+    ///
+    /// A texture array has **one** size for every layer, so a 512-pixel spot beside a 2048-pixel sun
+    /// is drawn at 2048. That is a real cost and it is the first thing to fix if shadow memory ever
+    /// matters: the fix is a second, smaller array plus a bind group built per frame rather than per
+    /// texture, which is more machinery than one number is worth today.
+    #[must_use]
+    pub fn shadow_atlas(&self) -> Option<(u32, u32)> {
+        let cascades = self.lights.iter().find_map(|light| light.shadow);
+        let spots = self
+            .punctual
+            .iter()
+            .filter_map(|light| light.shadow)
+            .count() as u32;
+
+        let layers = cascades.map_or(0, |shadow| shadow.count as u32) + spots;
+        if layers == 0 {
+            return None;
+        }
+
+        // The largest request wins. A default for the case where only spots cast and the resolution
+        // came from them is unnecessary — every caster carries one.
+        let resolution = self
+            .punctual
+            .iter()
+            .filter_map(|light| light.shadow)
+            .map(|shadow| shadow.requested_resolution)
+            .chain(cascades.map(|shadow| shadow.resolution))
+            .max()
+            .unwrap_or(16)
+            .max(16);
+        Some((resolution, layers))
+    }
 }
 
 /// Everything needed to draw one frame.
