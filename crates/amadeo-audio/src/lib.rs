@@ -49,9 +49,11 @@
 
 mod backend;
 mod components;
+mod tracker;
 
 pub use backend::{AudioBackend, AudioError, AudioFrame, Listener, NullAudio, SoundData, Voice};
 pub use components::{AudioListener, AudioSource, Bus};
+pub use tracker::{VoiceChanges, VoiceTracker};
 
 use amadeo_ecs::{Service, World};
 use amadeo_transform::{GlobalTransform, Transform};

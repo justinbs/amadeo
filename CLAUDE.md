@@ -334,8 +334,16 @@ crates/
                      slider for; `Interface` is separate so a menu click does not duck near a
                      waterfall. Gain is applied by the collection pass, so two backends cannot
                      disagree about the order. **kira goes behind the trait** and ADR 0036 §4 applies
-                     unchanged -- no kira type may cross it. Still to come: the kira backend itself,
-                     and one-shots, which are events rather than state and have no home yet.
+                     unchanged -- no kira type may cross it.
+                     **`VoiceTracker` turns a frame into changes**, and it lives in the engine rather
+                     than in each backend for a specific reason: it is **the only part of a backend
+                     that can be tested without a sound card**. Everything else ends in a speaker,
+                     where neither CI nor a headless run can follow it. Two cases it exists for -- a
+                     source that swaps its clip is a stop and a start rather than an update, and an
+                     unchanged frame must produce **no work at all**, because re-applying an
+                     identical gain every frame is a sound that never settles.
+                     Still to come: the kira backend itself, and one-shots, which are events rather
+                     than state and have no home yet.
 🟡 amadeo-physics    RigidBody/Collider/Velocity/Gravity as reflected, HASHED data, the
                      PhysicsBackend trait, and NullPhysics -- which integrates velocity and gravity
                      for real rather than doing nothing, so a headless determinism test is
