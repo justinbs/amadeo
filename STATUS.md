@@ -218,8 +218,16 @@ Three things about it worth keeping:
 `amadeo audio --package atrium --ticks 5` now prints both voices, the listener, and "SILENT — the
 null backend is installed, which makes no sound by design."
 
-**Textures still have no equivalent**, and now the asymmetry is visible: `TextureCache::failures`
-exists and only a test reads it. Worth closing next time `render.describe` is open.
+**And it turned up the same hole one layer over, which is now closed too.** `TextureCache::failures`
+has existed since M1 and **nothing outside Rust ever read it**: `assets.list` reports a file that
+would not *load*, and a file that loaded fine and would not *decode* had no channel at all. So "why
+is this magenta" was answerable only by reading source — exactly the gap invariant I5 exists to
+prevent, sitting in the oldest introspection method in the engine. `render.describe` now carries
+`texture_failures`, omitted when there is nothing wrong.
+
+Worth noticing *how* that was found: not by auditing, but by building the audio equivalent and
+noticing the shape was missing next door. **The general form is in `docs/07` now** — an introspection
+method must share the code it describes, and a structured report with no reader is not a report.
 
 ### What else landed
 

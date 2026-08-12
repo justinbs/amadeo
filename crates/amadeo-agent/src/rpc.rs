@@ -493,7 +493,16 @@ pub fn dispatch_world(
                 })
                 .collect();
 
-            Ok(Some(Json::object([
+            // **Which textures fell back to a placeholder, and why.** ADR 0021 requires a missing
+            // asset to produce a visible stand-in *plus a structured report*, and `TextureCache`
+            // has produced that report since M1 — with nothing outside Rust able to read it.
+            // `assets.list` covers a file that would not *load*; a file that loaded and would not
+            // *decode* had no channel at all, so "why is this magenta" was answerable only by
+            // reading source.
+            //
+            // Found while adding `audio.describe`, which needed the same thing for the case where
+            // there is no visible stand-in to fall back on (ADR 0060). Same defect, one layer over.
+            let mut members = vec![
                 (
                     "viewport",
                     Json::Array(vec![
@@ -557,7 +566,28 @@ pub fn dispatch_world(
                     Json::Int(description.off_screen_count() as i64),
                 ),
                 ("entities", Json::Array(drawn)),
-            ])))
+            ];
+
+            if let Some(cache) = world.service::<amadeo_render::TextureCache>()
+                && cache.has_failures()
+            {
+                members.push((
+                    "texture_failures",
+                    Json::Array(
+                        cache
+                            .failures()
+                            .map(|(id, failure)| {
+                                Json::object([
+                                    ("id", Json::string(id)),
+                                    ("message", Json::string(failure.to_string())),
+                                ])
+                            })
+                            .collect(),
+                    ),
+                ));
+            }
+
+            Ok(Some(Json::object(members)))
         }
 
         "world.resources" => {
@@ -794,6 +824,86 @@ mod tests {
             &registry(),
         );
         assert_eq!(answered, Ok(None));
+    }
+
+    #[test]
+    fn a_texture_that_would_not_decode_is_reported_by_render_describe() {
+        // **"Why is this magenta" had no answer over the protocol until now.** ADR 0021 requires a
+        // missing asset to produce a visible stand-in *plus a structured report*, and
+        // `TextureCache` has produced that report since M1 with nothing outside Rust able to read
+        // it — `assets.list` covers a file that would not load, not one that loaded and would not
+        // decode.
+        //
+        // Found while building `audio.describe`, which needed the same thing for the case where
+        // there is no visible stand-in at all (ADR 0060).
+        let mut world = World::new();
+        let mut cache = amadeo_render::TextureCache::new();
+
+        // **A real file, loaded, that is simply not an image.** Cataloguing an id without loading
+        // its bytes gives the *other* failure — `NotLoaded` — which `assets.list` already reports;
+        // the gap this closes is the file that loaded fine and would not decode, so the test has to
+        // reach that branch rather than a neighbouring one that happens to look the same in the
+        // reply.
+        let root = std::env::temp_dir().join(format!(
+            "amadeo-texture-failure-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("temp dir");
+        std::fs::write(root.join("wall.ppm"), b"this is not an image").expect("write");
+
+        let mut assets =
+            amadeo_assets::Assets::from_catalogue(amadeo_assets::AssetCatalogue::new());
+        assets
+            .catalogue
+            .insert(
+                amadeo_assets::Sidecar::new("wall"),
+                std::path::Path::new("wall.ppm"),
+            )
+            .expect("a distinct id");
+        let amadeo_assets::Assets {
+            catalogue, store, ..
+        } = &mut assets;
+        store.load_all(catalogue, &root, ["wall"]);
+        assert!(
+            !store.has_failures(),
+            "the file must LOAD, or this is testing the wrong branch"
+        );
+
+        cache.ensure("wall", &assets);
+        let _ = std::fs::remove_dir_all(&root);
+        world.insert_service(cache);
+
+        let answer = dispatch_world(
+            &request(r#"{"jsonrpc":"2.0","method":"render.describe","id":1}"#),
+            &world,
+            &registry(),
+        )
+        .expect("dispatches")
+        .expect("render.describe is a world method");
+
+        let text = answer.to_compact();
+        assert!(text.contains("texture_failures"), "got: {text}");
+        assert!(text.contains("wall"), "the id has to be in it: {text}");
+    }
+
+    #[test]
+    fn a_frame_with_nothing_wrong_carries_no_failure_field() {
+        // Omitted rather than empty, like every other optional field in this reply. A client
+        // checking "is anything wrong" should not have to distinguish `[]` from absent.
+        let mut world = World::new();
+        world.insert_service(amadeo_render::TextureCache::new());
+
+        let answer = dispatch_world(
+            &request(r#"{"jsonrpc":"2.0","method":"render.describe","id":1}"#),
+            &world,
+            &registry(),
+        )
+        .expect("dispatches")
+        .expect("render.describe is a world method");
+
+        assert!(!answer.to_compact().contains("texture_failures"));
     }
 
     #[test]
