@@ -323,6 +323,7 @@ dependencies = [
  "amadeo-assets",
  "amadeo-core",
  "amadeo-ecs",
+ "amadeo-image",
  "amadeo-reflect",
  "amadeo-render",
  "amadeo-transform",

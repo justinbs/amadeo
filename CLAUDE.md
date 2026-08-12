@@ -483,7 +483,20 @@ crates/
                      with no further detail, so `the_generated_font_parses` exists to catch them --
                      without it every shaping test passes vacuously by producing no glyphs, which is
                      indistinguishable from a missing font.
-                     Still to come: drawing, a `Text` component, theming, and focus navigation.
+                     **`GlyphAtlas` makes a glyph drawable**: one 1024-square texture, white RGB with
+                     the coverage mask in **alpha**, so `Sprite::color` tints it and ONE atlas serves
+                     every colour of text. A glyph is a tilesheet tile -- `Sprite::region` already
+                     existed and ADR 0023 already batches on (sort order, texture), so a page of text
+                     is one batch and **the renderer needed nothing new**. Shelf packing, chosen for
+                     legibility over skyline/MaxRects; a full atlas is reported, never overwritten.
+                     **A pixel of padding is not optional** -- filtering samples outside a region, so
+                     glyphs packed flush bleed a sliver of the neighbouring letter.
+                     **Shaping rasterises**, deliberately: separating them would need
+                     `PositionedGlyph` to carry the shaper's cache key, which is the foreign type
+                     ADR 0036 §4 keeps out, and a glyph measured is nearly always a glyph drawn.
+                     `atlas_revision` is the glyph count, which works as a revision because the atlas
+                     only ever gains entries -- a draw pass re-uploads when it moves, not per frame.
+                     Still to come: the draw pass and a `Text` component, theming, focus navigation.
 ✅ amadeo-snapshot    the .snapshot text format (ADR 0028): capture a whole world to a file and put
                      it back. Sits above amadeo-scene because it borrows that crate's scalar
                      encoding — format_float is subtle and two copies would drift. **It captures the

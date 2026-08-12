@@ -12,6 +12,9 @@ amadeo-core.workspace = true
 # A font is an asset with a declared id (ADR 0020), like a texture or a sound.
 amadeo-assets.workspace = true
 amadeo-ecs.workspace = true
+# The glyph atlas is a `TextureData` like any other, so it goes into `TextureCache` unchanged and a
+# glyph is a `Sprite` with a region -- exactly what a tilesheet tile is (ADR 0023).
+amadeo-image.workspace = true
 amadeo-reflect.workspace = true
 # A widget is drawn through the sprite path -- a panel is a quad and a glyph is a textured quad
 # (ADR 0062), so `SortOrder` is what stacks UI over the world rather than a separate hierarchy.

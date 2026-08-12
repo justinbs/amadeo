@@ -60,6 +60,7 @@
 //! pixels from the top" is what a person means — and it is the seam most likely to be got wrong,
 //! because a layout with the flip backwards is plausible and upside down.
 
+mod atlas;
 mod components;
 mod layout;
 mod text;
@@ -68,6 +69,7 @@ mod text;
 #[cfg(test)]
 mod test_font;
 
+pub use atlas::{GLYPH_ATLAS_ID, GlyphAtlas, GlyphImage};
 pub use components::{Align, Anchor, ComputedRect, Flow, UiEdges, UiNode};
 pub use layout::layout_ui;
 pub use text::{FontCache, FontFailure, PositionedGlyph, ShapedText};

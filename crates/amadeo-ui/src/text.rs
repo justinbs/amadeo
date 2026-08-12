@@ -73,8 +73,13 @@ pub struct PositionedGlyph {
     /// **The baseline, not the top of the glyph.** Aligning glyphs by their tops makes every letter
     /// with a descender sit wrong, which reads as text that wobbles.
     pub baseline: f32,
-    /// The size this glyph was shaped at, in pixels. Needed to rasterise it.
+    /// The size this glyph was shaped at, in pixels.
     pub size: f32,
+    /// Where its pixels are in the glyph atlas, and how they sit against the pen.
+    ///
+    /// `None` for a glyph with nothing to draw — a space — and also when the atlas is full, which
+    /// [`FontCache::atlas_is_full`] reports.
+    pub image: Option<crate::GlyphImage>,
 }
 
 /// A string, shaped and laid out.
@@ -108,6 +113,10 @@ pub struct FontCache {
     loaded: BTreeMap<String, cosmic_text::fontdb::ID>,
     /// Ids that would not load, and why.
     failures: BTreeMap<String, FontFailure>,
+    /// The rasteriser's own cache of glyph bitmaps.
+    swash: cosmic_text::SwashCache,
+    /// Every glyph drawn so far, packed into one texture.
+    atlas: crate::GlyphAtlas,
 }
 
 impl Service for FontCache {}
@@ -145,7 +154,35 @@ impl FontCache {
             ),
             loaded: BTreeMap::new(),
             failures: BTreeMap::new(),
+            swash: cosmic_text::SwashCache::new(),
+            atlas: crate::GlyphAtlas::new(),
         }
+    }
+
+    /// The glyph atlas, for handing to `TextureCache::insert_decoded` under
+    /// [`GLYPH_ATLAS_ID`](crate::GLYPH_ATLAS_ID).
+    ///
+    /// It changes whenever a glyph is seen for the first time, so a draw pass re-uploads when
+    /// [`FontCache::atlas_revision`] moves rather than every frame.
+    #[must_use]
+    pub fn atlas(&self) -> &crate::GlyphAtlas {
+        &self.atlas
+    }
+
+    /// How many distinct glyphs have been rasterised.
+    ///
+    /// **Doubles as the atlas's revision**, which is what it is for: the texture only ever gains
+    /// entries, so a count that has not moved means a texture that has not changed, and a draw pass
+    /// can skip re-uploading a megabyte.
+    #[must_use]
+    pub fn atlas_revision(&self) -> usize {
+        self.atlas.len()
+    }
+
+    /// Whether a glyph has been refused for want of room in the atlas.
+    #[must_use]
+    pub fn atlas_is_full(&self) -> bool {
+        self.atlas.is_full()
     }
 
     /// Loads `id` if it is not loaded, reading its bytes from `assets`.
@@ -273,8 +310,15 @@ impl FontCache {
             .unwrap_or_default()
     }
 
-    /// Turns a shaped buffer into plain data, with no cosmic-text type escaping.
-    fn collect(&self, buffer: &cosmic_text::Buffer, size: f32) -> ShapedText {
+    /// Turns a shaped buffer into plain data, rasterising anything not yet in the atlas.
+    ///
+    /// # Why measuring also rasterises
+    ///
+    /// It would be tidier to separate them, and it would need `PositionedGlyph` to carry the
+    /// shaper's own cache key so a second pass could look the glyph up — which is exactly the
+    /// foreign type ADR 0036 §4 keeps out. A glyph that is measured is very nearly always a glyph
+    /// that is drawn, so the split would buy a boundary leak and almost no work saved.
+    fn collect(&mut self, buffer: &cosmic_text::Buffer, size: f32) -> ShapedText {
         let mut shaped = ShapedText::default();
         let mut fonts: Vec<cosmic_text::fontdb::ID> = Vec::new();
 
@@ -294,6 +338,30 @@ impl FontCache {
                     }
                 };
 
+                let pixels = if glyph.font_size > 0.0 {
+                    glyph.font_size
+                } else {
+                    size
+                };
+
+                // Rasterised at the position the shaper would draw it at, which is what decides the
+                // sub-pixel rounding. Asking at `(0, 0)` and moving it afterwards is what makes text
+                // look slightly soft.
+                let physical = glyph.physical((0.0, 0.0), 1.0);
+                // Two disjoint fields borrowed at once, which the borrow checker allows because it
+                // tracks them separately — worth knowing, since the same call written through a
+                // helper method on `self` would not compile.
+                let image = self.atlas.ensure_glyph(
+                    &mut self.system,
+                    &mut self.swash,
+                    &physical,
+                    // The shaper's font id is opaque to us, so it is hashed into the atlas key by
+                    // its own bits rather than by anything meaningful.
+                    font as u64,
+                    glyph.glyph_id,
+                    pixels,
+                );
+
                 shaped.glyphs.push(PositionedGlyph {
                     glyph: glyph.glyph_id,
                     font,
@@ -301,15 +369,16 @@ impl FontCache {
                     // `line_y` is the baseline, which is what a glyph is positioned against. Using
                     // `line_top` instead would sit every descender wrong.
                     baseline: run.line_y,
-                    size: if glyph.font_size > 0.0 {
-                        glyph.font_size
-                    } else {
-                        size
-                    },
+                    size: pixels,
+                    // A zero-sized entry — a space — is reported as nothing to draw rather than as a
+                    // zero-by-zero sprite, so a draw pass has one thing to check instead of two.
+                    image: image.filter(|image| image.width > 0.0 && image.height > 0.0),
                 });
             }
         }
 
+        // Mapped after the loop, because this borrows `self` shared and the loop above borrows three
+        // of its fields mutably.
         shaped.fonts = fonts
             .into_iter()
             .map(|face| self.asset_id_of(face))
@@ -432,6 +501,81 @@ mod tests {
             small.width
         );
         assert!(large.glyphs[0].size > small.glyphs[0].size);
+    }
+
+    #[test]
+    fn shaping_rasterises_its_glyphs_into_the_atlas() {
+        let mut cache = cache_with_a_font();
+        assert_eq!(cache.atlas_revision(), 0);
+
+        let shaped = cache.shape("AAA", "test", 32.0, 40.0, None);
+
+        // Three glyphs, but one *distinct* glyph: the atlas is keyed on the glyph, not the run.
+        assert_eq!(cache.atlas_revision(), 1);
+        assert!(!cache.atlas_is_full());
+
+        let image = shaped.glyphs[0].image.expect("the box glyph has pixels");
+        // The test font's box is 400x700 units at 1000 per em, so at 32 px it is about 13 x 22.
+        assert!(
+            (10.0..18.0).contains(&image.width),
+            "unexpected width {}",
+            image.width
+        );
+        assert!(
+            (18.0..26.0).contains(&image.height),
+            "unexpected height {}",
+            image.height
+        );
+        // Every glyph in the run points at the same atlas entry.
+        assert_eq!(shaped.glyphs[2].image, shaped.glyphs[0].image);
+    }
+
+    #[test]
+    fn the_atlas_really_contains_the_glyph_and_not_just_a_reservation() {
+        // **The "look at the output" check.** Everything above would pass against a packer that
+        // allocated regions and copied no pixels, and the symptom of that is invisible text — which
+        // is indistinguishable from a missing font, a wrong colour, or a layout bug.
+        let mut cache = cache_with_a_font();
+        let shaped = cache.shape("A", "test", 32.0, 40.0, None);
+        let image = shaped.glyphs[0].image.expect("pixels");
+
+        let atlas = cache.atlas().texture();
+        let size = atlas.width as f32;
+        // The middle of the region, which for a solid box is solid.
+        let x = ((image.region[0] + image.region[2] * 0.5) * size) as u32;
+        let y = ((image.region[1] + image.region[3] * 0.5) * size) as u32;
+        let alpha = atlas.pixels[((y * atlas.width + x) * 4 + 3) as usize];
+
+        assert!(
+            alpha > 200,
+            "the middle of a solid box should be nearly opaque, got {alpha}"
+        );
+        // And the colour channels stayed white, so `Sprite::color` can tint it.
+        assert_eq!(atlas.pixels[((y * atlas.width + x) * 4) as usize], 255);
+    }
+
+    #[test]
+    fn shaping_the_same_string_twice_rasterises_nothing_new() {
+        // The atlas only ever gains entries, so a revision that has not moved means a texture that
+        // has not changed — which is what lets a draw pass skip re-uploading a megabyte every frame.
+        let mut cache = cache_with_a_font();
+        cache.shape("AAA", "test", 32.0, 40.0, None);
+        let after_first = cache.atlas_revision();
+
+        cache.shape("AAAAAA", "test", 32.0, 40.0, None);
+
+        assert_eq!(cache.atlas_revision(), after_first);
+    }
+
+    #[test]
+    fn the_same_glyph_at_a_different_size_is_rasterised_again() {
+        // Not an optimisation missed — a glyph at 12 px is not a scaled copy of one at 48 px, and
+        // reusing one for the other is how text goes blurry at one size and crisp at another.
+        let mut cache = cache_with_a_font();
+        cache.shape("A", "test", 12.0, 16.0, None);
+        cache.shape("A", "test", 48.0, 56.0, None);
+
+        assert_eq!(cache.atlas_revision(), 2);
     }
 
     #[test]

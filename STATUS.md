@@ -64,7 +64,7 @@ sound.** What M3 still needs:
 | | |
 |---|---|
 | `amadeo-audio` | **Working, and complete enough for a game.** Trait, `NullAudio`, `KiraAudio`, buses, components, collection pass, `VoiceTracker`, WAV decoder, `SoundCache`, **one-shots**, `audio.describe`. Missing: ducking, occlusion, compressed audio, a voice cap |
-| `amadeo-ui` | **Layout and text shaping are built** (ADR 0062): anchors, flow, `grow`, `ComputedRect`, `FontCache` over `cosmic-text`, 28 tests. Missing: **drawing**, a `Text` component, theming, focus navigation |
+| `amadeo-ui` | **Layout, shaping and the glyph atlas are built** (ADR 0062): anchors, flow, `grow`, `ComputedRect`, `FontCache` over `cosmic-text`, `GlyphAtlas`, 40 tests. Missing: **the draw pass**, a `Text` component, theming, focus navigation |
 | `amadeo-anim` | **Nothing.** |
 
 **`amadeo-ui` is the next one, and its two hard decisions are made** — Justin settled both in session
@@ -73,11 +73,16 @@ sound.** What M3 still needs:
 **Text shaping landed too** — `FontCache` over `cosmic-text`, with a real font generated in code so
 the tests need no fixture. What is left, in order:
 
-1. **Drawing, and a `Text` component.** The remaining gap between "the engine can lay out and shape a
-   menu" and "you can see one". Deliberately cheap: a panel is a quad, a glyph is a textured quad,
-   `SortOrder` already stacks UI over the world (ADR 0018 anticipated exactly this), and the sprite
-   batcher already exists. **The one new piece is a glyph atlas** — rasterise each glyph once with
-   `cosmic-text`'s `SwashCache`, pack it into a texture, and feed `TextureCache`.
+1. **The draw pass, and a `Text` component.** The remaining gap between "the engine can lay out and
+   shape a menu" and "you can see one". **The glyph atlas is done**, so what is left is turning
+   `ComputedRect` plus `ShapedText` into `Quad` and `Sprite` entities.
+
+   > **One design question stands in the way, and it is worth deciding rather than discovering.**
+   > UI is in *screen* space and the sprite path draws in *world* space through a camera. Either the
+   > UI gets its own orthographic camera whose projection maps one unit to one pixel — which is
+   > ADR 0031's "a camera is an entity" doing the work, and probably right — or the renderer grows a
+   > dedicated UI pass. The first reuses everything and needs a rule about where that camera comes
+   > from and how its `order` relates to the game's. **Read ADR 0031 and ADR 0018 before choosing.**
 2. **Focus navigation**, the third ⚠️ in `docs/04` §13. Left open until the layout tree existed,
    which it now does. Always painful to add later.
 3. **A default theme**, and `CLAUDE.md` §6 constrains it hard — no Inter, no gradients, no uniform
@@ -331,6 +336,31 @@ further detail:
 `the_generated_font_parses` is what caught both, and it earns its place for a specific reason: with a
 malformed font, every shaping test passes *vacuously* by producing no glyphs — which is exactly what
 a missing font produces and indistinguishable from it.
+
+### 8. The glyph atlas, and the renderer needed nothing new
+
+`GlyphAtlas` rasterises each glyph once into a shared 1024-square texture. **A glyph is a tilesheet
+tile**: `Sprite::region` has existed since ADR 0023 and batching is already on
+`(sort order, texture)`, so a page of text is *one* draw call and no new pipeline was required.
+
+- **White RGB with the coverage mask in alpha.** A rasterised glyph says how much of each pixel the
+  outline covers and nothing about what colour the text is — so `Sprite::color` tints it, and one
+  atlas serves every colour of text in the game. Baking colour in would need an entry per colour per
+  glyph.
+- **A pixel of padding is not optional.** Filtering samples just outside a region, so glyphs packed
+  flush against each other show a faint sliver of the neighbouring letter — an artefact that gets
+  blamed on the font.
+- **Shaping rasterises**, deliberately. Splitting them would need `PositionedGlyph` to carry the
+  shaper's own cache key, which is exactly the foreign type ADR 0036 §4 keeps out, and a glyph that
+  is measured is very nearly always a glyph that is drawn.
+- **Shelf packing**, chosen for legibility over skyline or MaxRects. Text at menu sizes fills a few
+  percent of the atlas, so better packing buys nothing; if one is ever exhausted the answer is a
+  second page, which callers would not notice.
+
+`the_atlas_really_contains_the_glyph_and_not_just_a_reservation` samples the middle of a rasterised
+box and asserts it is nearly opaque. Everything else in that file would pass against a packer that
+allocated regions and copied no pixels — and the symptom of *that* is invisible text, which is
+indistinguishable from a missing font, a wrong colour, or a layout bug.
 
 ### What else landed
 
