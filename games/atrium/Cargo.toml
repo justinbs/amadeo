@@ -7,9 +7,17 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 publish = false
+# Two binaries now, so `cargo run -p atrium` would otherwise be ambiguous and every CLI command
+# against this game would fail with it. `games/vault` learned this the same way.
+default-run = "atrium"
 
 [dependencies]
 amadeo-app = { workspace = true, features = ["gpu"] }
+# `kira` on, deliberately and not by default elsewhere -- the same trade this file already makes for
+# rapier one entry down. A demo of the audio system that makes no sound is not a demo, and the only
+# verification audio has is a person hearing it. Feature unification means this builds cpal for
+# `cargo test --workspace` too, and on Linux that needs ALSA's headers; CI installs them.
+amadeo-audio = { workspace = true, features = ["kira"] }
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 amadeo-input.workspace = true
@@ -39,3 +47,9 @@ path = "src/lib.rs"
 [[bin]]
 name = "atrium"
 path = "src/main.rs"
+
+# Generates the `.wav` files in `assets/sounds/` from the descriptions in its own source. See its
+# module docs for why a game's audio assets are derived from text rather than committed as blobs.
+[[bin]]
+name = "tone"
+path = "src/bin/tone.rs"

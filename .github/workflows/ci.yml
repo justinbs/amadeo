@@ -48,6 +48,14 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # `cpal`, underneath kira, links against ALSA on Linux and needs its headers to build at all.
+      # This is a *build* requirement, not a runtime one -- the runner still has no sound card, and
+      # nothing here plays anything. `games/atrium` enables `amadeo-audio/kira`, so feature
+      # unification means the whole workspace build wants it whether or not `--all-features` is
+      # passed.
+      - name: ALSA headers (Linux only, for cpal)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       - name: Tests
         run: cargo test --workspace --all-features
 

@@ -19,8 +19,23 @@ amadeo-reflect.workspace = true
 amadeo-transform.workspace = true
 thiserror.workspace = true
 
+# The real backend, optional. The abstraction and the null backend must build and test with no sound
+# card (invariant I7), and this pulls in a device library and a mixer -- so a headless build and CI
+# stay lean by simply not enabling `kira`. Exactly how `amadeo-render` treats `gpu`.
+#
+# `default-features = false` matters: kira's defaults pull in `symphonia` for mp3, ogg, vorbis and
+# flac, and the engine decodes its own WAV (ADR 0059, `wav.rs`). Compressed audio is a later,
+# deliberate decision rather than something to acquire by leaving a default on.
+kira = { version = "0.12", default-features = false, features = [
+    "cpal",
+    "cpal-realtime",
+], optional = true }
+
 [features]
 default = []
+# Enables the kira backend. Requires an audio device at runtime; `NullAudio` remains available
+# either way, and `KiraAudio::new` reports a missing device rather than panicking.
+kira = ["dep:kira"]
 
 [lints]
 workspace = true

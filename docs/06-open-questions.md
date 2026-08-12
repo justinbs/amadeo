@@ -874,6 +874,26 @@ per-access lock the "wrap offenders in a `Mutex`" option originally imagined, an
 cheapest option also the right one here — while leaving `LocalService` for a genuinely per-access
 case like a file watcher.
 
+**Session 16 update: the offender this question named for five sessions is not one, and none of the
+three options was needed.** `kira::AudioManager<DefaultBackend>` is `Send + Sync` in kira 0.12, as
+are `StaticSoundHandle`, `TrackHandle`, `SpatialTrackHandle` and `ListenerHandle`. Checked by
+compiling the bound rather than by reading the source, **with a control case that fails** — a probe
+that cannot fail proves nothing. `KiraAudio` now goes into the service like any other value, and
+`the_backend_fits_in_a_service_without_a_mutex_or_a_local_store` pins it so a future kira release
+that regresses it turns red with a name that says what happened.
+
+**The reason is worth more than the result**, because it is a prior for the next candidate: kira's
+desktop backend does not hold the `cpal` stream itself — it hands it to a stream-manager thread and
+keeps a controller. **A library that already owns a thread has usually had to become `Send + Sync` in
+order to.** So the suspicion belongs on libraries that expect to be driven from *your* thread — a
+script VM, a `wgpu` surface tied to a window — rather than on libraries that merely feel low level.
+`mlua::Lua` and `wasmtime::Store`, the two that actually failed in the Q1 spike, are both the former.
+
+So this question keeps its priority and loses an example. The remaining candidates are an asset
+loader holding a file watcher and a `wgpu` surface, and **neither has been tried**. Deciding now
+would be deciding speculatively, which this entry has said to avoid since it was written. See
+ADR 0060 §3.
+
 ---
 
 ## Q6 · P2 · Editor in-process or separate process?

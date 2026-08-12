@@ -6,8 +6,10 @@ assets
   atrium_look
   body
   floor
+  lamp_hum
   pillar
   plinth
+  room_tone
   slate
   stone
   wall_north
@@ -271,6 +273,7 @@ entity player "Wanderer"
     translation 0.0 1.0 2.0
 
   entity eye "Follow camera"
+    AudioListener
     Camera
       active true
       environment "atrium_look"
@@ -297,7 +300,29 @@ entity player "Wanderer"
       scale 1.0 1.0 1.0
       translation 0.0 3.35 5.71
 
+entity ambience "Room tone"
+  AudioSource
+    bus Music
+    gain 1.0
+    looping true
+    pitch 1.0
+    playing true
+    sound "room_tone"
+    spatial false
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
 entity lamp "Warm lamp"
+  AudioSource
+    bus Effects
+    gain 1.0
+    looping true
+    pitch 1.0
+    playing true
+    sound "lamp_hum"
+    spatial true
   PointLight
     colour 1.0 0.72 0.42
     intensity 22.0

@@ -49,14 +49,23 @@
 
 mod backend;
 mod components;
+mod sounds;
 mod tracker;
 mod wav;
 
+#[cfg(feature = "kira")]
+mod kira_backend;
+
 pub use backend::{AudioBackend, AudioError, AudioFrame, Listener, NullAudio, SoundData, Voice};
 pub use components::{AudioListener, AudioSource, Bus};
+pub use sounds::{SoundCache, SoundFailure};
 pub use tracker::{VoiceChanges, VoiceTracker};
 pub use wav::{WavError, decode_wav};
 
+#[cfg(feature = "kira")]
+pub use kira_backend::KiraAudio;
+
+use amadeo_assets::Assets;
 use amadeo_ecs::{Service, World};
 use amadeo_transform::{GlobalTransform, Transform};
 
@@ -260,6 +269,58 @@ fn collect_listener(world: &World) -> Option<Listener> {
     found.into_iter().next().map(|(_, listener)| listener)
 }
 
+/// Decodes every sound this frame names and hands it to the backend, if it does not have it yet.
+///
+/// The audio counterpart of the renderer's `decode_frame_textures`, and it needs the same shape for
+/// the same reason: [`SoundCache`] mutably, `Assets` shared, and [`Audio`] mutably are three entries
+/// in one service map, so the cache is taken out of the world for the duration.
+///
+/// Does nothing if no [`SoundCache`] is installed — a headless test that installed no asset system
+/// still submits frames, and its backend simply has nothing to play.
+///
+/// # Why decoding is here rather than at ADR 0021's load barrier
+///
+/// The *bytes* are behind the barrier and are resident before the first tick. Decoding them is a
+/// pure function of those bytes, so doing it on first use cannot observe anything the barrier was
+/// protecting. The same trade `TextureCache` takes, with the same cost: a possible hitch the first
+/// time a sound is heard, left untuned until one is measured.
+fn ensure_sounds(world: &mut World, frame: &AudioFrame) {
+    if !world.has_service::<SoundCache>() || frame.voices.is_empty() {
+        return;
+    }
+
+    world.with_service_taken::<SoundCache, ()>(|world, cache| {
+        if let Some(assets) = world.service::<Assets>() {
+            for voice in &frame.voices {
+                cache.ensure(&voice.sound, assets);
+            }
+        }
+
+        let Some(audio) = world.service_mut::<Audio>() else {
+            return;
+        };
+        for voice in &frame.voices {
+            if audio.has(&voice.sound) {
+                continue;
+            }
+            let Some(sound) = cache.get(&voice.sound) else {
+                // Missing or undecodable. Silence plus the report in `SoundCache::failures`, which
+                // is the whole of the diagnosis — see the note there about why there is no
+                // placeholder sound.
+                continue;
+            };
+            // Cloned because the backend takes ownership and the cache keeps its copy for the next
+            // backend — a device lost and reacquired re-uploads from here rather than re-reading
+            // the file. Once per id, not once per frame: the `has` check above is what makes that
+            // true.
+            let error = audio.upload(&voice.sound, sound.clone()).err();
+            if error.is_some() {
+                audio.last_error = error;
+            }
+        }
+    });
+}
+
 /// Applies the bus gains and hands the frame over, recording any failure.
 fn submit(world: &mut World, mut frame: AudioFrame) {
     let Some(audio) = world.service::<Audio>() else {
@@ -272,6 +333,11 @@ fn submit(world: &mut World, mut frame: AudioFrame) {
     for voice in &mut frame.voices {
         voice.gain *= audio.gain_for(voice.bus);
     }
+
+    // **Before the submission, not after.** A backend is asked to start a voice during `submit`, so
+    // a sound that arrived at the backend afterwards would be missing for exactly the frame that
+    // needed it — which is inaudible for a hum and very audible for anything short.
+    ensure_sounds(world, &frame);
 
     let Some(audio) = world.service_mut::<Audio>() else {
         return;

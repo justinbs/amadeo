@@ -350,8 +350,28 @@ crates/
                      docs/02). The trap is 24-bit: it has no Rust type, so the sign is extended by
                      hand and getting it wrong turns every negative sample into a large positive one
                      -- loud noise rather than a quiet mistake.
-                     Still to come: the kira backend itself, and one-shots, which are events rather
-                     than state and have no home yet.
+                     **`KiraAudio` behind the `kira` feature makes the sound** (off by default, like
+                     `gpu` and `rapier`). One mixer sub-track per Bus, one listener, and a spatial
+                     voice gets its own positioned track under its bus -- attenuation and panning are
+                     kira's, which is why ADR 0059 chose it and why the collection pass does not
+                     pre-attenuate. **No test can verify this file** and ADR 0060 makes that
+                     structural rather than sad: the fiddly part is in `VoiceTracker` where CI can
+                     reach it, and the listening *procedure* is committed as two `#[ignore]`d tests
+                     in `tests/you_can_hear_it.rs`. **Do not move reconciliation back into the
+                     backend.**
+                     **Q12 turned out not to bite** -- kira 0.12's manager and every handle are
+                     `Send + Sync`, because its desktop backend hands the cpal stream to its own
+                     thread and keeps a controller. No `LocalService`, no `Mutex`. Q12 stays open;
+                     the prior it leaves behind is that the risk is in libraries wanting to be driven
+                     from *your* thread, not in libraries that feel low level.
+                     **`SoundCache` is id -> bytes -> samples**, `TextureCache`'s third instance --
+                     with one deliberate difference: **there is no placeholder sound and there must
+                     not be one** (ADR 0060). Magenta works because nobody ships magenta; every
+                     possible placeholder *sound* is indistinguishable from content, so a missing
+                     sound is silence plus `SoundCache::failures`, and the report is the whole
+                     diagnosis.
+                     Still to come: one-shots, which are events rather than state and have no home
+                     yet.
 🟡 amadeo-physics    RigidBody/Collider/Velocity/Gravity as reflected, HASHED data, the
                      PhysicsBackend trait, and NullPhysics -- which integrates velocity and gravity
                      for real rather than doing nothing, so a headless determinism test is
@@ -502,6 +522,14 @@ games/               actual games built with the engine
                    which is ADR 0031's claim cashed. **Enables `amadeo-physics/rapier`**, so feature
                    unification turns rapier on for `cargo test --workspace` — deliberate, since a
                    demo whose walls do not stop you is not a demo.
+                   **Also `amadeo-audio/kira`, on the same trade** (session 16). It is where the
+                   engine first made a sound: the lamp hums from where it is and a room tone plays
+                   from nowhere, which are the backend's two paths and are indistinguishable to any
+                   test. The ears are on the **camera**, not the character — third person, so the
+                   viewer hears what they can see; a horror game would choose the other. The two
+                   `.wav` files are generated from a table of frequencies by
+                   `cargo run -p atrium --bin tone`, which is `pix`'s argument for audio, so it now
+                   sets `default-run` too.
 docs/                design docs and ADRs
 spikes/              separate cargo workspaces holding the evidence behind an ADR. Frozen once
                      written; excluded from the engine workspace. See spikes/README.md.

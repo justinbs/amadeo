@@ -30,6 +30,7 @@
 
 use amadeo_app::{App, Stage, system};
 
+use amadeo_audio::{Audio, AudioListener, AudioSource, COLLECT_AUDIO, SoundCache, collect_audio};
 use amadeo_input::{InputDriver, NullSource};
 use amadeo_physics::{Collider, Gravity, Physics, RapierPhysics, RigidBody, Velocity};
 use amadeo_render::{
@@ -77,6 +78,11 @@ pub fn build_simulation() -> anyhow::Result<App> {
     app.register_component::<PointLight>()?;
     app.register_component::<SpotLight>()?;
     app.register_component::<SortOrder>()?;
+    // Sound (ADR 0059). The ears go on the *camera* here rather than on the character, which is a
+    // real choice with an audible difference: this is third person, so what the viewer can see is
+    // what they should hear. A horror game would put them on the character instead.
+    app.register_component::<AudioSource>()?;
+    app.register_component::<AudioListener>()?;
     app.register_component::<RigidBody>()?;
     app.register_component::<Collider>()?;
     app.register_component::<Velocity>()?;
@@ -90,6 +96,19 @@ pub fn build_simulation() -> anyhow::Result<App> {
 
     app.scan_assets(ASSET_DIRECTORY)?;
     app.insert_service(TextureCache::new());
+    app.insert_service(SoundCache::new());
+
+    // **`NullAudio` here, and the windowed build swaps in kira.** The same split the renderer has:
+    // `build_simulation` is what the agent, the tests and CI run, and none of them has a sound card.
+    // `main.rs` replaces this service when it opens a window.
+    app.insert_service(Audio::headless());
+
+    // In `Render`, beside the renderer's collection pass and outside the deterministic zone.
+    // Nothing it does can move the state hash -- `Audio` is a Service, and ADR 0009 excludes those
+    // by trait bound -- so where it sits is about what it can *see*, not about safety: it must run
+    // after `propagate_transforms` so a sound attached to a moving thing is where the thing ended
+    // up, and `Render` is after `PostSimulation`.
+    app.add_system(Stage::Render, system(COLLECT_AUDIO, collect_audio));
 
     // Rapier rather than `NullPhysics`. Against the null backend the character walks through the
     // walls — which is a deliberate and useful control case in a test, and a broken demo here.

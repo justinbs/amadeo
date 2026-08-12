@@ -23,7 +23,10 @@
 use crate::backend::SoundData;
 
 /// What can go wrong reading a `.wav`.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+///
+/// `Clone` because [`SoundFailure`](crate::SoundFailure) holds one and is itself cloneable — a
+/// failure is remembered and handed out to whoever asks why a sound is silent.
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 pub enum WavError {
     /// Not a RIFF/WAVE file at all.
     #[error("not a WAV file: expected a RIFF header, found {found:?}")]
