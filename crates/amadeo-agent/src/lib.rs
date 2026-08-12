@@ -60,6 +60,7 @@
 //! specifically the sprite batcher that Q3's remaining third gets decided against.
 
 mod assets;
+mod audio;
 mod describe;
 mod example;
 mod inspect;
@@ -68,6 +69,7 @@ mod parse;
 mod rpc;
 
 pub use assets::list as list_assets;
+pub use audio::describe as describe_audio;
 pub use describe::{DESCRIBE_FORMAT_VERSION, MANUAL_PATH, describe, describe_type};
 pub use example::describe_example;
 pub use inspect::{entity, query, value_to_json};

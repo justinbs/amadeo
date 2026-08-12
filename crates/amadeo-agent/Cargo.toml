@@ -11,6 +11,10 @@ rust-version.workspace = true
 # `assets.list` reports the catalogue, which lives on the World as a Service. amadeo-assets sits
 # below this crate in the dependency order (CLAUDE.md §4), so reading it here is with the grain.
 amadeo-assets.workspace = true
+# `audio.describe` answers "why is it silent", which is the audio half of `render.describe`. Reading
+# the world rather than a backend is what makes it work against the real backend as well as the null
+# one, so this dependency is the *abstraction* and never `kira` -- the feature stays off here.
+amadeo-audio.workspace = true
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 amadeo-reflect.workspace = true

@@ -54,6 +54,8 @@ enum Command {
     Replay { path: PathBuf },
     /// List every asset id, the file behind it, and anything not yet importable.
     Assets,
+    /// What the world sounds like, and — when it does not — why.
+    Audio,
     /// Write a sidecar for every asset file that has none.
     ///
     /// `assets` names the directory directly, so a project whose game will not start can still be
@@ -145,6 +147,10 @@ fn run(command: Command, options: &Options) -> Result<()> {
         return list_assets(options);
     }
 
+    if let Command::Audio = command {
+        return describe_audio(options);
+    }
+
     if let Command::Import { check, assets } = command {
         return import_assets(check, assets.as_deref(), options);
     }
@@ -226,6 +232,7 @@ fn run(command: Command, options: &Options) -> Result<()> {
         | Command::Check { .. }
         | Command::Replay { .. }
         | Command::Assets
+        | Command::Audio
         | Command::Import { .. }
         | Command::ImportGltf { .. }
         | Command::Snapshot { .. }
@@ -646,6 +653,169 @@ fn list_assets(options: &Options) -> Result<()> {
     Ok(())
 }
 
+/// Asks the game what it sounds like and prints it, leading with why it might not.
+///
+/// # Why silence gets a first-class command
+///
+/// `amadeo assets` exists because "why is this magenta" needed an answer. This is the same argument
+/// for a harder case: **a blank screen has an obvious symptom and silence has none.** Nobody notices
+/// a quiet game, and when they do, every cause is invisible from outside — no listener in the world,
+/// a source that is not playing, a bus at zero, or the null backend that every headless build
+/// installs on purpose.
+///
+/// ADR 0060 is what makes it necessary rather than pleasant: it decided a sound that will not load
+/// is silent, with the failure report as the whole diagnosis. A report nobody can read is not one.
+///
+/// **The reason comes first, before the listing.** Someone running this is answering a question, and
+/// the answer should not be below a table they have to interpret.
+fn describe_audio(options: &Options) -> Result<()> {
+    let reply = ask_game(
+        "audio.describe",
+        Json::object([] as [(&str, Json); 0]),
+        options,
+    )?;
+
+    if options.compact {
+        println!("{}", reply.to_compact());
+        return Ok(());
+    }
+
+    let Json::Object(result) = &reply else {
+        bail!("audio.describe replied with something that is not an object");
+    };
+
+    if let Some(Json::String(reason)) = result.get("silent_because") {
+        println!("SILENT — {reason}.");
+        println!();
+    }
+
+    if result.get("installed") == Some(&Json::Bool(false)) {
+        return Ok(());
+    }
+
+    let backend = string_field(&reply, "backend").unwrap_or("?");
+    println!("backend  {backend}");
+    if let Some(Json::Float(master)) = result.get("master") {
+        println!("master   {master:.2}");
+    }
+    if let Some(Json::Object(buses)) = result.get("buses") {
+        // Only the ones that are not at unity, because four lines saying `1.00` is four lines of
+        // nothing on the command somebody runs when something is wrong.
+        let turned_down: Vec<String> = buses
+            .iter()
+            .filter_map(|(name, value)| match value {
+                Json::Float(gain) if (*gain - 1.0).abs() > 1e-6 => {
+                    Some(format!("{name} {gain:.2}"))
+                }
+                _ => None,
+            })
+            .collect();
+        if !turned_down.is_empty() {
+            println!("buses    {}", turned_down.join(", "));
+        }
+    }
+
+    match result.get("listener") {
+        Some(Json::Object(listener)) => {
+            println!("listener {}", show_vector(listener.get("position")));
+        }
+        // Said explicitly rather than omitted: it is the single most useful fact in this reply.
+        _ => println!("listener none"),
+    }
+    println!();
+
+    let voices = match result.get("voices") {
+        Some(Json::Array(items)) => items.clone(),
+        _ => Vec::new(),
+    };
+
+    if voices.is_empty() {
+        println!("Nothing is making a sound.");
+    } else {
+        let width = voices
+            .iter()
+            .filter_map(|voice| string_field(voice, "sound"))
+            .map(str::len)
+            .max()
+            .unwrap_or(5)
+            .max(5);
+
+        println!(
+            "{:<width$}  {:<9}  {:>5}  ENTITY  WHERE",
+            "SOUND",
+            "BUS",
+            "GAIN",
+            width = width
+        );
+        for voice in &voices {
+            let sound = string_field(voice, "sound").unwrap_or("?");
+            let bus = string_field(voice, "bus").unwrap_or("?");
+            let Json::Object(fields) = voice else {
+                continue;
+            };
+            let gain = match fields.get("gain") {
+                Some(Json::Float(gain)) => format!("{gain:.2}"),
+                _ => "?".to_string(),
+            };
+            let entity = match fields.get("entity") {
+                Some(Json::Int(index)) => index.to_string(),
+                _ => "?".to_string(),
+            };
+            // "everywhere" rather than a blank, because a non-spatial voice is a deliberate choice
+            // and an empty column reads as missing data.
+            let where_ = match fields.get("position") {
+                Some(position) => show_vector(Some(position)),
+                None => "everywhere".to_string(),
+            };
+            println!(
+                "{sound:<width$}  {bus:<9}  {gain:>5}  {entity:>6}  {where_}",
+                width = width
+            );
+        }
+        println!();
+        println!("{} voice(s)", voices.len());
+    }
+
+    // ADR 0060: there is no placeholder sound, so unlike a missing texture this is the *entire*
+    // signal that something is wrong. It is printed even though `silent_because` may already have
+    // led — a game can be making some sounds and missing others.
+    if let Some(Json::Array(failures)) = result.get("failures")
+        && !failures.is_empty()
+    {
+        println!();
+        println!("WILL NOT LOAD (these are silent)");
+        for failure in failures {
+            if let Some(message) = string_field(failure, "message") {
+                println!("    {message}");
+            }
+        }
+    }
+
+    if let Some(Json::String(error)) = result.get("last_error") {
+        println!();
+        println!("LAST SUBMISSION FAILED");
+        println!("    {error}");
+    }
+
+    Ok(())
+}
+
+/// A `[x, y, z]` array as `(1.00, 2.00, 3.00)`, or `?` if it is not one.
+fn show_vector(value: Option<&Json>) -> String {
+    let Some(Json::Array(parts)) = value else {
+        return "?".to_string();
+    };
+    let numbers: Vec<String> = parts
+        .iter()
+        .map(|part| match part {
+            Json::Float(number) => format!("{number:.2}"),
+            Json::Int(number) => format!("{number}.00"),
+            _ => "?".to_string(),
+        })
+        .collect();
+    format!("({})", numbers.join(", "))
+}
+
 /// Writes a sidecar for every asset file that has none.
 ///
 /// The root comes from the game, via `assets.list`, but the *writing* happens here. That is the same
@@ -1035,6 +1205,7 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
             paths: rest.iter().map(PathBuf::from).collect(),
         },
         "assets" => Command::Assets,
+        "audio" => Command::Audio,
         "import" => Command::Import {
             check,
             assets: assets_dir,
@@ -1102,6 +1273,7 @@ RUNS HERE (no game needed)
 
 RUNS IN THE GAME (launches it, asks, exits)
     assets                   every asset id and the file behind it
+    audio                    what the world sounds like, and why it might not
     check <file>...          validate scene files against the real component schema
     describe [type]          the schema — components, resources, and every type they name
         --example            a minimal valid instance of one type, ready to paste
@@ -1280,6 +1452,15 @@ mod tests {
     fn assets_takes_no_arguments() {
         let (command, _) = parse_args(&["assets"]).expect("parses");
         assert!(matches!(command, Command::Assets), "got {command:?}");
+    }
+
+    #[test]
+    fn audio_takes_no_arguments_and_is_listed() {
+        let (command, _) = parse_args(&["audio"]).expect("parses");
+        assert!(matches!(command, Command::Audio), "got {command:?}");
+        // A command missing from the usage text is a command nobody finds, and this one exists
+        // precisely to be found by somebody wondering why a game is quiet.
+        assert!(USAGE.contains("audio"));
     }
 
     #[test]

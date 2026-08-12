@@ -70,6 +70,7 @@ name = "amadeo-agent"
 version = "0.1.0"
 dependencies = [
  "amadeo-assets",
+ "amadeo-audio",
  "amadeo-core",
  "amadeo-ecs",
  "amadeo-reflect",

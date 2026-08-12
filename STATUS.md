@@ -190,6 +190,37 @@ Two things instead, and both generalise:
 Every one of those files says plainly that the last step is a person's. That is the load-bearing
 part, not modesty.
 
+### 4. `audio.describe`, because ADR 0060 had a hole in it while it was being written
+
+ADR 0060 decided a sound that will not load is **silent**, with `SoundCache::failures` as the whole
+diagnosis. That is only true if something can *read* the report — and nothing outside Rust could.
+`assets.list` reports *load* failures; nothing has ever reported a *decode* failure, for textures
+either.
+
+So `audio.describe` is `render.describe`'s counterpart, served over RPC and as `amadeo audio`. The
+asymmetry between them is the point: **a blank screen has an obvious symptom and silence has none.**
+Nobody notices a quiet game, and every cause is invisible from outside.
+
+Three things about it worth keeping:
+
+- **It reads the world, not the last frame.** `NullAudio` remembers what it was given and a real
+  backend does not, so reading back from a backend would work headlessly and answer nothing about the
+  game somebody is actually playing.
+- **`collect_audio` and `describe_audio` share one frame builder.** Two copies of "what should be
+  audible" is the fifth instance of this project's recurring failure, and here it reports a game
+  playing something it is not — worse than no answer. `describing_agrees_with_what_was_actually_
+  submitted` is what says so rather than the comment.
+- **`silent_because` orders its causes deliberately.** No listener is reported *before* no voices,
+  because a world with no ears submits none and the second is the symptom. The null backend is
+  reported **last**, because it is almost always true of a headless run and putting it first would
+  bury a real fault.
+
+`amadeo audio --package atrium --ticks 5` now prints both voices, the listener, and "SILENT — the
+null backend is installed, which makes no sound by design."
+
+**Textures still have no equivalent**, and now the asymmetry is visible: `TextureCache::failures`
+exists and only a test reads it. Worth closing next time `render.describe` is open.
+
 ### What else landed
 
 - **`SoundCache`** — id → bytes → samples, `TextureCache`'s third instance. This is what was missing

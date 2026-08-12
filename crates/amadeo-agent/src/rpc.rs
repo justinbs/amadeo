@@ -329,6 +329,7 @@ pub fn failure(id: &Json, error: &RpcError) -> Json {
 /// The methods answerable from a world and a registry alone.
 pub const WORLD_METHODS: &[&str] = &[
     "assets.list",
+    amadeo_audio::AUDIO_DESCRIBE,
     "describe",
     "describe.example",
     "render.describe",
@@ -400,6 +401,18 @@ pub fn dispatch_world(
         // ADR 0020 requires this to exist *before* ids become the reference syntax, so that the
         // first agent to author a scene can look the ids up rather than guess at them.
         "assets.list" => Ok(Some(crate::assets::list(world))),
+
+        // `render.describe`'s counterpart, and it exists for a reason ADR 0060 created: that ADR
+        // decided a sound which will not load is *silent*, with the failure report as the whole
+        // diagnosis. Until this method existed nothing outside Rust could read that report, which
+        // made "the report is the diagnosis" true only in principle.
+        //
+        // Silence is the audio equivalent of a blank screen, and it has more causes than a blank
+        // screen does — no listener, a stopped source, a zero bus, the null backend — every one of
+        // them invisible from outside and each with a different fix. So the reply carries
+        // `silent_because`, which is the engine answering the question rather than handing over
+        // fields and letting each caller re-derive the answer badly.
+        method if method == amadeo_audio::AUDIO_DESCRIBE => Ok(Some(crate::audio::describe(world))),
 
         // The other half of "what is in this world": entities carry components, and everything
         // else is a resource. Blocked until ADR 0027, because a resource behind a trait object had

@@ -370,6 +370,17 @@ crates/
                      possible placeholder *sound* is indistinguishable from content, so a missing
                      sound is silence plus `SoundCache::failures`, and the report is the whole
                      diagnosis.
+                     **`describe_audio` is `render.describe` for sound** -- served as
+                     `audio.describe` and `amadeo audio`. It exists because ADR 0060 made the failure
+                     *report* the whole diagnosis, and a report nothing can read is not one. **Reads
+                     the world, not the last frame**: NullAudio remembers frames and a real backend
+                     does not, so reading a backend would work headlessly and answer nothing about
+                     the game being played. `collect_audio` and `describe_audio` share ONE frame
+                     builder -- two copies would drift and the failure is reporting a sound the game
+                     is not making. `silent_because` names the cause in a deliberate order: no
+                     listener BEFORE no voices (a world with no ears submits none, so the second is
+                     the symptom), and the null backend LAST (almost always true headlessly, so
+                     reporting it first buries real faults).
                      Still to come: one-shots, which are events rather than state and have no home
                      yet.
 🟡 amadeo-physics    RigidBody/Collider/Velocity/Gravity as reflected, HASHED data, the
@@ -434,7 +445,7 @@ crates/
 ✖ amadeo-script      NOT BUILT. ADR 0011: game logic is plain Rust in the game crate.
 🟡 amadeo-agent       the protocol: JSON reader and writer, JSON-RPC envelope, and the methods that
                      need only a world + registry (describe, describe.example, render.describe,
-                     world.query/entity/list/resources). Read-only. ADR 0030 settles what `describe`
+                     **audio.describe**, world.query/entity/list/resources). Read-only. ADR 0030 settles what `describe`
                      is *for*: a **schema, not a manual**, covering components, resources, and every
                      type those name transitively — how to write Rust against the engine stays in
                      docs/07, which the reply points at. `render.capture` is served by the *host* in amadeo-app, since it needs an App.
@@ -454,7 +465,7 @@ crates/
                      than in amadeo-agent because it needs App and I6 forbids reaching down.
 — amadeo-editor      graphical editor. A CLIENT of amadeo-agent. No privileged access.
 🟡 amadeo-cli         the `amadeo` binary. Built: describe/query/entity/schedule/status/call/check/
-                     replay/fmt/assets/import/import-gltf/snapshot/capture (import takes `--assets <dir>` to work on a
+                     replay/fmt/assets/**audio**/import/import-gltf/snapshot/capture (import takes `--assets <dir>` to work on a
                      project whose game will not start -- Q19), plus `--from <file>` on any of them to
                      restore a snapshot before answering, and `describe <Type> --example` for a
                      minimal valid instance in both the scene and JSON spellings.

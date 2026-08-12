@@ -1400,10 +1400,28 @@ and a WGSL struct are two statements of one layout in two languages, and nothing
 wrong picture does. If you add a field to one, add it to the other **in the same position**, and then
 capture something and look at it.
 
-> This is the same shape as three other findings in this file — normals versus winding, the two-sided
-> apron, `format_float` shared between `amadeo-scene` and `amadeo-snapshot`. **Two copies of one fact
-> drift, and a comment saying "keep these in step" is not a mechanism.** Where the two copies can be
-> made one, make them one.
+> This is the same shape as four other findings in this file — normals versus winding, the two-sided
+> apron, `format_float` shared between `amadeo-scene` and `amadeo-snapshot`, and the one below.
+> **Two copies of one fact drift, and a comment saying "keep these in step" is not a mechanism.**
+> Where the two copies can be made one, make them one.
+
+### An introspection method must share the code it describes, not mirror it
+
+The fifth instance, and the one where the *consequence* is worst. `audio.describe` reports what the
+world sounds like; `collect_audio` decides what a backend is handed. Writing the query as a second
+walk over the world would have been the obvious thing and is a trap: when the two drift, the method
+reports a game playing sounds it is not playing, and **an agent acting on a confident wrong answer is
+worse off than one told nothing.**
+
+So `build_frame(world)` is one function and both call it, gains included.
+`describing_agrees_with_what_was_actually_submitted` compares the described frame against the one the
+null backend was actually given, which is what makes the sharing checked rather than merely intended.
+
+**The general rule for any `*.describe` method: derive the answer from the same code the real path
+uses, and pin the agreement with a test.** `render.describe` obeys it differently and for a stated
+reason — it walks the world rather than reading `FrameData`, because a `SpriteInstance` deliberately
+carries no entity id (ADR 0023). That is a deliberate divergence with its reasoning written down,
+which is the only acceptable kind.
 
 ### Three shadow defects with names, and what this engine does about each
 

@@ -59,6 +59,9 @@ mod kira_backend;
 pub use backend::{AudioBackend, AudioError, AudioFrame, Listener, NullAudio, SoundData, Voice};
 pub use components::{AudioListener, AudioSource, Bus};
 pub use sounds::{SoundCache, SoundFailure};
+
+/// The label `audio.describe` is served under, so a host and the CLI cannot disagree about it.
+pub const AUDIO_DESCRIBE: &str = "audio.describe";
 pub use tracker::{VoiceChanges, VoiceTracker};
 pub use wav::{WavError, decode_wav};
 
@@ -174,12 +177,22 @@ impl Audio {
 /// limitation: **a one-shot has no home here yet.** A footstep is not a property of the world, it is
 /// an event, and events are what `amadeo-events` is for — see ADR 0059's consequences.
 pub fn collect_audio(world: &mut World) {
+    let frame = build_frame(world);
+    submit(world, frame);
+}
+
+/// Reads the world and works out what should be audible, gains included.
+///
+/// Shared by [`collect_audio`] and [`describe_audio`] — **one implementation, deliberately.** Two
+/// copies of "what should be audible" would drift, and the way that failure presents is an agent
+/// being told the game is playing something it is not, which is worse than no answer at all. This is
+/// the fifth instance of the same lesson in this engine; see `docs/07`.
+fn build_frame(world: &World) -> AudioFrame {
     let Some(listener) = collect_listener(world) else {
-        // No listener means nothing can hear anything. Submitting a frame of voices with no ears to
-        // put them in would make a backend guess at a position, and guessing is what produces a
-        // sound that comes from the wrong side.
-        submit(world, AudioFrame::default());
-        return;
+        // No listener means nothing can hear anything. A frame of voices with no ears to put them in
+        // would make a backend guess at a position, and guessing is what produces a sound that comes
+        // from the wrong side.
+        return AudioFrame::default();
     };
 
     let mut voices: Vec<(amadeo_ecs::Entity, Voice)> = world
@@ -214,11 +227,174 @@ pub fn collect_audio(world: &mut World) {
     // simulation — but a test that asserts on a frame is worthless if the order wobbles.
     voices.sort_by_key(|(entity, _)| (entity.index(), entity.generation()));
 
-    let frame = AudioFrame {
+    let mut frame = AudioFrame {
         listener: Some(listener),
         voices: voices.into_iter().map(|(_, voice)| voice).collect(),
     };
-    submit(world, frame);
+
+    // **Bus and master gain are applied here, not in a backend.** A backend that applied them would
+    // have to be told them, and two backends could disagree about the order — where a voice arriving
+    // with its final gain already in it cannot be misread.
+    //
+    // It also means `describe_audio` reports the gain a voice would actually be heard at, rather than
+    // the one its component authored.
+    if let Some(audio) = world.service::<Audio>() {
+        for voice in &mut frame.voices {
+            voice.gain *= audio.gain_for(voice.bus);
+        }
+    }
+    frame
+}
+
+/// What the world sounds like, as data — the agent's ears, and the answer to "why is it silent".
+///
+/// # Why this exists at all
+///
+/// ADR 0060 decided that a sound which will not load is **silent**, with `SoundCache::failures` as
+/// the whole diagnosis. That claim is only true if something can *read* the report, and until this
+/// existed nothing outside Rust could: an agent or a person asking why a game was quiet had no
+/// channel to ask through, which quietly made ADR 0060 a worse decision than it was written as.
+///
+/// Invariant I5 says it plainly — anything the editor could do, the CLI and RPC can. Silence is the
+/// audio equivalent of a blank screen, and `render.describe` has answered that for the screen since
+/// M1.
+///
+/// # It reads the world, not the last frame
+///
+/// The same choice `render.describe` makes, and here it is load-bearing rather than merely tidy:
+/// `NullAudio` remembers the last frame it was given and **a real backend does not**, so reading
+/// back from the backend would work headlessly and answer nothing in the game somebody is actually
+/// playing.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AudioDescription {
+    /// Whether an [`Audio`] service is installed at all. `false` means no system is running, which
+    /// is a different problem from one that is running and silent.
+    pub installed: bool,
+    /// The backend's name — `"null"` or `"kira"`. **The most common explanation of silence**, since
+    /// every headless build installs the null one deliberately.
+    pub backend: &'static str,
+    /// Master gain.
+    pub master: f32,
+    /// Per-bus gain, in [`Bus`] order.
+    pub buses: [f32; Bus::COUNT],
+    /// What should be audible now, gains applied — exactly what a backend would be handed.
+    pub frame: AudioFrame,
+    /// Asset ids whose samples are decoded and ready.
+    pub decoded: Vec<String>,
+    /// Ids that would not load, and why. In id order.
+    pub failures: Vec<(String, String)>,
+    /// The last submission failure, if the last one failed.
+    pub last_error: Option<String>,
+}
+
+impl AudioDescription {
+    /// A one-line explanation of why nothing is audible, or `None` if something should be.
+    ///
+    /// # Why the engine writes this sentence rather than the caller
+    ///
+    /// Every one of these causes is invisible from the outside and each has a different fix, and the
+    /// order matters: a world with no listener submits no voices *at all*, so "there are no voices"
+    /// is a true and useless thing to report when the real answer is "nothing has ears". Working
+    /// that out from the fields is exactly the reasoning an agent would have to redo, badly, on
+    /// every call.
+    #[must_use]
+    pub fn silent_because(&self) -> Option<String> {
+        if !self.installed {
+            return Some(
+                "no audio system is installed. A game inserts one with \
+                 `app.insert_service(Audio::new(..))` before it runs"
+                    .to_string(),
+            );
+        }
+        if self.frame.listener.is_none() {
+            return Some(
+                "nothing in the world has an `AudioListener`, so there are no ears to hear from \
+                 and no voices are submitted at all. Put one on the camera or the character"
+                    .to_string(),
+            );
+        }
+        if self.frame.voices.is_empty() {
+            return Some(
+                "no entity is making a sound. An `AudioSource` needs `playing` true and a `gain` \
+                 above zero to become a voice"
+                    .to_string(),
+            );
+        }
+        if self.master <= 0.0 {
+            return Some("the master gain is zero".to_string());
+        }
+        if self.frame.voices.iter().all(|voice| voice.gain <= 0.0) {
+            return Some(
+                "every voice has ended up at zero gain, which means a bus gain is zero".to_string(),
+            );
+        }
+        // Deliberately last, and deliberately not fatal: this is the *normal* headless case, so
+        // reporting it above a real fault would bury the real fault.
+        if self.backend == "null" {
+            return Some(
+                "the null backend is installed, which makes no sound by design. Every headless \
+                 build uses it; only a windowed build swaps in a real one"
+                    .to_string(),
+            );
+        }
+        None
+    }
+}
+
+/// Reads the world and reports what it sounds like.
+///
+/// Costs nothing when nobody is asking, exactly as `render.describe` does — it is a query, not a
+/// recording, and no part of the audio path pays for it existing.
+#[must_use]
+pub fn describe_audio(world: &World) -> AudioDescription {
+    let frame = build_frame(world);
+
+    let Some(audio) = world.service::<Audio>() else {
+        return AudioDescription {
+            installed: false,
+            backend: "none",
+            master: 0.0,
+            buses: [0.0; Bus::COUNT],
+            frame,
+            decoded: Vec::new(),
+            failures: Vec::new(),
+            last_error: None,
+        };
+    };
+
+    let (decoded, failures) = match world.service::<SoundCache>() {
+        Some(cache) => {
+            // Deduplicated and sorted, because two entities can play one sound and a listing that
+            // repeated it would read as two. A `BTreeSet` rather than sorting afterwards, so the
+            // order is not an accident of how the frame happened to be built.
+            let decoded: std::collections::BTreeSet<String> = frame
+                .voices
+                .iter()
+                .filter(|voice| cache.is_decoded(&voice.sound))
+                .map(|voice| voice.sound.clone())
+                .collect();
+            (
+                decoded.into_iter().collect(),
+                cache
+                    .failures()
+                    .map(|(id, failure)| (id.to_string(), failure.to_string()))
+                    .collect(),
+            )
+        }
+        // No cache is not a fault. A game may upload its sounds by hand, and a test certainly does.
+        None => (Vec::new(), Vec::new()),
+    };
+
+    AudioDescription {
+        installed: true,
+        backend: audio.backend_name(),
+        master: audio.master,
+        buses: audio.buses,
+        frame,
+        decoded,
+        failures,
+        last_error: audio.last_error().map(|error| error.to_string()),
+    }
 }
 
 /// Where the ears are, or `None` if nothing in the world has any.
@@ -321,17 +497,10 @@ fn ensure_sounds(world: &mut World, frame: &AudioFrame) {
     });
 }
 
-/// Applies the bus gains and hands the frame over, recording any failure.
-fn submit(world: &mut World, mut frame: AudioFrame) {
-    let Some(audio) = world.service::<Audio>() else {
+/// Hands the frame over, recording any failure. Gains are already in it — see [`build_frame`].
+fn submit(world: &mut World, frame: AudioFrame) {
+    if !world.has_service::<Audio>() {
         return;
-    };
-
-    // **Bus and master gain are applied here, not in the backend.** A backend that applied them
-    // would have to be told them, and two backends could disagree about the order — where a voice
-    // arriving with its final gain already in it cannot be misread.
-    for voice in &mut frame.voices {
-        voice.gain *= audio.gain_for(voice.bus);
     }
 
     // **Before the submission, not after.** A backend is asked to start a voice during `submit`, so
