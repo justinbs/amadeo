@@ -64,7 +64,7 @@ sound.** What M3 still needs:
 | | |
 |---|---|
 | `amadeo-audio` | **Working, and complete enough for a game.** Trait, `NullAudio`, `KiraAudio`, buses, components, collection pass, `VoiceTracker`, WAV decoder, `SoundCache`, **one-shots**, `audio.describe`. Missing: ducking, occlusion, compressed audio, a voice cap |
-| `amadeo-ui` | **Layout, shaping, atlas and draw pass** (ADR 0062): anchors, flow, `grow`, `FontCache`, `GlyphAtlas`, `Panel`, `Text`, `collect_ui`, 54 tests. **Panels verified on a real GPU; text never drawn** — see the box below. Missing: theming, focus navigation |
+| `amadeo-ui` | **Working, and seen.** Anchors, flow, `grow`, `FontCache`, `GlyphAtlas`, `Panel`, `Text`, `collect_ui`, 56 tests — panels *and* a glyph verified by reading back GPU pixels, and `games/atrium` shows a real title in Bebas Neue. Missing: interaction, theming, focus navigation |
 | `amadeo-anim` | **Nothing.** |
 
 **`amadeo-ui` is the next one, and its two hard decisions are made** — Justin settled both in session
@@ -73,20 +73,9 @@ sound.** What M3 still needs:
 **Text shaping landed too** — `FontCache` over `cosmic-text`, with a real font generated in code so
 the tests need no fixture. What is left, in order:
 
-1. > ### ⚠️ **Panels have been looked at. Text has not.**
-   >
-   > `tests/it_draws.rs` renders the interface offscreen and reads the pixels — a panel anchored
-   > top-left really is in the top-left, bottom-right really is bottom-right, a stretched panel sits
-   > exactly inside its insets, and order decides what is on top. **Both axes are pinned by opposite
-   > corners**, because either alone would pass against a picture flipped on the other.
-   >
-   > **No glyph has ever been drawn on a screen.** Shaping is tested, the atlas is tested down to the
-   > pixel, and the sprite positions are asserted — but the same argument that made the panel capture
-   > worth writing applies to text and has not been discharged. It needs a **real font asset**; the
-   > only font in the repo is the one-glyph box in `test_font.rs`, which cannot spell anything.
-   >
-   > So the next step is: put a `.ttf` in `games/atrium/assets/fonts/`, add a label, capture it, and
-   > **open the file**. Picking that typeface is a `CLAUDE.md` §6 decision, not a technical one.
+1. **A menu that does something.** The interface draws; nothing in it is *interactive*. A pause menu
+   needs hit-testing (`ComputedRect::contains` exists and is unused), a hovered/pressed state, and a
+   way for a button to mean something — which runs straight into focus navigation below.
 
 2. **Focus navigation**, the third ⚠️ in `docs/04` §13. Left open until the layout tree existed,
    which it now does. Always painful to add later.
@@ -400,6 +389,31 @@ It passed first run, which is worth recording rather than glossing: the y-flip, 
 projection, the overlay merge and `Panel::order` were all right the first time. **Opposite corners
 are asserted in two separate tests**, because a single corner passes against a picture flipped on the
 other axis.
+
+### 10. And then text was drawn, which found a hole in the agent's eyes
+
+Justin supplied **Bebas Neue** (SIL OFL, © Dharma Type) — a condensed display face with real
+character, and about as far from `CLAUDE.md` §6's forbidden defaults as a typeface gets. It lives in
+`games/atrium/assets/fonts/` **with its licence beside it**, which is what the OFL requires of a
+redistributed font.
+
+`games/atrium` now shows a title plate and "THE ATRIUM" over the 3D room, and **the whole HUD is
+authored in `atrium.scene`** — so ADR 0062's claim that a menu is a scene file is cashed rather than
+asserted.
+
+Two things came out of actually looking:
+
+- **`render.capture` could not see the interface at all.** `capture_to_png` called `render_quads`
+  directly, so it skipped every other `Render`-stage system — including the one that fills the
+  overlay. The agent's eyes were blind to anything a game contributes to a frame beyond its own
+  cameras. It now runs the stage, and only calls `render_quads` itself when the game did not (which
+  it checks, because a second pass would draw a frame whose overlay had already been drained and the
+  interface would vanish *only in captures*).
+- **The first capture had the plate running 100 px past the text.** Fixed by looking, not by
+  reasoning — and it is the first time the "no intrinsic sizing" trade has actually been felt. A
+  container cannot hug its text, so the width is authored. That is the deliberate design (`layout.rs`
+  says so), and it means **there is no way to ask the engine how wide a label will be**. Worth
+  closing if it bites again: `FontCache::shape` already returns the width and nothing surfaces it.
 
 ### What else landed
 

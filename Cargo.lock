@@ -440,6 +440,7 @@ dependencies = [
  "amadeo-render",
  "amadeo-scene",
  "amadeo-transform",
+ "amadeo-ui",
  "anyhow",
  "winit",
 ]

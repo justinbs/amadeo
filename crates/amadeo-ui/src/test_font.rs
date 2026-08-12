@@ -33,7 +33,7 @@ const GLYPH_COUNT: u16 = 2;
 
 /// Builds the font.
 #[must_use]
-pub(crate) fn single_glyph_font() -> Vec<u8> {
+pub fn single_glyph_font() -> Vec<u8> {
     // Order does not matter to a parser, but keeping it stable keeps the output byte-identical.
     let tables: Vec<(&[u8; 4], Vec<u8>)> = vec![
         (b"OS/2", os2()),

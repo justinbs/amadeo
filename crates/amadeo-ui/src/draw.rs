@@ -148,6 +148,15 @@ fn collect_text(world: &mut World) -> Vec<SpriteBatch> {
             .map(|(entity, (text, _, rect))| (entity, text.clone(), *rect))
             .collect();
 
+        // Load every font a label names, before anything tries to shape with one. The same step
+        // `decode_frame_textures` and `ensure_sounds` perform for their own asset kind, and cheap to
+        // repeat: an id already loaded, or already failed, returns immediately.
+        if let Some(assets) = world.service::<amadeo_assets::Assets>() {
+            for (_, text, _) in &labels {
+                fonts.ensure(&text.font, assets);
+            }
+        }
+
         for (entity, text, rect) in labels {
             // Wrapped to the node's width, so a label in a narrow panel breaks rather than spilling.
             let wrap = if text.wrap { Some(rect.width) } else { None };
@@ -371,7 +380,7 @@ mod tests {
     fn text_becomes_one_batch_of_glyph_sprites_on_the_atlas() {
         let (mut world, root) = world_with_screen(800, 600);
         let mut fonts = FontCache::new();
-        fonts.insert_font_for_test("test", &crate::test_font::single_glyph_font());
+        fonts.insert_font("test", &crate::test_font::single_glyph_font());
         world.insert_service(fonts);
 
         let label = child(&mut world, root, UiNode::sized(200.0, 40.0));
@@ -399,7 +408,7 @@ mod tests {
         // misread as a broken font rather than a missing publish.
         let (mut world, root) = world_with_screen(800, 600);
         let mut fonts = FontCache::new();
-        fonts.insert_font_for_test("test", &crate::test_font::single_glyph_font());
+        fonts.insert_font("test", &crate::test_font::single_glyph_font());
         world.insert_service(fonts);
 
         let label = child(&mut world, root, UiNode::sized(200.0, 40.0));

@@ -35,6 +35,8 @@ amadeo-reflect.workspace = true
 amadeo-render = { workspace = true, features = ["gpu"] }
 amadeo-scene.workspace = true
 amadeo-transform.workspace = true
+# The interface (ADR 0062). This game is where a panel and a label were first drawn on a screen.
+amadeo-ui.workspace = true
 
 anyhow = "1"
 winit = "0.30"

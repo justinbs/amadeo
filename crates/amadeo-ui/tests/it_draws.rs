@@ -247,6 +247,63 @@ fn a_later_panel_draws_over_an_earlier_one() {
 }
 
 #[test]
+fn a_glyph_reaches_the_screen_as_pixels() {
+    // **The text half of this file's argument.** Shaping is tested, the atlas is tested to the
+    // pixel, and the sprite positions are asserted — and all of that can be right while nothing
+    // appears, because the atlas region, the tint, the alpha blend and the projection are joined
+    // only in the shader.
+    //
+    // Uses the font generated in `test_font.rs`, whose one glyph is a solid box mapped from `A`. A
+    // box is exactly what this wants: a letter's coverage varies and a solid rectangle does not, so
+    // "is there ink where the glyph should be" is a question with an unambiguous answer.
+    let (mut world, root) = screen();
+
+    let mut fonts = amadeo_ui::FontCache::new();
+    fonts.insert_font("boxes", &amadeo_ui::test_font::single_glyph_font());
+    world.insert_service(fonts);
+
+    let label = child(
+        &mut world,
+        root,
+        UiNode {
+            anchor: Anchor::new(Align::Start, Align::Start),
+            margin: UiEdges::all(40.0),
+            ..UiNode::sized(200.0, 80.0)
+        },
+    );
+    world.insert(
+        label,
+        amadeo_ui::Text {
+            colour: [1.0, 0.0, 0.0, 1.0],
+            ..amadeo_ui::Text::label("A", "boxes", 64.0)
+        },
+    );
+
+    let Some(image) = draw(&mut world, 320, 240) else {
+        return;
+    };
+
+    // The glyph sits on the label's baseline, near its top-left. Rather than pin an exact pixel —
+    // which would make this a test of the font's metrics — scan the region it must fall inside and
+    // require that *something* was drawn there.
+    let mut inked = 0;
+    for y in 40..140 {
+        for x in 40..240 {
+            if is_red(pixel_at(&image, x, y)) {
+                inked += 1;
+            }
+        }
+    }
+    assert!(
+        inked > 400,
+        "a 64px solid box glyph should cover hundreds of pixels, found {inked}"
+    );
+
+    // And nothing outside the label's box, so the glyph is *placed* rather than smeared.
+    assert!(!is_red(pixel_at(&image, 300, 220)));
+}
+
+#[test]
 fn an_invisible_panel_draws_nothing_at_all() {
     // The cheap half of `visible`, checked against pixels: a hidden node is not laid out, so it has
     // no rectangle, so there is nothing to draw. If hiding ever became "draw it transparent", this

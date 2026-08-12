@@ -510,12 +510,12 @@ crates/
                      Screen-to-world is one line, `[sx, -sy]`, in ONE file -- a flip applied twice or
                      in half the cases is a layout that is plausible and upside down.
                      **`tests/it_draws.rs` renders it offscreen and reads the pixels** (behind a `gpu`
-                     feature) -- top-left, bottom-right, stretch-with-insets, order, and hidden. Both
-                     axes are pinned by opposite corners, because either alone passes against a
-                     picture flipped on the other. **Panels are verified; TEXT IS NOT** -- drawing a
-                     label needs a font asset and the only font in the repo is the one-glyph test
-                     font, so glyph placement on screen has still never been looked at.
-                     Still to come: theming, focus navigation, and a game that shows a menu.
+                     feature) -- top-left, bottom-right, stretch-with-insets, order, hidden, **and a
+                     glyph**. Both axes are pinned by opposite corners, because either alone passes
+                     against a picture flipped on the other.
+                     **Text has been drawn on a real screen** -- `games/atrium` shows "THE ATRIUM" in
+                     Bebas Neue over the 3D room, authored entirely in `atrium.scene`.
+                     Still to come: theming, focus navigation, and a menu that does something.
 ✅ amadeo-snapshot    the .snapshot text format (ADR 0028): capture a whole world to a file and put
                      it back. Sits above amadeo-scene because it borrows that crate's scalar
                      encoding — format_float is subtle and two copies would drift. **It captures the
@@ -635,6 +635,11 @@ games/               actual games built with the engine
                    and a save must restore you mid-stride. `play_footsteps` lives here rather than in
                    `modules/amadeo-character` -- the module knows how to move, the game knows what
                    moving sounds like (I4, one level up).
+                   **It is also where text was first drawn on a screen**: a title plate and "THE
+                   ATRIUM" in **Bebas Neue** (SIL OFL, © Dharma Type -- `assets/fonts/` carries the
+                   licence beside the `.ttf`, which is what OFL requires). The whole HUD is authored
+                   in `atrium.scene`, so ADR 0062's claim that a menu is a scene file is cashed
+                   rather than asserted.
 docs/                design docs and ADRs
 spikes/              separate cargo workspaces holding the evidence behind an ADR. Frozen once
                      written; excluded from the engine workspace. See spikes/README.md.

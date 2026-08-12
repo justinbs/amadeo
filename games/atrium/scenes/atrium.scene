@@ -2,6 +2,7 @@ scene atrium
 version 1
 
 assets
+  BebasNeue-Regular
   amber
   atrium_look
   body
@@ -347,3 +348,80 @@ entity lantern "Hanging lantern"
     rotation -90.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 3.0 5.4 2.0
+
+entity hud "Interface root"
+  UiNode
+    align_children Start
+    anchor
+      horizontal Stretch
+      vertical Stretch
+    flow None
+    gap 0.0
+    grow 0.0
+    margin
+      bottom 0.0
+      left 0.0
+      right 0.0
+      top 0.0
+    padding
+      bottom 0.0
+      left 0.0
+      right 0.0
+      top 0.0
+    size 0.0 0.0
+    visible true
+
+  entity title_plate "Title backing"
+    Panel
+      colour 0.05 0.06 0.08 0.72
+      order 0
+    UiNode
+      align_children Start
+      anchor
+        horizontal Start
+        vertical Start
+      flow None
+      gap 0.0
+      grow 0.0
+      margin
+        bottom 0.0
+        left 24.0
+        right 0.0
+        top 24.0
+      padding
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      size 218.0 72.0
+      visible true
+
+    entity title "Title"
+      Text
+        colour 0.96 0.86 0.62 1.0
+        content "THE ATRIUM"
+        font "BebasNeue-Regular"
+        line_height 60.0
+        order 1
+        size 52.0
+        wrap false
+      UiNode
+        align_children Start
+        anchor
+          horizontal Start
+          vertical Start
+        flow None
+        gap 0.0
+        grow 0.0
+        margin
+          bottom 0.0
+          left 16.0
+          right 0.0
+          top 6.0
+        padding
+          bottom 0.0
+          left 0.0
+          right 0.0
+          top 0.0
+        size 268.0 62.0
+        visible true

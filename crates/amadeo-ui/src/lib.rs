@@ -67,8 +67,14 @@ mod layout;
 mod text;
 
 /// A valid TrueType font built in code, so every text test needs no fixture and no system fonts.
-#[cfg(test)]
-mod test_font;
+///
+/// **A fixture, not API.** Compiled for this crate's own tests, and also when `gpu` is on so that
+/// `tests/it_draws.rs` — a separate crate, which cannot see `#[cfg(test)]` items — can draw a real
+/// glyph and look at the pixels. Hidden from the documentation because nothing outside should build
+/// a game on a one-letter box.
+#[cfg(any(test, feature = "gpu"))]
+#[doc(hidden)]
+pub mod test_font;
 
 pub use atlas::{GLYPH_ATLAS_ID, GlyphAtlas, GlyphImage};
 pub use components::{Align, Anchor, ComputedRect, Flow, Panel, Text, UiEdges, UiNode};

@@ -781,7 +781,29 @@ fn capture_to_png(
     // leaves behind. A `Renderer` is a service, so none of this can reach the state hash (ADR 0009).
     app.world
         .insert_service(amadeo_render::Renderer::new(Box::new(backend)));
-    amadeo_render::render_quads(&mut app.world);
+
+    // **The rest of the `Render` stage has to run, and it has to run after the renderer exists.**
+    //
+    // This used to call `render_quads` alone, which meant a capture saw only what the *world's*
+    // cameras drew — no interface, and no anything else a game contributes to the frame. That is a
+    // hole in the agent's eyes rather than a missing feature: `amadeo-ui` fills an `Overlay` from a
+    // `Render`-stage system, and a method that skips the stage cannot see it (ADR 0062).
+    //
+    // After the renderer, because those systems ask it how big the screen is. Before `render_quads`,
+    // because that is what drains the overlay into the frame.
+    let already_draws = app
+        .resolved_order(Stage::Render)
+        .map(|labels| labels.contains(&amadeo_render::RENDER_QUADS))
+        .unwrap_or(false);
+    if let Err(error) = app.render() {
+        return Err(request.bad_params(format!("the render stage failed: {error}")));
+    }
+
+    // Only when the game did not already draw. A second pass would overwrite the first with a frame
+    // whose overlay had already been drained — the interface would vanish, and only in captures.
+    if !already_draws {
+        amadeo_render::render_quads(&mut app.world);
+    }
     let mut renderer = app
         .world
         .remove_service::<amadeo_render::Renderer>()

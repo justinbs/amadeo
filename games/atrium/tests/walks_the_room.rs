@@ -56,6 +56,31 @@ fn hold(app: &mut App, action: &str, value: f32, ticks: u64) {
 }
 
 #[test]
+fn the_interface_is_authored_in_the_scene_file_like_everything_else() {
+    // **Invariant I1 for the interface.** A menu that had to be built in Rust would be a menu the
+    // agent could not author and the editor could not show, which is the whole reason `amadeo-ui` is
+    // retained rather than immediate (ADR 0062).
+    //
+    // What this catches is narrow and worth having: the scene declaring a component the game forgot
+    // to register, or the font id drifting out of step with the `assets` block. Both present as an
+    // interface that is silently absent.
+    let app = room();
+
+    let panels = app.world.query::<(&amadeo_ui::Panel,)>().count();
+    let labels: Vec<&amadeo_ui::Text> = app
+        .world
+        .query::<(&amadeo_ui::Text,)>()
+        .map(|(_, (text,))| text)
+        .collect();
+
+    assert_eq!(panels, 1, "the title's backing plate");
+    assert_eq!(labels.len(), 1);
+    assert_eq!(labels[0].content, "THE ATRIUM");
+    // The font is named by asset id (ADR 0020), and the id has to be one the scene declares.
+    assert_eq!(labels[0].font, "BebasNeue-Regular");
+}
+
+#[test]
 fn the_room_loads_from_its_scene_file() {
     // Everything in this game is text (I1). If the scene stopped parsing or stopped matching the
     // registered components, this is what would say so — rather than a blank window.

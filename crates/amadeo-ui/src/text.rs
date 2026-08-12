@@ -187,11 +187,11 @@ impl FontCache {
 
     /// Loads a font from bytes under an id, bypassing the asset system.
     ///
-    /// For tests in this crate, which use a font generated in code rather than one on disk. Not part
-    /// of the public surface: a game names a font by asset id, and an escape hatch that let it skip
-    /// the catalogue would be an escape hatch from ADR 0020.
-    #[cfg(test)]
-    pub(crate) fn insert_font_for_test(&mut self, id: &str, bytes: &[u8]) {
+    /// **For tests and for a font a program produced**, which is `TextureCache::insert_decoded`'s
+    /// role one asset kind along. The ordinary path is [`FontCache::ensure`], which reads bytes the
+    /// asset system loaded — a game names a font by declared id (ADR 0020), and this is not a way
+    /// around that.
+    pub fn insert_font(&mut self, id: &str, bytes: &[u8]) {
         let ids = self
             .system
             .db_mut()
@@ -435,7 +435,7 @@ mod tests {
 
     fn cache_with_a_font() -> FontCache {
         let mut cache = FontCache::new();
-        cache.insert_font_for_test("test", &a_font());
+        cache.insert_font("test", &a_font());
         cache
     }
 

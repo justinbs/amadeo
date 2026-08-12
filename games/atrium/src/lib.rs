@@ -47,6 +47,10 @@ use amadeo_render::{
 use amadeo_transform::{
     GlobalTransform, PROPAGATE_TRANSFORMS, Parent, Transform, propagate_transforms,
 };
+use amadeo_ui::{
+    COLLECT_UI, ComputedRect, FontCache, LAYOUT_UI, Panel, Text, UiNode, collect_ui,
+    layout_ui_system,
+};
 
 /// Where this game's assets live, relative to the project root (ADR 0022).
 const ASSET_DIRECTORY: &str = "games/atrium/assets";
@@ -168,6 +172,13 @@ pub fn build_simulation() -> anyhow::Result<App> {
     // what they should hear. A horror game would put them on the character instead.
     app.register_component::<AudioSource>()?;
     app.register_component::<AudioListener>()?;
+    // The interface (ADR 0062). `ComputedRect` is registered although nothing authors one, because
+    // it is a component the agent should be able to *see* — "where did that button end up" is the
+    // question `world.entity` exists to answer.
+    app.register_component::<UiNode>()?;
+    app.register_component::<ComputedRect>()?;
+    app.register_component::<Panel>()?;
+    app.register_component::<Text>()?;
     app.register_component::<RigidBody>()?;
     app.register_component::<Collider>()?;
     app.register_component::<Velocity>()?;
@@ -194,6 +205,20 @@ pub fn build_simulation() -> anyhow::Result<App> {
     // after `propagate_transforms` so a sound attached to a moving thing is where the thing ended
     // up, and `Render` is after `PostSimulation`.
     app.add_system(Stage::Render, system(COLLECT_AUDIO, collect_audio));
+
+    // The interface, in `Render` because it is presentation: `ComputedRect` is derived and the draw
+    // data goes into a service, so none of it can reach the state hash.
+    //
+    // **Layout before collection, and the ordering is load-bearing** — `collect_ui` reads the
+    // rectangles `layout_ui_system` writes, so the other way round draws an empty interface on the
+    // first frame and a one-frame-stale one forever after.
+    app.insert_service(FontCache::new());
+    app.insert_service(amadeo_render::Overlay::default());
+    app.add_system(Stage::Render, system(LAYOUT_UI, layout_ui_system));
+    app.add_system(
+        Stage::Render,
+        system(COLLECT_UI, collect_ui).after(LAYOUT_UI),
+    );
 
     // The one-shot half (ADR 0059's named gap, filled in session 16). Registering the event is what
     // arranges for its buffers to swap each tick; without that a footstep is sent and never read.
