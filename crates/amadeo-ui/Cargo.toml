@@ -9,6 +9,8 @@ rust-version.workspace = true
 
 [dependencies]
 amadeo-core.workspace = true
+# A font is an asset with a declared id (ADR 0020), like a texture or a sound.
+amadeo-assets.workspace = true
 amadeo-ecs.workspace = true
 amadeo-reflect.workspace = true
 # A widget is drawn through the sprite path -- a panel is a quad and a glyph is a textured quad
@@ -18,6 +20,17 @@ amadeo-render.workspace = true
 # what lets `propagate_transforms` and the editor's scene tree work on UI unchanged.
 amadeo-transform.workspace = true
 thiserror.workspace = true
+
+# Text shaping, bidirectional text, line breaking and font fallback (ADR 0062).
+#
+# `default-features = false` is load-bearing rather than tidy. The defaults enable `fontconfig`,
+# which reads the **operating system's** font database -- and a game whose text falls back to
+# whatever fonts happen to be installed looks different on every machine. A game ships its fonts,
+# so only `std` (the shaping stack) and `swash` (rasterising a glyph to pixels) are wanted.
+cosmic-text = { version = "0.19", default-features = false, features = [
+    "std",
+    "swash",
+] }
 
 [lints]
 workspace = true

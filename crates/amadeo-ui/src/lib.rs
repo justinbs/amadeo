@@ -62,9 +62,15 @@
 
 mod components;
 mod layout;
+mod text;
+
+/// A valid TrueType font built in code, so every text test needs no fixture and no system fonts.
+#[cfg(test)]
+mod test_font;
 
 pub use components::{Align, Anchor, ComputedRect, Flow, UiEdges, UiNode};
 pub use layout::layout_ui;
+pub use text::{FontCache, FontFailure, PositionedGlyph, ShapedText};
 
 /// The label the app layer registers [`layout_ui_system`] under.
 pub const LAYOUT_UI: &str = "layout_ui";

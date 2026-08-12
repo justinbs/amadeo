@@ -64,24 +64,23 @@ sound.** What M3 still needs:
 | | |
 |---|---|
 | `amadeo-audio` | **Working, and complete enough for a game.** Trait, `NullAudio`, `KiraAudio`, buses, components, collection pass, `VoiceTracker`, WAV decoder, `SoundCache`, **one-shots**, `audio.describe`. Missing: ducking, occlusion, compressed audio, a voice cap |
-| `amadeo-ui` | **Layout is built** (ADR 0062): anchors, flow, `grow`, `ComputedRect`, 18 tests. Missing: **drawing**, **text**, theming, focus navigation |
+| `amadeo-ui` | **Layout and text shaping are built** (ADR 0062): anchors, flow, `grow`, `ComputedRect`, `FontCache` over `cosmic-text`, 28 tests. Missing: **drawing**, a `Text` component, theming, focus navigation |
 | `amadeo-anim` | **Nothing.** |
 
 **`amadeo-ui` is the next one, and its two hard decisions are made** — Justin settled both in session
 16 and ADR 0062 records them. **Layout is built and tested; nothing is drawn yet.**
 
-The next piece, in order:
+**Text shaping landed too** — `FontCache` over `cosmic-text`, with a real font generated in code so
+the tests need no fixture. What is left, in order:
 
-1. **Text, via `cosmic-text`.** The largest remaining part of the subsystem and the one a title
-   screen cannot do without. Full shaping, bidirectional text, line breaking and font fallback.
-   A font becomes an asset, and it is the first asset whose decoded form is neither pixels nor
-   samples. `cosmic-text`'s types must not cross the boundary — ADR 0036 §4, fourth application.
-2. **Drawing.** Cheap by comparison and deliberately so: a panel is a quad, a glyph is a textured
-   quad, `SortOrder` already stacks UI over the world (ADR 0018 anticipated exactly this), and the
-   sprite batcher already exists. No new pipeline.
-3. **Focus navigation**, the third ⚠️ in `docs/04` §13. Left open until the layout tree existed,
+1. **Drawing, and a `Text` component.** The remaining gap between "the engine can lay out and shape a
+   menu" and "you can see one". Deliberately cheap: a panel is a quad, a glyph is a textured quad,
+   `SortOrder` already stacks UI over the world (ADR 0018 anticipated exactly this), and the sprite
+   batcher already exists. **The one new piece is a glyph atlas** — rasterise each glyph once with
+   `cosmic-text`'s `SwashCache`, pack it into a texture, and feed `TextureCache`.
+2. **Focus navigation**, the third ⚠️ in `docs/04` §13. Left open until the layout tree existed,
    which it now does. Always painful to add later.
-4. **A default theme**, and `CLAUDE.md` §6 constrains it hard — no Inter, no gradients, no uniform
+3. **A default theme**, and `CLAUDE.md` §6 constrains it hard — no Inter, no gradients, no uniform
    rounded cards, no emoji. Look at Blender, Houdini, Reaper; not at landing pages.
 
 > **On the text decision, because it is a calibration signal worth keeping.** I recommended the
@@ -304,6 +303,34 @@ Written here rather than taken from `taffy`, and the reason is not invented-here
 *document* layout spec, most of it is machinery a HUD never touches, and adopting it would put a model
 we did not design at the centre of the UI system. The subset that matters is one top-down pass with
 no measure step — which is what makes it followable, and `CLAUDE.md` §6 makes that a real constraint.
+
+### 7. Text is shaped, and the test font is generated
+
+`FontCache` wraps `cosmic-text`. **Measuring a string is shaping it** — there is no cheap
+`width_of(text)`, and that is the honest consequence of choosing real text layout over a glyph atlas.
+
+Two things about it are decisions rather than details:
+
+- **`default-features = false` is load-bearing.** cosmic-text's defaults read the *operating
+  system's* font database, and a game that falls back to whatever happens to be installed looks
+  different on every machine — and correct on the developer's. `FontCache::new` starts with an empty
+  database, so a game ships its fonts and a missing one is reported.
+- **A missing font shapes to nothing, never to a substitute.** ADR 0060's rule a third time: a wrong
+  typeface quietly standing in for the right one is how a game's look drifts without anyone noticing.
+
+**The test font is built in code** (`test_font.rs`), which is `pix` and `tone` applied once more —
+no licence, no binary blob, no dependency on what is installed. Writing a valid TrueType file turned
+up two traps worth knowing, and both present identically as *"the font does not load"* with no
+further detail:
+
+- **OS/2 version 4 is exactly 96 bytes.** Subscript and superscript are **four** fields each, not
+  five. Five made the table 100 bytes and shifted everything after it.
+- **`fontdb` requires a PostScript name** (name id 6) as well as a family, and returns "unnamed font"
+  without it.
+
+`the_generated_font_parses` is what caught both, and it earns its place for a specific reason: with a
+malformed font, every shaping test passes *vacuously* by producing no glyphs — which is exactly what
+a missing font produces and indistinguishable from it.
 
 ### What else landed
 

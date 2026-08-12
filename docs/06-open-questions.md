@@ -894,6 +894,17 @@ loader holding a file watcher and a `wgpu` surface, and **neither has been tried
 would be deciding speculatively, which this entry has said to avoid since it was written. See
 ADR 0060 §3.
 
+**Session 16, second data point: `cosmic-text` is also fine.** `FontSystem`, `SwashCache` and
+`Buffer` are all `Send + Sync`, probed the same way and with the same failing control. The reason is
+different from kira's and the difference is the useful part: kira is `Sync` because it *already owns
+a thread* and had to be; cosmic-text is `Sync` because it is **pure computation with no device
+handle at all** — shaping a string touches nothing but memory.
+
+Two of the three shapes a library can have are therefore safe, and the entry's remaining candidates
+are both the third: a file watcher and a `wgpu` surface each hold something the *operating system*
+gave them and expect to be driven from the thread that asked. **That is the shape to suspect** —
+not "low level", and not "big".
+
 ---
 
 ## Q6 · P2 · Editor in-process or separate process?

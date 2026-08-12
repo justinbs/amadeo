@@ -462,9 +462,28 @@ crates/
                      **Retained, not immediate** -- an immediate-mode widget exists only for the
                      duration of a call, so an agent cannot inspect it (I5) and a file cannot author
                      it (I1). `egui` stays the *editor's* UI and this is not it.
-                     Still to come: drawing, text (**`cosmic-text`**, ADR 0062 -- full shaping, bidi
-                     and font fallback, chosen over a glyph atlas because the only argument for the
-                     smaller option was scope), theming, and focus navigation.
+                     **`FontCache` shapes text through `cosmic-text`** (ADR 0062): full shaping,
+                     bidi, line breaking and font fallback, chosen over a glyph atlas because the
+                     only argument for the smaller option was scope. **Measuring a string IS shaping
+                     it** -- there is no cheap `width_of`. `default-features = false` is
+                     load-bearing: the defaults read the OPERATING SYSTEM's font database, and a game
+                     that falls back to whatever is installed looks different on every machine.
+                     **A game ships its fonts**, and `FontCache::new` starts with an empty database.
+                     A missing font shapes to **nothing**, never to a substitute -- ADR 0060's rule a
+                     third time, because a wrong typeface silently replacing the right one is how a
+                     look drifts unnoticed. No cosmic-text type crosses the module (ADR 0036 §4,
+                     fourth application): `ShapedText` and `PositionedGlyph` are plain data.
+                     A glyph carries its **baseline**, not its top -- aligning by tops sits every
+                     descender wrong and reads as text that wobbles.
+                     **`test_font.rs` builds a valid TrueType file in code**, so every text test needs
+                     no fixture, no licence and no system fonts -- `pix` and `tone` applied a third
+                     time. Two traps it hit: OS/2 v4 is **96 bytes** (subscript and superscript are
+                     four fields each, not five), and `fontdb` refuses a font with no **PostScript
+                     name** (name id 6) as well as a family. Both present as "the font does not load"
+                     with no further detail, so `the_generated_font_parses` exists to catch them --
+                     without it every shaping test passes vacuously by producing no glyphs, which is
+                     indistinguishable from a missing font.
+                     Still to come: drawing, a `Text` component, theming, and focus navigation.
 ✅ amadeo-snapshot    the .snapshot text format (ADR 0028): capture a whole world to a file and put
                      it back. Sits above amadeo-scene because it borrows that crate's scalar
                      encoding — format_float is subtle and two copies would drift. **It captures the
