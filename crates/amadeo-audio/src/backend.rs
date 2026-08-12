@@ -87,6 +87,22 @@ pub struct Listener {
 /// One sound that should be audible this frame.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Voice {
+    /// Which entity is making it.
+    ///
+    /// # Why audio needs an identity where rendering does not
+    ///
+    /// A renderer redraws everything from scratch every frame, so a `MeshInstance` needs no name — a
+    /// triangle drawn this frame has nothing to do with one drawn last frame.
+    ///
+    /// A sound is the opposite: it **continues**. A backend given the same frame twice must play one
+    /// hum, not two, and must be able to tell "this is still going" from "this started again". With
+    /// no identity, two entities playing the same sound are indistinguishable and the only available
+    /// behaviour is to restart everything every frame — which is a stutter at sixty hertz rather than
+    /// a hum.
+    ///
+    /// The entity is the identity that already exists and is already stable across frames, so
+    /// inventing a voice handle would be inventing a second name for the same thing.
+    pub source: amadeo_ecs::Entity,
     /// The declared asset id of the sound (ADR 0020).
     pub sound: String,
     /// Which bus it is mixed on.
@@ -332,6 +348,7 @@ mod tests {
         let frame = AudioFrame {
             listener: None,
             voices: vec![Voice {
+                source: amadeo_ecs::World::new().spawn(),
                 sound: "never_loaded".to_string(),
                 bus: Bus::Effects,
                 gain: 1.0,

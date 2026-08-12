@@ -180,6 +180,7 @@ pub fn collect_audio(world: &mut World) {
             (
                 entity,
                 Voice {
+                    source: entity,
                     sound: source.sound.clone(),
                     bus: source.bus,
                     gain: source.gain,
@@ -312,6 +313,40 @@ mod tests {
         assert_eq!(frame.voices[0].sound, "hum");
         assert!(frame.voices[0].looping);
         assert_eq!(frame.voices[0].position, Some([3.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    fn two_entities_playing_one_sound_are_distinguishable() {
+        // **What a backend needs to diff one frame against the last.** An `AudioFrame` is a state
+        // rather than a set of commands, so a backend has to work out for itself which voices are
+        // new, which are continuing and which have gone.
+        //
+        // Without an identity on the voice, two entities playing the same sound are the same voice
+        // twice, and the only behaviour available is to restart everything every frame — a stutter
+        // at sixty hertz rather than a hum. This is the property that makes the diff possible, and
+        // it is the one thing rendering does not need: a triangle drawn this frame has nothing to do
+        // with one drawn last frame, where a sound is the same sound continuing.
+        let mut world = world_with_ears();
+        let first = world.spawn();
+        world.insert(first, Transform::at(-3.0, 0.0));
+        world.insert(first, AudioSource::looping("hum"));
+
+        let second = world.spawn();
+        world.insert(second, Transform::at(3.0, 0.0));
+        world.insert(second, AudioSource::looping("hum"));
+
+        collect_audio(&mut world);
+
+        let frame = last(&world);
+        assert_eq!(frame.voices.len(), 2);
+        assert_ne!(
+            frame.voices[0].source, frame.voices[1].source,
+            "two sources playing one sound must still be two voices a backend can tell apart"
+        );
+        // And the identities are the entities themselves, so a backend keyed on them stays correct
+        // when one is despawned.
+        let sources: Vec<_> = frame.voices.iter().map(|voice| voice.source).collect();
+        assert!(sources.contains(&first) && sources.contains(&second));
     }
 
     #[test]
