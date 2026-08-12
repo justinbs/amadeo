@@ -269,6 +269,113 @@ impl UiNode {
 
 impl Component for UiNode {}
 
+/// A filled rectangle — the background of a panel, a button, a bar.
+///
+/// Separate from [`UiNode`] rather than a colour field on it, because **most nodes draw nothing**. A
+/// menu is a column that arranges buttons and is itself invisible; a layout node that had to declare
+/// a transparent colour would be a layout node pretending to be a graphic.
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+pub struct Panel {
+    /// Linear RGBA. An alpha of zero draws nothing at all, and is skipped before it reaches a batch.
+    #[reflect(min = 0.0, max = 1.0)]
+    pub colour: [f32; 4],
+    /// Draw order within the interface. Higher draws on top.
+    ///
+    /// ADR 0018's `SortOrder` idea, kept as its own field rather than reusing that component: a UI
+    /// node is not in the world's sort space, and sharing the type would invite somebody to give a
+    /// menu an order that means something to the terrain.
+    pub order: i32,
+}
+
+impl Default for Panel {
+    fn default() -> Self {
+        Self {
+            colour: [1.0, 1.0, 1.0, 1.0],
+            order: 0,
+        }
+    }
+}
+
+impl Panel {
+    /// A panel of one colour.
+    #[must_use]
+    pub fn filled(colour: [f32; 4]) -> Self {
+        Self {
+            colour,
+            ..Self::default()
+        }
+    }
+}
+
+impl Component for Panel {}
+
+/// A string drawn inside a node.
+///
+/// Positioned by the node's [`ComputedRect`], shaped by `FontCache`, and drawn as one sprite per
+/// glyph out of the shared glyph atlas.
+#[derive(Debug, Clone, PartialEq, StableHash, Reflect)]
+pub struct Text {
+    /// What it says.
+    pub content: String,
+    /// The declared asset id of the font (ADR 0020).
+    ///
+    /// **A missing font draws nothing rather than substituting one** — ADR 0060's rule, and the
+    /// reason is that a wrong typeface quietly standing in for the right one is how a game's look
+    /// drifts without anyone noticing.
+    pub font: String,
+    /// Height in pixels.
+    #[reflect(min = 1.0, max = 512.0)]
+    pub size: f32,
+    /// Distance between baselines, in pixels.
+    ///
+    /// Separate from `size` because the ratio between them is a typographic choice: tight for a
+    /// heading, loose for a paragraph. Around 1.25× the size is a reasonable starting point.
+    #[reflect(min = 1.0, max = 1024.0)]
+    pub line_height: f32,
+    /// Linear RGBA. The atlas holds white coverage, so this is what makes the text a colour at all.
+    #[reflect(min = 0.0, max = 1.0)]
+    pub colour: [f32; 4],
+    /// Whether long lines break at the node's width.
+    ///
+    /// `false` is what a label wants — one line, however long. `true` is what a paragraph wants.
+    pub wrap: bool,
+    /// Draw order within the interface. Higher draws on top.
+    pub order: i32,
+}
+
+impl Default for Text {
+    fn default() -> Self {
+        Self {
+            content: String::new(),
+            font: String::new(),
+            size: 16.0,
+            line_height: 20.0,
+            colour: [1.0, 1.0, 1.0, 1.0],
+            wrap: false,
+            // Above a `Panel` at the same order, because text sits *on* its background far more
+            // often than behind it, and a label invisible under its own panel is a confusing first
+            // experience.
+            order: 1,
+        }
+    }
+}
+
+impl Text {
+    /// A label: one line, no wrapping.
+    #[must_use]
+    pub fn label(content: &str, font: &str, size: f32) -> Self {
+        Self {
+            content: content.to_string(),
+            font: font.to_string(),
+            size,
+            line_height: size * 1.25,
+            ..Self::default()
+        }
+    }
+}
+
+impl Component for Text {}
+
 /// Where a node ended up, in screen pixels.
 ///
 /// # Computed, never authored — and therefore not hashed

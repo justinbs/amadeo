@@ -1215,6 +1215,10 @@ pub fn render_quads(world: &mut World) {
             .collect(),
     };
 
+    // Views contributed by a layer this crate cannot see. `amadeo-ui` is the only filler today.
+    let mut frame = frame;
+    take_overlay_views(world, &mut frame);
+
     // Turn every texture id this frame names into pixels, before anything tries to draw with one.
     // Reads `Assets` and fills `TextureCache`; both are services, so neither can move the state
     // hash (ADR 0009).
@@ -1238,6 +1242,51 @@ pub fn render_quads(world: &mut World) {
         renderer.render(&frame);
     });
 }
+
+/// Moves any [`Overlay`] views into the frame, in camera order, and empties the service.
+///
+/// # Why it drains rather than reads
+///
+/// **A stale interface frozen on screen is worse than none.** If the system that fills the overlay
+/// stops running — it was removed, it errored, a menu was torn down — reading would leave the last
+/// frame's menu painted over the game forever, and it would look like a rendering bug rather than a
+/// missing system. Draining means one frame without a filler is one frame without an overlay.
+fn take_overlay_views(world: &mut World, frame: &mut FrameData) {
+    let Some(overlay) = world.service_mut::<Overlay>() else {
+        return;
+    };
+    if overlay.views.is_empty() {
+        return;
+    }
+
+    frame.views.append(&mut overlay.views);
+    // **Stable**, so two views at one order keep the order they were added in — and so an overlay is
+    // *ordered against* the world's cameras rather than simply stapled after them. A HUD under a
+    // transition wipe is then a matter of two numbers, not of who ran first.
+    frame.views.sort_by_key(|view| view.camera.order);
+}
+
+/// Views contributed by a layer above this crate.
+///
+/// # Why the slot lives here and is filled from above
+///
+/// `amadeo-ui` sits *above* `amadeo-render` (invariant I6), so this crate cannot name a `UiNode` and
+/// `render_quads` cannot go looking for one. The inversion is the same one `TextureCache`,
+/// `MeshCache` and `SkyCache` already use: **the renderer owns the slot and something higher up puts
+/// things in it.**
+///
+/// The alternative was to let a higher layer build and submit its own `FrameData`, which would mean
+/// two submissions per frame and two present passes fighting over one surface.
+///
+/// A [`Service`], so nothing here can reach the state hash (ADR 0009) — which matters, because what
+/// is in it depends on the window size.
+#[derive(Debug, Default)]
+pub struct Overlay {
+    /// Views to draw this frame, each with its own camera. Emptied by [`render_quads`].
+    pub views: Vec<View>,
+}
+
+impl Service for Overlay {}
 
 /// Prefilters every sky this frame's cameras name, if it is not prefiltered already.
 ///

@@ -185,6 +185,23 @@ impl FontCache {
         self.atlas.is_full()
     }
 
+    /// Loads a font from bytes under an id, bypassing the asset system.
+    ///
+    /// For tests in this crate, which use a font generated in code rather than one on disk. Not part
+    /// of the public surface: a game names a font by asset id, and an escape hatch that let it skip
+    /// the catalogue would be an escape hatch from ADR 0020.
+    #[cfg(test)]
+    pub(crate) fn insert_font_for_test(&mut self, id: &str, bytes: &[u8]) {
+        let ids = self
+            .system
+            .db_mut()
+            .load_font_source(cosmic_text::fontdb::Source::Binary(std::sync::Arc::new(
+                bytes.to_vec(),
+            )));
+        assert!(!ids.is_empty(), "the test font should parse");
+        self.loaded.insert(id.to_string(), ids[0]);
+    }
+
     /// Loads `id` if it is not loaded, reading its bytes from `assets`.
     ///
     /// Cheap to call repeatedly: an id already loaded, or already failed, returns immediately.
@@ -418,14 +435,7 @@ mod tests {
 
     fn cache_with_a_font() -> FontCache {
         let mut cache = FontCache::new();
-        let ids = cache
-            .system
-            .db_mut()
-            .load_font_source(cosmic_text::fontdb::Source::Binary(std::sync::Arc::new(
-                a_font(),
-            )));
-        assert!(!ids.is_empty(), "the embedded test font should parse");
-        cache.loaded.insert("test".to_string(), ids[0]);
+        cache.insert_font_for_test("test", &a_font());
         cache
     }
 

@@ -64,7 +64,7 @@ sound.** What M3 still needs:
 | | |
 |---|---|
 | `amadeo-audio` | **Working, and complete enough for a game.** Trait, `NullAudio`, `KiraAudio`, buses, components, collection pass, `VoiceTracker`, WAV decoder, `SoundCache`, **one-shots**, `audio.describe`. Missing: ducking, occlusion, compressed audio, a voice cap |
-| `amadeo-ui` | **Layout, shaping and the glyph atlas are built** (ADR 0062): anchors, flow, `grow`, `ComputedRect`, `FontCache` over `cosmic-text`, `GlyphAtlas`, 40 tests. Missing: **the draw pass**, a `Text` component, theming, focus navigation |
+| `amadeo-ui` | **Layout, shaping, atlas and draw pass are written** (ADR 0062): anchors, flow, `grow`, `FontCache`, `GlyphAtlas`, `Panel`, `Text`, `collect_ui`, 49 tests. **Never actually drawn** — see the box below. Missing: theming, focus navigation |
 | `amadeo-anim` | **Nothing.** |
 
 **`amadeo-ui` is the next one, and its two hard decisions are made** — Justin settled both in session
@@ -73,16 +73,18 @@ sound.** What M3 still needs:
 **Text shaping landed too** — `FontCache` over `cosmic-text`, with a real font generated in code so
 the tests need no fixture. What is left, in order:
 
-1. **The draw pass, and a `Text` component.** The remaining gap between "the engine can lay out and
-   shape a menu" and "you can see one". **The glyph atlas is done**, so what is left is turning
-   `ComputedRect` plus `ShapedText` into `Quad` and `Sprite` entities.
+1. > ### ⚠️ **Look at it.** Nothing has drawn a UI, and that is the highest-value next hour.
+   >
+   > `Panel`, `Text` and `collect_ui` are written and every number is asserted — panel centres, the
+   > y-flip, glyph advance, one batch on the atlas. **No capture has been taken and no window has
+   > shown a menu.** This is precisely the position that hid an inside-out mesher for two sessions
+   > (`docs/07`, "two things that look right about a mesh and are independent"), and the failure mode
+   > here is the same shape: a layout can be numerically correct and upside down, or drawn behind the
+   > world, or sampling the wrong corner of the atlas.
+   >
+   > The cheapest check is a GPU capture: put a panel and a label in `games/atrium`, run
+   > `amadeo capture ui.png --package atrium`, and **open the file**.
 
-   > **One design question stands in the way, and it is worth deciding rather than discovering.**
-   > UI is in *screen* space and the sprite path draws in *world* space through a camera. Either the
-   > UI gets its own orthographic camera whose projection maps one unit to one pixel — which is
-   > ADR 0031's "a camera is an entity" doing the work, and probably right — or the renderer grows a
-   > dedicated UI pass. The first reuses everything and needs a rule about where that camera comes
-   > from and how its `order` relates to the game's. **Read ADR 0031 and ADR 0018 before choosing.**
 2. **Focus navigation**, the third ⚠️ in `docs/04` §13. Left open until the layout tree existed,
    which it now does. Always painful to add later.
 3. **A default theme**, and `CLAUDE.md` §6 constrains it hard — no Inter, no gradients, no uniform
@@ -361,6 +363,29 @@ tile**: `Sprite::region` has existed since ADR 0023 and batching is already on
 box and asserts it is nearly opaque. Everything else in that file would pass against a packer that
 allocated regions and copied no pixels — and the symptom of *that* is invisible text, which is
 indistinguishable from a missing font, a wrong colour, or a layout bug.
+
+### 9. The draw pass, and the seam it needed
+
+`Panel` and `Text` are components; `collect_ui` turns laid-out nodes into a `View`. Two decisions,
+both flagged here because they were made without asking:
+
+- **The renderer owns the slot and `amadeo-ui` fills it.** `amadeo-ui` sits *above* `amadeo-render`
+  (I6), so `render_quads` cannot go looking for a `UiNode`. `amadeo-render` grew an `Overlay`
+  service holding `Vec<View>`; `render_quads` **drains** it and merges by camera order. This is
+  `TextureCache`/`MeshCache`/`SkyCache`'s inversion a fourth time, so it is the established idiom
+  rather than a new one. Draining rather than reading is deliberate: a stale interface frozen over
+  the game is worse than no interface, and it would look like a rendering bug rather than a missing
+  system.
+- **The UI camera is synthesised, not authored.** Orthographic, height = the screen height, eye at
+  `(w/2, -h/2)`, so `x ∈ 0..w`, `y ∈ -h..0` and **a pixel is a unit**. A game does not choose
+  whether its interface is in screen space, and an authored UI camera would be one more thing every
+  game had to remember and update on resize.
+
+**Nothing spawns an entity, and that is not tidiness.** Entities are simulation state, so a
+paragraph of text would move the state hash — and move it *differently at two window sizes*.
+
+Screen-to-world is one line (`[sx, -sy]`) in one file, because a flip applied twice, or in half the
+cases, gives a layout that is plausible and upside down.
 
 ### What else landed
 

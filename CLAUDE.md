@@ -496,7 +496,22 @@ crates/
                      ADR 0036 §4 keeps out, and a glyph measured is nearly always a glyph drawn.
                      `atlas_revision` is the glyph count, which works as a revision because the atlas
                      only ever gains entries -- a draw pass re-uploads when it moves, not per frame.
-                     Still to come: the draw pass and a `Text` component, theming, focus navigation.
+                     **The draw pass is written**: `Panel` and `Text` components, and `collect_ui`
+                     building a `View` that goes into `amadeo-render`'s **`Overlay`** service.
+                     `amadeo-ui` sits ABOVE `amadeo-render`, so the renderer cannot look for a
+                     `UiNode` -- the renderer owns the slot and something higher fills it, which is
+                     `TextureCache`/`MeshCache`/`SkyCache`'s inversion a fourth time. `render_quads`
+                     **drains** it: a stale interface frozen over the game is worse than none.
+                     **Nothing spawns an entity, and that is not a style choice** -- entities are
+                     simulation state, so a paragraph of text would move the state hash and would
+                     move it *differently at two window sizes*.
+                     **The UI camera is synthesised, not authored**: orthographic, height = screen
+                     height, eye at (w/2, -h/2), so `x ∈ 0..w` and `y ∈ -h..0` and a pixel IS a unit.
+                     Screen-to-world is one line, `[sx, -sy]`, in ONE file -- a flip applied twice or
+                     in half the cases is a layout that is plausible and upside down.
+                     ⚠️ **Nothing has actually drawn a UI yet.** The numbers are asserted; no capture
+                     has been looked at. See the "look at the output" lesson in docs/07.
+                     Still to come: theming, focus navigation, and a game that shows a menu.
 ✅ amadeo-snapshot    the .snapshot text format (ADR 0028): capture a whole world to a file and put
                      it back. Sits above amadeo-scene because it borrows that crate's scalar
                      encoding — format_float is subtle and two copies would drift. **It captures the

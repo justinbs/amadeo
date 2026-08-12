@@ -62,6 +62,7 @@
 
 mod atlas;
 mod components;
+mod draw;
 mod layout;
 mod text;
 
@@ -70,9 +71,13 @@ mod text;
 mod test_font;
 
 pub use atlas::{GLYPH_ATLAS_ID, GlyphAtlas, GlyphImage};
-pub use components::{Align, Anchor, ComputedRect, Flow, UiEdges, UiNode};
+pub use components::{Align, Anchor, ComputedRect, Flow, Panel, Text, UiEdges, UiNode};
+pub use draw::{UI_ORDER, collect_ui};
 pub use layout::layout_ui;
 pub use text::{FontCache, FontFailure, PositionedGlyph, ShapedText};
+
+/// The label the app layer registers [`collect_ui`] under.
+pub const COLLECT_UI: &str = "collect_ui";
 
 /// The label the app layer registers [`layout_ui_system`] under.
 pub const LAYOUT_UI: &str = "layout_ui";
