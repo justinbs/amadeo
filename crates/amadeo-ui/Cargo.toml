@@ -12,6 +12,10 @@ amadeo-core.workspace = true
 # A font is an asset with a declared id (ADR 0020), like a texture or a sound.
 amadeo-assets.workspace = true
 amadeo-ecs.workspace = true
+# Choosing a menu item is an event, and moving between items is driven by named input actions —
+# which is what makes a menu deterministic and replayable with nothing new (ADR 0063).
+amadeo-events.workspace = true
+amadeo-input.workspace = true
 # The glyph atlas is a `TextureData` like any other, so it goes into `TextureCache` unchanged and a
 # glyph is a `Sprite` with a region -- exactly what a tilesheet tile is (ADR 0023).
 amadeo-image.workspace = true

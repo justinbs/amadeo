@@ -515,7 +515,24 @@ crates/
                      against a picture flipped on the other.
                      **Text has been drawn on a real screen** -- `games/atrium` shows "THE ATRIUM" in
                      Bebas Neue over the 3D room, authored entirely in `atrium.scene`.
-                     Still to come: theming, focus navigation, and a menu that does something.
+                     **Focus navigation (ADR 0063) is the interactive half, and it is the one part of
+                     this crate INSIDE the deterministic zone.** `Focusable::order` is **authored**,
+                     never spatial -- hit-testing reads a `ComputedRect`, layout depends on the
+                     window size, so "which button is under the pointer" answers differently at
+                     1920x1080 and 1280x720. Put that in the state hash and I3 is gone for every menu
+                     in every game. An authored order reads no rectangle, so it is identical
+                     everywhere, and it is driven by **named actions** (`ui_next`/`ui_previous`/
+                     `ui_confirm`) which `InputState` already hashes and replays record -- **a menu
+                     replays with nothing new and no change to the replay format**.
+                     `Focus` is a hashed RESOURCE (where the highlight sits is gameplay and a save
+                     should restore it); `UiActivated` carries the entity, because the engine does not
+                     know what a button MEANS (I4, one level up).
+                     **Edge-triggered: a held direction moves once.** Key repeat is a *timing*
+                     feature and timing is what a fixed tick expresses worst.
+                     Spatial and pointer navigation are still possible and belong **outside** the
+                     deterministic zone, writing through the same `Focus` -- `ComputedRect::contains`
+                     is the right primitive, it was the *placement* that would have been wrong.
+                     Still to come: theming, and a menu that does something.
 ✅ amadeo-snapshot    the .snapshot text format (ADR 0028): capture a whole world to a file and put
                      it back. Sits above amadeo-scene because it borrows that crate's scalar
                      encoding — format_float is subtle and two copies would drift. **It captures the

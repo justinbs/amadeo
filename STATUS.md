@@ -64,7 +64,7 @@ sound.** What M3 still needs:
 | | |
 |---|---|
 | `amadeo-audio` | **Working, and complete enough for a game.** Trait, `NullAudio`, `KiraAudio`, buses, components, collection pass, `VoiceTracker`, WAV decoder, `SoundCache`, **one-shots**, `audio.describe`. Missing: ducking, occlusion, compressed audio, a voice cap |
-| `amadeo-ui` | **Working, and seen.** Anchors, flow, `grow`, `FontCache`, `GlyphAtlas`, `Panel`, `Text`, `collect_ui`, 56 tests — panels *and* a glyph verified by reading back GPU pixels, and `games/atrium` shows a real title in Bebas Neue. Missing: interaction, theming, focus navigation |
+| `amadeo-ui` | **Working, seen, and navigable.** Anchors, flow, `grow`, `FontCache`, `GlyphAtlas`, `Panel`, `Text`, `collect_ui`, focus navigation, 64 tests — panels *and* a glyph verified by reading back GPU pixels, and `games/atrium` shows a real title in Bebas Neue. Missing: **theming** (a focused item looks like any other), pointer navigation |
 | `amadeo-anim` | **Nothing.** |
 
 **`amadeo-ui` is the next one, and its two hard decisions are made** — Justin settled both in session
@@ -73,14 +73,16 @@ sound.** What M3 still needs:
 **Text shaping landed too** — `FontCache` over `cosmic-text`, with a real font generated in code so
 the tests need no fixture. What is left, in order:
 
-1. **A menu that does something.** The interface draws; nothing in it is *interactive*. A pause menu
-   needs hit-testing (`ComputedRect::contains` exists and is unused), a hovered/pressed state, and a
-   way for a button to mean something — which runs straight into focus navigation below.
+1. **A menu that does something *visible*.** Navigation works and is tested — but **a focused item
+   still looks exactly like an unfocused one**, because nothing styles it. That is the theme's job.
 
-2. **Focus navigation**, the third ⚠️ in `docs/04` §13. Left open until the layout tree existed,
-   which it now does. Always painful to add later.
-3. **A default theme**, and `CLAUDE.md` §6 constrains it hard — no Inter, no gradients, no uniform
-   rounded cards, no emoji. Look at Blender, Houdini, Reaper; not at landing pages.
+2. **A default theme**, and `CLAUDE.md` §6 constrains it hard — no Inter, no gradients, no uniform
+   rounded cards, no emoji. Look at Blender, Houdini, Reaper; not at landing pages. **Worth your eye
+   rather than my judgement**, the same way the typeface turned out to be.
+
+3. **Pointer and spatial navigation**, which ADR 0063 deliberately puts *outside* the deterministic
+   zone — a presentation-side system writing through the same `Focus`. `ComputedRect::contains` is
+   the primitive and is written but unused.
 
 > **On the text decision, because it is a calibration signal worth keeping.** I recommended the
 > lighter option (rasterise a TTF into a glyph atlas) and listed `cosmic-text` as the heavier
@@ -414,6 +416,42 @@ Two things came out of actually looking:
   container cannot hug its text, so the width is authored. That is the deliberate design (`layout.rs`
   says so), and it means **there is no way to ask the engine how wide a label will be**. Worth
   closing if it bites again: `FontCache::shape` already returns the width and nothing surfaces it.
+
+### 11. Focus navigation, and the reason it is not what a tutorial would do — ADR 0063
+
+A menu you can move around in and choose from. The interesting part is what it **refuses** to do.
+
+The obvious design — find the widget under the pointer, highlight it, act on click — **cannot be part
+of a deterministic simulation here**. Hit-testing reads a `ComputedRect`, ADR 0062 made layout depend
+on the window size, and `ComputedRect` is `DERIVED` precisely so two resolutions are not two
+different worlds. So "which button is under the pointer" answers differently at 1920×1080 and
+1280×720, and the moment that reaches the state hash, invariant I3 is gone for every menu in every
+game built on this engine.
+
+So **`Focusable::order` is a number somebody writes in a scene file**. Navigation reads no rectangle,
+no pointer and no screen size, which buys three things:
+
+- identical at every resolution — the property that makes a menu part of the simulation at all;
+- driven by **named actions**, which `InputState` already hashes and replays already record, so **a
+  menu replays with nothing new and no change to the replay format**. The alternative was recording
+  pointer positions, which would have made replays resolution-dependent;
+- works with no cursor, on a controller, which a console-facing menu needs anyway.
+
+`Focus` is a hashed **resource** — the one hashed thing in `amadeo-ui`, and correct rather than
+inconsistent: where the highlight sits is gameplay, it moves only through recorded input, and a save
+should restore it. `UiActivated` carries the entity, because the engine does not know what a button
+*means* (I4, one level up — the same split footsteps use).
+
+**Pointer and spatial navigation are still possible**, and ADR 0063 says where they go: a
+presentation-side system, outside the deterministic zone, writing through the same `Focus`.
+`ComputedRect::contains` is the right primitive — it was the *placement* of the logic that would have
+been wrong, not the function.
+
+> **Six tests failed at once and the code was right.** `just_pressed` is edge-triggered, and the test
+> helper never released the key — so every press after the first read as *held*. The fix was in the
+> helper, and it turned up a real property worth pinning:
+> `holding_a_direction_moves_once_rather_than_scrolling`. There is no key repeat, deliberately:
+> repeat is a *timing* feature, and timing is what a fixed tick expresses worst.
 
 ### What else landed
 

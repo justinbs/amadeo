@@ -63,6 +63,7 @@
 mod atlas;
 mod components;
 mod draw;
+mod focus;
 mod layout;
 mod text;
 
@@ -79,6 +80,9 @@ pub mod test_font;
 pub use atlas::{GLYPH_ATLAS_ID, GlyphAtlas, GlyphImage};
 pub use components::{Align, Anchor, ComputedRect, Flow, Panel, Text, UiEdges, UiNode};
 pub use draw::{UI_ORDER, collect_ui};
+pub use focus::{
+    Focus, Focusable, NAVIGATE_FOCUS, UI_CONFIRM, UI_NEXT, UI_PREVIOUS, UiActivated, navigate_focus,
+};
 pub use layout::layout_ui;
 pub use text::{FontCache, FontFailure, PositionedGlyph, ShapedText};
 
