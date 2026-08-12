@@ -50,10 +50,12 @@
 mod backend;
 mod components;
 mod tracker;
+mod wav;
 
 pub use backend::{AudioBackend, AudioError, AudioFrame, Listener, NullAudio, SoundData, Voice};
 pub use components::{AudioListener, AudioSource, Bus};
 pub use tracker::{VoiceChanges, VoiceTracker};
+pub use wav::{WavError, decode_wav};
 
 use amadeo_ecs::{Service, World};
 use amadeo_transform::{GlobalTransform, Transform};

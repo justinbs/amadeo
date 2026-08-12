@@ -342,6 +342,14 @@ crates/
                      source that swaps its clip is a stop and a start rather than an update, and an
                      unchanged frame must produce **no work at all**, because re-applying an
                      identical gain every frame is a sound that never settles.
+                     **`decode_wav` turns a `.wav` into `SoundData`**, hand-written and with no
+                     dependency -- amadeo-image's precedent exactly, where PNG comes from a crate and
+                     PPM is written out. 16-bit PCM, 24-bit PCM and 32-bit float, mono or stereo, plus
+                     WAVE_FORMAT_EXTENSIBLE, which is what a Windows tool emits above 16 bits.
+                     Compressed audio is refused **by name** (`symphonia` is the intended answer,
+                     docs/02). The trap is 24-bit: it has no Rust type, so the sign is extended by
+                     hand and getting it wrong turns every negative sample into a large positive one
+                     -- loud noise rather than a quiet mistake.
                      Still to come: the kira backend itself, and one-shots, which are events rather
                      than state and have no home yet.
 🟡 amadeo-physics    RigidBody/Collider/Velocity/Gravity as reflected, HASHED data, the

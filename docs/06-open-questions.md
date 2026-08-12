@@ -309,7 +309,20 @@ parent), which is the usual sign that the borrowed operation is the wrong one.
 
 ---
 
-## Q33 · P1 · Nothing lets a mesh ask to be flat-shaded
+## ~~Q33~~ · **Resolved in session 14 — a `flat` flag on the mesh asset** · Nothing lets a mesh ask to be flat-shaded
+
+**The first of the three options below won**: `MeshData::flat_shade` splits vertices per face and
+recomputes normals, and `flat` is an authored field on the mesh asset, so a `.mesh` file and the
+terrain streamer's `.flat_shaded()` both reach the same code. The note about ADR 0047 held — it runs
+*before* `generate_tangents`, because splitting vertices changes the tangent frame too.
+
+**This entry stayed open by mistake until session 15's documentation pass.** It shipped in `f3b19f9`,
+`CLAUDE.md` and `STATUS.md` both recorded it, and only this file was missed — which is worth noting
+because an open-questions list that lies about what is open is worse than a shorter one that does not.
+
+The original text follows.
+
+---
 
 **New in session 14, raised by ADR 0050's decision that Amadeo's own content is low-poly.**
 
@@ -843,6 +856,23 @@ where a background job's results land (ADR 0041), and `JobPool` and `Inbox` both
 threads. The bound is now **earned rather than speculative**, which makes the `LocalService` prior
 stronger rather than weaker — the things that need to be `Sync` really do, and the things that cannot
 be have no reason to pretend.
+
+**Session 15 update: the offender this entry named is now one step away.** ADR 0059 chose kira, and
+`Audio` is a `Service` holding a `Box<dyn AudioBackend>` where the trait requires `Send + Sync`. The
+`NullAudio` that ships today satisfies that trivially; **`kira::AudioManager` is the thing this
+question predicted would not.**
+
+So this is no longer "decide when the first real offender lands" — the next session to write the kira
+backend is the one that has to decide, and it should decide *before* writing it rather than
+discovering the bound halfway through. The three options are unchanged, and the prior is still a
+separate `LocalService` store.
+
+One cheap escape worth weighing against them, which was not obvious before the backend's shape was
+settled: the backend could hold kira behind a `Mutex` and pay for a lock **once per frame**, because
+`submit` is called exactly once per frame from one place. That is a very different cost from the
+per-access lock the "wrap offenders in a `Mutex`" option originally imagined, and it may make the
+cheapest option also the right one here — while leaving `LocalService` for a genuinely per-access
+case like a file watcher.
 
 ---
 

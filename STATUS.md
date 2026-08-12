@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-11 (session 15)
+**Last updated:** 2026-08-12 (session 15)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE — all four exit gates met.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
@@ -23,6 +23,83 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 4. **Frame time within a declared budget, numbers written down** — `docs/10-frame-budget.md`.
    8.3 µs per simulation tick, 125 µs of CPU-side frame preparation, and 2.7% of a frame at gate 3's
    200-body complexity.
+
+## 📬 For the next session — read this box, then the two below it
+
+**Everything is pushed and CI is green 5/5.** Check anyway, the way session 15 did: `git fetch` and
+then `git log --oneline origin/main..HEAD`. **The fetch is the load-bearing half** — session 15 hit a
+network failure where the fetch died and the comparison ran against a stale ref, printing "all
+pushed" without having checked anything. Read the fetch's exit code, not just the log's output.
+
+### Where things actually are
+
+M2.5 is complete. **The renderer is now past what M3's exit gate asks of it** — cascades, bloom, point
+and spot lights, and spot shadows all landed in session 15, finishing ADR 0045's tier 1 and then some.
+What M3 still needs is the subsystems that barely exist:
+
+| | |
+|---|---|
+| `amadeo-audio` | **Started.** Trait, `NullAudio`, buses, components, collection pass, `VoiceTracker`, WAV decoder. **No sound comes out** — the kira backend is not written |
+| `amadeo-ui` | **Nothing.** A title screen and a pause menu are exit-gate items |
+| `amadeo-anim` | **Nothing.** |
+
+### The obvious next task, and the honest warning attached to it
+
+**Write the kira backend** (`kira 0.12`, behind a `kira` feature, off by default like `gpu` and
+`rapier`). Everything it needs is in place: `VoiceTracker::reconcile` hands back `stopped`/`started`/
+`updated`, and applying them is mechanical.
+
+> **It is the one thing in this engine that no test can verify.** CI has no sound card and neither
+> does a development machine's headless run, so nothing can prove it works — only Justin listening
+> can. Session 15 deliberately stopped short of it rather than write a large unverifiable chunk and
+> claim it worked. **Do it when he is around to hear the result**, and say plainly in the summary that
+> the verification is his ears.
+>
+> The parts that *can* be wrong invisibly were pulled out into `VoiceTracker` precisely so this is not
+> true of them. Do not put reconciliation logic back into the backend.
+
+Two things it will need that do not exist yet: a way to get a `.wav` **off disk** into
+`Audio::upload` (the decoder exists; nothing calls it from the asset system), and a game to hear it
+in. `games/atrium` is the natural candidate — it already has a lamp and a lantern from session 15.
+
+> ### ⚠️ **Q12 will bite the moment you add kira, and it should be decided first**
+>
+> `Service` requires `Send + Sync`, `Audio` is a `Service`, and `AudioBackend` inherits the bound.
+> `NullAudio` satisfies it trivially; **`kira::AudioManager` is precisely the offender Q12 predicted
+> back in the Q1 spike.** Decide before writing the backend rather than halfway through it.
+>
+> Q12's standing prior is a separate `LocalService` store. But there is a cheaper option that only
+> became visible once the backend's shape settled, and it is now written into Q12: `submit` is called
+> **exactly once per frame from one place**, so a `Mutex` around kira costs one uncontended lock per
+> frame rather than one per access. That may make the cheap answer the right one here, and leave
+> `LocalService` for a genuinely per-access case like a file watcher.
+
+### Three eyeball calls waiting on Justin
+
+None is blocking; all are cheap to change and all were tuned by looking at a capture rather than
+derived.
+
+- **Camera `height`** — Scarp 1.6, Atrium 1.5. It now means *the point the camera aims at*, so it
+  decides what sits mid-screen.
+- **The Atrium's two demo lights** — a warm `PointLight` at intensity 22 and a shadow-casting
+  `SpotLight` at 38. The lantern was at 90 first and blew the room out.
+- **`shadow_distance`** — still 70 on the Scarp. Cascades decoupled near quality from it, so it could
+  go much further now.
+
+### The habit worth keeping, because it caught a real one
+
+Session 15 shipped a shader that compiled locally and failed every GPU test on CI. **Run this before
+pushing any `.wgsl` change** (also in CLAUDE.md §4b):
+
+```
+WGPU_BACKEND=dx12 WGPU_DX12_COMPILER=fxc cargo test -p amadeo-render --all-features --test capture
+```
+
+Windows CI has no GPU, uses WARP, and compiles through FXC, which is far stricter than the DXC or
+Vulkan path a real GPU takes. **Ubuntu CI is no help** — with no software fallback it skips every GPU
+test and passes regardless, so a green Ubuntu job says nothing about a shader.
+
+---
 
 ## ⚠️ Start here — session 15 fixed the camera and closed a determinism hole nobody knew was open
 
@@ -311,11 +388,43 @@ Two things worth knowing before touching it:
   The obvious `play_once` flag plus a system that clears it would put a write into *gameplay state* for
   something that must not be in the state hash at all. Events are what `amadeo-events` is for.
 
-**Next:** the kira backend, so sound actually comes out — deliberately separate, because the interface
-is the expensive-to-change part and should be exercised before a dependency shapes it. Then `amadeo-ui`
-(a title screen and a pause menu) and `amadeo-anim`, neither of which exists. Also open and
-non-blocking: triplanar mapping for terrain (which also fixes the tangent-frame fallback on steep
-faces), bloom's downsample chain, point-light cube shadows, and per-camera post (**Q23**).
+### Two things starting the kira backend found, without writing it
+
+Both are exactly what building the interface before the dependency was for.
+
+**A `Voice` had no identity.** An `AudioFrame` is a state a backend diffs, but two entities playing
+one sound were indistinguishable — so a backend could not tell "still playing" from "started again",
+and the only available behaviour was restarting every sound every frame. **A stutter at sixty hertz
+rather than a hum.** The entity is the identity that already exists and is stable across frames, so a
+voice handle would have been a second name for the same thing.
+
+Worth knowing *why rendering never needed this*: a renderer redraws from scratch, so a triangle drawn
+this frame has nothing to do with last frame's. A sound is the opposite — it continues.
+
+**And the reconciliation had no testable home.** A kira backend is the one piece of this engine
+neither CI nor a headless run can verify, so the logic that goes silently wrong was pulled into
+`VoiceTracker`, where eight tests cover the cases that are inaudible until they are not:
+
+- an unchanged frame must produce **no work at all** — re-applying an identical gain every frame is a
+  sound that never settles, and it gets blamed on the library
+- a source swapping its clip is a **stop and a start**, not an update; it looks like an update and
+  treating it as one leaves the old clip running and silently ignores the new one
+- a position that moves in its last bits is **not** a change — positions come from transforms
+  recomputed every tick, so without a tolerance every spatial sound is re-positioned sixty times a
+  second forever
+
+**`decode_wav` closes the last gap that was reachable without a device.** Hand-written, no dependency,
+following `amadeo-image` exactly — PNG comes from a crate, PPM is written out, and WAV is the one
+worth writing out. 16-bit PCM, 24-bit PCM, 32-bit float, mono or stereo, plus
+`WAVE_FORMAT_EXTENSIBLE`, which is what a Windows tool emits above 16 bits. Compressed audio is
+refused **by name** rather than as "unsupported", because the latter tells nobody which converter
+setting to change.
+
+> The trap in it is 24-bit. It has no Rust type, so the sign has to be extended by hand — and getting
+> that wrong turns every negative sample into a very large positive one, which is heard as **loud
+> noise** rather than as a quiet mistake. `twenty_four_bit_pcm_is_sign_extended` pins it.
+
+**Next:** see the 📬 box at the top of this file.
 
 ## 📋 The plan cascades were built from — kept as a record
 
