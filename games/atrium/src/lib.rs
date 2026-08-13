@@ -28,16 +28,16 @@
 //! file and nothing else. ADR 0031 said a camera parented to a character *is* a follow camera with
 //! no special case, and this is that claim being cashed rather than repeated.
 
-use amadeo_app::{App, Stage, system};
+use amadeo_app::{App, Paused, Stage, system};
 
 use amadeo_audio::{
     Audio, AudioListener, AudioSource, COLLECT_AUDIO, SoundCache, SoundPlayed, collect_audio,
 };
 use amadeo_character::CharacterMotion;
 use amadeo_core::StableHash;
-use amadeo_ecs::Resource;
+use amadeo_ecs::{Component, Entity, Resource, World};
 use amadeo_events::WorldEvents;
-use amadeo_input::{InputDriver, NullSource};
+use amadeo_input::{ActionId, InputDriver, InputState, NullSource};
 use amadeo_physics::{Collider, Gravity, Physics, RapierPhysics, RigidBody, Velocity};
 use amadeo_reflect::Reflect;
 use amadeo_render::{
@@ -48,8 +48,8 @@ use amadeo_transform::{
     GlobalTransform, PROPAGATE_TRANSFORMS, Parent, Transform, propagate_transforms,
 };
 use amadeo_ui::{
-    COLLECT_UI, ComputedRect, FontCache, LAYOUT_UI, Panel, Text, Theme, UiNode, collect_ui,
-    layout_ui_system,
+    COLLECT_UI, ComputedRect, Focus, Focusable, FontCache, LAYOUT_UI, NAVIGATE_FOCUS, Panel, Text,
+    Theme, UiActivated, UiNode, collect_ui, layout_ui_system, navigate_focus,
 };
 
 /// Where this game's assets live, relative to the project root (ADR 0022).
@@ -69,6 +69,251 @@ pub const STRIDE: f32 = 1.9;
 
 /// The label [`play_footsteps`] is registered under.
 pub const PLAY_FOOTSTEPS: &str = "play_footsteps";
+
+/// The label [`apply_screen`] is registered under.
+pub const APPLY_SCREEN: &str = "apply_screen";
+
+/// The label [`choose_from_menu`] is registered under.
+pub const CHOOSE_FROM_MENU: &str = "choose_from_menu";
+
+/// The named action that opens and closes the pause menu. Escape, on a keyboard.
+///
+/// A *game* action rather than an engine one, unlike `ui_next` and friends: the engine knows how a
+/// menu moves (ADR 0063) and how to stop simulating (ADR 0065), and neither of them has an opinion
+/// about whether this game has a pause at all.
+pub const PAUSE: &str = "pause";
+
+/// Where the player is put back when they choose "return to start".
+///
+/// The same place `scenes/atrium.scene` spawns them. Duplicated rather than read back out of the
+/// scene, because by the time this runs the entity has walked away from it and there is nowhere
+/// left to read it *from* — a spawn point is authored data the world stops remembering.
+const SPAWN: [f32; 3] = [0.0, 1.0, 2.0];
+
+/// What the Atrium is doing, as far as the player is concerned.
+///
+/// # Why this is in the game and not in the engine (ADR 0065 §5)
+///
+/// **What screens exist is genre knowledge.** This room has somewhere to walk and a menu to stop at;
+/// a strategy game has neither in that shape. Putting a `Screen` type below the module layer is what
+/// invariant I4 forbids, and the engine could not know these three names anyway.
+///
+/// Nothing had to be built for this to work: it is an ordinary reflected resource, so it is hashed,
+/// a snapshot restores it, and `amadeo query` can read it.
+///
+/// # This is the authority; `Paused` is projected from it
+///
+/// The engine knows only "are the gameplay stages running". [`apply_screen`] writes that from this,
+/// every tick, and nothing else writes it — so the two cannot drift apart into a game that is
+/// unpaused with a menu up, which is the bug this arrangement exists to make unavailable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub enum Screen {
+    /// Walking around the room.
+    #[default]
+    Playing,
+    /// The pause menu is up and the world is frozen.
+    Paused,
+    /// The player chose "quit"; the window closes on the next frame.
+    ///
+    /// Terminal — Escape does not undo it. A game shutting down and then not shutting down because
+    /// somebody was still holding a key would be a memorable bug.
+    Quitting,
+}
+
+impl Resource for Screen {}
+
+/// What one of the pause menu's buttons does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub enum MenuChoice {
+    /// Close the menu and carry on.
+    #[default]
+    Resume,
+    /// Put the character back where they started, standing still.
+    ReturnToStart,
+    /// Close the game.
+    Quit,
+}
+
+/// Attached to a menu button, saying what choosing it means.
+///
+/// # ADR 0063's split, cashed
+///
+/// `UiActivated` says *which entity* was chosen and deliberately nothing else, because the engine
+/// does not know what a button means. This is the game supplying that half — and it is supplied in
+/// the **scene file**, beside the button it belongs to, rather than as a table of entity ids in Rust
+/// that would go stale the moment somebody reordered the menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub struct MenuButton {
+    /// What this button does.
+    pub choice: MenuChoice,
+}
+
+impl Component for MenuButton {}
+
+/// Marks the pause menu's root node, so one system can show and hide the whole thing.
+///
+/// A marker rather than a hard-coded entity id: the scene file decides what the menu *is*, and this
+/// says only which node is its root.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub struct PauseMenu;
+
+impl Component for PauseMenu {}
+
+/// Toggles the pause on Escape, and projects [`Screen`] onto the things that follow from it.
+///
+/// # Why this runs in `PreSimulation`
+///
+/// Because that stage runs **whether or not the game is paused** (ADR 0065), and a system that
+/// stopped running while paused could never unpause. It is also after `sample_input`, which is what
+/// makes `just_pressed` mean this tick's keypress.
+///
+/// # One writer for everything derived from the screen
+///
+/// The toggle is one line; the rest of this function is projection — `Paused` and the menu's
+/// visibility. Doing that here rather than at each place the screen changes is what stops a menu
+/// from being visible over a running game: there is one place that decides, and it runs every tick
+/// rather than only on the tick something changed.
+pub fn apply_screen(world: &mut World) {
+    let toggled = world
+        .resource::<InputState>()
+        .is_some_and(|input| input.just_pressed(ActionId::new(PAUSE)));
+
+    let screen = world.resource::<Screen>().copied().unwrap_or_default();
+    let next = match (screen, toggled) {
+        (Screen::Playing, true) => Screen::Paused,
+        (Screen::Paused, true) => Screen::Playing,
+        // Including `Quitting`, which nothing gets out of.
+        (current, _) => current,
+    };
+    if let Some(slot) = world.resource_mut::<Screen>() {
+        *slot = next;
+    }
+
+    let paused = next == Screen::Paused;
+
+    // **While the menu is up, something is always highlighted.**
+    //
+    // `navigate_focus` deliberately will not do this: a menu that focused an item the moment it
+    // appeared would override whatever the game wanted focused, one tick after the scene loaded —
+    // ADR 0063, and there is a test named for it. So the game does it, which is the right way
+    // round. The engine knows how a menu moves; the game knows when one is up.
+    //
+    // Written as "if nothing is focused" rather than "on the tick it opened", because that also
+    // covers a highlight that fell off an item which stopped being focusable, and costs one
+    // comparison to say.
+    let nothing_focused = world
+        .resource::<Focus>()
+        .is_none_or(|focus| focus.entity.is_none());
+    if paused && nothing_focused {
+        focus_first_item(world);
+    }
+    if let Some(state) = world.resource_mut::<Paused>() {
+        state.paused = paused;
+    }
+
+    // Collected before writing, because the query borrows the world. Only the nodes whose
+    // visibility is actually wrong are touched -- writing an identical `UiNode` every tick would
+    // work, and would also mean the state hash could never tell a menu opening from a menu that was
+    // already open.
+    let stale: Vec<Entity> = world
+        .query::<(&PauseMenu, &UiNode)>()
+        .filter(|(_, (_, node))| node.visible != paused)
+        .map(|(entity, _)| entity)
+        .collect();
+    for root in stale {
+        if let Some(node) = world.get_mut::<UiNode>(root) {
+            node.visible = paused;
+        }
+    }
+}
+
+/// Acts on a menu button being chosen.
+///
+/// # Why it runs while paused
+///
+/// It is the one gameplay system that must (ADR 0065): everything it responds to happens while the
+/// world is frozen. Registered with `.while_paused()` in `Simulation`, beside `navigate_focus`.
+///
+/// # It sets the screen and nothing else
+///
+/// "Resume" does not hide the menu or unpause the engine — it moves [`Screen`], and
+/// [`apply_screen`] does the rest on the next tick. Two systems writing the same derived state is
+/// how the two halves get out of step.
+pub fn choose_from_menu(world: &mut World) {
+    // `UiActivated` was sent last tick and swapped in at the end of it, so there is no ordering
+    // constraint against `navigate_focus` here -- declaring one would suggest a same-tick handoff
+    // that the event buffers do not provide.
+    let chosen: Vec<MenuChoice> = world
+        .read_events::<UiActivated>()
+        .iter()
+        .filter_map(|record| world.get::<MenuButton>(record.event.entity))
+        .map(|button| button.choice)
+        .collect();
+
+    for choice in chosen {
+        match choice {
+            MenuChoice::Resume => {
+                if let Some(screen) = world.resource_mut::<Screen>() {
+                    *screen = Screen::Playing;
+                }
+            }
+            MenuChoice::ReturnToStart => {
+                return_to_start(world);
+                if let Some(screen) = world.resource_mut::<Screen>() {
+                    *screen = Screen::Playing;
+                }
+            }
+            MenuChoice::Quit => {
+                if let Some(screen) = world.resource_mut::<Screen>() {
+                    *screen = Screen::Quitting;
+                }
+            }
+        }
+    }
+}
+
+/// Puts the highlight on the lowest-numbered menu button.
+///
+/// Every `Focusable` in this game is a pause-menu button, so there is nothing to narrow the search
+/// to. A game with two menus would look under the one it just opened; the walk to do that is
+/// `Parent`, and it is worth writing only when there are two.
+///
+/// Ties break by entity — spawn order, which is the order the scene file lists them — so this picks
+/// the same button every time rather than whichever the storage happened to yield first.
+fn focus_first_item(world: &mut World) {
+    let mut items: Vec<(i32, Entity)> = world
+        .query::<(&Focusable,)>()
+        .filter(|(_, (focusable,))| focusable.enabled)
+        .map(|(entity, (focusable,))| (focusable.order, entity))
+        .collect();
+    items.sort_by_key(|(order, entity)| (*order, entity.index(), entity.generation()));
+
+    let first = items.first().map(|(_, entity)| *entity);
+    if let Some(focus) = world.resource_mut::<Focus>() {
+        focus.entity = first;
+    }
+}
+
+/// Puts every character back at [`SPAWN`], standing still.
+///
+/// **The velocity matters as much as the position.** A character teleported while walking arrives
+/// still walking, and the first thing they do is stroll off the spot they were just put back on.
+fn return_to_start(world: &mut World) {
+    let characters: Vec<Entity> = world
+        .query::<(&CharacterMotion, &Transform)>()
+        .map(|(entity, _)| entity)
+        .collect();
+
+    for entity in characters {
+        if let Some(transform) = world.get_mut::<Transform>(entity) {
+            transform.translation = SPAWN;
+            transform.rotation = [0.0; 3];
+        }
+        if let Some(motion) = world.get_mut::<CharacterMotion>(entity) {
+            motion.velocity = [0.0; 3];
+        }
+    }
+}
 
 /// How far the character has walked since the last footstep.
 ///
@@ -179,6 +424,11 @@ pub fn build_simulation() -> anyhow::Result<App> {
     app.register_component::<ComputedRect>()?;
     app.register_component::<Panel>()?;
     app.register_component::<Text>()?;
+    // The interactive half (ADR 0063), plus this game's two additions: which node is the menu, and
+    // what each of its buttons means.
+    app.register_component::<Focusable>()?;
+    app.register_component::<MenuButton>()?;
+    app.register_component::<PauseMenu>()?;
     // Registered because this game *ships* `assets/looks/atrium.theme`, even though no entity in the
     // room carries one. Session 9's lesson again: a game whose own asset fails the validator it
     // ships with is worse than one that has no validator.
@@ -240,6 +490,36 @@ pub fn build_simulation() -> anyhow::Result<App> {
     app.add_system(
         Stage::Render,
         system(COLLECT_UI, collect_ui).after(LAYOUT_UI),
+    );
+
+    // The pause menu (ADR 0065). Three pieces of state, all hashed, all ordinary:
+    //
+    // - `Screen` is this game's, and is the authority (I4 -- what screens exist is genre knowledge).
+    // - `Paused` is the engine's, and is projected from `Screen` by `apply_screen`.
+    // - `Focus` is `amadeo-ui`'s, and a game with a menu has to install it (ADR 0063).
+    app.insert_resource(Screen::default());
+    app.insert_resource(Paused::default());
+    app.insert_resource(Focus::default());
+    app.register_event::<UiActivated>();
+
+    // **In `PreSimulation`, which is the stage that runs while paused.** A toggle that stopped
+    // running when the game paused could never unpause it. After `sample_input`, so `just_pressed`
+    // means this tick.
+    app.add_system(
+        Stage::PreSimulation,
+        system(APPLY_SCREEN, apply_screen).after(amadeo_input::SAMPLE_INPUT),
+    );
+
+    // The two systems that survive a pause, and the only two. `navigate_focus` belongs in
+    // `Simulation` on its own merits -- it is hashed state changing in response to hashed input
+    // (ADR 0063) -- and `.while_paused()` is what keeps it alive there while the room does not move.
+    app.add_system(
+        Stage::Simulation,
+        system(NAVIGATE_FOCUS, navigate_focus).while_paused(),
+    );
+    app.add_system(
+        Stage::Simulation,
+        system(CHOOSE_FROM_MENU, choose_from_menu).while_paused(),
     );
 
     // The one-shot half (ADR 0059's named gap, filled in session 16). Registering the event is what

@@ -465,11 +465,17 @@ players with different looks simulate differently. The rule comes from the palet
 taste — ADR 0064 already documents `Accent` as meaning focus — so a menu authored knowing nothing
 about focus highlights correctly, where a per-widget opt-in would be silent when forgotten. A
 per-widget override is additive if one is ever wanted.
-✅ **Effective visibility is an ancestor question.** Layout skips a hidden node *and its
-descendants*, so it never overwrites the rectangles those descendants had while they were shown —
-which means a draw pass checking only each node's own `visible` flag keeps drawing a closed menu's
-buttons off stale rectangles. Found while wiring the focus up, and it is the first thing a pause menu
-would have hit.
+✅ **Effective visibility is an ancestor question**, and it bit twice. Layout skips a hidden node
+*and its descendants*, so it never overwrites the rectangles those descendants had while they were
+shown — and every node inside a hidden menu still says `visible: true`, because it is its *parent*
+that does not. The draw pass kept drawing a closed menu's buttons off stale rectangles; then
+`focusable_in_order` turned out to let the focus land inside a closed menu, so the next `confirm`
+activated a button nobody could see — **the exact bug ADR 0063 names in its consequences, present in
+the code that named it**. Both are one upward walk, shared, and it reads no rectangle so it is safe
+inside the deterministic zone. Found by `games/atrium`'s pause menu, which is what a demo is for.
+✅ **Pausing, from the interface's side (ADR 0065).** `navigate_focus` is a `Simulation` system and
+therefore inside exactly the stage a pause stops, so a game registers it `.while_paused()`. Nothing
+in this crate needed changing.
 ⚠️ **Wrapping and intrinsic sizing** are both absent by design. Neither is needed by a title screen, a
 pause menu or a HUD, and both are additive. Adding them speculatively is building what `taffy` already
 does better.

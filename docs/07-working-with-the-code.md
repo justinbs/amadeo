@@ -2211,6 +2211,69 @@ and if it is red there is no point listening.
 That is not modesty; it is the load-bearing part. A file named as though it covered more is how an
 unverified subsystem becomes a verified one without anybody deciding.
 
+### Hiding a subtree hides it — but only if you ask its ancestors
+
+`UiNode::visible` is a field rather than a despawn on purpose: toggling a pause menu must not move
+entities between archetypes on every keypress. That has a consequence which caught two different
+systems, an hour apart.
+
+`layout_ui` skips a hidden node **and everything under it**. Skipping means it does not write those
+descendants' `ComputedRect` — but it does not *remove* them either, because removing a component is
+the structural change the flag exists to avoid. So after a menu closes:
+
+- the root says `visible: false`;
+- every button inside it still says `visible: true`, because it is true — it is their *parent* that
+  is not;
+- and every one of them still carries the rectangle it had while the menu was open.
+
+Anything that asks "should I be dealing with this node" by reading `node.visible` therefore gets the
+wrong answer for every node except the one that was toggled. Both callers got it wrong:
+
+- **the draw pass** kept drawing a closed menu's buttons, off stale rectangles;
+- **`focusable_in_order`** let the focus land inside a closed menu, so the next `confirm` activated a
+  button nobody could see. That is the pause-menu bug ADR 0063 *names in its own consequences*, and
+  it was in the code that named it.
+
+The fix is one function, `layout::ancestry`, walking upward and shared by both — so the draw pass and
+the simulation cannot disagree about what is on screen. It reads `Parent` and a `bool` and no
+rectangle, which is what makes it safe on the deterministic side.
+
+**The general shape:** when a flag on a parent changes what its children mean, every reader has to
+walk up. If two readers walk separately they will drift, and the drift will show up as one of them
+being right.
+
+### Pausing: what still runs, and how to say so
+
+```rust
+app.add_system(
+    Stage::Simulation,
+    system(NAVIGATE_FOCUS, navigate_focus).while_paused(),
+);
+```
+
+A `Paused` resource set to true makes `App::step` skip everything in `Simulation` and
+`PostSimulation` except systems that declared `.while_paused()` (ADR 0065). `PreSimulation` always
+runs, so input is sampled and the game can unpause; `Render` always runs, so the menu is drawn.
+
+Three things about it that are not obvious:
+
+- **The tick keeps advancing.** A paused tick samples input, moves the focus if asked, and does
+  nothing else. That is load-bearing rather than lazy: menu navigation is hashed state driven by
+  input that `amadeo-input` records **per tick**, so a frozen counter would leave a keypress in a
+  menu with nowhere in a replay to live. It also means there is no backlog to burst through on
+  unpause — `advance_real_time` never banks anything.
+- **`PostSimulation` is skipped too**, and forgetting it is the interesting mistake. `play_footsteps`
+  reads the character's velocity, which does not change while paused, so a game that skipped only
+  `Simulation` would tap out footsteps forever in a room nobody is walking through. The symptom is
+  audio; nothing about it points at the scheduler.
+- **The engine never writes `Paused`, and has no idea what a screen is.** A game keeps its own
+  resource — `games/atrium`'s `Screen` is `Playing | Paused | Quitting` — and one system projects it
+  onto `Paused` and onto the menu's visibility, every tick. One writer for everything derived is what
+  stops a menu being up over a game that is still running.
+
+If a system mysteriously stops running, `amadeo schedule` reports `runs_while_paused` per stage, so
+the answer does not require reading anyone's source.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

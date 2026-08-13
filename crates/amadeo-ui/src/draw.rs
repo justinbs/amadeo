@@ -38,6 +38,7 @@
 
 use crate::components::{ComputedRect, UiNode};
 use crate::focus::Focus;
+use crate::layout::ancestry;
 use crate::text::FontCache;
 use crate::theme::{Paint, Theme};
 use crate::{GLYPH_ATLAS_ID, Panel, Text};
@@ -45,7 +46,6 @@ use amadeo_ecs::{Entity, World};
 use amadeo_render::{
     Camera, Overlay, Projection, QuadInstance, SpriteBatch, SpriteInstance, TextureCache, View,
 };
-use amadeo_transform::Parent;
 
 /// The camera order the interface draws at.
 ///
@@ -139,49 +139,6 @@ pub fn collect_ui(world: &mut World) {
     if let Some(overlay) = world.service_mut::<Overlay>() {
         overlay.views.push(view);
     }
-}
-
-/// Whether a node is really on screen, and whether the focus is on it or above it.
-///
-/// # Two answers, because they come from the same walk
-///
-/// Both questions are about a node's **ancestors**, so asking them separately would walk the tree
-/// twice to learn one thing.
-///
-/// # The visibility half is not the same as `node.visible`
-///
-/// Layout skips a hidden node *and its descendants*, which means it never overwrites the
-/// [`ComputedRect`] those descendants were given the last time they were shown. Hiding a menu root
-/// therefore leaves stale rectangles all the way down, and a draw pass that only checked each node's
-/// own `visible` flag would happily draw the buttons of a closed menu — which is precisely what a
-/// pause menu does on every keypress.
-///
-/// Removing the rectangle instead would be a structural change on every toggle, and avoiding exactly
-/// that is why `visible` is a field rather than a despawn. So the check belongs here.
-fn ancestry(world: &World, entity: Entity, focused: Option<Entity>) -> (bool, bool) {
-    let mut current = entity;
-    let mut highlighted = false;
-
-    for _ in 0..crate::layout::MAX_DEPTH {
-        let Some(node) = world.get::<UiNode>(current) else {
-            // Off the top of the interface. A UI node whose parent is not a UI node is a root —
-            // layout says so — and a gameplay entity cannot hide one.
-            return (true, highlighted);
-        };
-        if !node.visible {
-            return (false, highlighted);
-        }
-        if Some(current) == focused {
-            highlighted = true;
-        }
-        match world.get::<Parent>(current) {
-            Some(parent) => current = parent.0,
-            None => return (true, highlighted),
-        }
-    }
-
-    // Deeper than layout is willing to walk, so this node has no rectangle worth believing either.
-    (false, highlighted)
 }
 
 /// Every visible panel, as a quad, in draw order.

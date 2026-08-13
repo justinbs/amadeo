@@ -711,6 +711,12 @@ fn dispatch(
                 let systems = app.resolved_order(stage).map_err(|error| {
                     request.bad_params(format!("stage `{}`: {error}", stage.name()))
                 })?;
+                // ADR 0065. A second array rather than turning `systems` into objects, so a client
+                // written against the old shape keeps working — and so the common case, a stage
+                // where nothing is flagged, stays one empty array rather than a wrapper per system.
+                let while_paused = app.while_paused_order(stage).map_err(|error| {
+                    request.bad_params(format!("stage `{}`: {error}", stage.name()))
+                })?;
 
                 stages.push(Json::object([
                     ("stage", Json::string(stage.name())),
@@ -718,6 +724,10 @@ fn dispatch(
                     (
                         "systems",
                         Json::Array(systems.into_iter().map(Json::string).collect()),
+                    ),
+                    (
+                        "runs_while_paused",
+                        Json::Array(while_paused.into_iter().map(Json::string).collect()),
                     ),
                 ]));
             }
@@ -1035,6 +1045,27 @@ mod tests {
         assert!(text.contains(r#""stage":"Simulation""#), "got: {text}");
         assert!(text.contains(r#""deterministic":true"#), "got: {text}");
         assert!(text.contains(r#""systems":["drift"]"#), "got: {text}");
+        // ADR 0065. Reported even when empty, because "no system runs while paused" and "this
+        // build does not report it" are different answers and a client must be able to tell them
+        // apart.
+        assert!(text.contains(r#""runs_while_paused":[]"#), "got: {text}");
+    }
+
+    #[test]
+    fn schedule_list_names_the_systems_that_survive_a_pause() {
+        let mut app = test_app();
+        app.add_system(
+            Stage::Simulation,
+            crate::system("navigate_menu", |_world: &mut World| {}).while_paused(),
+        );
+
+        let replies = converse(&mut app, 0, &[&call("schedule.list", r#"{}"#)]);
+        let text = replies[0].to_compact();
+
+        assert!(
+            text.contains(r#""runs_while_paused":["navigate_menu"]"#),
+            "got: {text}"
+        );
     }
 
     #[test]

@@ -61,6 +61,6 @@ pub use agent::{
     SNAPSHOT_FLAG, TICKS_FLAG, agent_options, agent_options_from, requested_seed, seed_from, serve,
     serve_if_requested,
 };
-pub use app::{App, SimRng};
+pub use app::{App, Paused, SimRng};
 pub use profile::{Profiler, SystemTiming};
 pub use schedule::{Schedule, ScheduleError, Stage, SystemConfig, system};

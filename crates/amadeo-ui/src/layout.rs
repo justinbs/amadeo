@@ -73,6 +73,62 @@ pub fn layout_ui(world: &mut World, width: f32, height: f32) {
     }
 }
 
+/// Whether a node is really on screen, and whether the focus is on it or above it.
+///
+/// # Why this is not just `node.visible`
+///
+/// [`layout_ui`] skips a hidden node **and its descendants**, which means it never overwrites the
+/// [`ComputedRect`] those descendants were given the last time they were shown. Hiding a menu root
+/// therefore leaves stale rectangles all the way down, and every node inside it still says
+/// `visible: true` — because it is; it is its *parent* that is not.
+///
+/// Anything asking "is this node on screen" therefore has to walk upwards, and **two callers do**:
+/// the draw pass, where getting it wrong keeps drawing a closed menu's buttons, and
+/// [`focusable_in_order`](crate::focus) in the simulation, where getting it wrong lets "confirm"
+/// activate a button nobody can see. Both bugs were real, an hour apart, which is why there is one
+/// walk rather than two.
+///
+/// # It is safe inside the deterministic zone
+///
+/// It reads `Parent` and a `bool`. No rectangle, no pointer, no screen size — so the answer is the
+/// same at every resolution, which is the property ADR 0063 exists to protect.
+///
+/// # Two answers from one walk
+///
+/// Both questions are about the same ancestors, so asking them separately would climb the tree twice
+/// to learn one thing. Callers that only want the first use [`is_shown`].
+pub(crate) fn ancestry(world: &World, entity: Entity, focused: Option<Entity>) -> (bool, bool) {
+    let mut current = entity;
+    let mut highlighted = false;
+
+    for _ in 0..MAX_DEPTH {
+        let Some(node) = world.get::<UiNode>(current) else {
+            // Off the top of the interface. A UI node whose parent is not a UI node is a root — see
+            // `roots` — and a gameplay entity cannot hide one.
+            return (true, highlighted);
+        };
+        if !node.visible {
+            return (false, highlighted);
+        }
+        if Some(current) == focused {
+            highlighted = true;
+        }
+        match world.get::<Parent>(current) {
+            Some(parent) => current = parent.0,
+            None => return (true, highlighted),
+        }
+    }
+
+    // Deeper than the layout walk is willing to go, so this node has no rectangle worth believing
+    // either.
+    (false, highlighted)
+}
+
+/// Whether this node and every UI node above it is visible.
+pub(crate) fn is_shown(world: &World, entity: Entity) -> bool {
+    ancestry(world, entity, None).0
+}
+
 /// Every UI node with no UI node above it, in entity order.
 ///
 /// A node whose `Parent` points at something that is *not* a UI node is a root: attaching a menu to

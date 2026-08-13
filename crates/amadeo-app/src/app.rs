@@ -111,6 +111,40 @@ impl Reflect for SimRng {
     }
 }
 
+/// Whether gameplay is suspended — ADR 0065.
+///
+/// # What it does
+///
+/// While `paused` is true, [`App::step`] skips every system in `Simulation` and `PostSimulation`
+/// **except** those registered with [`SystemConfig::while_paused`]. `PreSimulation` still runs in
+/// full, because input has to be sampled or nothing could ever unpause. `Render` and `Present` are
+/// untouched, because the menu has to be drawn.
+///
+/// **The tick keeps advancing.** That is deliberate and load-bearing: menu navigation is hashed
+/// state driven by hashed input, and `amadeo-input` records input per tick, so a frozen tick would
+/// leave a keypress in a menu with nowhere in a replay to live. It also means `advance_real_time`
+/// keeps consuming its backlog on cheap paused ticks, so there is nothing banked to burst through on
+/// unpause.
+///
+/// # Why it is hashed rather than a service
+///
+/// Whether you are paused is gameplay state: a save should restore it, and a replay must reproduce
+/// it or two runs disagree about which systems ran. Being an ordinary reflected resource is also
+/// what makes it visible to `amadeo query` and restorable from a snapshot, with nothing built.
+///
+/// # The engine never writes it
+///
+/// A game decides that Escape means pause — invariant I4 one level up, the same split ADR 0061 uses
+/// for footsteps and ADR 0063 for buttons. A game with no pause never inserts this, and pays one
+/// `Option` lookup per tick.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub struct Paused {
+    /// True while the gameplay stages are being skipped.
+    pub paused: bool,
+}
+
+impl Resource for Paused {}
+
 /// How many simulation ticks a single real-time frame may run.
 ///
 /// Without a cap, a long stall (a debugger pause, a slow asset load, a laptop resuming from sleep)
@@ -930,6 +964,18 @@ impl App {
         }
     }
 
+    /// The systems in a stage that keep running while the game is paused (ADR 0065).
+    ///
+    /// A subset of [`App::resolved_order`], in the same order. Surfaced by `schedule.list` so that
+    /// **"why did my system not run" is answerable without reading the game's source** — invariant
+    /// I5's standard applied to a scheduling rule rather than to data.
+    pub fn while_paused_order(&mut self, stage: Stage) -> Result<Vec<&'static str>, ScheduleError> {
+        match self.schedules.get_mut(&stage) {
+            Some(schedule) => schedule.while_paused_labels(),
+            None => Ok(Vec::new()),
+        }
+    }
+
     /// Runs exactly one simulation tick.
     ///
     /// The order here is the deterministic zone from ADR 0005:
@@ -941,10 +987,29 @@ impl App {
     /// 3. the tick counter advances
     ///
     /// `Render` and `Present` are not touched, which is why this is identical headless or windowed.
+    ///
+    /// # Pausing (ADR 0065)
+    ///
+    /// A [`Paused`] resource set to true makes `Simulation` and `PostSimulation` run only the
+    /// systems that declared [`SystemConfig::while_paused`]. Steps 2 and 3 still happen — **the tick
+    /// never stops** — and `PreSimulation` still runs in full, so input is sampled and the game can
+    /// unpause.
     pub fn step(&mut self) -> Result<(), ScheduleError> {
+        // Read once, at the top, so pausing takes effect on the *next* tick rather than half-way
+        // through this one. Both are deterministic; this one is the one a person can reason about,
+        // because "which systems ran this tick" then does not depend on where in the schedule the
+        // toggle happened to sit.
+        let paused = self
+            .world
+            .resource::<Paused>()
+            .is_some_and(|state| state.paused);
+
         for stage in Stage::SIMULATION_STAGES {
+            // `PreSimulation` always runs in full. It is definitionally the stage before gameplay,
+            // and a game whose input sampling stopped could never unpause itself.
+            let skip_unflagged = paused && stage != Stage::PreSimulation;
             if let Some(schedule) = self.schedules.get_mut(&stage) {
-                schedule.run(&mut self.world)?;
+                schedule.run(&mut self.world, skip_unflagged)?;
             }
             // Flushing per stage rather than once per tick keeps stage boundaries meaningful: a
             // system in a later stage sees the structural changes an earlier stage requested.
@@ -1015,7 +1080,9 @@ impl App {
     pub fn render(&mut self) -> Result<(), ScheduleError> {
         for stage in [Stage::Render, Stage::Present] {
             if let Some(schedule) = self.schedules.get_mut(&stage) {
-                schedule.run(&mut self.world)?;
+                // Never paused. A pause menu that stopped being drawn the moment it opened would be
+                // a difficult thing to close.
+                schedule.run(&mut self.world, false)?;
             }
         }
         Ok(())

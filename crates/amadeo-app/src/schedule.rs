@@ -124,6 +124,7 @@ pub struct SystemConfig {
     label: &'static str,
     before: Vec<&'static str>,
     after: Vec<&'static str>,
+    while_paused: bool,
     run: Box<dyn FnMut(&mut World)>,
 }
 
@@ -135,6 +136,7 @@ impl fmt::Debug for SystemConfig {
             .field("label", &self.label)
             .field("before", &self.before)
             .field("after", &self.after)
+            .field("while_paused", &self.while_paused)
             .finish_non_exhaustive()
     }
 }
@@ -154,10 +156,44 @@ impl SystemConfig {
         self
     }
 
+    /// Declares that this system keeps running while the game is paused — ADR 0065.
+    ///
+    /// # What pausing is
+    ///
+    /// A [`Paused`](crate::Paused) resource set to true makes [`App::step`](crate::App::step) skip
+    /// every system in `Simulation` and `PostSimulation` **except** the ones that said this.
+    /// `PreSimulation` always runs, because input must be sampled or nothing could unpause;
+    /// `Render` and `Present` always run, because the menu has to be drawn.
+    ///
+    /// # What it is for
+    ///
+    /// The pause menu, and very little else. Menu navigation is hashed state changing in response to
+    /// hashed input, so it belongs in `Simulation` (ADR 0063) — and it is the one thing that must
+    /// carry on while the world it is drawn over does not.
+    ///
+    /// This is Unreal's `bTickEvenWhenPaused` and Godot's `process_mode`: whether something keeps
+    /// running is a property of the thing, not a global rule somebody has to remember.
+    ///
+    /// # The mistake to watch for
+    ///
+    /// Flagging something that should freeze. A missing flag is visible — the menu will not move —
+    /// while a spurious one looks like the game quietly carrying on underneath the menu.
+    #[must_use]
+    pub fn while_paused(mut self) -> Self {
+        self.while_paused = true;
+        self
+    }
+
     /// This system's label.
     #[must_use]
     pub fn label(&self) -> &'static str {
         self.label
+    }
+
+    /// Whether this system declared [`SystemConfig::while_paused`].
+    #[must_use]
+    pub fn runs_while_paused(&self) -> bool {
+        self.while_paused
     }
 }
 
@@ -180,6 +216,7 @@ pub fn system(label: &'static str, run: impl FnMut(&mut World) + 'static) -> Sys
         label,
         before: Vec::new(),
         after: Vec::new(),
+        while_paused: false,
         run: Box::new(run),
     }
 }
@@ -257,6 +294,21 @@ impl Schedule {
         Ok(order.iter().map(|&i| self.systems[i].label).collect())
     }
 
+    /// The labels of the systems that declared [`SystemConfig::while_paused`], in execution order.
+    ///
+    /// Reported by `schedule.list` so that **"why did my system not run" is answerable without
+    /// reading the game's source** — which is invariant I5's standard applied to a scheduling rule
+    /// rather than to data.
+    pub fn while_paused_labels(&mut self) -> Result<Vec<&'static str>, ScheduleError> {
+        self.resolve()?;
+        let order = self.order.as_ref().expect("resolve succeeded");
+        Ok(order
+            .iter()
+            .filter(|&&i| self.systems[i].while_paused)
+            .map(|&i| self.systems[i].label)
+            .collect())
+    }
+
     /// Runs every system in this stage, in resolved order, timing each one.
     ///
     /// # The clock read is safe, and ADR 0009 is why
@@ -269,7 +321,13 @@ impl Schedule {
     /// A world with no profiler installed pays for neither the clock reads nor the lookup, which is
     /// what keeps this honest for anything constructing a `World` directly rather than through
     /// [`App`](crate::App).
-    pub fn run(&mut self, world: &mut World) -> Result<(), ScheduleError> {
+    ///
+    /// # `paused`
+    ///
+    /// When true, only systems that declared [`SystemConfig::while_paused`] run (ADR 0065). The
+    /// resolved **order** is unaffected — skipping is a filter over the same sequence, so a paused
+    /// tick runs a subsequence of an unpaused one rather than a differently ordered list.
+    pub fn run(&mut self, world: &mut World, paused: bool) -> Result<(), ScheduleError> {
         self.resolve()?;
         // Cloned so the borrow of `self.order` ends before `self.systems` is borrowed mutably.
         let order = self.order.clone().expect("resolve succeeded");
@@ -278,12 +336,20 @@ impl Schedule {
         // stage runs, and a service lookup per system would cost more than the timing it guards.
         if !world.has_service::<Profiler>() {
             for index in order {
+                if paused && !self.systems[index].while_paused {
+                    continue;
+                }
                 (self.systems[index].run)(world);
             }
             return Ok(());
         }
 
         for index in order {
+            if paused && !self.systems[index].while_paused {
+                // Not timed either. A system that did not run has no duration, and recording a zero
+                // would put a row in the profile for work nobody did.
+                continue;
+            }
             let label = self.systems[index].label;
             let started = Instant::now();
             (self.systems[index].run)(world);
@@ -571,8 +637,55 @@ mod tests {
         }
 
         let mut world = World::new();
-        schedule.run(&mut world).expect("resolvable");
+        schedule.run(&mut world, false).expect("resolvable");
         assert_eq!(*log.borrow(), vec!["first", "second", "third"]);
+    }
+
+    #[test]
+    fn a_paused_stage_runs_only_the_systems_that_asked_to() {
+        // ADR 0065. The order is a *filter* over the same resolved sequence, not a different
+        // sequence — so a paused tick is a subsequence of an unpaused one, and a system cannot find
+        // itself running before something it declared it comes after.
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let mut schedule = Schedule::new(Stage::Simulation);
+
+        for label in ["menu", "physics", "zzz_also_menu"] {
+            let log = Rc::clone(&log);
+            let config = system(label, move |_world: &mut World| {
+                log.borrow_mut().push(label);
+            });
+            schedule.add(if label.contains("menu") {
+                config.while_paused()
+            } else {
+                config
+            });
+        }
+
+        let mut world = World::new();
+        schedule.run(&mut world, true).expect("resolvable");
+        assert_eq!(*log.borrow(), vec!["menu", "zzz_also_menu"]);
+
+        log.borrow_mut().clear();
+        schedule.run(&mut world, false).expect("resolvable");
+        assert_eq!(*log.borrow(), vec!["menu", "physics", "zzz_also_menu"]);
+    }
+
+    #[test]
+    fn the_flagged_systems_are_reportable() {
+        // Without this the answer to "why did my system not run" is in the game's source, which is
+        // exactly what invariant I5 says an agent must not have to read.
+        let mut schedule = Schedule::new(Stage::Simulation);
+        schedule.add(system("physics", noop));
+        schedule.add(system("menu", noop).while_paused());
+
+        assert_eq!(labels(&mut schedule), vec!["menu", "physics"]);
+        assert_eq!(
+            schedule.while_paused_labels().expect("resolvable"),
+            vec!["menu"]
+        );
     }
 
     #[test]
@@ -581,7 +694,7 @@ mod tests {
         assert!(schedule.is_empty());
         assert_eq!(schedule.len(), 0);
         let mut world = World::new();
-        assert!(schedule.run(&mut world).is_ok());
+        assert!(schedule.run(&mut world, false).is_ok());
     }
 
     #[test]

@@ -190,10 +190,22 @@ pub fn navigate_focus(world: &mut World) {
 /// Skips anything hidden or disabled. Sorted by authored order, then by entity — which is the order
 /// a scene file lists them, so items left at the default order still traverse the way they were
 /// written rather than arbitrarily.
+///
+/// # Hidden means hidden *anywhere above it*, and that is not a detail
+///
+/// A menu is hidden by toggling one flag on its root, so the buttons inside it still say
+/// `visible: true` — it is their parent that does not. Checking each item's own flag therefore lets
+/// the focus land inside a closed menu, and the next `confirm` activates a button nobody can see.
+/// **That is the exact bug ADR 0063 names in its consequences**, and it was here anyway: found by
+/// `games/atrium`'s pause menu, which is what a demo is for.
+///
+/// [`ancestry`](crate::layout::ancestry) is the same walk the draw pass uses, deliberately shared —
+/// it reads `Parent` and a `bool` and no rectangle, so it is safe inside the deterministic zone.
 fn focusable_in_order(world: &World) -> Vec<Entity> {
     let mut items: Vec<(i32, Entity)> = world
         .query::<(&Focusable, &UiNode)>()
-        .filter(|(_, (focusable, node))| focusable.enabled && node.visible)
+        .filter(|(_, (focusable, _))| focusable.enabled)
+        .filter(|(entity, _)| crate::layout::is_shown(world, *entity))
         .map(|(entity, (focusable, _))| (focusable.order, entity))
         .collect();
 
@@ -379,6 +391,46 @@ mod tests {
         );
         press(&mut world, UI_NEXT);
         assert_eq!(focused(&world), Some(items[0]));
+    }
+
+    #[test]
+    fn hiding_a_menu_takes_its_items_out_of_the_navigation() {
+        // **The pause-menu bug, found by an actual pause menu.** A menu is hidden by toggling one
+        // flag on its root; the buttons inside it still say `visible: true`. Checking only each
+        // item's own flag let the focus land inside a closed menu, and the next `confirm` activated
+        // a button nobody could see — which is the failure ADR 0063 names and which was in the code
+        // that named it.
+        let mut world = World::new();
+        world.insert_resource(Focus::default());
+        world.insert_resource(InputState::new());
+        world.register_event::<UiActivated>();
+
+        let menu = world.spawn();
+        world.insert(menu, UiNode::full());
+
+        let button = world.spawn();
+        world.insert(button, amadeo_transform::Parent(menu));
+        world.insert(button, UiNode::sized(100.0, 30.0));
+        world.insert(button, Focusable::at(0));
+
+        press(&mut world, UI_NEXT);
+        assert_eq!(focused(&world), Some(button), "the control case");
+
+        // Close the menu at its root. The button is untouched.
+        world.insert(
+            menu,
+            UiNode {
+                visible: false,
+                ..UiNode::full()
+            },
+        );
+        press(&mut world, UI_CONFIRM);
+
+        assert_eq!(focused(&world), None);
+        assert!(
+            activations(&mut world).is_empty(),
+            "confirming must not activate a button inside a closed menu"
+        );
     }
 
     #[test]

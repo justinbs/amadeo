@@ -7,33 +7,31 @@ Priority: **P0** blocks work now · **P1** needed for the current milestone · *
 
 ---
 
-## Q35 · P1 · How a game moves between screens
+## ~~Q35~~ · **Resolved — ADR 0065.** Pausing is a per-system opt-in, and the engine has no screens
 
-**Raised in session 16, on finishing the interface and noticing nothing drives it.** M3's exit gate
-item 1 is *"title screen → playable loop → lose state → win state → pause → save → quit → resume"* —
-which is a **state machine over the whole game**, and the engine has no opinion about one.
+Four questions were bundled together and only one turned out to be expensive, which is worth noting
+as a pattern — it is the third time now (see Q3 below, twice).
 
-Everything a screen is made of now exists: a menu is a scene file, `UiNode::visible` hides one
-without disturbing archetypes, focus navigation works, and `UiActivated` says a button was chosen.
-What is missing is the thing above them. Concretely, nobody has decided:
+The expensive one was **what still runs while paused**, because the answer reaches into the schedule
+that every game and module registers against. It is a `.while_paused()` flag on a system, which is
+Unreal's `bTickEvenWhenPaused` and Godot's `process_mode`: two of the three large engines make this a
+property of the *thing* rather than a global rule, and the third — Unity — is the one where every
+game re-implements a pause by hand.
 
-- **Where the current screen lives.** A hashed resource is the obvious answer, and it has to be
-  hashed — which screen you are on is gameplay, a save must restore it, and a replay must reproduce
-  it.
-- **What a transition does to the world.** Loading a level while a title screen is up is a very
-  different lifetime from toggling a pause menu over a running game. One despawns and rebuilds; the
-  other must leave the simulation *exactly* alone, including its tick.
-- **Whether pausing stops the simulation, and what that means for a fixed timestep.** Not running
-  `Stage::Simulation` is easy; the trap is that anything reading wall-clock time to catch up will
-  then run a burst of ticks the moment you unpause. `App::advance_real_time` already caps its
-  backlog, which is most of the answer, but nobody has checked it against a pause.
-- **Whether this belongs in the engine at all.** It may be a `modules/` concern, or even a per-game
-  one — an argument for I4, since "what screens exist" is genre knowledge.
+The other three answered themselves once the first was settled:
 
-Prior: **a hashed `Screen` resource plus stage gating**, with the transition itself left to the game.
-Decide before building the pause menu, because the menu is the first thing that needs an answer and
-the wrong one is expensive: a screen system that despawns the world is not something a pause menu can
-be retrofitted onto.
+- **Where the screen lives: in the game.** What screens exist is genre knowledge (I4), and a game's
+  own hashed resource already gets reflection, snapshots and `amadeo query` for nothing.
+  `games/atrium` has a three-value `Screen`, and `Paused` is projected from it by one system.
+- **Whether pausing stops the tick: no.** The counter keeps advancing, because menu navigation is
+  hashed state driven by input recorded **per tick** — freeze the tick and a keypress in a menu has
+  nowhere in a replay to live.
+- **The unpause burst: cannot happen**, and for the same reason. `advance_real_time` keeps consuming
+  its accumulator on cheap paused ticks, so nothing is ever banked. Nothing in the loop changed.
+
+**What a transition does to the world is still undecided, and deliberately so** — pausing does not
+touch entity lifetimes, so the expensive mistake Q35 warned about is not available. That question
+comes back when something has to load a level from a title screen.
 
 ---
 

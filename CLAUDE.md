@@ -589,7 +589,8 @@ crates/
                      docs/07, which the reply points at. `render.capture` is served by the *host* in amadeo-app, since it needs an App.
                      Mutation pending.
                      ADR 0016, spec in docs/protocol/v1.md.
-✅ amadeo-app         Stage/Schedule, fixed-timestep loop, SimRng, ComponentRegistry, **`asset_problems`
+✅ amadeo-app         Stage/Schedule, fixed-timestep loop, SimRng, ComponentRegistry, **pausing (ADR
+                     0065)**, **`asset_problems`
                      — an asset whose file names a component it then failed to build says which
                      asset, which component and which field.** Not a missing-asset report; those are
                      survivable by design (ADR 0021). This is the narrower case that is always a
@@ -601,6 +602,27 @@ crates/
                      hash -- see ADR 0009), and the agent
                      *host* — serve_if_requested reads stdin and answers. The host lives here rather
                      than in amadeo-agent because it needs App and I6 forbids reaching down.
+                     **Pausing is a per-system opt-in (ADR 0065, closing Q35).** A hashed `Paused`
+                     resource makes `step` skip `Simulation` and `PostSimulation` except systems
+                     registered `.while_paused()` -- Unreal's `bTickEvenWhenPaused` and Godot's
+                     `process_mode`, where the property belongs to the *thing* rather than to a
+                     global rule. `PreSimulation` always runs, or nothing could ever unpause;
+                     `Render` always runs, or the menu could not be drawn.
+                     **BOTH gameplay stages, and the second is not an afterthought**: the Atrium's
+                     `play_footsteps` is in `PostSimulation` and reads a velocity that does not
+                     change while paused, so skipping only `Simulation` taps out footsteps forever
+                     in a room nobody is walking through.
+                     **The tick NEVER stops.** Menu navigation is hashed state driven by input
+                     recorded per tick, so a frozen counter strands a keypress outside the replay
+                     format -- and because ticks keep running, `advance_real_time` keeps consuming
+                     its accumulator, so there is no backlog to burst through on unpause and nothing
+                     in the loop changed. `Paused` is read ONCE at the top of `step`, so a pause
+                     takes effect next tick rather than half-way through this one.
+                     **The engine never writes it, and has no concept of a SCREEN** -- what screens
+                     exist is genre knowledge (I4), so a game declares its own hashed resource and
+                     projects `Paused` from it. `schedule.list` reports `runs_while_paused` beside
+                     `systems`, because "why did my system not run" must be answerable without
+                     reading the game's source.
 — amadeo-editor      graphical editor. A CLIENT of amadeo-agent. No privileged access.
 🟡 amadeo-cli         the `amadeo` binary. Built: describe/query/entity/schedule/status/call/check/
                      replay/fmt/assets/**audio**/import/import-gltf/snapshot/capture (import takes `--assets <dir>` to work on a
@@ -689,6 +711,16 @@ games/               actual games built with the engine
                    licence beside the `.ttf`, which is what OFL requires). The whole HUD is authored
                    in `atrium.scene`, so ADR 0062's claim that a menu is a scene file is cashed
                    rather than asserted.
+                   **It has a pause menu, which is the first thing to use layout, text, focus,
+                   theme and pausing at once** (ADR 0065). Escape opens it; the three buttons are
+                   authored in `atrium.scene` and each carries a `MenuButton` saying what it means
+                   -- which is ADR 0063's split cashed, since `UiActivated` names an entity and
+                   deliberately nothing else. `Screen` is this game's hashed resource and the
+                   AUTHORITY; `apply_screen` projects it onto the engine's `Paused` and onto the
+                   menu's visibility every tick, so the two cannot drift into a menu over a running
+                   game. **Only the game auto-focuses** -- `navigate_focus` will not, by design.
+                   Building it found the ancestor-visibility defect twice, once in the draw pass and
+                   once in `focusable_in_order`, which is what a demo is for.
 docs/                design docs and ADRs
 spikes/              separate cargo workspaces holding the evidence behind an ADR. Frozen once
                      written; excluded from the engine workspace. See spikes/README.md.

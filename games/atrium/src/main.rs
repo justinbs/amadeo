@@ -19,7 +19,8 @@ use amadeo_audio::{Audio, KiraAudio};
 use amadeo_character::{JUMP, MOVE_FORWARD, MOVE_RIGHT, TURN};
 use amadeo_input::{InputDriver, LiveSource};
 use amadeo_render::{RENDER_QUADS, Renderer, WgpuBackend, render_quads};
-use atrium::{build_headless, build_simulation};
+use amadeo_ui::{UI_CONFIRM, UI_NEXT, UI_PREVIOUS};
+use atrium::{PAUSE, Screen, build_headless, build_simulation};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -73,6 +74,14 @@ struct HeldKeys {
     turn_left: bool,
     turn_right: bool,
     jump: bool,
+    /// Escape, which opens and closes the pause menu.
+    pause: bool,
+    /// The menu keys. Deliberately the same arrows that walk: while the menu is up the character's
+    /// systems are not running (ADR 0065), so there is nothing for them to collide with, and while
+    /// it is down there is no visible menu for them to move a focus around.
+    menu_next: bool,
+    menu_previous: bool,
+    menu_confirm: bool,
 }
 
 /// Everything that exists only once a window has been created.
@@ -110,6 +119,13 @@ impl Atrium {
                 live.set_axis_from_keys(MOVE_RIGHT, keys.left, keys.right);
                 live.set_axis_from_keys(TURN, keys.turn_right, keys.turn_left);
                 live.set_button(JUMP, keys.jump);
+                // The menu. These are *named actions* like every other line here, which is what
+                // lets a replay record a player pausing and choosing without the replay format
+                // knowing anything about menus (ADR 0063).
+                live.set_button(PAUSE, keys.pause);
+                live.set_button(UI_NEXT, keys.menu_next);
+                live.set_button(UI_PREVIOUS, keys.menu_previous);
+                live.set_button(UI_CONFIRM, keys.menu_confirm);
             });
     }
 }
@@ -156,7 +172,8 @@ impl ApplicationHandler for Atrium {
         // To **stderr**, not stdout: stdout is the agent protocol (ADR 0016), and a game that prints
         // there is reported as sending something that is not JSON.
         eprintln!("Amadeo — the Atrium.");
-        eprintln!("WASD to walk, Q and E to turn, Space to jump, Escape to quit.");
+        eprintln!("WASD to walk, Q and E to turn, Space to jump.");
+        eprintln!("Escape to pause; arrows and Enter to choose.");
 
         self.running = Some(Running {
             window,
@@ -188,14 +205,28 @@ impl ApplicationHandler for Atrium {
             } => {
                 let held = state == ElementState::Pressed;
                 match code {
-                    KeyCode::Escape => event_loop.exit(),
-                    KeyCode::KeyW | KeyCode::ArrowUp => self.keys.forward = held,
-                    KeyCode::KeyS | KeyCode::ArrowDown => self.keys.back = held,
+                    // **No longer an exit.** Escape opens the pause menu, and "quit" is a button in
+                    // it — which is what M3's exit gate means by a game rather than a demo.
+                    KeyCode::Escape => self.keys.pause = held,
+                    KeyCode::KeyW => self.keys.forward = held,
+                    KeyCode::KeyS => self.keys.back = held,
                     KeyCode::KeyA => self.keys.left = held,
                     KeyCode::KeyD => self.keys.right = held,
-                    KeyCode::KeyQ | KeyCode::ArrowLeft => self.keys.turn_left = held,
-                    KeyCode::KeyE | KeyCode::ArrowRight => self.keys.turn_right = held,
+                    KeyCode::KeyQ => self.keys.turn_left = held,
+                    KeyCode::KeyE => self.keys.turn_right = held,
                     KeyCode::Space => self.keys.jump = held,
+                    // The arrows walk *and* move the menu. See `HeldKeys` for why that is safe.
+                    KeyCode::ArrowUp => {
+                        self.keys.forward = held;
+                        self.keys.menu_previous = held;
+                    }
+                    KeyCode::ArrowDown => {
+                        self.keys.back = held;
+                        self.keys.menu_next = held;
+                    }
+                    KeyCode::ArrowLeft => self.keys.turn_left = held,
+                    KeyCode::ArrowRight => self.keys.turn_right = held,
+                    KeyCode::Enter | KeyCode::NumpadEnter => self.keys.menu_confirm = held,
                     _ => {}
                 }
             }
@@ -218,6 +249,15 @@ impl ApplicationHandler for Atrium {
                     if let Err(error) = running.app.render() {
                         eprintln!("render error: {error}");
                     }
+
+                    // The one thing the simulation cannot do for itself. Closing a window is not
+                    // gameplay, so the menu records the *decision* in a hashed resource — which
+                    // replays and snapshots like anything else — and the platform layer acts on it.
+                    if running.app.world.resource::<Screen>() == Some(&Screen::Quitting) {
+                        event_loop.exit();
+                        return;
+                    }
+
                     running.window.request_redraw();
                 }
             }
