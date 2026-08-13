@@ -437,12 +437,15 @@ invariant I3 for every menu in every game. Navigation reads `ui_next`/`ui_previo
 which `InputState` already hashes — so **a menu replays with no change to the replay format**.
 Choosing raises `UiActivated`, and the game decides what a button means.
 
-⚠️ **Text rendering — decided, unbuilt.** `cosmic-text` (ADR 0062): full shaping, bidirectional text,
-line breaking and font fallback. Chosen over the smaller glyph-atlas option because the only argument
-for the smaller one was scope, and "localisation later" is exactly the deferred problem that shape
-describes. Still the largest remaining piece of this subsystem.
-⚠️ **Drawing.** A panel is a quad and a glyph is a textured quad, so the sprite path already covers it
-and `SortOrder` already stacks UI over the world — but nothing is wired up yet.
+✅ **Text rendering — `cosmic-text` (ADR 0062).** Full shaping, bidirectional text, line breaking and
+font fallback. Chosen over the smaller glyph-atlas option because the only argument for the smaller
+one was scope, and "localisation later" is exactly the deferred problem that shape describes. A game
+ships its fonts: `FontCache` starts with an empty database rather than reading the operating
+system's, and a missing font shapes to **nothing** rather than to a substitute.
+✅ **Drawing.** A panel is a quad and a glyph is a tile of one atlas, so ADR 0023's batching already
+covered it and the renderer needed nothing new — a page of text is one draw call. `collect_ui` fills
+`amadeo-render`'s `Overlay` slot, which is `TextureCache`'s inversion again: the renderer owns the
+slot and something above it fills it.
 ⚠️ **Pointer and spatial navigation** are not built, and belong *outside* the deterministic zone —
 a presentation-side system writing through the same `Focus` resource. `ComputedRect::contains` is the
 primitive and is currently unused.
@@ -454,8 +457,19 @@ density and are tokens; margin is placement and stays literal. The default is bo
 safety orange and no rounding — chosen from four mocked-up directions, and built in code so it cannot
 be missing.
 
-⚠️ **Nothing draws the focus differently yet.** `Paint::Accent` exists and the focused entity is known
-(ADR 0063); no widget consults it. Small, and the next piece.
+✅ **The focus is drawn, and it is drawn in the draw pass.** A focused `Panel` resolves to
+`FOCUS_PANEL` (`Accent`) and text inside it to `FOCUS_TEXT` (`OnAccent`), substituted on the way into
+a `View`. That placement is the decision: `Focus` is hashed because *where* the highlight sits is
+gameplay, but repainting the `Panel` component would write the theme into the state hash and make two
+players with different looks simulate differently. The rule comes from the palette rather than from
+taste — ADR 0064 already documents `Accent` as meaning focus — so a menu authored knowing nothing
+about focus highlights correctly, where a per-widget opt-in would be silent when forgotten. A
+per-widget override is additive if one is ever wanted.
+✅ **Effective visibility is an ancestor question.** Layout skips a hidden node *and its
+descendants*, so it never overwrites the rectangles those descendants had while they were shown —
+which means a draw pass checking only each node's own `visible` flag keeps drawing a closed menu's
+buttons off stale rectangles. Found while wiring the focus up, and it is the first thing a pause menu
+would have hit.
 ⚠️ **Wrapping and intrinsic sizing** are both absent by design. Neither is needed by a title screen, a
 pause menu or a HUD, and both are additive. Adding them speculatively is building what `taffy` already
 does better.

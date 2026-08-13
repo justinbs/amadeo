@@ -550,7 +550,21 @@ crates/
                      state hash -- two players with different themes must simulate identically).
                      **Colours are written in sRGB and converted once**, because `0.0044` does not
                      read as "near-black" to anyone. sRGB `0x80` is **0.216** linear, not 0.5.
-                     Still to come: drawing the focus differently, which is now small.
+                     **The focus is drawn, and the substitution happens in the DRAW PASS** -- a
+                     focused `Panel` resolves to `FOCUS_PANEL` (`Accent`) and text inside it to
+                     `FOCUS_TEXT` (`OnAccent`), on the way into a `View`. Repainting the *component*
+                     would write the theme into the state hash, which is ADR 0063's split seen from
+                     the other side. The rule comes from the palette rather than from taste --
+                     `Accent` is documented as meaning focus -- so a menu authored knowing nothing
+                     about focus highlights correctly, where a per-widget opt-in is silent when
+                     forgotten. Reaches **descendants**, because a menu item is a panel with a label
+                     inside it.
+                     **Hiding a node must be checked against its ANCESTORS, not its own flag.**
+                     Layout skips a hidden subtree and therefore never overwrites the descendants'
+                     `ComputedRect`, so a closed menu's buttons keep drawing off stale rectangles --
+                     found while wiring the focus up, and the first thing a pause menu would have
+                     hit. `ancestry` answers both questions in one upward walk.
+                     Still to come: pointer navigation.
 ✅ amadeo-snapshot    the .snapshot text format (ADR 0028): capture a whole world to a file and put
                      it back. Sits above amadeo-scene because it borrows that crate's scalar
                      encoding — format_float is subtle and two copies would drift. **It captures the

@@ -27,7 +27,11 @@ use amadeo_transform::Parent;
 ///
 /// A cycle in `Parent` is possible — nothing forbids it — and the honest failure is to stop rather
 /// than to recurse forever. The same guard `propagate_transforms` uses, and the same number.
-const MAX_DEPTH: usize = 64;
+///
+/// Shared with the draw pass, which walks the same tree upwards. Two numbers would let a node be
+/// laid out by one and skipped by the other, and the symptom would be a widget that draws with a
+/// rectangle nothing believes in.
+pub(crate) const MAX_DEPTH: usize = 64;
 
 /// Lays out every UI tree in the world against a screen of `width` by `height` pixels.
 ///

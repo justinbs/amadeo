@@ -21,15 +21,31 @@
 //!
 //! It draws at [`UI_ORDER`], well above anything a game is likely to use, and ADR 0018's rule still
 //! decides what is on top *within* the interface.
+//!
+//! # The focus is drawn here, and that placement is the decision
+//!
+//! [`Focus`] is a hashed resource — where the highlight sits is gameplay (ADR 0063). **What the
+//! highlight looks like is not**, and the two must not be confused: repainting a [`Panel`] component
+//! would write the theme into the state hash and make two players with different looks simulate
+//! differently. So the substitution happens at collection, on the way to a `View`, where nothing it
+//! touches can be hashed.
+//!
+//! The rule is [`FOCUS_PANEL`] and [`FOCUS_TEXT`], and it comes from the palette rather than from
+//! taste: ADR 0064's `Accent` is documented as "focus, selection, and the one thing on screen asking
+//! to be looked at", so a theme has already said what a focused thing should be painted. A menu
+//! authored with no knowledge of focus therefore highlights correctly, which is the property worth
+//! having — the alternative is a per-widget opt-in that is silent when forgotten.
 
 use crate::components::{ComputedRect, UiNode};
+use crate::focus::Focus;
 use crate::text::FontCache;
-use crate::theme::Theme;
+use crate::theme::{Paint, Theme};
 use crate::{GLYPH_ATLAS_ID, Panel, Text};
 use amadeo_ecs::{Entity, World};
 use amadeo_render::{
     Camera, Overlay, Projection, QuadInstance, SpriteBatch, SpriteInstance, TextureCache, View,
 };
+use amadeo_transform::Parent;
 
 /// The camera order the interface draws at.
 ///
@@ -37,6 +53,20 @@ use amadeo_render::{
 /// ordinary number rather than `i32::MAX` so a game *can* deliberately put something above it — a
 /// transition wipe, a debug overlay — without reaching for a special case.
 pub const UI_ORDER: i32 = 1000;
+
+/// What a [`Panel`] is painted with while it, or something above it, has the focus.
+///
+/// Not configurable, and deliberately so for now: the palette already assigns this meaning to
+/// `Accent`, so a second knob would be a second place for the answer to live. A per-widget override
+/// is additive — a component the draw pass consults instead of this constant — and nothing authored
+/// today would change if one were added.
+pub const FOCUS_PANEL: Paint = Paint::Accent;
+
+/// What [`Text`] is painted with while it sits inside the focused node.
+///
+/// The pair of [`FOCUS_PANEL`], because ink that stayed `Ink` on an accent fill would be the one
+/// unreadable thing on the screen.
+pub const FOCUS_TEXT: Paint = Paint::OnAccent;
 
 /// Reads laid-out nodes and hands the renderer a view of the interface.
 ///
@@ -68,8 +98,12 @@ pub fn collect_ui(world: &mut World) {
     // small, and holding a borrow would fight the world borrows below.
     let theme = world.service::<Theme>().cloned().unwrap_or_default();
 
-    let quads = collect_panels(world, &theme);
-    let batches = collect_text(world, &theme);
+    // Where the highlight sits. `None` in a game with no menu, and in every headless run — the
+    // resource is one a game installs, not one this crate requires.
+    let focused = world.resource::<Focus>().and_then(|focus| focus.entity);
+
+    let quads = collect_panels(world, &theme, focused);
+    let batches = collect_text(world, &theme, focused);
 
     if quads.is_empty() && batches.is_empty() {
         // Nothing to draw. An empty view would still cost the backend a pass and a clear.
@@ -107,12 +141,62 @@ pub fn collect_ui(world: &mut World) {
     }
 }
 
+/// Whether a node is really on screen, and whether the focus is on it or above it.
+///
+/// # Two answers, because they come from the same walk
+///
+/// Both questions are about a node's **ancestors**, so asking them separately would walk the tree
+/// twice to learn one thing.
+///
+/// # The visibility half is not the same as `node.visible`
+///
+/// Layout skips a hidden node *and its descendants*, which means it never overwrites the
+/// [`ComputedRect`] those descendants were given the last time they were shown. Hiding a menu root
+/// therefore leaves stale rectangles all the way down, and a draw pass that only checked each node's
+/// own `visible` flag would happily draw the buttons of a closed menu — which is precisely what a
+/// pause menu does on every keypress.
+///
+/// Removing the rectangle instead would be a structural change on every toggle, and avoiding exactly
+/// that is why `visible` is a field rather than a despawn. So the check belongs here.
+fn ancestry(world: &World, entity: Entity, focused: Option<Entity>) -> (bool, bool) {
+    let mut current = entity;
+    let mut highlighted = false;
+
+    for _ in 0..crate::layout::MAX_DEPTH {
+        let Some(node) = world.get::<UiNode>(current) else {
+            // Off the top of the interface. A UI node whose parent is not a UI node is a root —
+            // layout says so — and a gameplay entity cannot hide one.
+            return (true, highlighted);
+        };
+        if !node.visible {
+            return (false, highlighted);
+        }
+        if Some(current) == focused {
+            highlighted = true;
+        }
+        match world.get::<Parent>(current) {
+            Some(parent) => current = parent.0,
+            None => return (true, highlighted),
+        }
+    }
+
+    // Deeper than layout is willing to walk, so this node has no rectangle worth believing either.
+    (false, highlighted)
+}
+
 /// Every visible panel, as a quad, in draw order.
-fn collect_panels(world: &World, theme: &Theme) -> Vec<QuadInstance> {
+fn collect_panels(world: &World, theme: &Theme, focused: Option<Entity>) -> Vec<QuadInstance> {
     let mut panels: Vec<(i32, Entity, QuadInstance)> = world
         .query::<(&Panel, &UiNode, &ComputedRect)>()
-        .filter(|(_, (_, node, _))| node.visible)
-        .map(|(entity, (panel, _, rect))| (entity, theme.paint(panel.paint), panel.order, *rect))
+        .filter_map(|(entity, (panel, _, rect))| {
+            let (shown, highlighted) = ancestry(world, entity, focused);
+            let paint = if highlighted {
+                FOCUS_PANEL
+            } else {
+                panel.paint
+            };
+            shown.then(|| (entity, theme.paint(paint), panel.order, *rect))
+        })
         // Resolved *before* the transparency check, because whether a panel is invisible is a
         // property of the colour the theme gave it, not of the token that asked for one.
         .filter(|(_, colour, _, _)| colour[3] > 0.0)
@@ -141,7 +225,7 @@ fn collect_panels(world: &World, theme: &Theme) -> Vec<QuadInstance> {
 ///
 /// Needs the [`FontCache`] mutably — shaping rasterises — and the world shared, so the cache is taken
 /// out for the duration. The same shape `decode_frame_textures` uses one crate down.
-fn collect_text(world: &mut World, theme: &Theme) -> Vec<SpriteBatch> {
+fn collect_text(world: &mut World, theme: &Theme, focused: Option<Entity>) -> Vec<SpriteBatch> {
     if !world.has_service::<FontCache>() {
         return Vec::new();
     }
@@ -149,29 +233,34 @@ fn collect_text(world: &mut World, theme: &Theme) -> Vec<SpriteBatch> {
     let mut instances: Vec<(i32, Entity, SpriteInstance)> = Vec::new();
 
     world.with_service_taken::<FontCache, ()>(|world, fonts| {
-        let labels: Vec<(Entity, Text, ComputedRect)> = world
+        // The paint is resolved here rather than read off the component, so a label inside the
+        // focused node draws in `OnAccent` without anything having written that anywhere hashable.
+        let labels: Vec<(Entity, Text, Paint, ComputedRect)> = world
             .query::<(&Text, &UiNode, &ComputedRect)>()
-            .filter(|(_, (_, node, _))| node.visible)
             .filter(|(_, (text, _, _))| !text.content.is_empty())
-            .filter(|(_, (text, _, _))| theme.paint(text.paint)[3] > 0.0)
-            .map(|(entity, (text, _, rect))| (entity, text.clone(), *rect))
+            .filter_map(|(entity, (text, _, rect))| {
+                let (shown, highlighted) = ancestry(world, entity, focused);
+                let paint = if highlighted { FOCUS_TEXT } else { text.paint };
+                shown.then(|| (entity, text.clone(), paint, *rect))
+            })
+            .filter(|(_, _, paint, _)| theme.paint(*paint)[3] > 0.0)
             .collect();
 
         // Load every font a label names, before anything tries to shape with one. The same step
         // `decode_frame_textures` and `ensure_sounds` perform for their own asset kind, and cheap to
         // repeat: an id already loaded, or already failed, returns immediately.
         if let Some(assets) = world.service::<amadeo_assets::Assets>() {
-            for (_, text, _) in &labels {
+            for (_, text, _, _) in &labels {
                 fonts.ensure(&text.font, assets);
             }
         }
 
-        for (entity, text, rect) in labels {
+        for (entity, text, paint, rect) in labels {
             // Wrapped to the node's width, so a label in a narrow panel breaks rather than spilling.
             let wrap = if text.wrap { Some(rect.width) } else { None };
             // The tokens become numbers here, and nowhere else.
             let step = theme.scale(text.scale);
-            let colour = theme.paint(text.paint);
+            let colour = theme.paint(paint);
             let shaped = fonts.shape(&text.content, &text.font, step.size, step.line_height, wrap);
 
             for glyph in &shaped.glyphs {
@@ -454,6 +543,128 @@ mod tests {
         );
 
         assert!(drawn(&mut world, 800.0, 600.0).is_none());
+    }
+
+    #[test]
+    fn hiding_a_menu_hides_the_buttons_inside_it() {
+        // **The bug this was written to catch, found while wiring the focus up.** Layout skips a
+        // hidden node *and its descendants*, so it never overwrites the rectangles those descendants
+        // were given while the menu was open. A draw pass that only checked each node's own
+        // `visible` flag would keep drawing them off stale rectangles — a closed pause menu still on
+        // screen, which is the first thing a pause menu does.
+        let (mut world, root) = world_with_screen(400, 400);
+        let menu = child(&mut world, root, UiNode::full());
+        let button = child(&mut world, menu, UiNode::sized(100.0, 40.0));
+        world.insert(button, Panel::default());
+
+        assert!(
+            drawn(&mut world, 400.0, 400.0).is_some(),
+            "the menu is open, so the button should draw"
+        );
+
+        // Close it. The button's own node is untouched, and its rectangle is still there.
+        world.insert(
+            menu,
+            UiNode {
+                visible: false,
+                ..UiNode::full()
+            },
+        );
+        assert!(
+            world.get::<ComputedRect>(button).is_some(),
+            "the stale rectangle is the whole hazard — if this ever goes away, so does the test"
+        );
+
+        assert!(
+            drawn(&mut world, 400.0, 400.0).is_none(),
+            "a button inside a hidden menu must not draw"
+        );
+    }
+
+    #[test]
+    fn the_focused_node_and_its_text_are_repainted() {
+        // A menu item is a panel with a label inside it, so the highlight has to reach a *child*.
+        // Repainting only the focused entity gives an orange button with ink-coloured text on it,
+        // which is the one unreadable combination in the palette.
+        let (mut world, root) = world_with_screen(800, 600);
+        let mut fonts = FontCache::new();
+        fonts.insert_font("test", &crate::test_font::single_glyph_font());
+        world.insert_service(fonts);
+        world.insert_resource(crate::Focus::default());
+
+        let button = child(&mut world, root, UiNode::sized(200.0, 40.0));
+        world.insert(button, Panel::of(Paint::Raised));
+        let label = child(&mut world, button, UiNode::sized(180.0, 30.0));
+        world.insert(label, Text::label("A", "test", TypeScale::Body));
+
+        let theme = Theme::default();
+
+        // Nothing focused: both draw what they authored.
+        let view = drawn(&mut world, 800.0, 600.0).expect("something to draw");
+        assert_eq!(view.quads[0].color, theme.paint(Paint::Raised));
+        assert_eq!(view.batches[0].instances[0].color, theme.paint(Paint::Ink));
+
+        if let Some(focus) = world.resource_mut::<crate::Focus>() {
+            focus.entity = Some(button);
+        }
+
+        let view = drawn(&mut world, 800.0, 600.0).expect("something to draw");
+        assert_eq!(view.quads[0].color, theme.paint(FOCUS_PANEL));
+        assert_eq!(
+            view.batches[0].instances[0].color,
+            theme.paint(FOCUS_TEXT),
+            "the label is a child of the focused node, so it is inside the highlight"
+        );
+    }
+
+    #[test]
+    fn only_the_focused_item_is_repainted() {
+        // The other half: a highlight that reached everything would be a menu with no selection at
+        // all, which looks like the focus never moving.
+        let (mut world, root) = world_with_screen(400, 400);
+        world.insert_resource(crate::Focus::default());
+
+        let menu = child(&mut world, root, UiNode::column(crate::Spacing::None));
+        let first = child(&mut world, menu, UiNode::sized(100.0, 40.0));
+        world.insert(first, Panel::of(Paint::Raised));
+        let second = child(&mut world, menu, UiNode::sized(100.0, 40.0));
+        world.insert(second, Panel::of(Paint::Raised));
+
+        if let Some(focus) = world.resource_mut::<crate::Focus>() {
+            focus.entity = Some(second);
+        }
+
+        let view = drawn(&mut world, 400.0, 400.0).expect("something to draw");
+        let theme = Theme::default();
+        assert_eq!(view.quads[0].color, theme.paint(Paint::Raised));
+        assert_eq!(view.quads[1].color, theme.paint(FOCUS_PANEL));
+        // And the parent of the focused node is not swept up in it — the walk goes one way.
+        assert_ne!(
+            theme.paint(Paint::Raised),
+            theme.paint(FOCUS_PANEL),
+            "the test is vacuous if these two tokens ever resolve to the same colour"
+        );
+    }
+
+    #[test]
+    fn the_highlight_cannot_move_the_state_hash() {
+        // **The reason the substitution lives in the draw pass at all** (ADR 0063). `Focus` is
+        // hashed and *where* the highlight sits is gameplay; what it looks like is not, and writing
+        // an appearance into a `Panel` would put the theme into the state hash — so two players with
+        // different looks would simulate differently.
+        let (mut world, root) = world_with_screen(400, 400);
+        world.insert_resource(crate::Focus::default());
+        let button = child(&mut world, root, UiNode::sized(100.0, 40.0));
+        world.insert(button, Panel::of(Paint::Raised));
+
+        layout_ui(&mut world, 400.0, 400.0);
+        if let Some(focus) = world.resource_mut::<crate::Focus>() {
+            focus.entity = Some(button);
+        }
+        let before = world.state_hash();
+        collect_ui(&mut world);
+        collect_ui(&mut world);
+        assert_eq!(before, world.state_hash());
     }
 
     #[test]

@@ -308,6 +308,66 @@ fn a_glyph_reaches_the_screen_as_pixels() {
 }
 
 #[test]
+fn the_focused_item_is_visibly_a_different_colour() {
+    // **The point of drawing the focus at all**, and the only test that can check it: everything in
+    // `draw.rs` asserts that a token was substituted, which is true of a substitution that resolves
+    // to a colour indistinguishable from the one it replaced. Whether a player can *see* which item
+    // is highlighted is a question about pixels.
+    //
+    // Two identical `Raised` panels, one of them focused. Signage paints the focused one safety
+    // orange, so the two must come back visibly different — and the orange must be recognisably
+    // orange rather than merely "not the other one", which is what catches a theme lookup that fell
+    // through to a default.
+    let (mut world, root) = screen();
+    world.insert_resource(amadeo_ui::Focus::default());
+
+    let unfocused = child(
+        &mut world,
+        root,
+        UiNode {
+            anchor: Anchor::new(Align::Start, Align::Start),
+            margin: UiEdges::all(20.0),
+            ..UiNode::sized(100.0, 60.0)
+        },
+    );
+    world.insert(unfocused, Panel::of(Paint::Raised));
+
+    let highlighted = child(
+        &mut world,
+        root,
+        UiNode {
+            anchor: Anchor::new(Align::End, Align::Start),
+            margin: UiEdges::all(20.0),
+            ..UiNode::sized(100.0, 60.0)
+        },
+    );
+    world.insert(highlighted, Panel::of(Paint::Raised));
+
+    if let Some(focus) = world.resource_mut::<amadeo_ui::Focus>() {
+        focus.entity = Some(highlighted);
+    }
+
+    let Some(image) = draw(&mut world, 320, 240) else {
+        return;
+    };
+
+    let plain = pixel_at(&image, 70, 50);
+    let accent = pixel_at(&image, 250, 50);
+
+    // Safety orange: strongly red, some green, almost no blue. Loose bounds, because this is asking
+    // "does it read as the accent" rather than pinning the sRGB round trip to a byte.
+    assert!(
+        accent[0] > 170 && accent[1] > 40 && accent[1] < 150 && accent[2] < 90,
+        "the focused panel should be the accent, got {accent:?}"
+    );
+    // And the unfocused one is still the dark raised surface it authored.
+    assert!(
+        plain[0] < 90,
+        "the unfocused panel should be unchanged, got {plain:?}"
+    );
+}
+
+#[test]
 fn an_invisible_panel_draws_nothing_at_all() {
     // The cheap half of `visible`, checked against pixels: a hidden node is not laid out, so it has
     // no rectangle, so there is nothing to draw. If hiding ever became "draw it transparent", this
