@@ -532,7 +532,25 @@ crates/
                      Spatial and pointer navigation are still possible and belong **outside** the
                      deterministic zone, writing through the same `Focus` -- `ComputedRect::contains`
                      is the right primitive, it was the *placement* that would have been wrong.
-                     Still to come: theming, and a menu that does something.
+                     **Theming is named tokens (ADR 0064)** -- a widget says `paint Accent`,
+                     `scale Title`, `padding Snug`, and a `.theme` file decides what those mean.
+                     Seven colours, four type steps, five spacing steps, deliberately few: a palette
+                     nobody can hold in their head is one whose greys drift apart. `Paint::Custom`
+                     is the one escape hatch, for a genuine one-off; using it for chrome is how a
+                     theme stops working.
+                     **Padding and gap are DENSITY (tokens); margin is PLACEMENT (literal).** That is
+                     why `UiEdges` survives for margin alone -- before the theme they were one type,
+                     which made a density knob and a coordinate look identical in a scene file.
+                     The default look is **Signage**: bone on near-black, safety orange, zero
+                     rounding. Chosen by Justin from four mocked-up directions, and **built in code**
+                     -- `TextureCache`'s argument a third time, since a last resort that is itself a
+                     file cannot cover the case where files are the problem.
+                     `Theme` is ONE type that is both a `Component` (so a `.theme` file can hold it,
+                     like `.material` and `.environment`) and a `Service` (so a theme is outside the
+                     state hash -- two players with different themes must simulate identically).
+                     **Colours are written in sRGB and converted once**, because `0.0044` does not
+                     read as "near-black" to anyone. sRGB `0x80` is **0.216** linear, not 0.5.
+                     Still to come: drawing the focus differently, which is now small.
 ✅ amadeo-snapshot    the .snapshot text format (ADR 0028): capture a whole world to a file and put
                      it back. Sits above amadeo-scene because it borrows that crate's scalar
                      encoding — format_float is subtle and two copies would drift. **It captures the

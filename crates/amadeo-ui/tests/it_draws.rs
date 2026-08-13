@@ -23,7 +23,7 @@
 use amadeo_ecs::{Entity, World};
 use amadeo_render::{Overlay, Renderer, TextureCache, TextureData, WgpuBackend, render_quads};
 use amadeo_transform::Parent;
-use amadeo_ui::{Align, Anchor, Panel, UiEdges, UiNode, collect_ui, layout_ui};
+use amadeo_ui::{Align, Anchor, Paint, Panel, TypeScale, UiEdges, UiNode, collect_ui, layout_ui};
 
 /// Only one GPU device at a time within this binary — `gfx-rs/wgpu#6571`, the same crash
 /// `amadeo-render`'s capture tests take a lock for. Dropping one device while another is alive is a
@@ -228,7 +228,9 @@ fn a_later_panel_draws_over_an_earlier_one() {
     world.insert(
         over,
         Panel {
-            colour: [0.0, 0.0, 1.0, 1.0],
+            paint: Paint::Custom {
+                rgba: [0.0, 0.0, 1.0, 1.0],
+            },
             order: 1,
         },
     );
@@ -274,8 +276,10 @@ fn a_glyph_reaches_the_screen_as_pixels() {
     world.insert(
         label,
         amadeo_ui::Text {
-            colour: [1.0, 0.0, 0.0, 1.0],
-            ..amadeo_ui::Text::label("A", "boxes", 64.0)
+            paint: Paint::Custom {
+                rgba: [1.0, 0.0, 0.0, 1.0],
+            },
+            ..amadeo_ui::Text::label("A", "boxes", TypeScale::Title)
         },
     );
 

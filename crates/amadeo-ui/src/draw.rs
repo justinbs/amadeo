@@ -24,6 +24,7 @@
 
 use crate::components::{ComputedRect, UiNode};
 use crate::text::FontCache;
+use crate::theme::Theme;
 use crate::{GLYPH_ATLAS_ID, Panel, Text};
 use amadeo_ecs::{Entity, World};
 use amadeo_render::{
@@ -63,8 +64,12 @@ pub fn collect_ui(world: &mut World) {
     };
     let (width, height) = (width as f32, height as f32);
 
-    let quads = collect_panels(world);
-    let batches = collect_text(world);
+    // The theme, or the built-in default. Copied once for the same reason layout copies it: it is
+    // small, and holding a borrow would fight the world borrows below.
+    let theme = world.service::<Theme>().cloned().unwrap_or_default();
+
+    let quads = collect_panels(world, &theme);
+    let batches = collect_text(world, &theme);
 
     if quads.is_empty() && batches.is_empty() {
         // Nothing to draw. An empty view would still cost the backend a pass and a clear.
@@ -103,21 +108,24 @@ pub fn collect_ui(world: &mut World) {
 }
 
 /// Every visible panel, as a quad, in draw order.
-fn collect_panels(world: &World) -> Vec<QuadInstance> {
+fn collect_panels(world: &World, theme: &Theme) -> Vec<QuadInstance> {
     let mut panels: Vec<(i32, Entity, QuadInstance)> = world
         .query::<(&Panel, &UiNode, &ComputedRect)>()
         .filter(|(_, (_, node, _))| node.visible)
-        .filter(|(_, (panel, _, _))| panel.colour[3] > 0.0)
-        .map(|(entity, (panel, _, rect))| {
+        .map(|(entity, (panel, _, rect))| (entity, theme.paint(panel.paint), panel.order, *rect))
+        // Resolved *before* the transparency check, because whether a panel is invisible is a
+        // property of the colour the theme gave it, not of the token that asked for one.
+        .filter(|(_, colour, _, _)| colour[3] > 0.0)
+        .map(|(entity, colour, order, rect)| {
             let centre = rect.centre();
             (
-                panel.order,
+                order,
                 entity,
                 QuadInstance {
                     center: [centre[0], -centre[1]],
                     size: [rect.width, rect.height],
                     rotation: 0.0,
-                    color: panel.colour,
+                    color: colour,
                 },
             )
         })
@@ -133,7 +141,7 @@ fn collect_panels(world: &World) -> Vec<QuadInstance> {
 ///
 /// Needs the [`FontCache`] mutably — shaping rasterises — and the world shared, so the cache is taken
 /// out for the duration. The same shape `decode_frame_textures` uses one crate down.
-fn collect_text(world: &mut World) -> Vec<SpriteBatch> {
+fn collect_text(world: &mut World, theme: &Theme) -> Vec<SpriteBatch> {
     if !world.has_service::<FontCache>() {
         return Vec::new();
     }
@@ -144,7 +152,8 @@ fn collect_text(world: &mut World) -> Vec<SpriteBatch> {
         let labels: Vec<(Entity, Text, ComputedRect)> = world
             .query::<(&Text, &UiNode, &ComputedRect)>()
             .filter(|(_, (_, node, _))| node.visible)
-            .filter(|(_, (text, _, _))| !text.content.is_empty() && text.colour[3] > 0.0)
+            .filter(|(_, (text, _, _))| !text.content.is_empty())
+            .filter(|(_, (text, _, _))| theme.paint(text.paint)[3] > 0.0)
             .map(|(entity, (text, _, rect))| (entity, text.clone(), *rect))
             .collect();
 
@@ -160,7 +169,10 @@ fn collect_text(world: &mut World) -> Vec<SpriteBatch> {
         for (entity, text, rect) in labels {
             // Wrapped to the node's width, so a label in a narrow panel breaks rather than spilling.
             let wrap = if text.wrap { Some(rect.width) } else { None };
-            let shaped = fonts.shape(&text.content, &text.font, text.size, text.line_height, wrap);
+            // The tokens become numbers here, and nowhere else.
+            let step = theme.scale(text.scale);
+            let colour = theme.paint(text.paint);
+            let shaped = fonts.shape(&text.content, &text.font, step.size, step.line_height, wrap);
 
             for glyph in &shaped.glyphs {
                 let Some(image) = glyph.image else {
@@ -178,7 +190,7 @@ fn collect_text(world: &mut World) -> Vec<SpriteBatch> {
                     SpriteInstance {
                         center: [left + image.width * 0.5, -(top + image.height * 0.5)],
                         axes: [[image.width, 0.0], [0.0, image.height]],
-                        color: text.colour,
+                        color: colour,
                         region: image.region,
                     },
                 ));
@@ -213,7 +225,7 @@ fn collect_text(world: &mut World) -> Vec<SpriteBatch> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Anchor, UiEdges, layout_ui};
+    use crate::{Anchor, Paint, TypeScale, UiEdges, layout_ui};
     use amadeo_render::{NullBackend, Renderer};
     use amadeo_transform::Parent;
 
@@ -358,7 +370,9 @@ mod tests {
             late,
             Panel {
                 order: 5,
-                colour: [1.0, 0.0, 0.0, 1.0],
+                paint: Paint::Custom {
+                    rgba: [1.0, 0.0, 0.0, 1.0],
+                },
             },
         );
         let early = child(&mut world, root, UiNode::sized(10.0, 10.0));
@@ -366,7 +380,9 @@ mod tests {
             early,
             Panel {
                 order: 0,
-                colour: [0.0, 1.0, 0.0, 1.0],
+                paint: Paint::Custom {
+                    rgba: [0.0, 1.0, 0.0, 1.0],
+                },
             },
         );
 
@@ -384,7 +400,7 @@ mod tests {
         world.insert_service(fonts);
 
         let label = child(&mut world, root, UiNode::sized(200.0, 40.0));
-        world.insert(label, Text::label("AAA", "test", 24.0));
+        world.insert(label, Text::label("AAA", "test", TypeScale::Heading));
 
         let view = drawn(&mut world, 800.0, 600.0).expect("something to draw");
 
@@ -397,8 +413,9 @@ mod tests {
         let second = &view.batches[0].instances[1];
         assert!(second.center[0] > first.center[0]);
         assert!(first.axes[0][0] > 1.0 && first.axes[1][1] > 1.0);
-        // The colour is the tint, since the atlas holds white coverage.
-        assert_eq!(first.color, [1.0, 1.0, 1.0, 1.0]);
+        // The colour is the tint, since the atlas holds white coverage — and it comes from the
+        // theme's `Ink`, which is what `Text` defaults to, rather than from a literal.
+        assert_eq!(first.color, Theme::default().paint(Paint::Ink));
     }
 
     #[test]
@@ -412,7 +429,7 @@ mod tests {
         world.insert_service(fonts);
 
         let label = child(&mut world, root, UiNode::sized(200.0, 40.0));
-        world.insert(label, Text::label("A", "test", 24.0));
+        world.insert(label, Text::label("A", "test", TypeScale::Heading));
 
         drawn(&mut world, 800.0, 600.0).expect("something to draw");
 
@@ -431,7 +448,10 @@ mod tests {
         world.insert_service(FontCache::new());
 
         let label = child(&mut world, root, UiNode::sized(200.0, 40.0));
-        world.insert(label, Text::label("hello", "not_installed", 24.0));
+        world.insert(
+            label,
+            Text::label("hello", "not_installed", TypeScale::Heading),
+        );
 
         assert!(drawn(&mut world, 800.0, 600.0).is_none());
     }

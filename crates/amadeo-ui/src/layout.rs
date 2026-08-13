@@ -18,7 +18,8 @@
 //! ADR 0062 lists — a title screen, a pause menu, a HUD — and adding either later is additive.
 //! Adding them speculatively would be building the thing taffy already does better.
 
-use crate::components::{Align, ComputedRect, Flow, UiNode};
+use crate::components::{Align, ComputedRect, Flow, UiEdges, UiNode};
+use crate::theme::Theme;
 use amadeo_ecs::{Entity, World};
 use amadeo_transform::Parent;
 
@@ -47,12 +48,20 @@ pub fn layout_ui(world: &mut World, width: f32, height: f32) {
         height: height.max(0.0),
     };
 
+    // Padding and gap are theme tokens (ADR 0064), so layout needs to know what they mean. Copied
+    // out once rather than looked up per node: a `Theme` is small, and holding a borrow of it would
+    // fight the world borrow the walk below needs.
+    //
+    // The built-in default when a game installed none — a theme cannot be missing, which is
+    // `TextureCache`'s argument for its built-in placeholder.
+    let theme = world.service::<Theme>().cloned().unwrap_or_default();
+
     // Collected before writing, because computing reads the whole world while writing needs it
     // mutably — `propagate_transforms` has the same shape for the same reason.
     let mut computed: Vec<(Entity, ComputedRect)> = Vec::new();
 
     for root in roots(world) {
-        place(world, root, screen, &mut computed, 0);
+        place(world, &theme, root, screen, &mut computed, 0);
     }
 
     for (entity, rect) in computed {
@@ -97,6 +106,7 @@ fn children(world: &World, parent: Entity) -> Vec<Entity> {
 /// Places one node inside `available`, then recurses into its children.
 fn place(
     world: &World,
+    theme: &Theme,
     entity: Entity,
     available: ComputedRect,
     out: &mut Vec<(Entity, ComputedRect)>,
@@ -112,12 +122,16 @@ fn place(
         return;
     }
 
+    // The padding token becomes pixels here, and nowhere else in the walk.
+    let padding = UiEdges::all(theme.space(node.padding));
+
     out.push((entity, available));
     arrange_children(
         world,
+        theme,
         entity,
         node,
-        available.inset(node.padding),
+        available.inset(padding),
         out,
         depth,
     );
@@ -126,6 +140,7 @@ fn place(
 /// Lays out one node's children inside its content box.
 fn arrange_children(
     world: &World,
+    theme: &Theme,
     entity: Entity,
     node: UiNode,
     content: ComputedRect,
@@ -146,17 +161,26 @@ fn arrange_children(
             if !style.visible {
                 continue;
             }
-            place(world, child, anchored(style, content), out, depth + 1);
+            place(
+                world,
+                theme,
+                child,
+                anchored(style, content),
+                out,
+                depth + 1,
+            );
         }
         return;
     }
 
-    flow_children(world, node, content, &children, out, depth);
+    flow_children(world, theme, node, content, &children, out, depth);
 }
 
 /// Stacks children along the flow direction, sharing out whatever space is left over.
+#[allow(clippy::too_many_arguments)]
 fn flow_children(
     world: &World,
+    theme: &Theme,
     parent: UiNode,
     content: ComputedRect,
     children: &[Entity],
@@ -181,7 +205,8 @@ fn flow_children(
     } else {
         content.height
     };
-    let gaps = parent.gap * (taking_part.len() - 1) as f32;
+    let gap = theme.space(parent.gap);
+    let gaps = gap * (taking_part.len() - 1) as f32;
 
     // What the fixed-size children ask for, plus their margins along the flow.
     let mut fixed = 0.0;
@@ -270,9 +295,9 @@ fn flow_children(
                 height: main_size,
             }
         };
-        cursor += main_size + trail + parent.gap;
+        cursor += main_size + trail + gap;
 
-        place(world, child, rect, out, depth + 1);
+        place(world, theme, child, rect, out, depth + 1);
     }
 }
 

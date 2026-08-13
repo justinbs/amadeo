@@ -1,0 +1,28 @@
+scene signage
+version 1
+
+entity theme "Signage"
+  Theme
+    accent 0.80695 0.08022 0.01374 1.0
+    body
+      line_height 23.75
+      size 19.0
+    caption
+      line_height 16.900002
+      size 13.0
+    dim 0.15855 0.14444 0.11651 1.0
+    heading
+      line_height 28.600002
+      size 26.0
+    ink 0.80695 0.76052 0.67244 1.0
+    loose 28.0
+    normal 16.0
+    on_accent 0.00441 0.00441 0.00441 1.0
+    raised 0.00972 0.00972 0.00913 1.0
+    rule 0.03071 0.02843 0.02217 1.0
+    snug 8.0
+    surface 0.00441 0.00441 0.00441 1.0
+    tight 4.0
+    title
+      line_height 52.0
+      size 52.0

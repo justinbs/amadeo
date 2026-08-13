@@ -64,7 +64,7 @@ sound.** What M3 still needs:
 | | |
 |---|---|
 | `amadeo-audio` | **Working, and complete enough for a game.** Trait, `NullAudio`, `KiraAudio`, buses, components, collection pass, `VoiceTracker`, WAV decoder, `SoundCache`, **one-shots**, `audio.describe`. Missing: ducking, occlusion, compressed audio, a voice cap |
-| `amadeo-ui` | **Working, seen, and navigable.** Anchors, flow, `grow`, `FontCache`, `GlyphAtlas`, `Panel`, `Text`, `collect_ui`, focus navigation, 64 tests — panels *and* a glyph verified by reading back GPU pixels, and `games/atrium` shows a real title in Bebas Neue. Missing: **theming** (a focused item looks like any other), pointer navigation |
+| `amadeo-ui` | **Working, seen, navigable and themed.** Anchors, flow, `grow`, `FontCache`, `GlyphAtlas`, `Panel`, `Text`, `collect_ui`, focus navigation, `Theme`, 77 tests — panels *and* a glyph verified by reading back GPU pixels, and `games/atrium` draws a real title in Bebas Neue from a `.theme` file. Missing: **drawing the focus differently**, pointer navigation |
 | `amadeo-anim` | **Nothing.** |
 
 **`amadeo-ui` is the next one, and its two hard decisions are made** — Justin settled both in session
@@ -73,12 +73,12 @@ sound.** What M3 still needs:
 **Text shaping landed too** — `FontCache` over `cosmic-text`, with a real font generated in code so
 the tests need no fixture. What is left, in order:
 
-1. **A menu that does something *visible*.** Navigation works and is tested — but **a focused item
-   still looks exactly like an unfocused one**, because nothing styles it. That is the theme's job.
+1. **Draw the focus differently — and it is now small.** Navigation works, the theme exists, and
+   `Paint::Accent` is sitting there. **No widget consults the focus**, so a highlighted item still
+   looks like every other one. A system that repaints the focused node is a few dozen lines.
 
-2. **A default theme**, and `CLAUDE.md` §6 constrains it hard — no Inter, no gradients, no uniform
-   rounded cards, no emoji. Look at Blender, Houdini, Reaper; not at landing pages. **Worth your eye
-   rather than my judgement**, the same way the typeface turned out to be.
+2. **A pause menu in `games/atrium`**, which is the first thing that would use all of it at once and
+   the first real test of whether the theme is any good in motion.
 
 3. **Pointer and spatial navigation**, which ADR 0063 deliberately puts *outside* the deterministic
    zone — a presentation-side system writing through the same `Focus`. `ComputedRect::contains` is
@@ -452,6 +452,41 @@ been wrong, not the function.
 > helper, and it turned up a real property worth pinning:
 > `holding_a_direction_moves_once_rather_than_scrolling`. There is no key repeat, deliberately:
 > repeat is a *timing* feature, and timing is what a fixed tick expresses worst.
+
+### 12. Theming — ADR 0064, and both halves were Justin's
+
+Four directions were **mocked up rather than described**, because choosing a look from prose is a bad
+way to choose a look. He picked **Signage**: bone on near-black, safety orange, zero rounding, tight
+leading — wayfinding rather than software, and built for the Bebas Neue the engine already ships.
+
+He also picked the deepest of three theming depths: **named tokens for colour, type *and* spacing**.
+
+- A widget says `paint Accent`, `scale Title`, `padding Snug`. Nothing in `atrium.scene` states a
+  colour or a size any more.
+- **Padding and gap are density; margin is placement.** That is why `UiEdges` survives for margin
+  alone — before the theme they were one type, which made a density knob and a coordinate look
+  identical in a file.
+- Seven colours, four type steps, five spacing steps. Deliberately few: a palette nobody can hold in
+  their head is one whose greys drift apart.
+- The default is **built in code**, `TextureCache`'s argument a third time — a last resort that is
+  itself a file cannot cover the case where files are the problem.
+
+`Theme` is one type that is both a `Component` (so a `.theme` file can hold it, exactly as
+`.material` and `.environment` do) and a `Service` (so it is outside the state hash — two players
+with different themes must simulate identically).
+
+Two things worth keeping:
+
+- **Colours are written in sRGB and converted once.** `0.0044` does not read as "near-black" to
+  anyone, and the conversion is not linear: sRGB `0x80` is **0.216**, not 0.5. A theme that assumed
+  otherwise would be visibly washed out beside a texture of the same value, which is pinned.
+- **Four layout tests broke and the fix improved them.** They asserted literal pixels that had come
+  from literal padding. They now ask the theme what `Snug` means — which is correct regardless, since
+  otherwise retuning the spacing scale breaks the suite and cheap retuning is the entire point.
+
+`App::read_component_assets` became public on the way: `amadeo-ui` sits below `amadeo-scene` and
+cannot parse its own asset (I6), the same bind `amadeo-render` was already in for `.material`. A
+component-shaped asset is a general idea rather than a renderer one.
 
 ### What else landed
 

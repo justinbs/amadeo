@@ -448,8 +448,14 @@ a presentation-side system writing through the same `Focus` resource. `ComputedR
 primitive and is currently unused.
 ⚠️ **Key repeat.** A held direction moves once. Repeat is a *timing* feature, which is what a fixed
 tick expresses worst; left out until something needs it.
-⚠️ **Theming.** A default theme is an M3 item and `CLAUDE.md` §6 constrains it heavily — no Inter, no
-gradients, no uniform rounded cards. Reference the tools, not the landing pages.
+✅ **Theming — named tokens, default Signage (ADR 0064).** A widget names `paint`, `scale` and
+`padding`; a `.theme` file decides what those mean, so one file restyles a game. Padding and gap are
+density and are tokens; margin is placement and stays literal. The default is bone on near-black with
+safety orange and no rounding — chosen from four mocked-up directions, and built in code so it cannot
+be missing.
+
+⚠️ **Nothing draws the focus differently yet.** `Paint::Accent` exists and the focused entity is known
+(ADR 0063); no widget consults it. Small, and the next piece.
 ⚠️ **Wrapping and intrinsic sizing** are both absent by design. Neither is needed by a title screen, a
 pause menu or a HUD, and both are additive. Adding them speculatively is building what `taffy` already
 does better.

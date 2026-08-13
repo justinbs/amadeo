@@ -1,5 +1,6 @@
 //! What a scene file authors: a UI node, and the rectangle layout computes for it.
 
+use crate::theme::{Paint, Spacing, TypeScale};
 use amadeo_core::StableHash;
 use amadeo_ecs::Component;
 use amadeo_reflect::Reflect;
@@ -69,10 +70,10 @@ impl Anchor {
 
 /// A measurement on all four sides, in pixels.
 ///
-/// Used for both the space *outside* a node ([`UiNode::margin`]) and the space *inside* it before
-/// its children ([`UiNode::padding`]) — the same distinction CSS makes, and for the same reason:
-/// a gap belongs either to the thing or to the space around it, and conflating them makes nested
-/// layouts impossible to reason about.
+/// The space *outside* a node — [`UiNode::margin`], which is placement and therefore a literal.
+/// Padding, which is density, is a [`Spacing`] token instead (ADR 0064). The two were the same type
+/// before the theme existed, and separating them is what stopped a density knob and a position from
+/// looking identical in a scene file.
 #[derive(Debug, Clone, Copy, PartialEq, Default, StableHash, Reflect)]
 pub struct UiEdges {
     /// Left, in pixels.
@@ -164,11 +165,22 @@ pub struct UiNode {
     /// is flowing and this node has a [`grow`](UiNode::grow) above zero.
     pub size: [f32; 2],
     /// Space inside the node, before its children.
-    pub padding: UiEdges,
+    ///
+    /// # Why this is a token and [`margin`](UiNode::margin) is not
+    ///
+    /// **Padding and gap are *density*; margin is *placement*.** How tight an interface feels is
+    /// decided by the space inside things and between them, and that is a judgement worth being able
+    /// to retune in one file (ADR 0064, and `CLAUDE.md` §6's "information density over whitespace").
+    /// Where a HUD element sits relative to a screen corner is a specific position, not a density,
+    /// and a token would only get in the way of saying it.
+    ///
+    /// Uniform on all four sides. Asymmetric padding is expressible with a child's margin, and a
+    /// four-token version can be added later without changing anything written today.
+    pub padding: Spacing,
     /// How this node arranges its own children.
     pub flow: Flow,
-    /// Space between children, in pixels. Only meaningful when [`flow`](UiNode::flow) arranges.
-    pub gap: f32,
+    /// Space between children. Only meaningful when [`flow`](UiNode::flow) arranges.
+    pub gap: Spacing,
     /// Where children sit across the flow direction. Only meaningful when flowing.
     ///
     /// `Stretch` makes every child fill the cross axis, which is what a column of full-width buttons
@@ -199,9 +211,9 @@ impl Default for UiNode {
             anchor: Anchor::default(),
             margin: UiEdges::default(),
             size: [0.0, 0.0],
-            padding: UiEdges::default(),
+            padding: Spacing::None,
             flow: Flow::None,
-            gap: 0.0,
+            gap: Spacing::None,
             align_children: Align::Start,
             grow: 0.0,
             visible: true,
@@ -242,7 +254,7 @@ impl UiNode {
     /// to be a column *in* are three decisions that always go together, so they are made together.
     /// Build the struct by hand to opt out.
     #[must_use]
-    pub fn column(gap: f32) -> Self {
+    pub fn column(gap: Spacing) -> Self {
         Self {
             flow: Flow::Column,
             gap,
@@ -256,7 +268,7 @@ impl UiNode {
     ///
     /// Fills for the same reason [`UiNode::column`] does.
     #[must_use]
-    pub fn row(gap: f32) -> Self {
+    pub fn row(gap: Spacing) -> Self {
         Self {
             flow: Flow::Row,
             gap,
@@ -274,11 +286,13 @@ impl Component for UiNode {}
 /// Separate from [`UiNode`] rather than a colour field on it, because **most nodes draw nothing**. A
 /// menu is a column that arranges buttons and is itself invisible; a layout node that had to declare
 /// a transparent colour would be a layout node pretending to be a graphic.
-#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, StableHash, Reflect)]
 pub struct Panel {
-    /// Linear RGBA. An alpha of zero draws nothing at all, and is skipped before it reaches a batch.
-    #[reflect(min = 0.0, max = 1.0)]
-    pub colour: [f32; 4],
+    /// Which colour from the theme (ADR 0064).
+    ///
+    /// A token rather than a literal, so one file restyles every panel in the game.
+    /// [`Paint::Custom`] is the escape hatch for a colour that genuinely is not part of the palette.
+    pub paint: Paint,
     /// Draw order within the interface. Higher draws on top.
     ///
     /// ADR 0018's `SortOrder` idea, kept as its own field rather than reusing that component: a UI
@@ -287,23 +301,17 @@ pub struct Panel {
     pub order: i32,
 }
 
-impl Default for Panel {
-    fn default() -> Self {
-        Self {
-            colour: [1.0, 1.0, 1.0, 1.0],
-            order: 0,
-        }
-    }
-}
-
 impl Panel {
-    /// A panel of one colour.
+    /// A panel painted with a theme colour.
     #[must_use]
-    pub fn filled(colour: [f32; 4]) -> Self {
-        Self {
-            colour,
-            ..Self::default()
-        }
+    pub fn of(paint: Paint) -> Self {
+        Self { paint, order: 0 }
+    }
+
+    /// A panel of a literal colour, outside the palette.
+    #[must_use]
+    pub fn filled(rgba: [f32; 4]) -> Self {
+        Self::of(Paint::Custom { rgba })
     }
 }
 
@@ -323,18 +331,15 @@ pub struct Text {
     /// reason is that a wrong typeface quietly standing in for the right one is how a game's look
     /// drifts without anyone noticing.
     pub font: String,
-    /// Height in pixels.
-    #[reflect(min = 1.0, max = 512.0)]
-    pub size: f32,
-    /// Distance between baselines, in pixels.
+    /// Which step of the theme's type scale (ADR 0064).
     ///
-    /// Separate from `size` because the ratio between them is a typographic choice: tight for a
-    /// heading, loose for a paragraph. Around 1.25× the size is a reasonable starting point.
-    #[reflect(min = 1.0, max = 1024.0)]
-    pub line_height: f32,
-    /// Linear RGBA. The atlas holds white coverage, so this is what makes the text a colour at all.
-    #[reflect(min = 0.0, max = 1.0)]
-    pub colour: [f32; 4],
+    /// A step rather than a number of pixels, because sizes chosen independently drift together
+    /// until nothing is clearly bigger than anything else and the screen loses its hierarchy.
+    pub scale: TypeScale,
+    /// Which colour from the theme.
+    ///
+    /// The atlas holds white coverage, so this is what makes the text a colour at all.
+    pub paint: Paint,
     /// Whether long lines break at the node's width.
     ///
     /// `false` is what a label wants — one line, however long. `true` is what a paragraph wants.
@@ -348,9 +353,8 @@ impl Default for Text {
         Self {
             content: String::new(),
             font: String::new(),
-            size: 16.0,
-            line_height: 20.0,
-            colour: [1.0, 1.0, 1.0, 1.0],
+            scale: TypeScale::Body,
+            paint: Paint::Ink,
             wrap: false,
             // Above a `Panel` at the same order, because text sits *on* its background far more
             // often than behind it, and a label invisible under its own panel is a confusing first
@@ -361,14 +365,13 @@ impl Default for Text {
 }
 
 impl Text {
-    /// A label: one line, no wrapping.
+    /// A label: one line, no wrapping, at a step of the theme's scale.
     #[must_use]
-    pub fn label(content: &str, font: &str, size: f32) -> Self {
+    pub fn label(content: &str, font: &str, scale: TypeScale) -> Self {
         Self {
             content: content.to_string(),
             font: font.to_string(),
-            size,
-            line_height: size * 1.25,
+            scale,
             ..Self::default()
         }
     }
@@ -479,10 +482,10 @@ mod tests {
     fn the_menu_constructor_cannot_get_its_pair_wrong() {
         // `column` exists so the two decisions that always go together cannot be made one at a
         // time: a column with `Align::Start` children is a menu whose buttons cling to the left.
-        let menu = UiNode::column(8.0);
+        let menu = UiNode::column(Spacing::Snug);
         assert_eq!(menu.flow, Flow::Column);
         assert_eq!(menu.align_children, Align::Centre);
-        assert_eq!(menu.gap, 8.0);
+        assert_eq!(menu.gap, Spacing::Snug);
         // **The third decision, and the one that was missing first time round.** A flow node has no
         // size of its own, so a column that does not fill something is a 0x0 box whose children are
         // centred in nothing and land at negative coordinates. Caught by a failing test rather than
@@ -538,7 +541,7 @@ mod tests {
         let node = UiNode {
             anchor: Anchor::new(Align::End, Align::Stretch),
             margin: UiEdges::symmetric(12.0, 4.0),
-            ..UiNode::column(6.0)
+            ..UiNode::column(Spacing::Tight)
         };
         assert_eq!(
             UiNode::from_value(&node.to_value()).expect("round trips"),

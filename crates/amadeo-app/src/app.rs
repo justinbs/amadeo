@@ -539,7 +539,12 @@ impl App {
     /// skipped in silence, and the failure surfaced three layers away as a test complaining that a
     /// *service* had not been installed. Nothing in that message mentioned a field, a file, or a
     /// schema. The churn of adding a field was never the problem; this was.
-    fn read_component_assets<T: Component>(
+    /// **Public because a component-shaped asset is a general idea, not a renderer one.** A
+    /// `.material`, an `.environment` and a `.theme` are all one component in a scene file, and the
+    /// crate that owns each type sits *below* `amadeo-scene` and cannot parse it (I6). This layer
+    /// can see both, so this is where the reading happens — and a game with an asset kind the engine
+    /// has never heard of can use it too.
+    pub fn read_component_assets<T: Component>(
         &mut self,
         wanted: &BTreeSet<String>,
     ) -> Vec<(String, T)> {

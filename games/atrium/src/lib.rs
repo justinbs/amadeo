@@ -48,7 +48,7 @@ use amadeo_transform::{
     GlobalTransform, PROPAGATE_TRANSFORMS, Parent, Transform, propagate_transforms,
 };
 use amadeo_ui::{
-    COLLECT_UI, ComputedRect, FontCache, LAYOUT_UI, Panel, Text, UiNode, collect_ui,
+    COLLECT_UI, ComputedRect, FontCache, LAYOUT_UI, Panel, Text, Theme, UiNode, collect_ui,
     layout_ui_system,
 };
 
@@ -179,6 +179,10 @@ pub fn build_simulation() -> anyhow::Result<App> {
     app.register_component::<ComputedRect>()?;
     app.register_component::<Panel>()?;
     app.register_component::<Text>()?;
+    // Registered because this game *ships* `assets/looks/atrium.theme`, even though no entity in the
+    // room carries one. Session 9's lesson again: a game whose own asset fails the validator it
+    // ships with is worse than one that has no validator.
+    app.register_component::<Theme>()?;
     app.register_component::<RigidBody>()?;
     app.register_component::<Collider>()?;
     app.register_component::<Velocity>()?;
@@ -214,6 +218,24 @@ pub fn build_simulation() -> anyhow::Result<App> {
     // first frame and a one-frame-stale one forever after.
     app.insert_service(FontCache::new());
     app.insert_service(amadeo_render::Overlay::default());
+
+    // The look, from `assets/looks/signage.theme` (ADR 0064). A `.theme` is a scene file holding one
+    // `Theme`, exactly as a `.material` and an `.environment` are — and `amadeo-ui` sits below
+    // `amadeo-scene`, so it cannot parse its own asset. `App` can see both crates and does the
+    // reading.
+    //
+    // **A theme that will not load is survivable**, and the built-in Signage look is what draws
+    // instead — the same fallback `TextureCache` has, for the same reason: a last resort that is
+    // itself a file cannot cover the case where files are the problem.
+    let wanted: std::collections::BTreeSet<String> =
+        std::iter::once("signage".to_string()).collect();
+    if let Some((_, theme)) = app
+        .read_component_assets::<Theme>(&wanted)
+        .into_iter()
+        .next()
+    {
+        app.insert_service(theme);
+    }
     app.add_system(Stage::Render, system(LAYOUT_UI, layout_ui_system));
     app.add_system(
         Stage::Render,

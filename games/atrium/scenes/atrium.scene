@@ -12,6 +12,7 @@ assets
   pillar
   plinth
   room_tone
+  signage
   slate
   stone
   wall_north
@@ -356,54 +357,45 @@ entity hud "Interface root"
       horizontal Stretch
       vertical Stretch
     flow None
-    gap 0.0
+    gap None
     grow 0.0
     margin
       bottom 0.0
       left 0.0
       right 0.0
       top 0.0
-    padding
-      bottom 0.0
-      left 0.0
-      right 0.0
-      top 0.0
+    padding None
     size 0.0 0.0
     visible true
 
   entity title_plate "Title backing"
     Panel
-      colour 0.05 0.06 0.08 0.72
       order 0
+      paint Raised
     UiNode
       align_children Start
       anchor
         horizontal Start
         vertical Start
       flow None
-      gap 0.0
+      gap None
       grow 0.0
       margin
         bottom 0.0
         left 24.0
         right 0.0
         top 24.0
-      padding
-        bottom 0.0
-        left 0.0
-        right 0.0
-        top 0.0
+      padding Snug
       size 218.0 72.0
       visible true
 
     entity title "Title"
       Text
-        colour 0.96 0.86 0.62 1.0
         content "THE ATRIUM"
         font "BebasNeue-Regular"
-        line_height 60.0
         order 1
-        size 52.0
+        paint Accent
+        scale Title
         wrap false
       UiNode
         align_children Start
@@ -411,17 +403,13 @@ entity hud "Interface root"
           horizontal Start
           vertical Start
         flow None
-        gap 0.0
+        gap None
         grow 0.0
         margin
           bottom 0.0
-          left 16.0
-          right 0.0
-          top 6.0
-        padding
-          bottom 0.0
-          left 0.0
+          left 8.0
           right 0.0
           top 0.0
-        size 268.0 62.0
+        padding None
+        size 202.0 56.0
         visible true

@@ -66,6 +66,7 @@ mod draw;
 mod focus;
 mod layout;
 mod text;
+mod theme;
 
 /// A valid TrueType font built in code, so every text test needs no fixture and no system fonts.
 ///
@@ -85,6 +86,7 @@ pub use focus::{
 };
 pub use layout::layout_ui;
 pub use text::{FontCache, FontFailure, PositionedGlyph, ShapedText};
+pub use theme::{Paint, Spacing, Theme, TypeScale, TypeStep};
 
 /// The label the app layer registers [`collect_ui`] under.
 pub const COLLECT_UI: &str = "collect_ui";
@@ -229,7 +231,7 @@ mod tests {
             root,
             UiNode {
                 anchor: Anchor::fill(),
-                padding: UiEdges::all(30.0),
+                padding: Spacing::Normal,
                 ..UiNode::default()
             },
         );
@@ -246,25 +248,28 @@ mod tests {
 
         // The panel itself is the whole screen — padding does not shrink the node, only its content.
         assert_eq!(rect(&world, panel).width, 400.0);
-        // 30 of padding then 5 of margin.
-        assert_eq!(rect(&world, inner).left, 35.0);
-        assert_eq!(rect(&world, inner).top, 35.0);
+        // Padding then margin. **Asked of the theme rather than written as a number**, so retuning
+        // the spacing scale — which ADR 0064 exists to make possible — does not break this test.
+        let padding = Theme::default().space(Spacing::Normal);
+        assert_eq!(rect(&world, inner).left, padding + 5.0);
+        assert_eq!(rect(&world, inner).top, padding + 5.0);
     }
 
     #[test]
     fn a_column_stacks_children_with_gaps_between_them() {
         let (mut world, root) = screen();
-        let menu = child(&mut world, root, UiNode::column(10.0));
+        let menu = child(&mut world, root, UiNode::column(Spacing::Snug));
         let buttons: Vec<Entity> = (0..3)
             .map(|_| child(&mut world, menu, UiNode::sized(200.0, 40.0)))
             .collect();
 
         layout_ui(&mut world, 800.0, 600.0);
 
-        // Three 40-high buttons with two 10-gaps between them.
+        // Three 40-high buttons, with the theme's `Snug` between them.
+        let gap = Theme::default().space(Spacing::Snug);
         assert_eq!(rect(&world, buttons[0]).top, 0.0);
-        assert_eq!(rect(&world, buttons[1]).top, 50.0);
-        assert_eq!(rect(&world, buttons[2]).top, 100.0);
+        assert_eq!(rect(&world, buttons[1]).top, 40.0 + gap);
+        assert_eq!(rect(&world, buttons[2]).top, 80.0 + gap * 2.0);
         // `column` centres its children across the flow, so each is centred horizontally.
         assert_eq!(rect(&world, buttons[0]).left, 300.0);
         assert_eq!(rect(&world, buttons[0]).width, 200.0);
@@ -276,7 +281,7 @@ mod tests {
         // map would shuffle a menu between runs, and the symptom is buttons swapping places on
         // restart. Entity order is spawn order is the order a scene file lists them.
         let (mut world, root) = screen();
-        let menu = child(&mut world, root, UiNode::column(0.0));
+        let menu = child(&mut world, root, UiNode::column(Spacing::None));
         let first = child(&mut world, menu, UiNode::sized(100.0, 10.0));
         let second = child(&mut world, menu, UiNode::sized(100.0, 20.0));
         let third = child(&mut world, menu, UiNode::sized(100.0, 30.0));
@@ -297,7 +302,7 @@ mod tests {
             root,
             UiNode {
                 anchor: Anchor::fill(),
-                ..UiNode::row(0.0)
+                ..UiNode::row(Spacing::None)
             },
         );
         let fixed = child(&mut world, bar, UiNode::sized(100.0, 20.0));
@@ -339,7 +344,7 @@ mod tests {
             root,
             UiNode {
                 anchor: Anchor::fill(),
-                ..UiNode::row(0.0)
+                ..UiNode::row(Spacing::None)
             },
         );
         let first = child(&mut world, row, UiNode::sized(400.0, 20.0));
@@ -361,7 +366,7 @@ mod tests {
         // menu whose children were still laid out costs a subtree of work on every frame it is
         // hidden, which is most of them.
         let (mut world, root) = screen();
-        let menu = child(&mut world, root, UiNode::column(0.0));
+        let menu = child(&mut world, root, UiNode::column(Spacing::None));
         let first = child(&mut world, menu, UiNode::sized(100.0, 40.0));
         let hidden = child(
             &mut world,
@@ -396,8 +401,8 @@ mod tests {
             root,
             UiNode {
                 anchor: Anchor::fill(),
-                padding: UiEdges::all(20.0),
-                ..UiNode::column(0.0)
+                padding: Spacing::Loose,
+                ..UiNode::column(Spacing::None)
             },
         );
         let button = child(
@@ -411,9 +416,14 @@ mod tests {
 
         layout_ui(&mut world, 500.0, 500.0);
 
+        let padding = Theme::default().space(Spacing::Loose);
         let button = rect(&world, button);
-        assert_eq!(button.left, 20.0);
-        assert_eq!(button.width, 460.0, "full width inside the padding");
+        assert_eq!(button.left, padding);
+        assert_eq!(
+            button.width,
+            500.0 - padding * 2.0,
+            "full width inside the padding"
+        );
         assert_eq!(button.height, 40.0, "the main axis still uses its size");
     }
 
