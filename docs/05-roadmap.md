@@ -345,10 +345,15 @@ in documents nobody is allowed to correct.
      perspective, bloom (declared in `Environment`, never drawn), and ambient occlusion.
 
   **This is what exit gate 5 below actually requires**, and it is the milestone's real renderer exam.
-- `amadeo-audio` — mixer, buses, 2D/3D spatialization, event-driven playback, null backend.
+- ✅ `amadeo-audio` — buses, 3D spatialisation, one-shots as events, `NullAudio` and a kira backend
+  (ADRs 0059–0061). Still open: ducking, occlusion, compressed audio, a voice cap.
 - `amadeo-anim` — sprite animation, skeletal animation, blend trees, state machines, tweens.
-- `amadeo-ui` — retained-mode game UI: flex layout, theming, text rendering, focus navigation,
-  authored in scene files and visible to introspection.
+  **The last named M3 subsystem with nothing built.**
+- ✅ `amadeo-ui` — retained-mode game UI: **anchors plus flow** rather than flex (ADR 0062, and the
+  reasoning is that a HUD is a placement problem and a menu is a flow problem), text shaped with
+  `cosmic-text`, a glyph atlas, focus navigation by **authored order** (ADR 0063), and theming by
+  named tokens (ADR 0064). Authored in scene files and visible to introspection, as required.
+  Still open: drawing the focus differently, and pointer navigation.
 - Particles / VFX basics.
 - Save/load built on snapshots, with versioning and migration.
 - Input remapping UI, controller support.

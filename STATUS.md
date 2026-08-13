@@ -26,40 +26,22 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 ## 📬 For the next session — read this box, then the two below it
 
-**Everything is pushed and CI is green 5/5.** Check anyway, the way session 15 did: `git fetch` and
-then `git log --oneline origin/main..HEAD`. **The fetch is the load-bearing half** — session 15 hit a
-network failure where the fetch died and the comparison ran against a stale ref, printing "all
-pushed" without having checked anything. Read the fetch's exit code, not just the log's output.
+**Everything is pushed and CI is green 5/5 through `cfa5bab`.** Verify anyway, the way session 15
+learned to: `git fetch` and then `git log --oneline origin/main..HEAD`. **The fetch is the
+load-bearing half** — session 15 hit a network failure where the fetch died and the comparison ran
+against a stale ref, printing "all pushed" without having checked anything. Read the fetch's exit
+code, not just the log's output.
 
-### ⚠️ The one thing to do before anything else: **listen to it**
-
-Session 16 wrote the kira backend, and **it is the first thing in this engine that no test can
-verify.** Everything up to the speaker is checked; whether a sound actually comes out is not, and
-cannot be. So the first task is thirty seconds long:
-
-```
-cargo test -p amadeo-audio --features kira --test you_can_hear_it -- --ignored --nocapture
-```
-
-**Three** procedures now, about twenty seconds total, printing what you should hear before each one.
-The third is footsteps and asks you to **count**: eight blips, not sixteen and not one. Then:
-
-```
-cargo run -p atrium
-```
-
-The lamp in the north-west corner hums *from where it is* — walk toward and away from it, and turn on
-the spot — and a room tone plays from nowhere in particular and should never pan. **Those are the
-backend's two code paths and no test can tell them apart.** Walking now also makes **footsteps**, one
-every 1.9 m; they should stop when you do and not tap while you stand still or jump on the spot.
-
-If either is wrong, the likeliest culprit is `VoiceTracker`, not `kira_backend.rs` — that split is
-deliberate and `tracker.rs` is where CI can reach.
+> **Do not spawn a long background sleep to watch CI.** Session 16 did that after most of sixteen
+> pushes and Justin killed one: the run was already green while the timer still had twenty minutes to
+> go. `gh run view <id> --json jobs` shows the five jobs separately, so four-of-five green is knowable
+> minutes in. Check once at a plausible time, report honestly, and keep building in between.
 
 ### Where things actually are
 
-M2.5 is complete, the renderer is past what M3's exit gate asks of it, and **audio now makes a
-sound.** What M3 still needs:
+**Audio is done and has been heard. The interface is built, drawn, navigable and themed.** Session 16
+was long: 16 commits, ADRs 0060–0064, and `amadeo-ui` went from not existing to drawing a real title
+screen. What M3 still needs:
 
 | | |
 |---|---|
@@ -67,22 +49,45 @@ sound.** What M3 still needs:
 | `amadeo-ui` | **Working, seen, navigable and themed.** Anchors, flow, `grow`, `FontCache`, `GlyphAtlas`, `Panel`, `Text`, `collect_ui`, focus navigation, `Theme`, 77 tests — panels *and* a glyph verified by reading back GPU pixels, and `games/atrium` draws a real title in Bebas Neue from a `.theme` file. Missing: **drawing the focus differently**, pointer navigation |
 | `amadeo-anim` | **Nothing.** |
 
-**`amadeo-ui` is the next one, and its two hard decisions are made** — Justin settled both in session
-16 and ADR 0062 records them. **Layout is built and tested; nothing is drawn yet.**
+### What to build next, in order
 
-**Text shaping landed too** — `FontCache` over `cosmic-text`, with a real font generated in code so
-the tests need no fixture. What is left, in order:
+1. **Draw the focus differently — and it is now small.** Navigation works (ADR 0063), the theme
+   exists (ADR 0064), and `Paint::Accent` is sitting there unused. **No widget consults the focus**,
+   so a highlighted menu item looks like every other one. A system in the `Render` stage that
+   repaints the focused node's `Panel` and `Text` is a few dozen lines.
 
-1. **Draw the focus differently — and it is now small.** Navigation works, the theme exists, and
-   `Paint::Accent` is sitting there. **No widget consults the focus**, so a highlighted item still
-   looks like every other one. A system that repaints the focused node is a few dozen lines.
+   > Keep it on the **presentation** side. `Focus` is hashed and navigation is simulation; *how a
+   > focused thing looks* is not, and writing an appearance into a hashed component would put the
+   > theme in the state hash.
 
-2. **A pause menu in `games/atrium`**, which is the first thing that would use all of it at once and
-   the first real test of whether the theme is any good in motion.
+2. **A pause menu in `games/atrium`.** The first thing that uses layout, text, focus and theme at
+   once, and the first honest test of whether Signage holds up **in motion** rather than in a still.
+   It needs Escape to toggle `UiNode::visible` on a menu root, three `Focusable` items, and a
+   `UiActivated` reader.
+
+   > ### ⚠️ **Read Q35 first.** It was opened for exactly this.
+   >
+   > A pause menu is the first thing that needs an answer to *how a game moves between screens*, and
+   > the engine has no opinion about one. The trap is that the wrong answer is expensive: a screen
+   > system that despawns the world is not something a pause menu can be retrofitted onto. The prior
+   > is a **hashed** `Screen` resource plus stage gating — hashed because which screen you are on is
+   > gameplay, a save must restore it, and a replay must reproduce it.
 
 3. **Pointer and spatial navigation**, which ADR 0063 deliberately puts *outside* the deterministic
    zone — a presentation-side system writing through the same `Focus`. `ComputedRect::contains` is
-   the primitive and is written but unused.
+   the primitive, is written, and is unused. Read ADR 0063 before starting: the *placement* of this
+   logic is the whole decision, and putting it in the simulation breaks I3 for every menu.
+
+4. **`amadeo-anim`**, still completely untouched and the last named M3 subsystem.
+
+### Two smaller things noted rather than fixed
+
+- **Nothing can ask how wide a label will be.** `FontCache::shape` returns the width and nothing
+  surfaces it, so a panel behind a label is sized by hand — the Atrium's title plate was authored,
+  looked at, and corrected by eye. That is the "no intrinsic sizing" trade (`layout.rs` says so) being
+  felt for the first time. Worth closing if it bites again.
+- **`padding` is uniform.** Asymmetric padding needs a child's margin. A four-token version is
+  additive and nothing written today would change.
 
 > **On the text decision, because it is a calibration signal worth keeping.** I recommended the
 > lighter option (rasterise a TTF into a glyph atlas) and listed `cosmic-text` as the heavier
@@ -104,11 +109,17 @@ and keeps a controller, and a library that already owns a thread has usually had
 thread — a script VM, a `wgpu` surface tied to a window — not at libraries that feel low level. Q12
 stays open with kira struck off; see ADR 0060 §3.
 
-### Four eyeball calls waiting on Justin
+### Eyeball calls waiting on Justin
 
 None is blocking; all are cheap to change and all were tuned by looking (or listening) rather than
-derived.
+derived. **The theme ones are now a single file edit** — that is what ADR 0064 bought.
 
+- **The Signage theme's numbers** — `games/atrium/assets/looks/signage.theme`, and the built-in copy
+  in `Theme::signage`. The spacing scale is 4/8/16/28 and the type scale 52/26/19/13, both set by
+  eye against one capture. **If the interface feels too airy or too cramped, this is the one place to
+  change it**, and nothing else needs touching.
+- **The title plate's size**, 218×72 in `atrium.scene`. Authored by hand because nothing can measure
+  a label yet, and corrected once already by looking at a capture.
 - **The three generated sounds** — a 60 Hz lamp hum at peak 0.5, a 55 Hz room tone at 0.16, and a
   180 ms footstep thud at 0.45, all from `cargo run -p atrium --bin tone`. Placeholders, meant to be
   replaced: drop a real `.wav` in with the same id and nothing else changes. The levels are a guess.
@@ -136,7 +147,27 @@ test and passes regardless, so a green Ubuntu job says nothing about a shader.
 
 ---
 
-## Session 16 — the engine makes a sound, and the wall Q12 predicted was not there
+## Session 16 — the engine makes a sound, and then grows an interface
+
+**Sixteen commits, five ADRs (0060–0064), all green.** Two subsystems went from barely-started to
+working: `amadeo-audio` was a trait and a null backend and is now a game you can hear, and
+`amadeo-ui` did not exist and now draws a themed title screen you can navigate.
+
+The twelve sections below are in the order they happened. The short version:
+
+| | |
+|---|---|
+| **0060** | A missing sound is silence — there is no audible magenta — and the kira backend's only test is a person |
+| **0061** | A one-shot is an event carrying a place, played once per event *sequence* |
+| **0062** | Game UI is anchors plus flow; text is properly shaped with `cosmic-text` |
+| **0063** | Focus is an **authored** order — a spatial one would put the window size in the state hash |
+| **0064** | A theme is named tokens; the default look is **Signage** |
+
+**Q12 was answered twice in the negative**, and the reasoning generalised into a prior for the next
+candidate. **Four bugs are recorded below with their symptoms**, three found by a test failing and
+one — the only one no test could have caught — found by looking at a picture.
+
+### The audio half, and the wall Q12 predicted was not there
 
 **`KiraAudio` is written and works**, behind a `kira` feature that is off by default like `gpu` and
 `rapier`. `games/atrium` turns it on, on the same trade it already makes for rapier: a demo of the

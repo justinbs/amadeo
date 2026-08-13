@@ -7,6 +7,36 @@ Priority: **P0** blocks work now · **P1** needed for the current milestone · *
 
 ---
 
+## Q35 · P1 · How a game moves between screens
+
+**Raised in session 16, on finishing the interface and noticing nothing drives it.** M3's exit gate
+item 1 is *"title screen → playable loop → lose state → win state → pause → save → quit → resume"* —
+which is a **state machine over the whole game**, and the engine has no opinion about one.
+
+Everything a screen is made of now exists: a menu is a scene file, `UiNode::visible` hides one
+without disturbing archetypes, focus navigation works, and `UiActivated` says a button was chosen.
+What is missing is the thing above them. Concretely, nobody has decided:
+
+- **Where the current screen lives.** A hashed resource is the obvious answer, and it has to be
+  hashed — which screen you are on is gameplay, a save must restore it, and a replay must reproduce
+  it.
+- **What a transition does to the world.** Loading a level while a title screen is up is a very
+  different lifetime from toggling a pause menu over a running game. One despawns and rebuilds; the
+  other must leave the simulation *exactly* alone, including its tick.
+- **Whether pausing stops the simulation, and what that means for a fixed timestep.** Not running
+  `Stage::Simulation` is easy; the trap is that anything reading wall-clock time to catch up will
+  then run a burst of ticks the moment you unpause. `App::advance_real_time` already caps its
+  backlog, which is most of the answer, but nobody has checked it against a pause.
+- **Whether this belongs in the engine at all.** It may be a `modules/` concern, or even a per-game
+  one — an argument for I4, since "what screens exist" is genre knowledge.
+
+Prior: **a hashed `Screen` resource plus stage gating**, with the transition itself left to the game.
+Decide before building the pause menu, because the menu is the first thing that needs an answer and
+the wrong one is expensive: a screen system that despawns the world is not something a pause menu can
+be retrofitted onto.
+
+---
+
 ## ~~Q3~~ · **Resolved — ADR 0018, 0023, 0031.** Two passes in one graph, and the camera is an entity
 
 Split into three across three sessions, which is what made it tractable. **ADR 0018** settled the two
