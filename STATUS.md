@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-14 (session 17)
+**Last updated:** 2026-08-15 (session 18)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE — all four exit gates met.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
@@ -26,9 +26,44 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 ## 📬 For the next session — read this box, then the two below it
 
-**Everything is pushed through `6609274`.** The last CI run was still in flight when the session
-ended; every run before it is green **5/5**. Check with `gh run list` rather than assuming — `gh` is
-not on PATH, so prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
+**Everything is pushed through `86b7f55`.** The last two runs were still in flight when the session
+ended; every run before them is green **5/5**. Check with `gh run list` rather than assuming — `gh`
+is not on PATH, so prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
+
+### Session 18 in one paragraph
+
+**Both decisions that were waiting on Justin are decided and built.** Q37 (save versioning) closed
+with **ADR 0069**, and the `mod-inventory` fork closed with **ADR 0070**. `modules/amadeo-inventory`
+exists, and `games/atrium` has a brass key you walk up to, pick up, carry through a save, and drop —
+which gives **both** of the modules session 17 left without a user their first one. The review earned
+its keep: it found a real defect in `amadeo-interaction` on the first try.
+
+### The three things worth not rediscovering
+
+- **Being lenient about fields is not enough to make a save survive a patch**, and the reason is the
+  state hash. A defaulted field is still hashed, so the world is rebuilt *correctly* and then
+  rejected. ADR 0069's answer is to make the check **conditional on a layout fingerprint** rather
+  than drop it — matching means no version gap exists, so the load *is* the strict path. Pinned from
+  both ends: `a_patch_invalidates_every_save.rs` is the problem, `a_save_survives_a_patch.rs` is the
+  answer.
+- **A module's own docs said "an interactor is usually a child", and no test built one.** That was
+  the one arrangement uncovered, and it was broken: the sweep ignored the interactor, which has no
+  collider, so it started inside the *parent's* and reported it at `fraction: 0.0` for ever. Worth
+  asking of any module: what does the documentation call typical, and is that what the tests build?
+- **A test written expecting one answer found a better one.** `contents` on a despawned container
+  keeps answering, and should: filtering by liveness would make an orphan invisible to every function
+  in the module while it still exists.
+
+### What is waiting on Justin now
+
+Nothing blocking. The eyeball list below still stands, plus these:
+
+- **The brass key's numbers** — the reach is 2.5 m with a 0.25 m sweep radius, and the reaching child
+  sits 0.35 m above the player's centre. That height is not cosmetic: **a sweep is horizontal, so
+  reach is a band at the interactor's own height**, and it had to clear the plinth top. An item on
+  the floor is currently unreachable. Looking down is the fix and is not built.
+- **The key's place and size**, standing upright on the plinth at `y = 1.2`. It stands rather than
+  lies for the same geometric reason.
 
 Verify pushes the way session 15 learned to: `git fetch`, then
 `git log --oneline origin/main..HEAD`. **The fetch is the load-bearing half** — session 15 hit a
@@ -59,43 +94,46 @@ crates.
 | `amadeo-audio` | Complete enough for a game. Missing: ducking, occlusion, compressed audio, a voice cap |
 | `amadeo-ui` | Layout, text, focus (drawn), theme, pausing. Missing: pointer navigation — **and ADR 0063's plan for it does not work, read Q36** |
 | `amadeo-anim` | A clip animates a *reflected field* (ADR 0066); `amadeo anim` reports why nothing is moving. Missing: **skeletal animation and skinning**, blending, a state machine |
-| Save/load | Works end to end in `games/atrium`. Missing: **versioning and migration — Q37, the most consequential open question in the project** |
+| Save/load | Works end to end in `games/atrium`, and **survives a patch** (ADR 0069). Missing: real per-version migrations, which nothing needs yet, and **where a save file lives — Q38** |
 
 | Module | State |
 |---|---|
 | `amadeo-character` | Movement, ground, jump, slopes. Missing: crouch, coyote time, pushing dynamic bodies |
 | `amadeo-camera` | Third **and** first person, separate components sharing one aiming system |
-| `amadeo-interaction` | Look at a thing, use the thing. **Has no game using it yet** — see the caution below |
+| `amadeo-interaction` | Look at a thing, use the thing. **`games/atrium`'s brass key is its first user**, and found a real defect on the first try |
 | `amadeo-behaviour` | AI as a state machine over named facts (ADR 0068). `games/atrium` has a watcher |
+| `amadeo-inventory` | Items, stacks, containers (ADR 0070). An item is an **entity**; storing it removes its `Transform` |
 
 ### What to do next — candidates, not an order
 
-1. **Q37: save versioning.** The one that can destroy something a *player* owns. A snapshot
-   deliberately has no migration path; a save has to survive a patch, and today adding one field to
-   any component invalidates every existing save. Q37 has the shape of the answer worked out —
-   `TypeInfo::version` exists and is unread, and ADR 0029's patch semantics are most of a lenient
-   restore. **This is a decision, so bring options rather than a commit.**
-2. **Skeletal animation**, the largest unbuilt piece of a named subsystem. ADR 0066 §5 says where the
+**Every named M3 subsystem and all five named genre modules now exist.** What is left in the
+milestone is mostly the exit gate itself.
+
+1. **M3's exit gate** — the first-person horror slice. Everything it needs structurally exists:
+   interaction, inventory, behaviour, audio, UI, save/load, pausing. This is the biggest single piece
+   of work left and it is mostly **content**. The gate asks for a flashlight and a key-type item, and
+   the key half is now demonstrated in `games/atrium`.
+2. **Looking down.** An interactor sweeps horizontally, so an item on the floor cannot be reached.
+   The horror slice is first-person with a pitching camera, which makes this land naturally — put the
+   `Interactor` on the camera and the pitch comes free. Worth doing *with* the slice rather than
+   before it, so it has a real user.
+3. **Skeletal animation**, the largest unbuilt piece of a named subsystem. ADR 0066 §5 says where the
    reflected-field design deliberately stops: a read-patch-write per bone per tick is hopeless at a
    few hundred bones, so skinning gets its own typed path. **Blocked on an asset** — the repository
    has no rigged glTF model.
-3. **`mod-inventory`**, the one unbuilt named module. Its fork is whether an item is an **entity or a
-   value**; four of the eight target games are inventory-heavy.
-4. **M3's exit gate itself** — the first-person horror slice. Everything it needs structurally now
-   exists. This is the biggest single piece of work left in the milestone and it is mostly *content*.
-5. **Pointer navigation** — read **Q36** first; the replacement design is written up there.
+4. **Pointer navigation** — read **Q36** first; the replacement design is written up there.
+5. **Q38: where a save file lives**, and whether a redirect file ships with the build rather than
+   sitting beside the save. Small, and nothing depends on it.
 
-### Two cautions about work I did
+### One caution that stands, and one that is retired
 
-- **`modules/amadeo-interaction` has no game using it.** It was built directly as a module, which is
-  the "designed against zero users" risk this project's own rule exists to avoid — `amadeo-camera`
-  lived in a game first and was better for it, and ADR 0068 made a point of giving
-  `amadeo-behaviour` a real user for exactly that reason. Its shape is simple and I am fairly
-  confident, but **the first game to use it should be treated as a review of the design**, not just
-  a consumer of it.
 - **The watcher in `games/atrium` has no collider and walks through pillars.** Deliberate and stated
   in `move_the_watcher`: giving it one would mean building a second character controller to prove a
   decision about AI. Do not "fix" it without deciding you want that.
+- ~~`modules/amadeo-interaction` has no game using it.~~ **Retired.** The brass key is its first
+  user, and the review was worth having immediately — it found the `body_of` defect described above,
+  which no existing test could have caught. `modules/amadeo-inventory` was written with that user in
+  the same session, ADR 0068's pattern rather than session 17's.
 
 ### Three things noted rather than fixed
 
@@ -183,6 +221,57 @@ WGPU_BACKEND=dx12 WGPU_DX12_COMPILER=fxc cargo test -p amadeo-render --all-featu
 Windows CI has no GPU, uses WARP, and compiles through FXC, which is far stricter than the DXC or
 Vulkan path a real GPU takes. **Ubuntu CI is no help** — with no software fallback it skips every GPU
 test and passes regardless, so a green Ubuntu job says nothing about a shader.
+
+---
+
+## Session 18 — a save survives a patch, and a key goes in a pocket
+
+**Both decisions that were waiting on Justin, decided and built.** Five commits, two ADRs
+(0069–0070), one new module.
+
+### What landed
+
+1. **The measurement that reframed Q37.** The question recorded the expected fix as "restore
+   leniently: default the missing fields", and claimed that alone would make a save survive an added
+   field. It does not — leniency gets past the first error into a second, because a defaulted field
+   is still hashed and the world is rebuilt correctly and *then* rejected. Pinned as a test before
+   any decision was taken, which is what made the options honest.
+2. **ADR 0069 — a save is a snapshot read leniently.** One format, two entry points. The integrity
+   check becomes **conditional on a layout fingerprint** rather than dropped, so the common case — a
+   player who has not updated — keeps the full check, and the strict path stays exercised by every
+   ordinary load. The fingerprint **recurses through every type a field names**, because a component
+   whose own field list is unchanged over a nested struct that grew still hashes differently.
+   Missing fields come from the **field's** type; an enum is refused rather than guessed at; renames
+   are a text file (Unreal's `CoreRedirects`, not migration code); everything is reported.
+   Per-component `version` is written and read by nothing, so real migrations stay additive.
+3. **ADR 0070 — an item is an entity.** Decided by *reading three passes rather than reasoning about
+   them*: `collect_meshes`, `step_physics` and `propagate_transforms` all require a `Transform`, so
+   taking a thing out of the world is removing one component and the audit that was this option's
+   main cost does not exist.
+4. **`games/atrium` has a brass key.** Walk up to it, press F, it goes in your pocket and leaves the
+   world; it survives a save; you can drop it again. It is the first user of **two** modules.
+
+### What the first user found, which is the point of having one
+
+- **`amadeo-interaction` ignored the wrong entity.** It ignored the interactor; an interactor is
+  normally a *child* with no collider, so the sweep started inside the parent's and returned it at
+  `fraction: 0.0`. `Looking::at` was `None` for ever, which is indistinguishable from being too far
+  away. Every existing test put the interactor on a lone entity with no collider anywhere — **the
+  arrangement the module's docs called usual was the one nothing covered.** Fixed with `body_of`,
+  and three tests added that fail when the old behaviour is put back.
+- **Reach is a band at the interactor's height**, because the sweep is horizontal, and whatever an
+  object rests on blocks the sweep to it. That is why the Atrium's interactor is a child above the
+  plinth top and why the key stands upright. **An item on the floor is currently unreachable.**
+
+### Three habits that paid, again
+
+- **Break the fix and check the test fails.** Twice: the fingerprint's recursion (exactly one test
+  failed, and the failure was the predicted one — a *good* save hard-refused) and `body_of` (exactly
+  the three new tests failed and no old one, proving the gap was real).
+- **Write the test expecting the wrong answer.** `contents` on a despawned container was expected to
+  come back empty; it does not, and should not.
+- **Read the code rather than estimating the cost.** ADR 0070's whole shape came from three query
+  signatures, and the estimate they replaced was much worse than the truth.
 
 ---
 

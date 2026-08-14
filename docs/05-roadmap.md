@@ -382,9 +382,12 @@ in documents nobody is allowed to correct.
     from an `Interactor`, because a ray demands the player aim at a door handle exactly. Built on
     `ShapeHit::entity`, which was added for it: a cast used to say where it stopped and not what it
     stopped against. Still to come: a held item, which is `mod-inventory`'s half.
-  - ⚠️ **`mod-inventory`** (items, stacks, containers). The open question is whether an item is an
-    entity or a value — a stack of fifty arrows is one row in a list, and a dropped arrow is a thing
-    in the world with a collider, and both have to be the same item.
+  - ✅ **`mod-inventory`** (items, stacks, containers) — `modules/amadeo-inventory`, **ADR 0070**.
+    An item is an **entity**, always, and a stack is one entity with a count, so "a stack of fifty
+    arrows is one row" was never a property of values. **Storing one removes its `Transform`**,
+    which is sufficient because every pass that draws or simulates a thing already requires one —
+    read rather than reasoned about. `games/atrium` has a brass key you walk up to, pick up, carry
+    through a save, and drop. Still to come: equipment, weight, a grid layout.
   2D modules (`mod-tilemap`, `mod-platformer2d`) drop to M7 unless a specific need arises.
 
 **Exit gate**

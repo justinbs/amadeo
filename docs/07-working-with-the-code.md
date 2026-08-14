@@ -2453,6 +2453,53 @@ maps and `Option`, and refuses an enum, because the first variant is a guess wit
 `ShadowMode::Off`, `Bus::Effects` and `Screen::Playing` are each plausible and each wrong somewhere.
 A component that gains an enum field is reported by name, and a person decides.
 
+### Taking a thing out of the world is removing one component
+
+`modules/amadeo-inventory` stores an item by **removing its `Transform`**, and nothing else. It
+works because three passes in three different crates all require one and skip an entity that lacks
+it:
+
+| Pass | Query |
+|---|---|
+| `collect_meshes` | `(&Mesh, &Transform, …)` |
+| `step_physics` | `(&RigidBody, &Transform, …)` |
+| `propagate_transforms` | `world.get::<Transform>(entity)`, `continue` when absent |
+
+So an item in a bag keeps its mesh, its collider, its `Interactable` and all its own state, and
+putting a `Transform` back drops it with everything intact. **Nothing is converted between two
+representations**, which is the thing to hold on to: the design that stores items as *values*
+converts on the way in and on the way out, and that is where the bugs live.
+
+This is worth knowing outside inventory too. If you ever want an entity to exist but not be *in* the
+world — a spawner's template, a disabled prop — the `Transform` is the switch, and it is already
+enforced by everything that matters.
+
+The obligation it creates: `a_stored_item_is_invisible_to_every_world_pass` pins the property, and
+it belongs to those three crates rather than to the module. If one of them ever stops requiring a
+`Transform`, an item in your bag starts being drawn at the world origin.
+
+### Two things a first user found in a module that had none
+
+`modules/amadeo-interaction` was built in session 17 with no game using it. `games/atrium`'s brass
+key was its first, and it found both of these immediately — which is what `CLAUDE.md`'s rule about
+treating the first user as a review is for.
+
+**The sweep must ignore the body, not the interactor.** An `Interactor` is normally a *child* — a
+camera or a reaching point on a character — and such a child has no collider of its own. So ignoring
+the interactor ignored nothing, the cast started inside the parent's capsule, and every result came
+back at `fraction: 0.0` against the player. `Looking::at` stayed `None` for ever, which looks exactly
+like standing too far away. Every existing test put the interactor on a lone entity with no collider
+anywhere, so **the arrangement the module's own docs called usual was the one arrangement nothing
+covered** — a shape worth checking for in any module: what does the documentation say is typical, and
+is that what the tests actually build?
+
+**A sweep is horizontal, so reach is a band at the interactor's own height** — and whatever an object
+rests on blocks the sweep to it. A key on a plinth cannot be reached by an interactor at plinth-top
+height, because the plinth is in the way for the whole 1.5 m to the middle. The Atrium puts the
+interactor on a child *above* the plinth top. Looking down is not built, so an item on the floor is
+currently out of reach; that is a real limitation rather than a bug, and it is where a first-person
+game with a pitching camera would differ.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

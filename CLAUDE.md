@@ -819,6 +819,26 @@ modules/             optional, genre-flavored. Core NEVER depends on these. Crea
                      cross its whole graph in a frame and a cycle would hang rather than oscillate.
                      Shared by **prefab** (ADR 0029) rather than by asset, so there is no cache and no
                      missing-asset hazard. Still to come: hierarchical states.
+🟡 amadeo-inventory   the fifth module: **items, stacks and containers** (ADR 0070, closing docs/05's
+                     fork). **An item is an ENTITY, always**, and a stack is one entity with a
+                     `count` -- so "a stack of fifty arrows is one row" turns out not to be a
+                     property of values at all.
+                     **Storing something removes its `Transform`, and that is the whole mechanism.**
+                     Measured rather than assumed: `collect_meshes`, `step_physics` and
+                     `propagate_transforms` all *require* one and skip an entity without it, so an
+                     item in a bag needs no flag and no second representation. Its mesh, collider,
+                     `Interactable` and per-item state stay exactly where they were, and putting a
+                     `Transform` back drops it with all of that intact. **Nothing is ever converted
+                     between two representations**, which is where this class of bug lives.
+                     `StoredIn` carries an **authored slot**, and `contents` sorts by it -- query
+                     order is reproducible but not *stable*, so an item's place in the list would
+                     move when an unrelated component was added to it (ADR 0063's call, one module
+                     along). **`contents` keeps answering for a despawned container**, found by a
+                     test written expecting the opposite: filtering by liveness would make an orphan
+                     invisible to every function here while it still exists.
+                     No systems and no "use item" hook: what a key *means* is genre knowledge (I4),
+                     and `games/atrium`'s `pick_up_what_you_used` is the one sentence joining this
+                     to `amadeo-interaction`. Still to come: equipment, weight, a grid layout.
 🟡 amadeo-interaction the third module: **looking at things and using them** (docs/05's `mod-interaction`,
                      and M3 exit gate item 4). `Interactor` sweeps a small sphere forward, `Looking`
                      records what it found, `Interactable` says what a thing is, and `Interacted`
@@ -838,6 +858,19 @@ modules/             optional, genre-flavored. Core NEVER depends on these. Crea
                      carries an `Interactor`.
                      **Its real tests need a solver** -- against `NullPhysics` every cast reports
                      clear, so nothing is ever in reach, which is asserted once as the control case.
+                     **The sweep ignores the BODY it is attached to, not the interactor** -- session
+                     18, and the defect the first real user found. An `Interactor` is normally a
+                     child (a camera or a reaching point on a character) and a child like that has
+                     **no collider of its own**, so ignoring the interactor ignored nothing, every
+                     cast came back at `fraction: 0.0` against the parent, and `Looking::at` stayed
+                     `None` for ever -- which is indistinguishable from standing too far away, so
+                     there is no symptom. `body_of` walks up to the nearest collider. Every test in
+                     the module put the interactor on a lone entity with no collider anywhere, so
+                     **the arrangement its own docs call usual was the one nothing covered.**
+                     **A sweep is HORIZONTAL and starts where the interactor is**, so what it can
+                     reach is a band at its own height -- and whatever an object rests on blocks the
+                     sweep to it. `games/atrium` puts the interactor on a child above the plinth top
+                     for exactly that reason. Looking down is not built.
 🟡 amadeo-character   the first module. `CharacterController` (speed, acceleration, jump, turn, slope,
                      step height) and `CharacterMotion` (velocity, grounded), driven by named input
                      actions, moved by `PhysicsBackend::move_shape`. `install(&mut app)?` registers
