@@ -62,22 +62,35 @@ pauses, and built `amadeo-anim` from nothing.
 Nothing is queued the way it was last session — the list is genuinely open now, so these are
 candidates rather than an order.
 
-1. **Skeletal animation.** The largest remaining piece of `amadeo-anim`, and the one place ADR 0066's
+1. **`mod-behaviour`** — the last named genre module and **the one that needs a decision before it is
+   built**: a finite state machine, a behaviour tree, or utility scoring. ADR 0066 §5 already settled
+   that it will not share an abstraction with animation, and noted the industry has largely moved to
+   behaviour trees for AI. M3's exit gate needs one pursuing entity with idle/search/pursue/lose
+   states, and the lose condition (caught) depends on it.
+2. **Skeletal animation.** The largest remaining piece of `amadeo-anim`, and the one place ADR 0066's
    design deliberately stops: property animation goes through reflection, and a read-patch-write per
    bone per tick is hopeless at a few hundred bones, so skinning gets its own typed path. Needs a
    rigged glTF model, which the repository does not have.
-2. **M3's exit gate itself** — the first-person horror slice. Everything it needs *structurally* now
-   exists: screens, pause, menus, sound, animation, lighting, shadows. What it needs next is
-   `modules/`: `mod-behaviour`, `mod-inventory`, `mod-interaction`, and a first-person camera rig.
-3. ~~**Save/load on top of snapshots**~~ — **done**, except for the part that is a real decision:
+3. **`mod-inventory`**, whose fork is whether an item is an entity or a value — a stack of fifty
+   arrows is one row in a list, a dropped arrow is a thing in the world with a collider, and both
+   have to be the same item.
+4. **M3's exit gate itself** — the first-person horror slice. Everything it needs structurally now
+   exists, including a first-person camera and interaction.
+5. ~~**Save/load on top of snapshots**~~ — **done**, except for the part that is a real decision:
    **versioning and migration.** `amadeo-snapshot` refuses a version mismatch and has *no migration
    path*, deliberately, because a snapshot is a short-lived artefact. A **save is not** — it has to
    survive the game being patched, and today adding a field to any component invalidates every
    existing save. That is Q32's shape at its most painful and it wants deciding before anyone ships
    a build to a player. Where a save file *lives* is also open, and is deliberately a plain relative
    path so nothing has to be unpicked.
-4. **Pointer navigation**, but read **Q36** first: ADR 0063's consequences describe a design that
+6. **Pointer navigation**, but read **Q36** first: ADR 0063's consequences describe a design that
    cannot work, and the replacement is written up there.
+
+> **One thing to know before running the checks.** `CLAUDE.md` §4b used to say
+> `cargo test --workspace`; **CI has always run it with `--all-features`**, which is what compiles in
+> everything behind `rapier` and `gpu`. The file now matches. `modules/amadeo-interaction` is the
+> case that makes it obvious — without the flag its whole test file reduces to a null-backend
+> control case, and a local run is green against a strictly smaller suite than CI's.
 
 ### The old list, for the record — all four are done or deliberately deferred
 
@@ -194,8 +207,8 @@ test and passes regardless, so a green Ubuntu job says nothing about a shader.
 
 ## Session 17 — the room stops, and a field it has never heard of moves
 
-**Ten commits, three ADRs (0065–0067), one new crate.** Every named M3 subsystem now exists, and the
-exit gate's save-and-resume loop works.
+**Fifteen commits, three ADRs (0065–0067), two new crates.** Every named M3 subsystem now exists,
+the exit gate's save-and-resume loop works, and three of the four named genre modules are built.
 
 ### What landed
 
@@ -221,6 +234,13 @@ exit gate's save-and-resume loop works.
 8. **Save and load**, which is M3 exit gate item 1's "save → quit → resume from save". The Atrium's
    pause menu has both; a resumed game and one that never stopped are proven to be the same game.
    **Building it found two defects immediately** — see below.
+9. **A first-person camera rig.** `modules/amadeo-camera` had only the third-person half, and M3's
+   exit gate is a first-person slice; `docs/05` names the rig as its own module precisely so neither
+   perspective is privileged. Separate component, shared aiming system.
+10. **`ShapeHit::entity`** — a cast said *where* it stopped and not *what* it stopped against, which
+    serves two camera sweeps and nothing else.
+11. **`modules/amadeo-interaction`**, which that unblocked: look at a thing, use the thing. M3 exit
+    gate item 4.
 
 ### The engine wrote snapshots it could not read back
 
@@ -257,6 +277,18 @@ is what removes the hazard.
 keep the ground of the level it just left. The docs now say what was measured, and the test *reports*
 the contact-cache result rather than asserting it — a claim about somebody else's solver at a pinned
 version is not something to fail a build over.
+
+### A habit that paid three times today
+
+**Break the fix and check the test fails.** It caught a test that proved nothing (the first version
+of the physics one restored into a *fresh* app, where there were no stale caches to carry, so it
+passed with the reset commented out). It confirmed the empty-list regression tests, and it confirmed
+the `+ 1` offset on a packed entity — where without it the *first entity a world spawns* reports as
+scenery, and that is usually the floor, so "what am I standing on" would have been the one question
+with a wrong answer.
+
+Three minutes each. Worth it every time, and the one that mattered most is the one where the test was
+wrong rather than the code.
 
 ### The two defects worth remembering, because they are the same defect
 
