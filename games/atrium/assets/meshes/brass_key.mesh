@@ -1,0 +1,6 @@
+scene brass_key
+version 1
+
+entity mesh "Brass key"
+  BoxMesh
+    size 0.18 0.4 0.05

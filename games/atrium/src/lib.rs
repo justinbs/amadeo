@@ -15,8 +15,8 @@
 //! cargo run -p atrium
 //! ```
 //!
-//! WASD to walk, Q and E to turn, Space to jump. Escape opens a pause menu with save, load and
-//! quit in it; the arrows and Enter move around it.
+//! WASD to walk, Q and E to turn, Space to jump, F to pick up the key. Escape opens a pause menu
+//! with save, load and quit in it; the arrows and Enter move around it.
 //!
 //! # Everything in it is a text file
 //!
@@ -39,6 +39,7 @@ use amadeo_core::StableHash;
 use amadeo_ecs::{Component, Entity, Resource, World};
 use amadeo_events::WorldEvents;
 use amadeo_input::{ActionId, InputDriver, InputState, NullSource};
+use amadeo_interaction::Interacted;
 use amadeo_physics::{Collider, Gravity, Physics, RapierPhysics, RigidBody, Velocity};
 use amadeo_reflect::Reflect;
 use amadeo_render::{
@@ -71,6 +72,9 @@ pub const STRIDE: f32 = 1.9;
 
 /// The label [`play_footsteps`] is registered under.
 pub const PLAY_FOOTSTEPS: &str = "play_footsteps";
+
+/// The label [`pick_up_what_you_used`] is registered under.
+pub const PICK_UP_WHAT_YOU_USED: &str = "pick_up_what_you_used";
 
 /// The label [`apply_screen`] is registered under.
 pub const APPLY_SCREEN: &str = "apply_screen";
@@ -789,6 +793,28 @@ pub fn build_simulation() -> anyhow::Result<App> {
     // `games/scarp` and moved here the moment a second game wanted it.
     amadeo_camera::install(&mut app)?;
 
+    // **The two modules session 17 left without a user**, which is the risk `CLAUDE.md`'s own rule
+    // exists to catch: `amadeo-camera` lived in a game first and was better for it, and
+    // `amadeo-interaction` was built straight as a module against nobody. The brass key on the
+    // plinth is what fixes that for both of them at once — and it found nothing wrong with either,
+    // which is worth recording as an outcome rather than assumed as one.
+    //
+    // Before `load_scene` for `amadeo_character::install`'s reason: `atrium.scene` names
+    // `Interactor`, `Interactable`, `Inventory` and `Item`, and a component the registry has not
+    // heard of stops the scene loading.
+    amadeo_interaction::install(&mut app)?;
+    amadeo_inventory::install(&mut app)?;
+
+    // **After the interaction system**, which is what produces the event this reads. In the same
+    // stage and one step later, so a key pressed on this tick is in your pocket on this tick rather
+    // than the next — `Interacted` buffers swap per tick, so reading it a stage earlier would find
+    // last tick's.
+    app.add_system(
+        Stage::PostSimulation,
+        system(PICK_UP_WHAT_YOU_USED, pick_up_what_you_used)
+            .after(amadeo_interaction::UPDATE_INTERACTIONS),
+    );
+
     // Input is sampled before anything reads it, which is what `PreSimulation` is for. The character
     // module reads named actions rather than keys, so this is the only place in the game that knows
     // input exists at all.
@@ -886,6 +912,70 @@ pub fn serve_save_requests(app: &mut App) -> Vec<String> {
     }
 
     said
+}
+
+/// Picks up anything usable that turns out to be an item.
+///
+/// # This is the whole join between the two modules, and it is deliberately this small
+///
+/// `modules/amadeo-interaction` decides *what you are pointing at* and knows nothing about items.
+/// `modules/amadeo-inventory` decides *what carrying something means* and knows nothing about
+/// looking. Neither depends on the other, and the sentence that connects them — "using a thing that
+/// happens to be an item puts it in your bag" — is **this game's rule**, not the engine's.
+///
+/// A different game would write a different sentence: one that needs both hands free, one where a
+/// cursed item cannot be dropped, one where using a key unlocks a door instead of pocketing it.
+/// That is invariant I4 one level up, and it is why neither module offers a "pick up" function.
+///
+/// A container that is full is not an error here — the item stays where it is, and a game with a UI
+/// would say so. The report is thrown away rather than ignored on purpose: `store` distinguishes
+/// four reasons, and the Atrium has nowhere to show any of them.
+///
+/// # The interactor is not the container, and that is the ordinary case
+///
+/// The `Interactor` sits on a small child of the player, at reaching height, because a sweep is
+/// **horizontal** and starts wherever the interactor is — so one at the capsule's centre travels at
+/// the same height as the plinth top and stops against its front face, a metre and a half short of
+/// the key resting on it. What a thing sits on is exactly what blocks the sweep to it.
+///
+/// So the bag is on the player and the sweep is on a child, and this walks up the `Parent` chain to
+/// connect them. `modules/amadeo-interaction` documents the composed-transform case as the usual
+/// one; until the brass key, no game had actually used it.
+fn carrier_of(world: &World, interactor: Entity) -> Option<Entity> {
+    let mut current = interactor;
+    // Bounded, for `propagate_transforms`' reason: a hierarchy deep enough to loop is
+    // indistinguishable from one that does, and neither should hang a tick.
+    for _ in 0..16 {
+        if world.get::<amadeo_inventory::Inventory>(current).is_some() {
+            return Some(current);
+        }
+        current = world.get::<Parent>(current)?.0;
+    }
+    None
+}
+
+/// The interactor and the container are **different entities** here — the sweep is on a small child
+/// at reaching height and the bag is on the player — so this walks up the `Parent` chain to connect
+/// them. See `carrier_of` for why the geometry forces that.
+pub fn pick_up_what_you_used(world: &mut World) {
+    // Collected first because `store` needs the world mutably while this reads it.
+    let used: Vec<Interacted> = world
+        .read_events::<Interacted>()
+        .iter()
+        .map(|record| record.event)
+        .collect();
+
+    for event in used {
+        // Only things that are items. A door is `Interactable` too, and using one must not try to
+        // put it in a pocket.
+        if world.get::<amadeo_inventory::Item>(event.target).is_none() {
+            continue;
+        }
+        let Some(carrier) = carrier_of(world, event.interactor) else {
+            continue;
+        };
+        let _ = amadeo_inventory::store(world, event.target, carrier);
+    }
 }
 
 /// Reads a save back into a running game.

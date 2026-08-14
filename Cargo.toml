@@ -80,6 +80,10 @@ amadeo-interaction = { path = "modules/amadeo-interaction", version = "0.1.0" }
 # AI as a state machine over named facts (ADR 0068). Depends on no other module and on nothing that
 # draws, simulates or collides: it sequences states and the *game* supplies what the facts mean.
 amadeo-behaviour = { path = "modules/amadeo-behaviour", version = "0.1.0" }
+# Items, stacks and containers (ADR 0070). An item is an entity and storing it removes its
+# `Transform`, so this depends on amadeo-transform and on nothing that draws or collides -- it takes
+# a thing out of the world by taking away the one component every world pass requires.
+amadeo-inventory = { path = "modules/amadeo-inventory", version = "0.1.0" }
 
 # External.
 thiserror = "2"

@@ -14,7 +14,7 @@ use amadeo_events::WorldEvents;
 use amadeo_input::{ActionId, InputState};
 use amadeo_interaction::{Interactable, Interacted, Interactor, Looking, USE, update_interactions};
 use amadeo_physics::{Collider, Gravity, Physics, RigidBody, step_physics};
-use amadeo_transform::Transform;
+use amadeo_transform::{Parent, Transform, propagate_transforms};
 
 /// A world with an interactor at the origin looking down −Z, and physics stepped once.
 ///
@@ -264,4 +264,93 @@ fn without_a_solver_nothing_is_ever_in_reach() {
         world.get::<Looking>(looker).and_then(|looking| looking.at),
         None
     );
+}
+
+/// The defect `games/atrium` found the first time a game put an `Interactor` on a child.
+///
+/// # Why this is a whole module of its own
+///
+/// The module's docs have said since it was written that an interactor is **usually a child** — a
+/// camera or a reaching point on a character. Every test above puts it on a lone entity with no
+/// collider anywhere, so the arrangement the docs call usual was the one arrangement nothing
+/// covered.
+///
+/// In that arrangement the sweep starts inside the *parent's* collider. Ignoring the interactor
+/// ignored nothing, every cast came back at `fraction: 0.0` against the body, and `Looking::at`
+/// stayed `None` for ever — which is indistinguishable from standing too far away, so there is no
+/// symptom to notice.
+#[cfg(feature = "rapier")]
+mod on_a_child {
+    use super::*;
+
+    /// A body with a collider, and a reaching point parented to it.
+    fn body_with_a_hand() -> (World, Entity, Entity) {
+        let mut world = World::new();
+        world.insert_service(Physics::new(Box::new(amadeo_physics::RapierPhysics::new())));
+        world.insert_resource(Gravity::default());
+        world.insert_resource(InputState::new());
+        world.register_event::<Interacted>();
+
+        let body = world.spawn();
+        world.insert(body, Transform::default());
+        world.insert(body, RigidBody::default());
+        // Wide enough that a sweep starting at the centre begins inside it, which is the whole
+        // point: this is a player capsule in every game that has one.
+        world.insert(body, Collider::cuboid(1.0, 2.0, 1.0));
+
+        let hand = world.spawn();
+        world.insert(hand, Transform::default());
+        world.insert(hand, Interactor::default());
+        world.insert(hand, Parent(body));
+
+        (world, body, hand)
+    }
+
+    #[test]
+    fn a_sweep_from_a_child_ignores_the_body_it_is_attached_to() {
+        let (mut world, _body, hand) = body_with_a_hand();
+        let thing = thing_ahead(&mut world, 1.5, "Open it");
+        propagate_transforms(&mut world);
+        update_interactions(&mut world);
+
+        assert_eq!(
+            looking_at(&world, hand),
+            Some(thing),
+            "the sweep begins inside the parent's collider, so ignoring only the interactor -- \
+             which has no collider of its own -- leaves the body in the way and reports nothing \
+             for ever"
+        );
+    }
+
+    #[test]
+    fn and_using_it_still_raises_the_event() {
+        let (mut world, _body, hand) = body_with_a_hand();
+        let thing = thing_ahead(&mut world, 1.5, "Open it");
+        propagate_transforms(&mut world);
+        press_use(&mut world);
+        update_interactions(&mut world);
+
+        assert_eq!(activations(&mut world), vec![(hand, thing)]);
+    }
+
+    #[test]
+    fn a_grandchild_reaches_past_the_body_too() {
+        // Walking one link would fix the case above and not this one, and a camera boom on a
+        // character is two links in most games.
+        let (mut world, body, _hand) = body_with_a_hand();
+        let arm = world.spawn();
+        world.insert(arm, Transform::default());
+        world.insert(arm, Parent(body));
+
+        let tip = world.spawn();
+        world.insert(tip, Transform::default());
+        world.insert(tip, Interactor::default());
+        world.insert(tip, Parent(arm));
+
+        let thing = thing_ahead(&mut world, 1.5, "Open it");
+        propagate_transforms(&mut world);
+        update_interactions(&mut world);
+
+        assert_eq!(looking_at(&world, tip), Some(thing));
+    }
 }

@@ -6,6 +6,7 @@ assets
   amber
   atrium_look
   body
+  brass_key
   floor
   footstep
   lamp_flicker
@@ -232,6 +233,34 @@ entity plinth "Plinth"
     scale 1.0 1.0 1.0
     translation 0.0 0.5 -6.0
 
+entity brass_key "Brass key"
+  Collider
+    friction 0.5
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 0.18 0.4 0.05
+  Interactable
+    enabled true
+    prompt "Pick up the brass key"
+  Item
+    count 1
+    kind "brass_key"
+    max_stack 1
+  Mesh
+    material "amber"
+    mesh "brass_key"
+  RigidBody
+    angular_damping 0.0
+    gravity false
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 1.2 -6.0
+
 entity sun "Sun"
   DirectionalLight
     colour 1.0 0.96 0.88
@@ -265,6 +294,8 @@ entity player "Wanderer"
     shape Capsule
       height 1.2
       radius 0.4
+  Inventory
+    slots 6
   Mesh
     material "amber"
     mesh "body"
@@ -306,6 +337,15 @@ entity player "Wanderer"
       rotation -18.0 0.0 0.0
       scale 1.0 1.0 1.0
       translation 0.0 3.35 5.71
+
+  entity reach "Reaching hand"
+    Interactor
+      radius 0.25
+      reach 2.5
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.35 0.0
 
 entity watcher "The watcher"
   Behaviour

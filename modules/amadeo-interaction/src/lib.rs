@@ -42,9 +42,9 @@ use amadeo_core::StableHash;
 use amadeo_ecs::{Component, Entity, World};
 use amadeo_events::{Event, WorldEvents};
 use amadeo_input::{ActionId, InputState};
-use amadeo_physics::{Physics, Shape, ShapeCast};
+use amadeo_physics::{Collider, Physics, Shape, ShapeCast};
 use amadeo_reflect::{Reflect, RegistryError};
-use amadeo_transform::{GlobalTransform, Mat4, Transform};
+use amadeo_transform::{GlobalTransform, Mat4, Parent, Transform};
 
 /// The label [`update_interactions`] is registered under.
 pub const UPDATE_INTERACTIONS: &str = "update_interactions";
@@ -203,7 +203,7 @@ pub fn update_interactions(world: &mut World) {
         .map(|(entity, _)| entity)
         .collect();
 
-    let interactors: Vec<(Entity, Interactor, [f32; 3], [f32; 3])> = world
+    let interactors: Vec<Sweep> = world
         .query::<(&Interactor,)>()
         .filter_map(|(entity, (interactor,))| {
             // The **composed** transform, because an interactor is usually a child — a camera on a
@@ -222,14 +222,27 @@ pub fn update_interactions(world: &mut World) {
                 matrix.columns[3][1],
                 matrix.columns[3][2],
             ];
-            Some((entity, *interactor, from, forward_of(&matrix)))
+            Some(Sweep {
+                entity,
+                interactor: *interactor,
+                body: body_of(world, entity),
+                from,
+                forward: forward_of(&matrix),
+            })
         })
         .collect();
 
     let mut found: Vec<(Entity, Looking)> = Vec::new();
     let mut chosen: Vec<(Entity, Entity)> = Vec::new();
 
-    for (entity, interactor, from, forward) in interactors {
+    for Sweep {
+        entity,
+        interactor,
+        body,
+        from,
+        forward,
+    } in interactors
+    {
         let motion = [
             forward[0] * interactor.reach,
             forward[1] * interactor.reach,
@@ -245,10 +258,9 @@ pub fn update_interactions(world: &mut World) {
                     from,
                     motion,
                 )
-                // Never itself. A sweep that begins inside the interactor's own collider has no
-                // reliable answer — `modules/amadeo-camera` learned that as an intermittent
-                // flicker, and here it would report the player using themselves.
-                .ignoring(entity),
+                // Never the body it is attached to — see `body_of` for why that is not always
+                // `entity`.
+                .ignoring(body),
             )
         });
 
@@ -275,6 +287,61 @@ pub fn update_interactions(world: &mut World) {
         world.send_event(Interacted { interactor, target });
     }
 }
+
+/// One interactor's cast, worked out before the world is borrowed mutably to run it.
+///
+/// A named struct rather than a tuple because five fields is past the point where positions are
+/// readable — and two of them are `Entity` and two are `[f32; 3]`, so a transposition would compile
+/// and produce a sweep starting in the wrong place.
+struct Sweep {
+    /// The entity carrying the [`Interactor`], and the one [`Looking`] is written to.
+    entity: Entity,
+    /// Its reach and radius.
+    interactor: Interactor,
+    /// The collider to ignore — see [`body_of`], which is often not `entity`.
+    body: Entity,
+    /// Where the sweep starts, in world space.
+    from: [f32; 3],
+    /// Which way it points, in world space.
+    forward: [f32; 3],
+}
+
+/// The collider a sweep must ignore: the nearest one at or above the interactor in the hierarchy.
+///
+/// # Why this is not simply the interactor
+///
+/// It was, and it was wrong for **the arrangement this module's own docs call the usual one**. An
+/// `Interactor` is normally a child — a camera or a reaching point on a character — and a child like
+/// that has no collider of its own. The thing the sweep starts inside is the **parent's** body, so
+/// ignoring the interactor ignored nothing and every cast returned the player at `fraction: 0.0`.
+///
+/// The symptom is the worst kind: not a crash and not a wrong answer, but `Looking::at` staying
+/// `None` for ever, which is indistinguishable from standing too far away. Found by `games/atrium`
+/// the first time a game put an `Interactor` on a child at reaching height — which is exactly what
+/// `CLAUDE.md` means by treating the first user of a module as a review of it.
+///
+/// `modules/amadeo-camera` has the same rule and reached it the same way, as an intermittent
+/// flicker: a sweep beginning inside a collider has no reliable answer.
+///
+/// Falls back to the interactor itself, which is correct for an interactor that *is* the body.
+fn body_of(world: &World, interactor: Entity) -> Entity {
+    let mut current = interactor;
+    // Bounded like `propagate_transforms`: a hierarchy deep enough to loop is indistinguishable
+    // from one that does, and neither should hang a tick.
+    for _ in 0..MAX_DEPTH {
+        if world.get::<Collider>(current).is_some() {
+            return current;
+        }
+        match world.get::<Parent>(current) {
+            Some(parent) => current = parent.0,
+            None => break,
+        }
+    }
+    interactor
+}
+
+/// How far up a hierarchy [`body_of`] will walk before giving up.
+const MAX_DEPTH: usize = 16;
 
 /// The direction a transform faces, in world space.
 ///

@@ -107,13 +107,15 @@ fn the_room_loads_from_its_scene_file() {
 
     let meshes = app.world.query::<(&Mesh,)>().count();
     assert_eq!(
-        meshes, 12,
-        "a floor, four walls, four pillars, a plinth, the player's body, and the watcher"
+        meshes, 13,
+        "a floor, four walls, four pillars, a plinth, the player's body, the watcher, and the \
+         brass key on the plinth"
     );
     assert_eq!(app.world.query::<(&Camera,)>().count(), 1);
     assert_eq!(app.world.query::<(&DirectionalLight,)>().count(), 1);
-    // Static geometry plus the character, all with a shape physics can use.
-    assert_eq!(app.world.query::<(&RigidBody, &Collider)>().count(), 11);
+    // Static geometry plus the character, all with a shape physics can use — and the brass key,
+    // which needs one so the interactor's sweep has something to hit (ADR 0054).
+    assert_eq!(app.world.query::<(&RigidBody, &Collider)>().count(), 12);
 }
 
 #[test]

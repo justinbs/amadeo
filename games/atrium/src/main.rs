@@ -4,7 +4,7 @@
 //! cargo run -p atrium
 //! ```
 //!
-//! WASD to walk, Q and E to turn, Space to jump, Escape to quit.
+//! WASD to walk, Q and E to turn, Space to jump, F to use what is in reach, Escape to pause.
 //!
 //! See the crate docs in `lib.rs` for what this is *for*. The short version: three parts of M2's
 //! exit gate 1 were built and had never been seen together, and no test can answer whether shadows
@@ -74,6 +74,8 @@ struct HeldKeys {
     turn_left: bool,
     turn_right: bool,
     jump: bool,
+    /// F, which uses whatever is in reach. E is taken by turning.
+    use_it: bool,
     /// Escape, which opens and closes the pause menu.
     pause: bool,
     /// The menu keys. Deliberately the same arrows that walk: while the menu is up the character's
@@ -119,6 +121,9 @@ impl Atrium {
                 live.set_axis_from_keys(MOVE_RIGHT, keys.left, keys.right);
                 live.set_axis_from_keys(TURN, keys.turn_right, keys.turn_left);
                 live.set_button(JUMP, keys.jump);
+                // Edge-triggered in the module, so this only has to report whether the key is
+                // down -- `just_pressed` is computed from the previous tick, not from here.
+                live.set_button(amadeo_interaction::USE, keys.use_it);
                 // The menu. These are *named actions* like every other line here, which is what
                 // lets a replay record a player pausing and choosing without the replay format
                 // knowing anything about menus (ADR 0063).
@@ -172,7 +177,7 @@ impl ApplicationHandler for Atrium {
         // To **stderr**, not stdout: stdout is the agent protocol (ADR 0016), and a game that prints
         // there is reported as sending something that is not JSON.
         eprintln!("Amadeo — the Atrium.");
-        eprintln!("WASD to walk, Q and E to turn, Space to jump.");
+        eprintln!("WASD to walk, Q and E to turn, Space to jump, F to pick things up.");
         eprintln!("Escape to pause; arrows and Enter to choose.");
 
         self.running = Some(Running {
@@ -215,6 +220,7 @@ impl ApplicationHandler for Atrium {
                     KeyCode::KeyQ => self.keys.turn_left = held,
                     KeyCode::KeyE => self.keys.turn_right = held,
                     KeyCode::Space => self.keys.jump = held,
+                    KeyCode::KeyF => self.keys.use_it = held,
                     // The arrows walk *and* move the menu. See `HeldKeys` for why that is safe.
                     KeyCode::ArrowUp => {
                         self.keys.forward = held;

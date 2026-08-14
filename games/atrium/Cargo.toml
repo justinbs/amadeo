@@ -29,6 +29,10 @@ amadeo-events.workspace = true
 amadeo-input.workspace = true
 # The whole point of this game: the module walks, and the renderer draws its shadow.
 amadeo-camera.workspace = true
+# Looking at things and using them (session 17), and carrying them (ADR 0070). Both modules had
+# never been used by a game; the brass key is what fixed that for each of them at once.
+amadeo-interaction.workspace = true
+amadeo-inventory.workspace = true
 amadeo-character.workspace = true
 # `rapier` on, deliberately and not by default elsewhere. Against `NullPhysics` the character walks
 # through the walls -- which is a *useful* control case in a test and a broken one in a demo somebody

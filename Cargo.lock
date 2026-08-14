@@ -261,6 +261,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "amadeo-inventory"
+version = "0.1.0"
+dependencies = [
+ "amadeo-app",
+ "amadeo-core",
+ "amadeo-ecs",
+ "amadeo-events",
+ "amadeo-reflect",
+ "amadeo-transform",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "amadeo-jobs"
 version = "0.1.0"
 
@@ -477,6 +490,8 @@ dependencies = [
  "amadeo-ecs",
  "amadeo-events",
  "amadeo-input",
+ "amadeo-interaction",
+ "amadeo-inventory",
  "amadeo-physics",
  "amadeo-reflect",
  "amadeo-render",

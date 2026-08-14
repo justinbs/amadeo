@@ -67,8 +67,13 @@ fn the_scene_complexity_the_budget_is_quoted_against() {
     // Twelve since the watcher joined (ADR 0068). It has a mesh and no collider — it walks through
     // the pillars, which is a real limitation of moving it by writing a `Transform` rather than
     // through `move_shape`, and is noted in `move_the_watcher` rather than hidden here.
-    assert_eq!(meshes, 12, "drawn meshes");
-    assert_eq!(bodies, 11, "bodies with a collider");
+    //
+    // **Thirteen since the brass key** (ADR 0070), which has both a mesh and a collider. Worth
+    // knowing that this number *falls back to twelve once somebody picks the key up*: storing an
+    // item removes its `Transform`, and every pass that draws or simulates a thing requires one.
+    // That is the module's whole mechanism showing up in a measurement taken for another reason.
+    assert_eq!(meshes, 13, "drawn meshes");
+    assert_eq!(bodies, 12, "bodies with a collider");
     assert_eq!(characters, 1, "characters");
     assert_eq!(casters, 1, "shadow-casting lights");
 }
