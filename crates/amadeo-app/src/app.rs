@@ -839,7 +839,8 @@ impl App {
         self
     }
 
-    /// Turns every clip id an [`AnimationPlayer`] names into the animation behind it — ADR 0066.
+    /// Turns every clip id an [`amadeo_anim::AnimationPlayer`] names into the animation behind it —
+    /// ADR 0066.
     ///
     /// Called automatically by [`App::load_scene`], and **self-installing**, which is the same
     /// departure [`App::load_environments`] makes and for a stronger reason. A clip that never loads
