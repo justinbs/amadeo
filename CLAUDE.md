@@ -757,6 +757,25 @@ modules/             optional, genre-flavored. Core NEVER depends on these. Crea
                      a **hashed** component, which is what ADR 0053 exists for.
                      It lived in `games/scarp` first, on the rule that something moves to `modules/`
                      when a *second* game wants it — `games/atrium` is what moved it.
+🟡 amadeo-interaction the third module: **looking at things and using them** (docs/05's `mod-interaction`,
+                     and M3 exit gate item 4). `Interactor` sweeps a small sphere forward, `Looking`
+                     records what it found, `Interactable` says what a thing is, and `Interacted`
+                     says somebody used it. Built on `cast_shape` reporting **what** it hit, which is
+                     the field added in the same session for exactly this.
+                     **A sphere, not a ray** -- a zero-width ray demands the player aim at a door
+                     handle exactly, and `radius` is how much the aim is forgiven.
+                     **`Looking` is DERIVED, and that is the opposite call from ADR 0063's `Focus`.**
+                     UI focus had to be hashed because nothing recomputes it -- there is no other
+                     record of where the highlight sits. This is recomputed every tick from
+                     transforms and the physics index, both already hashed, so hashing it would hash
+                     the same facts twice; and unlike UI focus it does not depend on the window size.
+                     **`PostSimulation`, after `propagate_transforms`** -- an interactor is usually a
+                     child (a camera on a character), so where it points comes from the whole chain
+                     composed; running in `Simulation` reads last tick's and lags the aim by a tick.
+                     Depends on neither of the other modules: what does the looking is whatever
+                     carries an `Interactor`.
+                     **Its real tests need a solver** -- against `NullPhysics` every cast reports
+                     clear, so nothing is ever in reach, which is asserted once as the control case.
 🟡 amadeo-character   the first module. `CharacterController` (speed, acceleration, jump, turn, slope,
                      step height) and `CharacterMotion` (velocity, grounded), driven by named input
                      actions, moved by `PhysicsBackend::move_shape`. `install(&mut app)?` registers
@@ -847,9 +866,14 @@ Everything must be green before a commit. These four are what CI runs:
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace
+cargo test --workspace --all-features
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
+
+**`--all-features` on the test line is load-bearing and used to be missing here.** CI has always run
+it that way; this file said plain `cargo test --workspace`, which compiles out every test behind
+`rapier` or `gpu` — so a local run could be green while CI ran a strictly larger suite. Any module
+whose real mechanism needs a solver, like `modules/amadeo-interaction`, is invisible without it.
 
 Golden replays live in `crates/amadeo-app/tests/golden/`. If one fails, read
 `docs/07-working-with-the-code.md` § Golden replays **before** regenerating it.

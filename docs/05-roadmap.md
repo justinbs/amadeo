@@ -373,9 +373,13 @@ in documents nobody is allowed to correct.
     and it opens a decision**: a finite state machine, a behaviour tree, or utility scoring. ADR 0066
     §5 already settled that it will *not* share an abstraction with animation, and noted that the
     industry's answer for AI has largely moved to behaviour trees. Needs deciding before it is built.
-  - ⚠️ **`mod-inventory`** (items, stacks, containers) and **`mod-interaction`** (look-at, pick up,
-    use). Interaction is buildable on `cast_shape` today (ADR 0054) — a sweep forgives aim in a way a
-    ray does not, which is what an interaction prompt wants.
+  - ✅ **`mod-interaction`** (look-at, use) — `modules/amadeo-interaction`. A sphere swept forward
+    from an `Interactor`, because a ray demands the player aim at a door handle exactly. Built on
+    `ShapeHit::entity`, which was added for it: a cast used to say where it stopped and not what it
+    stopped against. Still to come: a held item, which is `mod-inventory`'s half.
+  - ⚠️ **`mod-inventory`** (items, stacks, containers). The open question is whether an item is an
+    entity or a value — a stack of fifty arrows is one row in a list, and a dropped arrow is a thing
+    in the world with a collider, and both have to be the same item.
   2D modules (`mod-tilemap`, `mod-platformer2d`) drop to M7 unless a specific need arises.
 
 **Exit gate**

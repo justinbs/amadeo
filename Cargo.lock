@@ -236,6 +236,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "amadeo-interaction"
+version = "0.1.0"
+dependencies = [
+ "amadeo-app",
+ "amadeo-core",
+ "amadeo-ecs",
+ "amadeo-events",
+ "amadeo-input",
+ "amadeo-physics",
+ "amadeo-reflect",
+ "amadeo-transform",
+]
+
+[[package]]
 name = "amadeo-jobs"
 version = "0.1.0"
 

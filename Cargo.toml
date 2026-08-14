@@ -73,6 +73,10 @@ amadeo-character = { path = "modules/amadeo-character", version = "0.1.0" }
 # A third-person follow camera. Deliberately does not depend on amadeo-character: trap 10 says a
 # camera rig must not assume a character exists, and this follows a `Parent`, whatever that is.
 amadeo-camera = { path = "modules/amadeo-camera", version = "0.1.0" }
+# Looking at things and using them. Depends on neither of the modules above: what does the looking
+# is whatever carries an `Interactor`, which may be a camera, a character, or a cursor in a game
+# that has neither -- trap 10 one level along.
+amadeo-interaction = { path = "modules/amadeo-interaction", version = "0.1.0" }
 
 # External.
 thiserror = "2"
