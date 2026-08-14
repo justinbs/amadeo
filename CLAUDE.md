@@ -896,6 +896,19 @@ games/               actual games built with the engine
                      verified_without_eyes.rs checks the screen through render.describe.
                      NOTE it has two binaries, so it sets `default-run` — without that
                      `cargo run -p vault` is ambiguous and every CLI command against it fails.
+  warren           M3's exit gate, **spine only**: one handcrafted room, first person, a torch you
+                   look at, take and light (`cargo run -p warren`). None of the gate's *content* is
+                   here -- no procedural interiors, no pursuer, no win or lose, no title screen, no
+                   audio, no HUD (`warren::prompt` returns the text and nothing draws it).
+                   Built before the level design because **`FirstPersonCamera` had no game using
+                   it** -- the Scarp and the Atrium are both third person. The `Interactor` is on
+                   the **camera**, so the mouse drives the sweep's pitch: where an interactor is
+                   parented *is* its aim.
+                   **Capturing it found Q39, which is P0 and blocks the milestone**: punctual lights
+                   do not light a room with no `DirectionalLight` in it. The `spill` directional at
+                   0.12 is a placeholder standing in for that bug, `ceiling_lamp` contributes
+                   nothing, and the beam is `shadows false` because `true` kills all punctual
+                   lighting. Do not tune any of those numbers before fixing Q39.
   scarp            M2.5's exit gate: a generated world you walk on and dig into
                    (`cargo run -p scarp`). **Nothing is authored but the player, the camera and the
                    sun** -- the ground is a function of the seed, streamed in chunks. `Highlands` is

@@ -26,8 +26,22 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 ## 📬 For the next session — read this box, then the two below it
 
-**Everything is pushed through `86b7f55`.** The last two runs were still in flight when the session
-ended; every run before them is green **5/5**. Check with `gh run list` rather than assuming — `gh`
+> ### Start with Q39. It is P0 and it blocks the milestone.
+>
+> **Punctual lights do not light a room that has no `DirectionalLight` in it.** A shadow-casting
+> spot in such a scene kills punctual lighting entirely — its own included — and a `PointLight`
+> alone lights nothing even with the spot off. `docs/06` has five captures' worth of reproduction
+> and the likely cause (ADR 0058 puts a spot's shadow map in a layer of the array the *cascades*
+> use, and with no directional light there are no cascades).
+>
+> This is not a side issue: M3's exit gate asks for "a dark corridor with a moving flashlight",
+> which **is** a shadow-casting spot in a scene with no sun. Every scene the renderer has ever drawn
+> has a sun in it, including every capture test, which is exactly why nothing caught it.
+>
+> Found by capturing `games/warren` and looking at the picture, with the whole suite green.
+
+**Everything is pushed through `1e9bc35`.** Runs through `cadfeff` are green **5/5**; the last two
+were still in flight when the session ended. Check with `gh run list` rather than assuming — `gh`
 is not on PATH, so prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
 
 ### Session 18 in one paragraph
@@ -108,10 +122,14 @@ crates.
 **Every named M3 subsystem and all five named genre modules now exist.** What is left in the
 milestone is mostly the exit gate itself.
 
-1. **M3's exit gate** — the first-person horror slice. Everything it needs structurally exists:
-   interaction, inventory, behaviour, audio, UI, save/load, pausing. This is the biggest single piece
-   of work left and it is mostly **content**. The gate asks for a flashlight and a key-type item, and
-   the key half is now demonstrated in `games/atrium`.
+0. **Q39, before anything else.** See the box at the top. The exit gate's core requirement does not
+   render today.
+1. **M3's exit gate** — `games/warren` now exists and is its spine: one handcrafted room, first
+   person, a torch you look at, take and light. Still to come, and it is most of the gate:
+   **procedural interiors from handcrafted pieces** (the one genuine design fork left — worth
+   researching and putting to Justin rather than inventing), a pursuing entity, win and lose states,
+   a title screen, audio, and a HUD for the interaction prompt. `warren::prompt` returns the text
+   and nothing draws it yet.
 2. **A runtime-driven aim.** ~~An interactor sweeps horizontally, so an item on the floor cannot be
    reached.~~ **Checked, and that was wrong** — an authored pitch reaches the floor with nothing
    built, because an interactor is an ordinary entity and the sweep follows its forward
@@ -125,6 +143,20 @@ milestone is mostly the exit gate itself.
 4. **Pointer navigation** — read **Q36** first; the replacement design is written up there.
 5. **Q38: where a save file lives**, and whether a redirect file ships with the build rather than
    sitting beside the save. Small, and nothing depends on it.
+
+### The Warren's eyeball numbers, all waiting on Justin
+
+All in `games/warren/scenes/warren.scene`, all one line each, and **all suspect until Q39 is fixed**
+— it is hard to tune lighting when two of the three lights do nothing.
+
+- **`spill`, a `DirectionalLight` at intensity 0.12.** A placeholder standing in for the bug, not a
+  lighting decision. It is the only reason the room is visible at all.
+- **`ceiling_lamp` at intensity 12** — currently contributes **nothing**. Left in because it is what
+  the room should be lit by once Q39 is closed.
+- **The torch beam**: 24 intensity, 11°/26° cone, 18 m range, and `shadows false` **because true
+  breaks everything**. A flashlight that casts is most of the atmosphere in a game like this.
+- **Movement**: 2.6 m/s and no jump, which is a horror-pace guess rather than a measured one.
+- **The room**: 12 × 16 × 3 m, one lamp, two crates.
 
 ### One caution that stands, and one that is retired
 
@@ -271,6 +303,10 @@ test and passes regardless, so a green Ubuntu job says nothing about a shader.
   rather than a switch. Only a *runtime-driven* pitch is missing. **When a component composes out of
   `Transform` and `Parent`, check whether the thing you are calling unbuilt is already authorable.**
 
+5. **`games/warren`**, M3's exit gate's spine, and the third module-with-no-user retired:
+   `FirstPersonCamera` had existed since session 17 with no game behind it. Capturing it found
+   **Q39**.
+
 ### Three habits that paid, again
 
 - **Break the fix and check the test fails.** Twice: the fingerprint's recursion (exactly one test
@@ -280,6 +316,12 @@ test and passes regardless, so a green Ubuntu job says nothing about a shader.
   come back empty; it does not, and should not.
 - **Read the code rather than estimating the cost.** ADR 0070's whole shape came from three query
   signatures, and the estimate they replaced was much worse than the truth.
+- **Look at the output.** Q39 was found by rendering a PNG and opening it, against a fully green
+  suite — the third time in this project that a green suite has hidden something plainly visible,
+  after the inside-out mesher and the FXC-only shader failure. The corollary is the one worth
+  keeping: **a test that asserts on numbers cannot see a black screen**, so anything whose whole
+  purpose is visual needs a capture, and the capture needs a scene that differs from the ones that
+  already work.
 
 ---
 
