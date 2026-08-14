@@ -176,6 +176,36 @@ impl RapierPhysics {
         }
     }
 
+    /// An entity packed into the `u128` rapier lets a collider carry.
+    ///
+    /// # Why `+ 1`, and it is the whole trick
+    ///
+    /// Rapier's `user_data` **defaults to zero**, and a collider that nobody set it on is
+    /// indistinguishable from one carrying the value zero. Entity `0:0` packs to zero, so without
+    /// this the very first entity a world spawns would be reported as "static geometry" — and it
+    /// would be right almost everywhere else, because entity zero is usually the floor.
+    ///
+    /// Offsetting by one makes "unset" and "any entity" disjoint. See
+    /// [`unpack_entity`](unpack_entity), which is where the offset comes back off.
+    fn pack_entity(entity: Entity) -> u128 {
+        let packed = (u128::from(entity.index()) << 32) | u128::from(entity.generation());
+        packed + 1
+    }
+
+    /// The entity a collider's `user_data` names, or `None` if nobody set one.
+    ///
+    /// `None` is a real answer rather than a failure: static geometry is inserted by
+    /// [`RapierPhysics::insert_static_mesh`] and belongs to a *level*, so there is no entity to
+    /// report and "you are looking at the ground" is what the caller learns.
+    fn unpack_entity(data: u128) -> Option<Entity> {
+        // Zero is "never set" — see `pack_entity` for why that case has to be reserved.
+        let packed = data.checked_sub(1)?;
+        Some(Entity::from_parts(
+            u32::try_from(packed >> 32).ok()?,
+            u32::try_from(packed & u128::from(u32::MAX)).ok()?,
+        ))
+    }
+
     /// The bare geometry of one of this engine's shapes, with no body or material attached.
     ///
     /// Separate from [`collider_for`](Self::collider_for) because a scene query needs the *shape*
@@ -409,7 +439,14 @@ impl PhysicsBackend for RapierPhysics {
         };
 
         let motion = Vector::new(cast.motion[0], cast.motion[1], cast.motion[2]);
-        let (_, hit) = queries.cast_shape(&pose, motion, shape.as_ref(), options)?;
+        let (collider, hit) = queries.cast_shape(&pose, motion, shape.as_ref(), options)?;
+
+        // What was hit. `None` for static geometry, which has no entity to name — a `StaticMesh`
+        // belongs to a level rather than to a body.
+        let entity = self
+            .colliders
+            .get(collider)
+            .and_then(|collider| Self::unpack_entity(collider.user_data));
 
         // Clamped because `target_distance` can put the reported impact fractionally before zero on
         // a shape that starts within the skin, and a negative fraction would move a caller backwards
@@ -425,6 +462,7 @@ impl PhysicsBackend for RapierPhysics {
             // `normal1` is the world collider's outward normal -- the surface that was hit, which is
             // what a caller wanting to bounce or to classify floor-versus-wall needs.
             normal: [hit.normal1.x, hit.normal1.y, hit.normal1.z],
+            entity,
         })
     }
 
@@ -509,6 +547,10 @@ impl PhysicsBackend for RapierPhysics {
                     // Mass comes from the `RigidBody`, so the collider must not also contribute one
                     // -- otherwise the authored mass is silently added to a density-derived one.
                     .mass(state.body.mass)
+                    // Which entity this collider belongs to, so a cast can say *what* it hit.
+                    // Carried on the collider rather than in a second map beside `handles`, because
+                    // two maps of the same fact eventually disagree and this one cannot.
+                    .user_data(Self::pack_entity(state.entity))
                     .build();
                 self.colliders
                     .insert_with_parent(built, handle, &mut self.bodies);

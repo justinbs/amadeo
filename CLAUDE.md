@@ -437,6 +437,15 @@ crates/
                      *along* the query direction counted as nearly all of it and put the follow
                      camera under the terrain. Takes `&self`, because a cast is a question. Same
                      after-`step` rule as `move_shape`.
+                     **A `ShapeHit` says WHAT it hit, not just where** -- `entity: Option<Entity>`,
+                     added in session 17. Without it a cast served the two camera sweeps and nothing
+                     else: an interaction prompt asks what is under the crosshair and an AI's line of
+                     sight asks whether the obstruction is the player or a wall. `None` is a real
+                     answer meaning **static geometry**, which belongs to a level and has no entity.
+                     It rides on the collider's `user_data` rather than a second map, so it cannot
+                     drift -- and it is stored **offset by one**, because rapier's `user_data`
+                     defaults to zero and entity `0:0` packs to zero: without the offset the *first
+                     entity a world spawns* reports as scenery, and that is usually the floor.
                      **`insert_static_mesh` is the third (ADR 0043)**: a triangle mesh handed over
                      ONCE, by id, and held between steps -- because `Shape` is `Copy` and
                      `StableHash` and a world's worth of vertices is exactly what ADR 0042 refuses to

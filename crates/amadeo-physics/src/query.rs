@@ -219,6 +219,24 @@ pub struct ShapeHit {
     /// bullet that should ricochet, a placement check that wants to know if it landed on a floor or
     /// a wall — needs it, and adding it later would change a returned type rather than extend one.
     pub normal: [f32; 3],
+    /// **What** was hit, when it is an entity.
+    ///
+    /// `None` means static geometry — a `StaticMesh`, which belongs to a level rather than to a body
+    /// and has no entity to name. That is a real answer rather than a failure: "you are looking at
+    /// the ground" is what a level is for.
+    ///
+    /// # Why this was missing and why it matters
+    ///
+    /// The original `ShapeHit` said *where* a cast stopped and not *what* it stopped against, which
+    /// is enough for the two callers it was written for — both camera sweeps only need a distance.
+    /// Everything else needs the entity: an interaction prompt asks what is under the crosshair, an
+    /// AI's line of sight asks whether the thing in the way is the player or a wall, and a projectile
+    /// asks what it should damage. `docs/05` names two modules that cannot be built without it.
+    ///
+    /// It travels on the **collider** rather than through a lookup table beside it, so it cannot
+    /// drift out of step with the body it describes — the failure two parallel maps always
+    /// eventually have.
+    pub entity: Option<Entity>,
 }
 
 #[cfg(test)]

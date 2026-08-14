@@ -244,3 +244,115 @@ fn the_null_backend_finds_nothing_which_is_what_makes_the_others_evidence() {
         "the null backend detects nothing, by design — got {hit:?}"
     );
 }
+
+// --- What was hit, not just where ---
+
+#[test]
+fn a_hit_says_which_entity_it_was() {
+    // **The half `ShapeHit` was missing.** It said *where* a cast stopped and not *what* it stopped
+    // against, which is enough for the two camera sweeps it was written for and enough for nothing
+    // else: an interaction prompt asks what is under the crosshair, an AI's line of sight asks
+    // whether the thing in the way is the player or a wall, and a projectile asks what to damage.
+    let world = world_with_a_floor();
+    let floor = world
+        .entities()
+        .into_iter()
+        .find(|entity| world.get::<Collider>(*entity).is_some())
+        .expect("the floor is the only body");
+
+    let physics = world.service::<Physics>().expect("physics");
+    let hit = physics
+        .cast_shape(&ShapeCast::new(
+            Shape::Sphere { radius: 0.25 },
+            [0.0, 4.0, 0.0],
+            [0.0, -6.0, 0.0],
+        ))
+        .expect("the floor is in the way");
+
+    assert_eq!(hit.entity, Some(floor));
+}
+
+#[test]
+fn the_first_entity_a_world_spawns_is_not_reported_as_scenery() {
+    // **The trap, and it is a one-line bug that would have been nearly invisible.** Rapier's
+    // `user_data` defaults to zero, so a collider nobody set it on and a collider carrying the
+    // packed value zero are the same thing. Entity `0:0` packs to zero — and entity zero is
+    // *usually the floor*, so "what am I standing on" would have answered "scenery" while every
+    // other entity answered correctly.
+    //
+    // `world_with_a_floor` spawns the floor first, so the floor above already is entity zero. This
+    // says so, because a future change to that helper would otherwise silently retire this test.
+    let world = world_with_a_floor();
+    let floor = world
+        .entities()
+        .into_iter()
+        .find(|entity| world.get::<Collider>(*entity).is_some())
+        .expect("the floor is the only body");
+    assert_eq!(floor.index(), 0, "the floor should be the first entity");
+    assert_eq!(floor.generation(), 0);
+
+    let physics = world.service::<Physics>().expect("physics");
+    let hit = physics
+        .cast_shape(&ShapeCast::new(
+            Shape::Sphere { radius: 0.25 },
+            [0.0, 4.0, 0.0],
+            [0.0, -6.0, 0.0],
+        ))
+        .expect("the floor is in the way");
+
+    assert_eq!(
+        hit.entity,
+        Some(floor),
+        "entity 0:0 must not be indistinguishable from unset"
+    );
+}
+
+#[test]
+fn static_geometry_reports_no_entity_rather_than_the_wrong_one() {
+    // A `StaticMesh` belongs to a *level* rather than to a body, so there is nothing to name. `None`
+    // is the honest answer, and it must not be some other entity's handle read out of an unset
+    // field — which is exactly what the offset in `pack_entity` prevents.
+    let mut world = World::new();
+    world.insert_service(Physics::new(Box::new(RapierPhysics::new())));
+    world.insert_resource(Gravity::earth());
+
+    // A body somewhere else entirely. `step` builds the index the query answers from, and it has
+    // nothing to build one out of in a world with no bodies at all — which is a fact about the
+    // backend rather than about static meshes, and it cost this test one confusing failure.
+    let far_away = world.spawn();
+    let mut elsewhere = amadeo_transform::Transform::at(0.0, 0.0);
+    elsewhere.translation = [500.0, 0.0, 0.0];
+    world.insert(far_away, elsewhere);
+    world.insert(far_away, RigidBody::default());
+    world.insert(far_away, Collider::sphere(0.5));
+
+    if let Some(physics) = world.service_mut::<Physics>() {
+        physics
+            .insert_static_mesh(amadeo_physics::StaticMesh {
+                id: amadeo_physics::StaticMeshId(1),
+                translation: [0.0, 0.0, 0.0],
+                // A wide flat quad at y = 0.
+                vertices: vec![
+                    [-10.0, 0.0, -10.0],
+                    [10.0, 0.0, -10.0],
+                    [-10.0, 0.0, 10.0],
+                    [10.0, 0.0, 10.0],
+                ],
+                indices: vec![[0, 1, 2], [1, 3, 2]],
+                friction: 0.8,
+            })
+            .expect("a valid mesh");
+    }
+    step_physics(&mut world);
+
+    let physics = world.service::<Physics>().expect("physics");
+    let hit = physics
+        .cast_shape(&ShapeCast::new(
+            Shape::Sphere { radius: 0.25 },
+            [0.0, 4.0, 0.0],
+            [0.0, -6.0, 0.0],
+        ))
+        .expect("the ground is in the way");
+
+    assert_eq!(hit.entity, None);
+}
