@@ -26,105 +26,76 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 ## 📬 For the next session — read this box, then the two below it
 
-**Everything is pushed through `9660866`.** Several CI runs were still in flight when the session
-ended, so **check them first** — `gh run list` — rather than assuming. All four local checks passed on
-every commit, and per-job inspection showed every finished job green **except one**, which is worth
-knowing about rather than being surprised by:
+**Everything is pushed through `6609274`.** The last CI run was still in flight when the session
+ended; every run before it is green **5/5**. Check with `gh run list` rather than assuming — `gh` is
+not on PATH, so prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
 
-> **`6e56c0b` has a red `docs build without warnings` job, permanently.** A doc link named a type the
-> crate does not import. `f91229d` is the fix and its docs job is confirmed green. Nothing else was
-> ever red.
+Verify pushes the way session 15 learned to: `git fetch`, then
+`git log --oneline origin/main..HEAD`. **The fetch is the load-bearing half** — session 15 hit a
+network failure where the fetch died and the comparison ran against a stale ref, printing "all
+pushed" without having checked anything. Read the fetch's exit code, not just the log's output.
 
-Verify pushes the way session 15
-learned to: `git fetch` and then `git log --oneline origin/main..HEAD`. **The fetch is the
-load-bearing half** — session 15 hit a network failure where the fetch died and the comparison ran
-against a stale ref, printing "all pushed" without having checked anything. Read the fetch's exit
-code, not just the log's output.
-
-> **Do not spawn a long background sleep to watch CI.** Session 16 did that after most of sixteen
-> pushes and Justin killed one: the run was already green while the timer still had twenty minutes to
-> go. `gh run view <id> --json jobs` shows the five jobs separately, so four-of-five green is knowable
+> **Do not spawn a long background sleep to watch CI.** A run takes ~27 minutes and
+> `gh run view <id> --json jobs` shows the five jobs separately, so four-of-five green is knowable
 > minutes in. Check once at a plausible time, report honestly, and keep building in between.
 
-### Where things actually are
+> **One historical red mark, so nobody re-investigates it.** `6e56c0b`'s `docs build without warnings`
+> job is red and always will be — a doc link named a type the crate does not import. `f91229d` is the
+> fix and its docs job is confirmed green. Nothing else has ever been red.
 
-**Every named M3 subsystem now exists.** Session 17 finished the interface, decided how a game
-pauses, and built `amadeo-anim` from nothing.
+> **Run the checks with `--all-features`.** `CLAUDE.md` §4b said plain `cargo test --workspace` until
+> session 17; CI has always used `--all-features`, which is what compiles in everything behind
+> `rapier` and `gpu`. `modules/amadeo-interaction` makes the difference obvious — without the flag its
+> whole test file reduces to a null-backend control case.
 
-| | |
+### Where the project actually is
+
+**M3 is close.** Every named M3 subsystem exists, all four named genre modules exist, and the exit
+gate's save-and-resume loop works. Session 17 was long: 17 commits, four ADRs (0065–0068), three new
+crates.
+
+| Subsystem | State |
 |---|---|
-| `amadeo-audio` | **Working, and complete enough for a game.** Trait, `NullAudio`, `KiraAudio`, buses, components, collection pass, `VoiceTracker`, WAV decoder, `SoundCache`, **one-shots**, `audio.describe`. Missing: ducking, occlusion, compressed audio, a voice cap |
-| `amadeo-ui` | **Working, seen, navigable, themed, and the focus is drawn.** A focused panel resolves to `Accent` and its text to `OnAccent`, substituted in the draw pass so nothing hashable holds an appearance. Missing: pointer navigation, and **ADR 0063's plan for it does not work — read Q36** |
-| `amadeo-anim` | **Working, and introspectable.** A clip animates a *reflected field* (ADR 0066), so nothing in the crate knows about any component type. Hashed, because a clip that moves a `Transform` is a moving platform. `amadeo anim` says what is animating and why it might not be. Missing: skeletal animation and skinning, blending, a state machine |
+| `amadeo-audio` | Complete enough for a game. Missing: ducking, occlusion, compressed audio, a voice cap |
+| `amadeo-ui` | Layout, text, focus (drawn), theme, pausing. Missing: pointer navigation — **and ADR 0063's plan for it does not work, read Q36** |
+| `amadeo-anim` | A clip animates a *reflected field* (ADR 0066); `amadeo anim` reports why nothing is moving. Missing: **skeletal animation and skinning**, blending, a state machine |
+| Save/load | Works end to end in `games/atrium`. Missing: **versioning and migration — Q37, the most consequential open question in the project** |
 
-### What to build next
+| Module | State |
+|---|---|
+| `amadeo-character` | Movement, ground, jump, slopes. Missing: crouch, coyote time, pushing dynamic bodies |
+| `amadeo-camera` | Third **and** first person, separate components sharing one aiming system |
+| `amadeo-interaction` | Look at a thing, use the thing. **Has no game using it yet** — see the caution below |
+| `amadeo-behaviour` | AI as a state machine over named facts (ADR 0068). `games/atrium` has a watcher |
 
-Nothing is queued the way it was last session — the list is genuinely open now, so these are
-candidates rather than an order.
+### What to do next — candidates, not an order
 
-1. **`mod-behaviour`** — the last named genre module and **the one that needs a decision before it is
-   built**: a finite state machine, a behaviour tree, or utility scoring. ADR 0066 §5 already settled
-   that it will not share an abstraction with animation, and noted the industry has largely moved to
-   behaviour trees for AI. M3's exit gate needs one pursuing entity with idle/search/pursue/lose
-   states, and the lose condition (caught) depends on it.
-2. **Skeletal animation.** The largest remaining piece of `amadeo-anim`, and the one place ADR 0066's
-   design deliberately stops: property animation goes through reflection, and a read-patch-write per
-   bone per tick is hopeless at a few hundred bones, so skinning gets its own typed path. Needs a
-   rigged glTF model, which the repository does not have.
-3. **`mod-inventory`**, whose fork is whether an item is an entity or a value — a stack of fifty
-   arrows is one row in a list, a dropped arrow is a thing in the world with a collider, and both
-   have to be the same item.
+1. **Q37: save versioning.** The one that can destroy something a *player* owns. A snapshot
+   deliberately has no migration path; a save has to survive a patch, and today adding one field to
+   any component invalidates every existing save. Q37 has the shape of the answer worked out —
+   `TypeInfo::version` exists and is unread, and ADR 0029's patch semantics are most of a lenient
+   restore. **This is a decision, so bring options rather than a commit.**
+2. **Skeletal animation**, the largest unbuilt piece of a named subsystem. ADR 0066 §5 says where the
+   reflected-field design deliberately stops: a read-patch-write per bone per tick is hopeless at a
+   few hundred bones, so skinning gets its own typed path. **Blocked on an asset** — the repository
+   has no rigged glTF model.
+3. **`mod-inventory`**, the one unbuilt named module. Its fork is whether an item is an **entity or a
+   value**; four of the eight target games are inventory-heavy.
 4. **M3's exit gate itself** — the first-person horror slice. Everything it needs structurally now
-   exists, including a first-person camera and interaction.
-5. ~~**Save/load on top of snapshots**~~ — **done**, except for the part that is a real decision:
-   **versioning and migration.** `amadeo-snapshot` refuses a version mismatch and has *no migration
-   path*, deliberately, because a snapshot is a short-lived artefact. A **save is not** — it has to
-   survive the game being patched, and today adding a field to any component invalidates every
-   existing save. That is Q32's shape at its most painful and it wants deciding before anyone ships
-   a build to a player. Where a save file *lives* is also open, and is deliberately a plain relative
-   path so nothing has to be unpicked.
-6. **Pointer navigation**, but read **Q36** first: ADR 0063's consequences describe a design that
-   cannot work, and the replacement is written up there.
+   exists. This is the biggest single piece of work left in the milestone and it is mostly *content*.
+5. **Pointer navigation** — read **Q36** first; the replacement design is written up there.
 
-> **One thing to know before running the checks.** `CLAUDE.md` §4b used to say
-> `cargo test --workspace`; **CI has always run it with `--all-features`**, which is what compiles in
-> everything behind `rapier` and `gpu`. The file now matches. `modules/amadeo-interaction` is the
-> case that makes it obvious — without the flag its whole test file reduces to a null-backend
-> control case, and a local run is green against a strictly smaller suite than CI's.
+### Two cautions about work I did
 
-### The old list, for the record — all four are done or deliberately deferred
-
-1. ✅ **Draw the focus differently — and it is now small.** Navigation works (ADR 0063), the theme
-   exists (ADR 0064), and `Paint::Accent` is sitting there unused. **No widget consults the focus**,
-   so a highlighted menu item looks like every other one. A system in the `Render` stage that
-   repaints the focused node's `Panel` and `Text` is a few dozen lines.
-
-   > Keep it on the **presentation** side. `Focus` is hashed and navigation is simulation; *how a
-   > focused thing looks* is not, and writing an appearance into a hashed component would put the
-   > theme in the state hash.
-
-2. ✅ **A pause menu in `games/atrium`.** The first thing that uses layout, text, focus and theme at
-   once, and the first honest test of whether Signage holds up **in motion** rather than in a still.
-   It needs Escape to toggle `UiNode::visible` on a menu root, three `Focusable` items, and a
-   `UiActivated` reader.
-
-   > ### ⚠️ **Read Q35 first.** It was opened for exactly this.
-   >
-   > A pause menu is the first thing that needs an answer to *how a game moves between screens*, and
-   > the engine has no opinion about one. The trap is that the wrong answer is expensive: a screen
-   > system that despawns the world is not something a pause menu can be retrofitted onto. The prior
-   > is a **hashed** `Screen` resource plus stage gating — hashed because which screen you are on is
-   > gameplay, a save must restore it, and a replay must reproduce it.
-
-3. ⏸️ **Pointer and spatial navigation** — **deferred, and this entry's advice was wrong.** It said to
-   read ADR 0063 because "the *placement* of this logic is the whole decision". Going to build it
-   found that **the ADR's own answer reintroduces the break it exists to prevent**: `Focus` is
-   hashed, so a `Render`-stage system writing it puts the pointer — and, through the rectangles it
-   hit-tests, the window size — into the state hash. Its second claim, that "a replay records the
-   resulting focus moves", is not something the replay format can do at all. **Q36** carries the
-   analysis and the replacement.
-
-4. ✅ **`amadeo-anim`**, which was completely untouched and is now ADR 0066.
+- **`modules/amadeo-interaction` has no game using it.** It was built directly as a module, which is
+  the "designed against zero users" risk this project's own rule exists to avoid — `amadeo-camera`
+  lived in a game first and was better for it, and ADR 0068 made a point of giving
+  `amadeo-behaviour` a real user for exactly that reason. Its shape is simple and I am fairly
+  confident, but **the first game to use it should be treated as a review of the design**, not just
+  a consumer of it.
+- **The watcher in `games/atrium` has no collider and walks through pillars.** Deliberate and stated
+  in `move_the_watcher`: giving it one would mean building a second character controller to prove a
+  decision about AI. Do not "fix" it without deciding you want that.
 
 ### Three things noted rather than fixed
 
@@ -172,6 +143,9 @@ stays open with kira struck off; see ADR 0060 §3.
 None is blocking; all are cheap to change and all were tuned by looking (or listening) rather than
 derived. **The theme ones are now a single file edit** — that is what ADR 0064 bought.
 
+- **The watcher's numbers** — sight at 11 m, speed at 2.6 m/s (deliberately slower than the player's
+  5, so a chase is something you can win), and four seconds of searching before it gives up. All in
+  `games/atrium/src/lib.rs` and `atrium.scene`, all set by eye, all one line to change.
 - **The Signage theme's numbers** — `games/atrium/assets/looks/signage.theme`, and the built-in copy
   in `Theme::signage`. The spacing scale is 4/8/16/28 and the type scale 52/26/19/13, both set by
   eye against one capture. **If the interface feels too airy or too cramped, this is the one place to
@@ -207,8 +181,8 @@ test and passes regardless, so a green Ubuntu job says nothing about a shader.
 
 ## Session 17 — the room stops, and a field it has never heard of moves
 
-**Fifteen commits, three ADRs (0065–0067), two new crates.** Every named M3 subsystem now exists,
-the exit gate's save-and-resume loop works, and three of the four named genre modules are built.
+**Seventeen commits, four ADRs (0065–0068), three new crates.** Every named M3 subsystem now exists,
+the exit gate's save-and-resume loop works, and **all four** named genre modules are built.
 
 ### What landed
 
@@ -241,6 +215,11 @@ the exit gate's save-and-resume loop works, and three of the four named genre mo
     serves two camera sweeps and nothing else.
 11. **`modules/amadeo-interaction`**, which that unblocked: look at a thing, use the thing. M3 exit
     gate item 4.
+12. **ADR 0068 — `modules/amadeo-behaviour`**, the last named genre module, plus a **watcher in
+    `games/atrium`** that notices you, chases, searches and gives up.
+13. **`StableHash for BTreeMap`**, which the above needed and which had never existed. Hashes in key
+    order, and there is deliberately **no `HashMap` impl** — a component holding one now fails to
+    compile rather than reproducing intermittently, which is trap 2 enforced instead of remembered.
 
 ### The engine wrote snapshots it could not read back
 
@@ -278,7 +257,28 @@ keep the ground of the level it just left. The docs now say what was measured, a
 the contact-cache result rather than asserting it — a claim about somebody else's solver at a pinned
 version is not something to fail a build over.
 
-### A habit that paid three times today
+### The empty-value hole had three instances, and the third was found by looking
+
+`inline_value` joins a value's parts, and **joining nothing gives the empty string** — so anything
+empty wrote as a field name with a trailing space and no value, which this format does not have and
+which reads back as `Unit`.
+
+It bit three times in one session, in order of discovery: an **empty list** (every registered event
+queue holds two, so every snapshot of `games/atrium` was unrestorable), a **one-element list** (`value
+22.0` is one token and layer 1 has no schema to tell it from a list of one), and an **empty map**
+(`Facts` in the new behaviour module starts empty, so a monster that had never perceived anything
+could not be saved).
+
+Three explicit markers now — `[]`, `{}` and the pre-existing `()` — and one rule: **a field with no
+value is not something this format has.**
+
+> **The transferable part is what to do on finding the first one.** Any encoding with a
+> "just join the parts" path has this waiting in it for every empty case, and a round-trip test
+> written against hand-made values will happily never contain one. Finding one instance is a reason
+> to go looking for its siblings, not to close the ticket. The second and third were found by
+> building things that used the format rather than by reasoning about it.
+
+### A habit that paid four times today
 
 **Break the fix and check the test fails.** It caught a test that proved nothing (the first version
 of the physics one restored into a *fresh* app, where there were no stale caches to carry, so it
@@ -289,6 +289,25 @@ with a wrong answer.
 
 Three minutes each. Worth it every time, and the one that mattered most is the one where the test was
 wrong rather than the code.
+
+### Three engine-level mechanisms turned out to be unreachable from where they were needed
+
+Not a coincidence, and worth stating as a check rather than three anecdotes:
+
+| Mechanism | Documented as | Reachable by |
+|---|---|---|
+| `PhysicsBackend::reset` | "what makes a physics game snapshot-able" (ADR 0036) | only tests holding a backend directly — **no game** |
+| `ClipCache::failures`, `Animatable::missing` | "the whole diagnosis" (ADR 0066) | nothing, until `anim.describe` |
+| `ShapeHit`'s entity | — | it did not exist; a cast said *where* and not *what* |
+
+**When you write a doc comment saying a thing is load-bearing, check that the thing can be reached
+from where it is needed.** The comment is not the mechanism. All three were found by trying to build
+something that needed them.
+
+And the follow-up, which is the more interesting half: **when you finally measure what a mechanism is
+worth, the answer may not be what the comment says.** `reset`'s contact-cache argument does not
+actually bite — a warm solver matches a cold one exactly — because ADR 0036's own contract already
+prevents the hazard it was written for. The comment now says what was measured.
 
 ### The two defects worth remembering, because they are the same defect
 

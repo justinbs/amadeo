@@ -1874,6 +1874,19 @@ What to do today: move a character by *driving* it — input, or its `CharacterM
 assignment. There is no supported teleport, which is a real gap for respawns and fast travel and is
 recorded as **Q30**.
 
+**Where the boundary actually is**, because "you cannot write a `Transform`" is too broad and session
+17 cost a second debug cycle reading it that way:
+
+| Where the write happens | Result |
+|---|---|
+| A system in `PreSimulation` or `Simulation` | **Works** — propagation happens later in the same tick |
+| A system after `propagate_transforms`, or in `Render` | Stale by one tick |
+| **Between ticks** — a test, an editor, a load | **Silently ignored** |
+
+`games/atrium`'s "return to start" button writes a `Transform` and works, because `choose_from_menu`
+is a `Simulation` system. A test doing the visually identical thing between `run_ticks` calls does
+not. **The first row working is exactly what makes somebody believe the third one will.**
+
 ### A mesh now has three independent properties, not two
 
 The entry above pairs **normals** and **winding** and says getting one right does not check the other.

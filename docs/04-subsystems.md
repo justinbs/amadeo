@@ -515,6 +515,40 @@ which is the skeletal representation above, so it waits on it.
 a `Transform` holds — right for a door, wrong for anything tumbling, because it takes the long way
 round past 180°. Additive when something needs it.
 
+## 14b. Genre modules — `modules/` · M3
+
+Not a subsystem so much as the layer above them, created by ADR 0037. A module may depend on engine
+crates and on other modules; **no engine crate may ever depend on a module** (invariant I6, one level
+up). All four the roadmap names now exist.
+
+✅ **`amadeo-character`** — movement, ground detection, jumping, slopes and steps, on
+`PhysicsBackend::move_shape` (ADR 0037). Still open: crouching, coyote time, imparting velocity to
+dynamic bodies.
+✅ **`amadeo-camera`** — a third-person `FollowCamera` that sweeps itself out of the world (Q27) and
+a `FirstPersonCamera`, **separate components sharing one aiming system**. Three target games are
+first-person and three are third, and `docs/05` makes the rig its own module precisely so neither is
+privileged.
+✅ **`amadeo-interaction`** — look at a thing, use the thing. A *sphere* swept forward, because a ray
+demands the player aim at a door handle exactly. Built on `ShapeHit::entity`, which was added for it.
+✅ **`amadeo-behaviour`** — **AI as a state machine over named facts (ADR 0068).** The game writes
+`"sees_player"`; the game reads `"pursue"` and acts; the module knows neither.
+
+**The decision worth carrying forward is why the sequencer was the cheap half.** A state machine was
+chosen over a behaviour tree for legibility — "why is it doing that" is one field you can read, where
+a tree's answer is a path needing tooling before a person *or* an agent can see it — but the argument
+that made it a safe choice is that **the boundary is identical for all four architectures**. Whatever
+sequences behaviour needs the game to answer "can it see the player" and to carry out "walk to the
+door". So the boundary got the design attention and the sequencer is replaceable.
+
+That is Q3's lesson for the third time: *the pipeline is usually the cheap question; ask what data the
+choice implies.*
+
+⚠️ **`mod-inventory`** is the one not built. Its fork is whether an item is an **entity or a value** —
+a stack of fifty arrows is one row in a list, a dropped arrow is a thing in the world with a collider,
+and both have to be the same item. Four of the eight target games are inventory-heavy.
+⚠️ **Hierarchical states** for `amadeo-behaviour` are the standard answer to transition growth and
+are additive: a state gains a parent, and a transition on the parent applies to its children.
+
 ## 15. Save/Load & Serialization of Live State — M3
 
 ✅ **A save is a snapshot, and `games/atrium` does it** — the pause menu has Save and Load in it, and
@@ -531,11 +565,12 @@ and it is enforced by the compiler rather than by remembering.
 ⚠️ **Where a save file lives is undecided**, and deliberately a plain relative path for now. ADR
 0022's marker-file rule is about *assets*; user data has different conventions on every platform, and
 nothing built so far has to be unpicked when it is decided.
-⚠️ **Save format versioning and migration.** The unresolved one, and the cost is concrete:
-`amadeo-snapshot` refuses a version mismatch and has **no migration path**, by design, because a
-snapshot is a short-lived artefact. A *save* is not — it has to survive the game being patched. As
-things stand, adding a field to any component invalidates every existing save, which is Q32's defect
-shape at its most painful. Decide before anyone ships a build to a player.
+⚠️ **Save format versioning and migration — now Q37, and the most consequential open question in the
+project.** `amadeo-snapshot` refuses a version mismatch and has **no migration path**, by design,
+because a snapshot is a short-lived artefact. A *save* is not: it has to survive the game being
+patched, and today adding one field to any component invalidates every existing save. That is Q32's
+shape with a far worse consequence — it destroys something a **player** owns. Not urgent until a
+build reaches somebody; settle it before one does.
 
 ## 16. Editor — `amadeo-editor` · M4
 

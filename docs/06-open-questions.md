@@ -7,6 +7,49 @@ Priority: **P0** blocks work now · **P1** needed for the current milestone · *
 
 ---
 
+## Q37 · P1 · A save has to survive a patch, and a snapshot deliberately does not
+
+**Raised in session 17, on making `games/atrium` save and resume.** That works — a resumed game and
+one that never stopped are proven to be the same game — and it works by writing a `.snapshot`.
+
+**A snapshot is explicitly a short-lived artefact.** `amadeo-snapshot`'s own docs say so: it captures
+one moment of one run, there is **no migration path**, and a version mismatch is refused rather than
+guessed at. That is the right design for "get back to the moment I was debugging".
+
+A **save file is the opposite kind of thing.** It has to survive the game being updated, and today it
+does not: `restore` rebuilds each component with `from_value`, which requires **every field**. So
+adding one field to any component invalidates every existing save — the player's, not just a
+developer's. This is Q32's shape with a much worse consequence, and it is the one open question that
+can destroy something a person cares about.
+
+Nothing about it is urgent until a build reaches somebody. It is P1 rather than P0 for that reason,
+and it should be settled **before** one does.
+
+### The shape of the answer, as far as it is understood
+
+The engine already has most of the machinery, which is why this is a decision rather than a project:
+
+- **A component's `version`.** `TypeInfo` carries one already (`version: 1`) and nothing reads it.
+  That is the hook a migration would hang on.
+- **A patch is already a thing.** ADR 0029's prefab overrides apply named fields over a base and
+  leave the rest, and `ComponentRegistry::validate_patch` exists. "Restore leniently: take the fields
+  the file has, default the rest" is that operation, and it would make a save survive an *added*
+  field with no migration code at all.
+- **What it would not survive** is a field being renamed, removed, or changed in meaning — which is
+  where a real migration (an old version's value tree in, a new one's out) is needed, and where the
+  cost is.
+
+Worth deciding together: whether saves and snapshots stay one format with two strictnesses, or
+diverge into two.
+
+### And where a save file lives is a smaller open question beside it
+
+`games/atrium` writes `atrium.save` in the working directory, deliberately as a placeholder. ADR
+0022's marker-file rule is about **assets**; user data has different conventions on every platform,
+and picking one is a decision nothing so far depends on.
+
+---
+
 ## Q36 · P2 · A pointer cannot select a menu item the way ADR 0063 assumed
 
 **Raised in session 17, on going to build the thing ADR 0063's consequences described.** That section
@@ -322,6 +365,31 @@ and four of the eight target games have at least one of those.
 
 **Not blocking.** `games/scarp` walks its character rather than teleporting it, which is what its
 exit gate asked for anyway. It becomes blocking the first time a game needs a respawn point.
+
+### It has now cost two debug cycles rather than one, which is a nudge on the priority
+
+**Session 17 hit it again**, writing tests for the watcher: the obvious way to change what an AI can
+see is to move the player in and out of range, and the first teleport appeared to work while the
+second silently did not. `docs/07` already described the trap and it was read *after* the debugging
+rather than before.
+
+What it sharpened is **where the boundary actually is**, which the title says and is easy to read past.
+`games/atrium`'s "return to start" menu button writes a `Transform` directly and works perfectly —
+because `choose_from_menu` runs in `Simulation`, so `propagate_transforms` refreshes
+`GlobalTransform` in the same tick's `PostSimulation` and physics reads the new value next tick.
+
+So the rule is not "you cannot write a `Transform`". It is:
+
+| Where the write happens | Result |
+|---|---|
+| A system in `PreSimulation` or `Simulation` | **Works.** Propagation happens later in the same tick. |
+| A system in `PostSimulation` after `propagate_transforms`, or `Render` | Stale by one tick. |
+| **Between ticks** — a test, an editor, a load — | **Silently ignored.** This is the gap. |
+
+That third row is the whole of Q30, and it is worth stating as a table because the first row working
+is exactly what makes somebody believe the third one will.
+
+Still P2 by the letter, since nothing is blocked. Worth promoting the next time anything needs it.
 
 ---
 
