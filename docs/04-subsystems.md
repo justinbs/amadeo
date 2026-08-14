@@ -446,9 +446,15 @@ system's, and a missing font shapes to **nothing** rather than to a substitute.
 covered it and the renderer needed nothing new — a page of text is one draw call. `collect_ui` fills
 `amadeo-render`'s `Overlay` slot, which is `TextureCache`'s inversion again: the renderer owns the
 slot and something above it fills it.
-⚠️ **Pointer and spatial navigation** are not built, and belong *outside* the deterministic zone —
-a presentation-side system writing through the same `Focus` resource. `ComputedRect::contains` is the
-primitive and is currently unused.
+⚠️ **Pointer and spatial navigation are not built, and ADR 0063's plan for them does not work — see
+Q36.** That ADR's consequences say a presentation-side system should write through the same `Focus`
+resource. `Focus` is **hashed**, so writing it from `Render` puts the pointer — and through the
+rectangles it hit-tests, the window size — into the state hash, which is the break the ADR exists to
+prevent, arriving through the door it left open. The same section says a replay would record the
+resulting focus moves; nothing in the replay format can. The candidate answer is written up in Q36:
+resolve the pointer to an **ordinal in the authored order** and carry it as a named axis, which is
+what lockstep RTSs do and what `look_x`/`look_y` already do in miniature. Deferred because nothing in
+M3's exit gate needs a mouse menu.
 ⚠️ **Key repeat.** A held direction moves once. Repeat is a *timing* feature, which is what a fixed
 tick expresses worst; left out until something needs it.
 ✅ **Theming — named tokens, default Signage (ADR 0064).** A widget names `paint`, `scale` and

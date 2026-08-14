@@ -529,9 +529,14 @@ crates/
                      know what a button MEANS (I4, one level up).
                      **Edge-triggered: a held direction moves once.** Key repeat is a *timing*
                      feature and timing is what a fixed tick expresses worst.
-                     Spatial and pointer navigation are still possible and belong **outside** the
-                     deterministic zone, writing through the same `Focus` -- `ComputedRect::contains`
-                     is the right primitive, it was the *placement* that would have been wrong.
+                     **Pointer navigation is NOT "a presentation system writing `Focus`", and ADR
+                     0063's consequences section is wrong about it (Q36).** `Focus` is hashed, so
+                     writing it from `Render` puts the pointer and the window size into the state
+                     hash -- the break that ADR exists to prevent, through the door it left open --
+                     and no replay can record "the focus moved". The answer, when it is wanted, is
+                     the lockstep-RTS one: resolve the pointer to an **ordinal in the authored
+                     order** and carry it as a named axis, exactly as `look_x`/`look_y` already
+                     carry a mouse. Deferred: nothing in M3 needs a mouse menu.
                      **Theming is named tokens (ADR 0064)** -- a widget says `paint Accent`,
                      `scale Title`, `padding Snug`, and a `.theme` file decides what those mean.
                      Seven colours, four type steps, five spacing steps, deliberately few: a palette

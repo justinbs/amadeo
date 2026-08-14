@@ -7,6 +7,56 @@ Priority: **P0** blocks work now · **P1** needed for the current milestone · *
 
 ---
 
+## Q36 · P2 · A pointer cannot select a menu item the way ADR 0063 assumed
+
+**Raised in session 17, on going to build the thing ADR 0063's consequences described.** That section
+says pointer and spatial navigation belong in "a *presentation-side* system that writes through the
+same `Focus` resource", and that "a replay records the resulting focus moves rather than the pointer
+that caused them".
+
+**Neither half works, and it is worth being precise about why**, because the sketch is plausible:
+
+- `Focus` is a **hashed resource**. A `Render`-stage system writing it puts the pointer position — and
+  through the rectangles it hit-tests, the **window size** — into the state hash. That is exactly the
+  I3 break ADR 0063 exists to prevent, arriving through the door the ADR left open.
+- Nothing in the replay format can record "the focus moved". `InputChange` is `Button` and `Axis`,
+  and that is all it is.
+
+So this was deferred rather than built, deliberately: nothing in M3's exit gate needs a mouse menu —
+the horror slice is keyboard and controller — and the design is written down here so that deciding it
+later costs the reading rather than the thinking.
+
+### What the deterministic games actually do
+
+Lockstep RTSs have mouse-driven interfaces and reproduce exactly: StarCraft, Age of Empires,
+Factorio. The answer is uniform. **The interface is outside the simulation, the pointer resolves to a
+*command*, and the command is what gets recorded.** The pointer position never enters the simulation
+at all.
+
+Amadeo already does a small version of this: `look_x` and `look_y` carry a mouse into the
+deterministic zone as ordinary named axes (`modules/amadeo-camera`).
+
+### The candidate, when this comes back
+
+**Resolve the pointer to an ordinal and carry it as a named axis.** A presentation-side system
+hit-tests `ComputedRect`s, works out which item that is *in the authored focus order*, and writes the
+position as `ui_focus_index`. The simulation focuses the Nth focusable. A click is that plus
+`ui_confirm`.
+
+It is resolution-independent by construction — **an ordinal is not a rectangle** — and the replay
+format does not change, because an axis is already recorded, hashed and replayed.
+
+Two things to work out when it is built: a float axis carrying an integer needs a sentinel for "over
+nothing", and the ordinal is only meaningful against the current set of focusable items. That set is
+authored, so it is identical on every machine, but it is a coupling that "press down" does not have.
+
+**Rejected on the way past:** extending `InputChange` with an "activated entity" command. It is the
+most direct expression of the RTS answer, and it couples the replay format to **entity ids**, which
+are allocator state — ADR 0028 exists because that allocator's free list matters, and a replay naming
+entities would break whenever anything upstream spawned differently.
+
+---
+
 ## ~~Q35~~ · **Resolved — ADR 0065.** Pausing is a per-system opt-in, and the engine has no screens
 
 Four questions were bundled together and only one turned out to be expensive, which is worth noting
