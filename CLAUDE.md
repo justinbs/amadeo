@@ -409,7 +409,17 @@ crates/
                      rather than going unnoticed. `PhysicsBackend::reset` exists because ADR 0028's
                      lesson applies here: a snapshot restores components but not a solver's contact
                      caches, so a restored world would hash identically and then simulate
-                     differently. Joints, raycasts and collision events are still to come.
+                     differently.
+                     **`Physics::reset` is the pass-through that lets a game call it**, added in
+                     session 17 -- the backend is private on purpose and until then *no game could*,
+                     only tests holding one directly. **And the contact-cache argument turns out not
+                     to bite**: measured against a settled, sleeping stack of dynamic bodies, a warm
+                     solver matches a cold one exactly, because ADR 0036's own contract says `step`
+                     gets the complete input and a backend may keep no state that cannot be rebuilt
+                     from the bodies it is given. What `reset` is *measurably* for is dropping
+                     **static geometry**, so a game that streams terrain does not keep the ground of
+                     the level it just left.
+                     Joints, raycasts and collision events are still to come.
                      **rapier 0.34 uses glam, not nalgebra** -- `Rotation` is a `glam::Quat`, and
                      rapier's own `vector![]` macro still builds an *nalgebra* vector its API will
                      not accept. Use `Vector::new`.
@@ -632,6 +642,13 @@ crates/
                      22.0` is a scalar, and layer 1 has no schema), so `Vec<T>::from_value` accepts a
                      single value as a one-element list -- the type resolving an ambiguity the text
                      really has, exactly as `f32::from_value` accepting an integer already did.
+                     **An EMPTY list is written `[]`**, the way `Unit` is written `()` and for the
+                     same reason: joining nothing gives the empty string, so an empty `Vec` used to
+                     write as a field with no value -- which this format does not have, and which
+                     reads back as `Unit`. Every registered event queue holds two empty lists at
+                     rest, so **the engine wrote snapshots it could not read back**, and had since
+                     events were first registered. Found by building save/load; a round-trip test
+                     over hand-made values will never contain an empty one.
 ✖ amadeo-script      NOT BUILT. ADR 0011: game logic is plain Rust in the game crate.
 🟡 amadeo-agent       the protocol: JSON reader and writer, JSON-RPC envelope, and the methods that
                      need only a world + registry (describe, describe.example, render.describe,
@@ -764,7 +781,7 @@ games/               actual games built with the engine
                    in `atrium.scene`, so ADR 0062's claim that a menu is a scene file is cashed
                    rather than asserted.
                    **It has a pause menu, which is the first thing to use layout, text, focus,
-                   theme and pausing at once** (ADR 0065). Escape opens it; the three buttons are
+                   theme and pausing at once** (ADR 0065). Escape opens it; the five buttons are
                    authored in `atrium.scene` and each carries a `MenuButton` saying what it means
                    -- which is ADR 0063's split cashed, since `UiActivated` names an entity and
                    deliberately nothing else. `Screen` is this game's hashed resource and the
@@ -773,6 +790,14 @@ games/               actual games built with the engine
                    game. **Only the game auto-focuses** -- `navigate_focus` will not, by design.
                    Building it found the ancestor-visibility defect twice, once in the draw pass and
                    once in `focusable_in_order`, which is what a demo is for.
+                   **It saves and resumes** -- M3 exit gate item 1's last clause. A save *is* a
+                   `.snapshot`, so it is text a person can diff. **Neither Save nor Load touches a
+                   disk from inside a tick**: the menu records a hashed `SaveRequest` and `main.rs`
+                   serves it between ticks, because a system that wrote a file would put the state of
+                   a filesystem into a deterministic simulation. `Screen::Quitting` takes the same
+                   route. Building *this* found the empty-list defect that made every snapshot of
+                   this game unrestorable, and the fact that no game could call `PhysicsBackend::
+                   reset`.
 docs/                design docs and ADRs
 spikes/              separate cargo workspaces holding the evidence behind an ADR. Frozen once
                      written; excluded from the engine workspace. See spikes/README.md.

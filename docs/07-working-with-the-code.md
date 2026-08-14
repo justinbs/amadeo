@@ -2312,6 +2312,27 @@ move, and every hash after it differs. That is why `ClipCache` has no placeholde
 installs itself rather than waiting for a setup line, and why `ClipCache::failures` and
 `Animatable::missing` both exist. If something is not animating, read those two before anything else.
 
+### An empty list had no spelling either, and the engine wrote files it could not read
+
+The sibling of the entry below, found the same afternoon and much worse. `inline_value` joined a
+list's elements with spaces — and **joining nothing gives the empty string**, so an empty `Vec`
+anywhere in a value wrote as a field name with a trailing space and no value at all. This format
+does not have such a thing, and it parses back as `Unit`.
+
+Every registered event queue holds two empty lists at rest. So `amadeo snapshot` followed by
+`amadeo status --from` **failed on the engine's own demo game**, and had done since events were
+first registered. Nothing noticed, because until save and load nothing had ever restored one.
+
+An empty list is now written `[]`, checked by name on the way in — exactly as `Unit` is written `()`,
+and for the identical reason. The format already had this shape; an empty list had simply been left
+out of it.
+
+**The general shape, and it is the third time this project has met it:** a value that "obviously"
+serialises to nothing serialises to *nothing*, which is not a value. Any encoding with a
+"just join the parts" path has this bug waiting in it for the empty case. The way it was found is
+also the general answer — **build the thing that uses the format end to end**, because a
+round-trip test written against hand-made values will happily never contain an empty one.
+
 ### A one-element list has no inline spelling, and the type is what fixes it
 
 `value 22.0` is one token. Layer 1 of the scene format has no schema, so it produces a **scalar**,
@@ -2322,6 +2343,37 @@ resolving an ambiguity the text genuinely has, which is the same job `f32::from_
 integer already does. Worth knowing because the symptom is unhelpful: a lamp that did not flicker,
 with everything else in the file working. `amadeo check` is what named it —
 `list<f32>: expected list, found 64-bit float` — which is the validator paying for itself.
+
+### A mechanism nobody can reach is not a mechanism — three instances in one session
+
+`PhysicsBackend::reset` had been documented since ADR 0036 as the thing that makes a physics game
+snapshot-able. The backend is private on purpose, so **no game could call it**; the only callers were
+tests holding a backend directly. `Physics::reset` is the one-line pass-through that was missing.
+
+That is the same shape as `ClipCache::failures` and `Animatable::missing`, which ADR 0066 made "the
+whole diagnosis" for animation that silently does nothing and which nothing could read until
+`anim.describe`. And as `AnimationPlayer::is_running`, nearly duplicated the moment a second caller
+appeared.
+
+**When you write a doc comment saying a thing is load-bearing, check that the thing can be reached
+from where it is needed.** The comment is not the mechanism.
+
+### …and when you check what a mechanism is worth, it may not be what the comment says
+
+The follow-up is the more interesting half. `reset`'s documentation said a solver carrying another
+world's contact caches would simulate differently after a restore. Measured against a settled,
+sleeping stack of six dynamic bodies, **a warm solver matches a cold one exactly**.
+
+That is not a bug — it is ADR 0036's own contract paying off. `PhysicsBackend::step` is handed the
+complete input and returns the complete output, and the trait requires that a backend keep no state
+*which cannot be rebuilt from the bodies it is given*. A solver honouring that has nothing to go
+stale. **The decision that makes physics deterministic is what removes the hazard.**
+
+`reset` is still right to call: it drops static geometry, which is derived data belonging to a level
+rather than to a body, and a game that streams terrain would otherwise keep the ground of the level
+it just left. But the reasoning in the docs now matches the measurement, and
+`reset_clears_the_solver.rs` *reports* the contact-cache result rather than asserting it — a claim
+about somebody else's solver at a pinned version is not a thing to fail a build over.
 
 *(More entries land as the engine takes shape: asset handles.)*
 

@@ -517,9 +517,25 @@ round past 180°. Additive when something needs it.
 
 ## 15. Save/Load & Serialization of Live State — M3
 
-✅ Falls out of determinism: a save is a snapshot, optionally plus the replay log.
-⚠️ Save format versioning and migration across engine and game changes.
-⚠️ What's excluded from saves (caches, handles, derived state) — needs a reflection-level annotation.
+✅ **A save is a snapshot, and `games/atrium` does it** — the pause menu has Save and Load in it, and
+`it_saves_and_resumes.rs` proves the claim that matters: a resumed game and one that never stopped
+are the same game, checked by running both on rather than by comparing hashes at the moment of
+restore. ADR 0028's lesson is why: hash equality after a restore is necessary and **not sufficient**.
+✅ **Neither touches a disk from inside a tick.** The menu records a hashed request and the platform
+layer serves it between ticks — a system that wrote a file would put the state of a filesystem into a
+deterministic simulation, and a replay of a game that saved would depend on the machine it ran on.
+The same route `Screen::Quitting` takes.
+✅ **What is excluded is already settled by ADR 0009**: services. Caches, devices, the renderer, the
+mixer. No reflection-level annotation was needed after all — the `Service` bound is the annotation,
+and it is enforced by the compiler rather than by remembering.
+⚠️ **Where a save file lives is undecided**, and deliberately a plain relative path for now. ADR
+0022's marker-file rule is about *assets*; user data has different conventions on every platform, and
+nothing built so far has to be unpicked when it is decided.
+⚠️ **Save format versioning and migration.** The unresolved one, and the cost is concrete:
+`amadeo-snapshot` refuses a version mismatch and has **no migration path**, by design, because a
+snapshot is a short-lived artefact. A *save* is not — it has to survive the game being patched. As
+things stand, adding a field to any component invalidates every existing save, which is Q32's defect
+shape at its most painful. Decide before anyone ships a build to a player.
 
 ## 16. Editor — `amadeo-editor` · M4
 

@@ -358,7 +358,10 @@ in documents nobody is allowed to correct.
   named tokens (ADR 0064). Authored in scene files and visible to introspection, as required.
   Still open: drawing the focus differently, and pointer navigation.
 - Particles / VFX basics.
-- Save/load built on snapshots, with versioning and migration.
+- 🟡 Save/load built on snapshots. **Works** — `games/atrium`'s pause menu saves and resumes, and a
+  resumed game is proven to be the same game as one that never stopped. Still open: **versioning and
+  migration** (a snapshot deliberately has none, and a save has to survive a patch), and where a save
+  file should live.
 - Input remapping UI, controller support.
 - First genre modules, prioritised by the target games (`00-vision.md`):
   **`mod-charcontroller3d`** (movement, ground detection) with the **camera rig as a separate module**

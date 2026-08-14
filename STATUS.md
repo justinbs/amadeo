@@ -69,9 +69,13 @@ candidates rather than an order.
 2. **M3's exit gate itself** — the first-person horror slice. Everything it needs *structurally* now
    exists: screens, pause, menus, sound, animation, lighting, shadows. What it needs next is
    `modules/`: `mod-behaviour`, `mod-inventory`, `mod-interaction`, and a first-person camera rig.
-3. **Save/load on top of snapshots**, with versioning and migration. Closer than it looks —
-   `.snapshot` works, and `Screen` and `Paused` restore for free because they are ordinary hashed
-   resources.
+3. ~~**Save/load on top of snapshots**~~ — **done**, except for the part that is a real decision:
+   **versioning and migration.** `amadeo-snapshot` refuses a version mismatch and has *no migration
+   path*, deliberately, because a snapshot is a short-lived artefact. A **save is not** — it has to
+   survive the game being patched, and today adding a field to any component invalidates every
+   existing save. That is Q32's shape at its most painful and it wants deciding before anyone ships
+   a build to a player. Where a save file *lives* is also open, and is deliberately a plain relative
+   path so nothing has to be unpicked.
 4. **Pointer navigation**, but read **Q36** first: ADR 0063's consequences describe a design that
    cannot work, and the replacement is written up there.
 
@@ -190,7 +194,8 @@ test and passes regardless, so a green Ubuntu job says nothing about a shader.
 
 ## Session 17 — the room stops, and a field it has never heard of moves
 
-**Nine commits, three ADRs (0065–0067), one new crate.** Every named M3 subsystem now exists.
+**Ten commits, three ADRs (0065–0067), one new crate.** Every named M3 subsystem now exists, and the
+exit gate's save-and-resume loop works.
 
 ### What landed
 
@@ -213,6 +218,45 @@ test and passes regardless, so a green Ubuntu job says nothing about a shader.
 7. **`anim.describe`**, built *before* the hole it closes had a chance to bite. ADR 0066 created two
    failure reports and nothing could read either — which is exactly the hole ADR 0060 had while it
    was being written, and which cost session 16 a follow-up commit. Served as `amadeo anim` too.
+8. **Save and load**, which is M3 exit gate item 1's "save → quit → resume from save". The Atrium's
+   pause menu has both; a resumed game and one that never stopped are proven to be the same game.
+   **Building it found two defects immediately** — see below.
+
+### The engine wrote snapshots it could not read back
+
+**An empty list had no spelling.** `inline_value` joined a list's elements with spaces, and joining
+nothing gives the empty string — so an empty `Vec` anywhere in a value wrote as a field name with a
+trailing space and *no value*, which this format does not have and which parses back as `Unit`.
+
+Every registered event queue holds two empty lists at rest. So `amadeo snapshot` followed by
+`amadeo status --from` **failed on the engine's own demo game**, and had done since events were first
+registered in session 16. Nothing noticed because nothing had ever restored one.
+
+An empty list is now `[]`, checked by name on the way in, exactly as `Unit` is `()`. The format
+already had that shape; an empty list had simply been left out of it.
+
+> **The reusable part:** any encoding with a "join the parts" path has this waiting in it for the
+> empty case, and a round-trip test written against hand-made values will happily never contain one.
+> It was found by building the feature that uses the format end to end.
+
+### And `PhysicsBackend::reset` was unreachable — then turned out not to do what it says
+
+Documented since ADR 0036 as the thing that makes a physics game snapshot-able, and **no game could
+call it**: the backend is private on purpose, so the only callers were tests holding one directly.
+`Physics::reset` is the pass-through. That is the *third* instance this session of a mechanism built,
+documented as load-bearing, and unreachable from where it is needed.
+
+Then the more interesting half. Its stated purpose is that a solver carrying another world's contact
+caches simulates differently after a restore. **Measured against a settled, sleeping stack of six
+dynamic bodies, a warm solver matches a cold one exactly.** That is ADR 0036's own contract paying
+off rather than a surprise — `step` is handed the complete input and a backend may keep no state
+which cannot be rebuilt from the bodies it is given, so the decision that makes physics deterministic
+is what removes the hazard.
+
+`reset` is still right to call: it drops **static geometry**, so a game that streams terrain does not
+keep the ground of the level it just left. The docs now say what was measured, and the test *reports*
+the contact-cache result rather than asserting it — a claim about somebody else's solver at a pinned
+version is not something to fail a build over.
 
 ### The two defects worth remembering, because they are the same defect
 
