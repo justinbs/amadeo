@@ -1,0 +1,36 @@
+[package]
+name = "warren"
+description = "M3's exit gate, in progress: a first-person atmospheric horror slice."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# `gpu` for the same reason `games/atrium` asks for it: this game opens a window.
+amadeo-app = { workspace = true, features = ["gpu"] }
+amadeo-character.workspace = true
+# **First person**, which is what this game is for as much as the horror is: the rig existed from
+# session 17 and no game had ever used it.
+amadeo-camera.workspace = true
+amadeo-core.workspace = true
+amadeo-ecs.workspace = true
+amadeo-events.workspace = true
+amadeo-input.workspace = true
+# Looking at things and using them, with the interactor on the **camera** -- which is what gives the
+# sweep a runtime-driven pitch for free, the one thing an authored one cannot do.
+amadeo-interaction.workspace = true
+amadeo-inventory.workspace = true
+# rapier, because a corridor whose walls do not stop you is not a corridor.
+amadeo-physics = { workspace = true, features = ["rapier"] }
+amadeo-reflect.workspace = true
+amadeo-render.workspace = true
+amadeo-scene.workspace = true
+amadeo-transform.workspace = true
+anyhow = "1"
+winit = "0.30"
+
+[lints]
+workspace = true

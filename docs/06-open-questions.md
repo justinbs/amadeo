@@ -116,6 +116,61 @@ tradition of `asset_problems`, `SoundCache::failures` and `Animatable::missing`.
 
 ---
 
+## Q39 · **P0** · Punctual lights do not light a room that has no directional light
+
+**Found in session 18, by capturing `games/warren` and looking at it.** Every headless test passed.
+The picture was black.
+
+This is **P0 because it sits on M3's exit gate**, which asks for "a dark corridor with a moving
+flashlight that reads as genuinely atmospheric" — that is, a shadow-casting spot light in a scene
+with no sun, which is exactly the configuration that fails. Every scene the renderer has ever been
+exercised against has a `DirectionalLight` in it: the Atrium, the Scarp, and every capture test.
+
+### The reproduction, which is four captures apart
+
+`games/warren` is a closed interior: floor, ceiling, four walls, two crates. Lighting is one
+`PointLight` near the ceiling and one `SpotLight` on the camera.
+
+| Scene | Result |
+|---|---|
+| `PointLight` 5, spot `shadows true` | **black** — nothing lit |
+| `PointLight` **20**, spot intensity 24, `shadows true` | **black, essentially unchanged** |
+| the same, plus a `DirectionalLight` at 0.35 | the room renders correctly |
+| no directional light, spot `shadows` **false** | **the spot's cone lights the far wall** |
+| no directional light, spot off, `PointLight` 20 alone | **black** |
+
+Two separate faults, and the second is the surprising one:
+
+1. **A shadow-casting spot in a scene with no directional light kills punctual lighting entirely** —
+   its own included. Turning `shadows` off brings the spot back. This has the shape ADR 0058
+   describes: a spot's shadow map is *a layer of the same array the cascades use*, and with no
+   directional light there are no cascades and presumably no array, so the bind fails or the pass is
+   skipped. `View::shadow_atlas` is named there as the one place that decides layers and size.
+2. **A `PointLight` alone lights nothing**, even with the spot off and shadows off. At intensity 20,
+   range 7, 3 m from a surface with albedo 0.28, it should be plainly visible. It is not. Whether
+   this is the same root cause or a second one is **not yet established**, and finding out is the
+   first thing to do.
+
+### Why no test caught it
+
+Because every test asserts on *numbers a headless run can produce*, and the GPU capture tests all
+draw scenes with a sun. This is `amadeo-look-at-the-output` again, and the third time in this
+project that a green suite has hidden something visible — after the inside-out mesher and the
+shader that only failed under FXC.
+
+**Worth adding with the fix:** a capture test whose scene has *no* directional light. That is one
+line of scene text and it is the entire coverage gap.
+
+### What `games/warren` does meanwhile
+
+It carries a dim `DirectionalLight` called `spill`, at intensity 0.12, so the room is navigable and
+somebody can look at it. **That is a placeholder standing in for a bug, not a lighting decision**,
+and the `ceiling_lamp` beside it currently contributes nothing at all. The torch beam is authored
+`shadows false` for the same reason — a flashlight that casts is most of the atmosphere in a game
+like this, and getting it back is what fixing this buys.
+
+---
+
 ## Q38 · P2 · Where a save file lives
 
 **Split out of Q37 in session 18**, so that it did not disappear when that one was struck through. It

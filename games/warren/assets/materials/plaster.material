@@ -1,0 +1,13 @@
+scene plaster
+version 1
+
+entity material "Damp plaster"
+  Material
+    base_colour 0.52 0.5 0.44 1.0
+    base_colour_texture ""
+    emissive 0.0 0.0 0.0
+    metallic 0.0
+    metallic_roughness_texture ""
+    normal_strength 1.0
+    normal_texture ""
+    roughness 0.95

@@ -1,0 +1,6 @@
+scene wall_end
+version 1
+
+entity mesh "End wall"
+  BoxMesh
+    size 12.0 3.0 0.3

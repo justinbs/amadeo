@@ -3123,6 +3123,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "warren"
+version = "0.1.0"
+dependencies = [
+ "amadeo-app",
+ "amadeo-camera",
+ "amadeo-character",
+ "amadeo-core",
+ "amadeo-ecs",
+ "amadeo-events",
+ "amadeo-input",
+ "amadeo-interaction",
+ "amadeo-inventory",
+ "amadeo-physics",
+ "amadeo-reflect",
+ "amadeo-render",
+ "amadeo-scene",
+ "amadeo-transform",
+ "anyhow",
+ "winit",
+]
+
+[[package]]
 name = "wasip2"
 version = "1.0.4+wasi-0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"

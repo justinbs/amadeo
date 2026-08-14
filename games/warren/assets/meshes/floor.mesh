@@ -1,0 +1,6 @@
+scene floor
+version 1
+
+entity mesh "Floor"
+  BoxMesh
+    size 12.0 0.2 16.0

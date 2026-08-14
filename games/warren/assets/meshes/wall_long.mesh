@@ -1,0 +1,6 @@
+scene wall_long
+version 1
+
+entity mesh "Long wall"
+  BoxMesh
+    size 0.3 3.0 16.0

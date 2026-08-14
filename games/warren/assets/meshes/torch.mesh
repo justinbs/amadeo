@@ -1,0 +1,6 @@
+scene torch
+version 1
+
+entity mesh "Torch"
+  BoxMesh
+    size 0.07 0.07 0.24

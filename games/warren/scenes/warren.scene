@@ -1,0 +1,306 @@
+scene warren
+version 1
+
+assets
+  carpet
+  ceiling
+  crate_box
+  floor
+  plaster
+  steel
+  timber
+  torch
+  wall_end
+  wall_long
+  warren_look
+
+entity floor "Floor"
+  Collider
+    friction 0.9
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 12.0 0.2 16.0
+  Mesh
+    material "carpet"
+    mesh "floor"
+  RigidBody
+    angular_damping 0.0
+    gravity false
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 -0.1 0.0
+
+entity ceiling "Ceiling"
+  Collider
+    friction 0.9
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 12.0 0.2 16.0
+  Mesh
+    material "plaster"
+    mesh "ceiling"
+  RigidBody
+    angular_damping 0.0
+    gravity false
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 3.0 0.0
+
+entity wall_west "West wall"
+  Collider
+    friction 0.9
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 0.3 3.0 16.0
+  Mesh
+    material "plaster"
+    mesh "wall_long"
+  RigidBody
+    angular_damping 0.0
+    gravity false
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -6.0 1.5 0.0
+
+entity wall_east "East wall"
+  Collider
+    friction 0.9
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 0.3 3.0 16.0
+  Mesh
+    material "plaster"
+    mesh "wall_long"
+  RigidBody
+    angular_damping 0.0
+    gravity false
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 6.0 1.5 0.0
+
+entity wall_north "North wall"
+  Collider
+    friction 0.9
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 12.0 3.0 0.3
+  Mesh
+    material "plaster"
+    mesh "wall_end"
+  RigidBody
+    angular_damping 0.0
+    gravity false
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 1.5 -8.0
+
+entity wall_south "South wall"
+  Collider
+    friction 0.9
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 12.0 3.0 0.3
+  Mesh
+    material "plaster"
+    mesh "wall_end"
+  RigidBody
+    angular_damping 0.0
+    gravity false
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 1.5 8.0
+
+entity crate_near "Crate"
+  Collider
+    friction 0.9
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 0.9 0.9 0.9
+  Mesh
+    material "timber"
+    mesh "crate_box"
+  RigidBody
+    angular_damping 0.0
+    gravity false
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -3.4 0.45 -2.0
+
+entity crate_far "Crate"
+  Collider
+    friction 0.9
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 0.9 0.9 0.9
+  Mesh
+    material "timber"
+    mesh "crate_box"
+  RigidBody
+    angular_damping 0.0
+    gravity false
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 3.9 0.45 -5.2
+
+entity torch "Torch"
+  Collider
+    friction 0.6
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 0.07 0.07 0.24
+  Interactable
+    enabled true
+    prompt "Take the torch"
+  Item
+    count 1
+    kind "torch"
+    max_stack 1
+  Mesh
+    material "steel"
+    mesh "torch"
+  RigidBody
+    angular_damping 0.0
+    gravity false
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -3.4 1.02 -2.0
+
+entity spill "Spill from somewhere"
+  DirectionalLight
+    colour 0.72 0.76 0.85
+    intensity 0.12
+    shadow_bias 0.03
+    shadow_distance 22.0
+    shadow_resolution 1024
+    shadows Off
+  Transform
+    rotation -52.0 28.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+entity ceiling_lamp "The one working lamp"
+  PointLight
+    colour 0.85 0.86 0.78
+    intensity 12.0
+    range 7.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 2.7 5.0
+
+entity player "You"
+  CharacterController
+    acceleration 40.0
+    jump_speed 0.0
+    max_slope_degrees 45.0
+    skin 0.02
+    snap_distance 0.2
+    speed 2.6
+    step_height 0.0
+    turn_speed 140.0
+  CharacterMotion
+    grounded false
+    velocity 0.0 0.0 0.0
+  Collider
+    friction 0.5
+    restitution 0.0
+    sensor false
+    shape Capsule
+      height 1.2
+      radius 0.35
+  Inventory
+    slots 4
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Kinematic
+    linear_damping 0.0
+    mass 80.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 1.0 6.0
+
+  entity eye "Eyes"
+    Camera
+      active true
+      environment "warren_look"
+      order 0
+      projection Perspective
+        far 120.0
+        fov 70.0
+        near 0.05
+      target ""
+      viewport 0.0 0.0 1.0 1.0
+    FirstPersonCamera
+      degrees_per_pixel 0.16
+      height 0.62
+      max_pitch 85.0
+      min_pitch -85.0
+    Interactor
+      radius 0.22
+      reach 2.2
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.62 0.0
+
+    entity beam "Torch beam"
+      SpotLight
+        colour 1.0 0.95 0.86
+        inner_angle 11.0
+        intensity 0.0
+        outer_angle 26.0
+        range 18.0
+        shadow_bias 0.03
+        shadow_resolution 1024
+        shadows false
+      Transform
+        rotation 0.0 0.0 0.0
+        scale 1.0 1.0 1.0
+        translation 0.12 -0.1 0.0

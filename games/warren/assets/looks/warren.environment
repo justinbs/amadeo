@@ -1,0 +1,18 @@
+scene warren_look
+version 1
+
+entity look "The Warren"
+  Environment
+    bloom
+      intensity 0.5
+      threshold 1.1
+    exposure 1.15
+    grade
+      contrast 1.12
+      saturation 0.72
+      tint 0.92 0.96 1.0
+    sky ""
+    tonemap AcesFilmic
+    vignette
+      intensity 0.55
+      radius 0.42
