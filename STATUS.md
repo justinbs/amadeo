@@ -26,9 +26,14 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 ## 📬 For the next session — read this box, then the two below it
 
-**Everything is pushed through `f91229d`.** The last three CI runs were still in flight when the
-session ended, so **check them first** — `gh run list` — rather than assuming. Everything before them
-was green 5/5, and all four local checks passed on every commit.
+**Everything is pushed through `9660866`.** Several CI runs were still in flight when the session
+ended, so **check them first** — `gh run list` — rather than assuming. All four local checks passed on
+every commit, and per-job inspection showed every finished job green **except one**, which is worth
+knowing about rather than being surprised by:
+
+> **`6e56c0b` has a red `docs build without warnings` job, permanently.** A doc link named a type the
+> crate does not import. `f91229d` is the fix and its docs job is confirmed green. Nothing else was
+> ever red.
 
 Verify pushes the way session 15
 learned to: `git fetch` and then `git log --oneline origin/main..HEAD`. **The fetch is the
@@ -50,7 +55,7 @@ pauses, and built `amadeo-anim` from nothing.
 |---|---|
 | `amadeo-audio` | **Working, and complete enough for a game.** Trait, `NullAudio`, `KiraAudio`, buses, components, collection pass, `VoiceTracker`, WAV decoder, `SoundCache`, **one-shots**, `audio.describe`. Missing: ducking, occlusion, compressed audio, a voice cap |
 | `amadeo-ui` | **Working, seen, navigable, themed, and the focus is drawn.** A focused panel resolves to `Accent` and its text to `OnAccent`, substituted in the draw pass so nothing hashable holds an appearance. Missing: pointer navigation, and **ADR 0063's plan for it does not work — read Q36** |
-| `amadeo-anim` | **Working.** A clip animates a *reflected field* (ADR 0066), so nothing in the crate knows about any component type. Hashed, because a clip that moves a `Transform` is a moving platform. Missing: skeletal animation and skinning, blending, a state machine |
+| `amadeo-anim` | **Working, and introspectable.** A clip animates a *reflected field* (ADR 0066), so nothing in the crate knows about any component type. Hashed, because a clip that moves a `Transform` is a moving platform. `amadeo anim` says what is animating and why it might not be. Missing: skeletal animation and skinning, blending, a state machine |
 
 ### What to build next
 
@@ -185,7 +190,7 @@ test and passes regardless, so a green Ubuntu job says nothing about a shader.
 
 ## Session 17 — the room stops, and a field it has never heard of moves
 
-**Six commits, three ADRs (0065–0067), one new crate.** Every named M3 subsystem now exists.
+**Nine commits, three ADRs (0065–0067), one new crate.** Every named M3 subsystem now exists.
 
 ### What landed
 
@@ -205,6 +210,9 @@ test and passes regardless, so a green Ubuntu job says nothing about a shader.
 5. **ADR 0066 — `amadeo-anim`**, from nothing. A clip animates a *reflected field*.
 6. **ADR 0067 — a list item may have named fields**, which is the scene-format gap the first `.anim`
    file fell into.
+7. **`anim.describe`**, built *before* the hole it closes had a chance to bite. ADR 0066 created two
+   failure reports and nothing could read either — which is exactly the hole ADR 0060 had while it
+   was being written, and which cost session 16 a follow-up commit. Served as `amadeo anim` too.
 
 ### The two defects worth remembering, because they are the same defect
 
