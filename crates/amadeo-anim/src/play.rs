@@ -162,6 +162,12 @@ impl ClipCache {
     pub fn failures(&self) -> &BTreeMap<String, String> {
         &self.failures
     }
+
+    /// Every id that resolved to a clip, in id order.
+    #[must_use]
+    pub fn loaded(&self) -> Vec<String> {
+        self.clips.keys().cloned().collect()
+    }
 }
 
 /// Reads one component off an entity as a reflected value.
@@ -233,6 +239,15 @@ impl Animatable {
     #[must_use]
     pub fn allows(&self, component: &str) -> bool {
         self.writers.contains_key(component)
+    }
+
+    /// Every component type clips may animate, in name order.
+    #[must_use]
+    pub fn allowed(&self) -> Vec<String> {
+        self.writers
+            .keys()
+            .map(|name| (*name).to_string())
+            .collect()
     }
 
     /// Every `Component.field` a clip asked for and did not get, in order.

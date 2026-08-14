@@ -328,6 +328,7 @@ pub fn failure(id: &Json, error: &RpcError) -> Json {
 
 /// The methods answerable from a world and a registry alone.
 pub const WORLD_METHODS: &[&str] = &[
+    amadeo_anim::ANIM_DESCRIBE,
     "assets.list",
     amadeo_audio::AUDIO_DESCRIBE,
     "describe",
@@ -413,6 +414,12 @@ pub fn dispatch_world(
         // `silent_because`, which is the engine answering the question rather than handing over
         // fields and letting each caller re-derive the answer badly.
         method if method == amadeo_audio::AUDIO_DESCRIBE => Ok(Some(crate::audio::describe(world))),
+
+        // The same argument once more, and stronger. A blank screen has an obvious symptom, silence
+        // has none, and a thing that is not moving looks exactly like a thing authored not to move.
+        // Animation also writes *gameplay* components (ADR 0066), so a clip that quietly does
+        // nothing changes the state hash of every tick after it.
+        method if method == amadeo_anim::ANIM_DESCRIBE => Ok(Some(crate::anim::describe(world))),
 
         // The other half of "what is in this world": entities carry components, and everything
         // else is a resource. Blocked until ADR 0027, because a resource behind a trait object had

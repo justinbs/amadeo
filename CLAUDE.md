@@ -460,6 +460,15 @@ crates/
                      absence changes simulation rather than the picture. `ClipCache` therefore has no
                      placeholder (`SoundCache`'s rule, harder), `load_clips` installs itself during
                      `load_scene`, and `ClipCache::failures` is the whole diagnosis.
+                     **`describe_animation` is `audio.describe` for movement** -- served as
+                     `anim.describe` and `amadeo anim`, and built *before* it was needed rather than
+                     after. ADR 0060's lesson generalises: a blank screen has an obvious symptom,
+                     silence has none, and **a thing that is not moving looks exactly like a thing
+                     authored not to move**. `still_because` runs from what was asked for to what was
+                     provided -- no players, then all stopped, then no allow-list -- because a world
+                     that authored no animation is not a world with a broken animation system.
+                     `missing_targets` is separate from it, since a world can animate perfectly and
+                     still have one track writing nowhere, which has no symptom at all.
                      Still to come: skeletal animation and skinning, blending, and a state machine --
                      which will NOT be shared with AI (ADR 0066 §5): an animation transition is a
                      blend over time and an AI transition is instantaneous with side effects, and
@@ -668,7 +677,7 @@ crates/
                      reading the game's source.
 — amadeo-editor      graphical editor. A CLIENT of amadeo-agent. No privileged access.
 🟡 amadeo-cli         the `amadeo` binary. Built: describe/query/entity/schedule/status/call/check/
-                     replay/fmt/assets/**audio**/import/import-gltf/snapshot/capture (import takes `--assets <dir>` to work on a
+                     replay/fmt/assets/**audio**/**anim**/import/import-gltf/snapshot/capture (import takes `--assets <dir>` to work on a
                      project whose game will not start -- Q19), plus `--from <file>` on any of them to
                      restore a snapshot before answering, and `describe <Type> --example` for a
                      minimal valid instance in both the scene and JSON spellings.

@@ -56,6 +56,8 @@ enum Command {
     Assets,
     /// What the world sounds like, and — when it does not — why.
     Audio,
+    /// What the world is animating, and — when it is not — why.
+    Anim,
     /// Write a sidecar for every asset file that has none.
     ///
     /// `assets` names the directory directly, so a project whose game will not start can still be
@@ -151,6 +153,10 @@ fn run(command: Command, options: &Options) -> Result<()> {
         return describe_audio(options);
     }
 
+    if let Command::Anim = command {
+        return describe_animation(options);
+    }
+
     if let Command::Import { check, assets } = command {
         return import_assets(check, assets.as_deref(), options);
     }
@@ -233,6 +239,7 @@ fn run(command: Command, options: &Options) -> Result<()> {
         | Command::Replay { .. }
         | Command::Assets
         | Command::Audio
+        | Command::Anim
         | Command::Import { .. }
         | Command::ImportGltf { .. }
         | Command::Snapshot { .. }
@@ -800,6 +807,152 @@ fn describe_audio(options: &Options) -> Result<()> {
     Ok(())
 }
 
+/// Prints what the world is animating, and — when it is not — why.
+///
+/// `describe_audio`'s shape, for the same reason and a stronger one. ADR 0066 made two failure
+/// reports the whole diagnosis for animation that quietly does nothing, and **a thing that is not
+/// moving looks exactly like a thing authored not to move** — there is no other symptom at all.
+///
+/// The reason comes first, before the listing, because somebody running this is answering a question
+/// and the answer should not be under a table they have to interpret.
+fn describe_animation(options: &Options) -> Result<()> {
+    // The literal rather than `amadeo_anim::ANIM_DESCRIBE`, matching what `describe_audio` does one
+    // function up: this crate talks to a game over stdio and has no business linking the engine
+    // crate whose method it is calling. The name is protocol, and `docs/protocol/v1.md` is where the
+    // two sides agree about it.
+    let reply = ask_game(
+        "anim.describe",
+        Json::object([] as [(&str, Json); 0]),
+        options,
+    )?;
+
+    if options.compact {
+        println!("{}", reply.to_compact());
+        return Ok(());
+    }
+
+    let Json::Object(result) = &reply else {
+        bail!("anim.describe replied with something that is not an object");
+    };
+
+    if let Some(Json::String(reason)) = result.get("still_because") {
+        println!("STILL — {reason}.");
+        println!();
+    }
+
+    if let Some(Json::Array(allowed)) = result.get("allowed") {
+        let names: Vec<&str> = allowed
+            .iter()
+            .filter_map(|name| match name {
+                Json::String(name) => Some(name.as_str()),
+                _ => None,
+            })
+            .collect();
+        // Said even when empty, because an empty allow-list is a *cause* rather than an absence —
+        // every track in the game resolves to nothing and no other line would say so.
+        println!(
+            "animatable  {}",
+            if names.is_empty() {
+                "nothing".to_string()
+            } else {
+                names.join(", ")
+            }
+        );
+        println!();
+    }
+
+    let players = match result.get("players") {
+        Some(Json::Array(items)) => items.clone(),
+        _ => Vec::new(),
+    };
+
+    if players.is_empty() {
+        println!("Nothing has an animation player.");
+    } else {
+        let width = players
+            .iter()
+            .filter_map(|player| string_field(player, "clip"))
+            .map(str::len)
+            .max()
+            .unwrap_or(4)
+            .max(4);
+
+        println!(
+            "{:<width$}  {:>8}  {:>6}  ENTITY  STATE",
+            "CLIP",
+            "TIME",
+            "SPEED",
+            width = width
+        );
+        for player in &players {
+            let Json::Object(fields) = player else {
+                continue;
+            };
+            let clip = string_field(player, "clip").unwrap_or("");
+            let clip = if clip.is_empty() { "(none)" } else { clip };
+            let time = match fields.get("time") {
+                Some(Json::Float(time)) => format!("{time:.2}"),
+                _ => "?".to_string(),
+            };
+            let speed = match fields.get("speed") {
+                Some(Json::Float(speed)) => format!("{speed:.2}"),
+                _ => "?".to_string(),
+            };
+            let entity = match fields.get("entity") {
+                Some(Json::Int(index)) => index.to_string(),
+                _ => "?".to_string(),
+            };
+            // The state that answers most questions, in the order that matters: a clip that did not
+            // load is playing nothing, whatever else the row says.
+            let state = if fields.get("loaded") == Some(&Json::Bool(false)) {
+                "NOT LOADED"
+            } else if fields.get("playing") == Some(&Json::Bool(false)) {
+                "stopped"
+            } else if fields.get("looping") == Some(&Json::Bool(true)) {
+                "looping"
+            } else {
+                "once"
+            };
+            println!(
+                "{clip:<width$}  {time:>8}  {speed:>6}  {entity:>6}  {state}",
+                width = width
+            );
+        }
+        println!();
+        println!("{} player(s)", players.len());
+    }
+
+    // ADR 0066: there is no placeholder clip and there must not be one, so this is the entire signal
+    // that something is wrong — and unlike a missing texture it changes the state hash.
+    if let Some(Json::Array(failures)) = result.get("failures")
+        && !failures.is_empty()
+    {
+        println!();
+        println!("WILL NOT LOAD (nothing they animate will move)");
+        for failure in failures {
+            let id = string_field(failure, "id").unwrap_or("?");
+            let problem = string_field(failure, "problem").unwrap_or("?");
+            println!("    {id}: {problem}");
+        }
+    }
+
+    // Separate from the above, and separate from `still_because`: a world can be animating perfectly
+    // and still have one track writing nowhere, which has no symptom of any kind.
+    if let Some(Json::Array(missing)) = result.get("missing_targets")
+        && !missing.is_empty()
+    {
+        println!();
+        println!("ASKED FOR AND NOT FOUND (check the `Animatable` allow-list, and the spelling)");
+        for target in missing {
+            if let Json::String(target) = target {
+                println!("    {target}");
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// A `[x, y, z]` array as `(1.00, 2.00, 3.00)`, or `?` if it is not one.
 fn show_vector(value: Option<&Json>) -> String {
     let Some(Json::Array(parts)) = value else {
@@ -1206,6 +1359,7 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
         },
         "assets" => Command::Assets,
         "audio" => Command::Audio,
+        "anim" => Command::Anim,
         "import" => Command::Import {
             check,
             assets: assets_dir,
@@ -1274,6 +1428,7 @@ RUNS HERE (no game needed)
 RUNS IN THE GAME (launches it, asks, exits)
     assets                   every asset id and the file behind it
     audio                    what the world sounds like, and why it might not
+    anim                     what the world is animating, and why it might not
     check <file>...          validate scene files against the real component schema
     describe [type]          the schema — components, resources, and every type they name
         --example            a minimal valid instance of one type, ready to paste

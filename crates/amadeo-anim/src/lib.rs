@@ -71,7 +71,9 @@
 //! instantaneous with side effects, and every large engine keeps them apart on purpose.
 
 mod clip;
+mod describe;
 mod play;
 
 pub use clip::{AnimationClip, Interpolation, Key, Track};
+pub use describe::{ANIM_DESCRIBE, AnimationDescription, PlayerReport, describe_animation};
 pub use play::{ANIMATE, Animatable, AnimationFinished, AnimationPlayer, ClipCache, animate};

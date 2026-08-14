@@ -15,6 +15,10 @@ amadeo-assets.workspace = true
 # the world rather than a backend is what makes it work against the real backend as well as the null
 # one, so this dependency is the *abstraction* and never `kira` -- the feature stays off here.
 amadeo-audio.workspace = true
+# `anim.describe` for the same reason as `audio.describe`, and a stronger one: ADR 0066 made two
+# failure reports the whole diagnosis for animation that quietly does nothing, and a report nothing
+# can read is not a diagnosis.
+amadeo-anim.workspace = true
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 amadeo-reflect.workspace = true

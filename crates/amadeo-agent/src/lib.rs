@@ -59,6 +59,7 @@
 //! **`render.capture` and `render.describe`.** The agent's eyes. They need the 2D renderer, and
 //! specifically the sprite batcher that Q3's remaining third gets decided against.
 
+mod anim;
 mod assets;
 mod audio;
 mod describe;
@@ -68,6 +69,7 @@ mod json;
 mod parse;
 mod rpc;
 
+pub use anim::describe as describe_animation;
 pub use assets::list as list_assets;
 pub use audio::describe as describe_audio;
 pub use describe::{DESCRIBE_FORMAT_VERSION, MANUAL_PATH, describe, describe_type};
