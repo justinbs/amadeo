@@ -703,7 +703,7 @@ impl Parser {
                 // named fields. That is exactly YAML's rule, and it needs no schema, which matters
                 // because layer 1 has none.
                 match self.block_kind(level + 1) {
-                    Some(Block::List) => Value::List(self.parse_list(level + 1)?),
+                    Some(Block::List) => Value::List(self.parse_list(level + 1, &nested)?),
                     Some(Block::Fields) => Value::Struct(self.parse_fields(level + 1, &nested)?),
                     None => {
                         return Err(ParseError {
@@ -741,13 +741,72 @@ impl Parser {
     }
 
     /// Collects `- ...` items at `level`.
-    fn parse_list(&mut self, level: usize) -> Result<Vec<Value>, ParseError> {
+    ///
+    /// # An item may be a whole struct — ADR 0067
+    ///
+    /// ADR 0032 gave the format nested structs, maps and enum payloads, and left exactly one shape
+    /// out: a **list whose items have named fields**. That is the shape a repeated compound entry
+    /// takes — an animation track, a dialogue line, a state machine's transitions — and the first
+    /// asset to want one had nowhere to go.
+    ///
+    /// So fields indented beneath a `- ` line belong to that item:
+    ///
+    /// ```text
+    /// tracks
+    ///   - component "Transform"
+    ///     field "rotation"
+    ///     keys
+    ///       - time 0.0
+    ///         value 0.0 1.0 0.0
+    /// ```
+    ///
+    /// **The field on the dash's own line is one of the item's fields**, not a header — YAML's rule
+    /// exactly, and it is what makes the block beneath line up with it. A bare `-` with the block
+    /// beneath means the same thing and parses to the same value; `amadeo fmt` writes the compact
+    /// form, and the bare one exists because an item whose alphabetically-first field is itself a
+    /// struct has nothing to put on the line.
+    fn parse_list(&mut self, level: usize, owner: &str) -> Result<Vec<Value>, ParseError> {
         let mut items = Vec::new();
         while let Some(next) = self.peek_at(level).cloned() {
             let tokens = tokenize(&next.text, next.number)?;
             if tokens.first().map(|token| token.text.as_str()) != Some("-") {
                 break;
             }
+            self.cursor += 1;
+
+            // Fields beneath make this item a struct. Checked after the cursor moves, so `peek_at`
+            // is looking past the dash's own line.
+            if matches!(self.block_kind(level + 1), Some(Block::Fields)) {
+                let mut fields = self.parse_fields(level + 1, owner)?;
+
+                // The dash line's own field, if it carried one. `- ` alone is legal here precisely
+                // because the block supplies everything.
+                if tokens.len() >= 2 {
+                    let name = tokens[1].text.clone();
+                    if tokens.len() < 3 {
+                        return Err(ParseError {
+                            line: next.number,
+                            kind: ParseErrorKind::EmptyField { name },
+                        });
+                    }
+                    if fields
+                        .insert(name.clone(), values_to_value(&tokens[2..]))
+                        .is_some()
+                    {
+                        return Err(ParseError {
+                            line: next.number,
+                            kind: ParseErrorKind::DuplicateField {
+                                component: owner.to_string(),
+                                field: name,
+                            },
+                        });
+                    }
+                }
+
+                items.push(Value::Struct(fields));
+                continue;
+            }
+
             if tokens.len() < 2 {
                 return Err(ParseError {
                     line: next.number,
@@ -757,7 +816,6 @@ impl Parser {
                 });
             }
             items.push(values_to_value(&tokens[1..]));
-            self.cursor += 1;
         }
         Ok(items)
     }

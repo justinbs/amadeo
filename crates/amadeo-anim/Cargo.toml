@@ -1,0 +1,23 @@
+[package]
+name = "amadeo-anim"
+description = "Keyframed animation for the Amadeo engine: a clip animates a reflected field."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+amadeo-core.workspace = true
+# A clip is an asset with a declared id (ADR 0020), like a texture, a sound or a font.
+amadeo-assets.workspace = true
+amadeo-ecs.workspace = true
+# A clip reaching its end is a past-tense fact a game may want to act on (ADR 0066).
+amadeo-events.workspace = true
+# The whole of ADR 0066's first decision: a track names a component and a field, and the engine
+# reads that component as a `Value`, patches the field and writes it back. No animation-specific
+# knowledge of any component type exists anywhere in this crate.
+amadeo-reflect.workspace = true
+
+[lints]
+workspace = true

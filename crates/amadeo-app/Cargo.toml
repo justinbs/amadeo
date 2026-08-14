@@ -24,6 +24,10 @@ amadeo-reflect.workspace = true
 # the *GPU* half is behind this crate.s `gpu` feature, so a game that never captures pays nothing.
 amadeo-render.workspace = true
 amadeo-scene.workspace = true
+# Only so `load_scene` can fill the clip cache from the `.anim` files a scene names (ADR 0066). A
+# `.anim` is a scene file and `amadeo-scene` sits above `amadeo-anim`, so the animation crate cannot
+# parse its own asset -- the same split `Material`, `Environment` and `Theme` all have.
+amadeo-anim.workspace = true
 # `--snapshot` restores before the first tick, and `snapshot.take` captures.
 amadeo-snapshot.workspace = true
 thiserror.workspace = true

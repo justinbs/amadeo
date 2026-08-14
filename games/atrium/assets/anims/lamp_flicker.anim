@@ -1,0 +1,21 @@
+scene lamp_flicker
+version 1
+
+entity clip "Lamp flicker"
+  AnimationClip
+    duration 2.6
+    tracks
+      - component "PointLight"
+        field "intensity"
+        interpolation Linear
+        keys
+          - time 0.0
+            value 22.0
+          - time 0.7
+            value 19.5
+          - time 1.1
+            value 23.5
+          - time 1.6
+            value 20.5
+          - time 2.6
+            value 22.0

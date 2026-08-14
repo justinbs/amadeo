@@ -8,7 +8,9 @@ assets
   body
   floor
   footstep
+  lamp_flicker
   lamp_hum
+  lantern_sweep
   pillar
   plinth
   room_tone
@@ -318,6 +320,12 @@ entity ambience "Room tone"
     translation 0.0 0.0 0.0
 
 entity lamp "Warm lamp"
+  AnimationPlayer
+    clip "lamp_flicker"
+    looping true
+    playing true
+    speed 1.0
+    time 0.0
   AudioSource
     bus Effects
     gain 1.0
@@ -336,6 +344,12 @@ entity lamp "Warm lamp"
     translation -4.0 2.6 -3.0
 
 entity lantern "Hanging lantern"
+  AnimationPlayer
+    clip "lantern_sweep"
+    looping true
+    playing true
+    speed 1.0
+    time 0.0
   SpotLight
     colour 0.86 0.92 1.0
     inner_angle 26.0

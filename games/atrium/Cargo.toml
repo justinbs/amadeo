@@ -12,6 +12,7 @@ publish = false
 default-run = "atrium"
 
 [dependencies]
+amadeo-anim.workspace = true
 amadeo-app = { workspace = true, features = ["gpu"] }
 # `kira` on, deliberately and not by default elsewhere -- the same trade this file already makes for
 # rapier one entry down. A demo of the audio system that makes no sound is not a demo, and the only

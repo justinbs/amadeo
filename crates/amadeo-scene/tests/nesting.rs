@@ -1,6 +1,6 @@
-//! Nested structs and enum payloads in a scene file — ADR 0032.
+//! Nested structs and enum payloads in a scene file â€” ADR 0032.
 //!
-//! The property that matters is a **byte-stable round trip**: text → document → text, unchanged
+//! The property that matters is a **byte-stable round trip**: text â†’ document â†’ text, unchanged
 //! (invariant I2). Everything here is that, plus the errors the new shapes made possible.
 
 use amadeo_reflect::Value;
@@ -122,7 +122,7 @@ entity e1 \"Thing\"
 
 #[test]
 fn a_list_and_a_struct_are_told_apart_by_the_first_line() {
-    // The whole rule, in one file. No schema is consulted — layer 1 has none.
+    // The whole rule, in one file. No schema is consulted â€” layer 1 has none.
     let source = "\
 scene s
 version 1
@@ -216,5 +216,156 @@ entity e1 \"Thing\"
     assert!(
         message.contains("Material.base_colour"),
         "the message should say where, got: {message}"
+    );
+}
+
+// --- ADR 0067: a list whose items have named fields ---
+
+#[test]
+fn a_list_of_structs_round_trips() {
+    // **The shape ADR 0032 left out.** A repeated compound entry — an animation track, a dialogue
+    // line, a state machine's transitions — had nowhere to go, and `amadeo-anim` was the first
+    // asset to want one.
+    //
+    // Round-tripping is the assertion that matters (I2): the field on the dash's own line is the
+    // alphabetically first one, and if the writer and the parser disagreed about which, the bytes
+    // would move every time somebody ran `amadeo fmt`.
+    let source = "\
+scene s
+version 1
+
+entity e1 \"Thing\"
+  Clip
+    tracks
+      - component \"Transform\"
+        field \"rotation\"
+      - component \"PointLight\"
+        field \"intensity\"
+";
+    let document = round_trips(source);
+
+    let Value::Struct(clip) = field(&document, "Clip") else {
+        panic!("a component is a struct");
+    };
+    let Value::List(items) = &clip["tracks"] else {
+        panic!("tracks should be a list, got {:?}", clip["tracks"]);
+    };
+    assert_eq!(items.len(), 2);
+
+    let Value::Struct(first) = &items[0] else {
+        panic!("an item should be a struct, got {:?}", items[0]);
+    };
+    // The field on the dash's own line is one of the item's fields, not a header — YAML's rule, and
+    // what makes the block beneath line up with it.
+    assert_eq!(first["component"], Value::String("Transform".to_string()));
+    assert_eq!(first["field"], Value::String("rotation".to_string()));
+}
+
+#[test]
+fn a_list_item_can_hold_a_list_of_its_own() {
+    // Two levels of the new shape, which is what a clip's tracks-of-keys actually is. If the
+    // recursion were wrong this is where it would show rather than in the flat case above.
+    let source = "\
+scene s
+version 1
+
+entity e1 \"Thing\"
+  Clip
+    tracks
+      - field \"rotation\"
+        keys
+          - time 0.0
+            value 1.0 2.0 3.0
+          - time 1.0
+            value 4.0 5.0 6.0
+";
+    let document = round_trips(source);
+
+    let Value::Struct(clip) = field(&document, "Clip") else {
+        panic!("a component is a struct");
+    };
+    let Value::List(tracks) = &clip["tracks"] else {
+        panic!("expected a list");
+    };
+    let Value::Struct(track) = &tracks[0] else {
+        panic!("expected a struct");
+    };
+    let Value::List(keys) = &track["keys"] else {
+        panic!("expected a list of keys, got {:?}", track["keys"]);
+    };
+    assert_eq!(keys.len(), 2);
+
+    let Value::Struct(second) = &keys[1] else {
+        panic!("expected a struct");
+    };
+    assert_eq!(second["time"], Value::F64(1.0));
+    assert_eq!(
+        second["value"],
+        Value::List(vec![Value::F64(4.0), Value::F64(5.0), Value::F64(6.0)])
+    );
+}
+
+#[test]
+fn a_bare_dash_takes_every_field_from_the_block() {
+    // The spelling for an item whose alphabetically first field is itself a block, so there is
+    // nothing to put on the dash's line. It parses to the same value as the compact form, which is
+    // what lets `amadeo fmt` always choose the compact one — so this one deliberately does *not*
+    // round-trip, and reformatting it is the point.
+    let document = parse(
+        "\
+scene s
+version 1
+
+entity e1 \"Thing\"
+  Clip
+    tracks
+      -
+        component \"Transform\"
+        field \"rotation\"
+",
+    )
+    .expect("parses");
+
+    let Value::Struct(clip) = field(&document, "Clip") else {
+        panic!("a component is a struct");
+    };
+    let Value::List(items) = &clip["tracks"] else {
+        panic!("expected a list");
+    };
+    let Value::Struct(first) = &items[0] else {
+        panic!("expected a struct");
+    };
+    assert_eq!(first["component"], Value::String("Transform".to_string()));
+    assert_eq!(first.len(), 2);
+
+    // And formatting it produces the compact spelling, which parses back to the same value.
+    assert_eq!(parse(&to_text(&document)).expect("reparses"), document);
+    assert!(to_text(&document).contains("- component \"Transform\""));
+}
+
+#[test]
+fn a_flat_list_still_parses_the_way_it_always_did() {
+    // The whole point of an additive change: nothing written before it moves.
+    let source = "\
+scene s
+version 1
+
+entity e1 \"Thing\"
+  Path
+    waypoints
+      - 0.0 0.0
+      - 4.0 2.0
+";
+    let document = round_trips(source);
+
+    let Value::Struct(path) = field(&document, "Path") else {
+        panic!("a component is a struct");
+    };
+    assert_eq!(
+        path["waypoints"],
+        Value::List(vec![
+            Value::List(vec![Value::F64(0.0), Value::F64(0.0)]),
+            Value::List(vec![Value::F64(4.0), Value::F64(2.0)]),
+        ])
     );
 }

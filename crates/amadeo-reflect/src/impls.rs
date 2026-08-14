@@ -191,7 +191,16 @@ impl<T: Reflect> Reflect for Vec<T> {
     fn from_value(value: &Value) -> Result<Self, ReflectError> {
         match value {
             Value::List(items) => items.iter().map(T::from_value).collect(),
-            other => Err(ReflectError::mismatch(Self::type_name(), "list", other)),
+            // **A single value fills a one-element list**, because the scene format has no way to
+            // spell one. `value 22.0` is one token, and layer 1 has no schema to tell "a number"
+            // from "a list of one number" — so it produces a scalar, every time, and a `Vec<f32>`
+            // field could not be written with one element in it at all.
+            //
+            // The type is what resolves that, here, which is the same job `f32::from_value`
+            // accepting an integer already does: the text is genuinely ambiguous and the schema is
+            // the thing that knows. Anything that is not a list and cannot be an element still
+            // fails, with the element's own message.
+            other => T::from_value(other).map(|single| vec![single]),
         }
     }
 }
@@ -758,5 +767,31 @@ mod tests {
     #[test]
     fn an_empty_map_round_trips() {
         round_trips(BTreeMap::<String, u32>::new());
+    }
+
+    #[test]
+    fn a_single_value_fills_a_one_element_list() {
+        // **The scene format cannot spell a one-element list.** `value 22.0` is one token, and layer
+        // 1 has no schema to tell "a number" from "a list of one number", so it produces a scalar
+        // every time — which means a `Vec<f32>` field could not be authored with one element in it.
+        //
+        // Found by `amadeo check` on the first `.anim` file with a scalar track in it, which is the
+        // validator earning its keep: the message named the type, the expectation and what it got.
+        assert_eq!(
+            Vec::<f32>::from_value(&Value::F64(22.0)).expect("a scalar fills a one-element list"),
+            vec![22.0]
+        );
+        assert_eq!(
+            Vec::<String>::from_value(&Value::String("one".to_string())).expect("same for strings"),
+            vec!["one".to_string()]
+        );
+    }
+
+    #[test]
+    fn something_that_is_not_an_element_still_fails() {
+        // The coercion above must not turn every mistake into a one-element list. A bool is not an
+        // `f32`, and the message that comes back is the *element's*, which is the useful one.
+        let error = Vec::<f32>::from_value(&Value::Bool(true)).expect_err("a bool is not a number");
+        assert!(error.to_string().contains("f32"), "{error}");
     }
 }

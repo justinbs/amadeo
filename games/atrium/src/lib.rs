@@ -522,6 +522,37 @@ pub fn build_simulation() -> anyhow::Result<App> {
         system(CHOOSE_FROM_MENU, choose_from_menu).while_paused(),
     );
 
+    // Animation (ADR 0066). The lantern sweeps and the lamp flickers, and neither is a special case
+    // in the engine: one clip animates `Transform.rotation` and the other `PointLight.intensity`,
+    // both named as **fields in a text file**, and `amadeo-anim` knows about neither type.
+    //
+    // **`Animatable` is the allow-list and it is deliberately explicit** (ADR 0066 §4). A clip may
+    // only write component types named here, which is what stops one reaching into `RigidBody::kind`
+    // and handing the solver a world it disagrees with. A target nobody allowed is reported by name
+    // in `Animatable::missing`, so forgetting a line here is loud rather than silent.
+    //
+    // The `ClipCache` fills itself during `load_scene`, because a missing clip changes the *state
+    // hash* rather than the picture and is not something to leave behind a line somebody could
+    // forget.
+    let mut animatable = amadeo_anim::Animatable::new();
+    animatable.allow::<Transform>();
+    animatable.allow::<PointLight>();
+    app.insert_service(animatable);
+    app.register_component::<amadeo_anim::AnimationPlayer>()?;
+    // Registered because this game *ships* the `.anim` files that hold them, even though no entity
+    // carries one — the same reason `Material` and `Environment` are registered. Session 9's lesson:
+    // a game whose own asset fails the validator it ships with is worse than one with no validator.
+    app.register_component::<amadeo_anim::AnimationClip>()?;
+    app.register_event::<amadeo_anim::AnimationFinished>();
+
+    // **In `Simulation`, and before the character moves.** A clip writes a `Transform` that physics
+    // and `propagate_transforms` both read this tick; running it later would apply this tick's
+    // animation to next tick's physics, which reads as a platform you sink into.
+    app.add_system(
+        Stage::Simulation,
+        system(amadeo_anim::ANIMATE, amadeo_anim::animate),
+    );
+
     // The one-shot half (ADR 0059's named gap, filled in session 16). Registering the event is what
     // arranges for its buffers to swap each tick; without that a footstep is sent and never read.
     app.register_event::<SoundPlayed>();

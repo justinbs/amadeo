@@ -2274,6 +2274,49 @@ Three things about it that are not obvious:
 If a system mysteriously stops running, `amadeo schedule` reports `runs_while_paused` per stage, so
 the answer does not require reading anyone's source.
 
+### Animating something, and the two surprises in it
+
+A `.anim` file names a component and a field. Nothing in `amadeo-anim` knows what a `Transform` is:
+
+```text
+tracks
+  - component "PointLight"
+    field "intensity"
+    interpolation Linear
+    keys
+      - time 0.0
+        value 22.0
+      - time 1.1
+        value 23.5
+```
+
+Put an `AnimationPlayer` on the entity, name the clip's asset id, and add three lines of setup — a
+`ClipCache` (which `load_scene` installs itself), an `Animatable` allow-list naming the component
+types clips may write, and the `animate` system in `Stage::Simulation`.
+
+**The first surprise: animation is simulation.** The reflex from `GlobalTransform` and `ComputedRect`
+says a computed value should be derived and out of the state hash. Not here — a clip that moves a
+`Transform` is a **moving platform you can stand on**, physics reads it the same tick, and a save has
+to restore where it was. So the clock is hashed, what it writes is hashed, and `animate` goes in
+`Simulation`, not `PostSimulation`.
+
+**The second: a missing clip changes the state hash.** Every other missing asset is cosmetic — a
+missing texture draws magenta, a missing sound is silence. A missing clip means a platform does not
+move, and every hash after it differs. That is why `ClipCache` has no placeholder, why `load_clips`
+installs itself rather than waiting for a setup line, and why `ClipCache::failures` and
+`Animatable::missing` both exist. If something is not animating, read those two before anything else.
+
+### A one-element list has no inline spelling, and the type is what fixes it
+
+`value 22.0` is one token. Layer 1 of the scene format has no schema, so it produces a **scalar**,
+always — there is no way to write a `Vec<f32>` with one element in it.
+
+`Vec<T>::from_value` therefore accepts a single value as a one-element list. That is the type
+resolving an ambiguity the text genuinely has, which is the same job `f32::from_value` accepting an
+integer already does. Worth knowing because the symptom is unhelpful: a lamp that did not flicker,
+with everything else in the file working. `amadeo check` is what named it —
+`list<f32>: expected list, found 64-bit float` — which is the validator paying for itself.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

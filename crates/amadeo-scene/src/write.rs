@@ -106,6 +106,46 @@ pub fn inline_value(value: &Value) -> Option<String> {
     }
 }
 
+/// Appends one `- ` list item whose value has named fields — ADR 0067.
+///
+/// The first field that will inline goes on the dash's own line and the rest sit beneath it, which
+/// is YAML's shape and the one a person writes by hand. When nothing inlines — an item whose every
+/// field is itself a block — the dash stands alone and the whole item is the block, which parses to
+/// the same value.
+fn write_struct_item(
+    output: &mut String,
+    level: usize,
+    fields: &std::collections::BTreeMap<String, Value>,
+) {
+    let pad = " ".repeat(level * INDENT);
+
+    // Alphabetically first, because a `BTreeMap` iterates in order and "first" therefore means the
+    // same thing on every machine and every run. Anything else here would break byte-stability.
+    let head = fields
+        .iter()
+        .next()
+        .filter(|(_, value)| inline_value(value).is_some());
+
+    match head {
+        Some((name, value)) => {
+            let inline = inline_value(value).expect("filtered on it");
+            let _ = writeln!(output, "{pad}- {name} {inline}");
+        }
+        None => {
+            let _ = writeln!(output, "{pad}-");
+        }
+    }
+
+    // The rest, indented to line up with the field on the dash's line. `- ` is two characters, which
+    // is exactly one level, so the continuation sits one level deeper than the dash.
+    for (name, value) in fields {
+        if head.is_some_and(|(head_name, _)| head_name == name) {
+            continue;
+        }
+        write_field(output, level + 1, name, value);
+    }
+}
+
 /// Appends `field <value>`, or the multi-line form when the value will not fit on one line.
 fn write_field(output: &mut String, level: usize, name: &str, value: &Value) {
     let pad = " ".repeat(level * INDENT);
@@ -116,18 +156,26 @@ fn write_field(output: &mut String, level: usize, name: &str, value: &Value) {
     }
 
     match value {
-        // A list whose elements are themselves lists: one `- ` line each.
+        // A list whose elements are themselves lists or structs: one `- ` line each.
         Value::List(items) => {
             let _ = writeln!(output, "{pad}{name}");
             let item_pad = " ".repeat((level + 1) * INDENT);
             for item in items {
-                match inline_value(item) {
-                    Some(inline) => {
+                match item {
+                    _ if inline_value(item).is_some() => {
+                        let inline = inline_value(item).expect("just checked");
                         let _ = writeln!(output, "{item_pad}- {inline}");
                     }
-                    // Deeper nesting than the format expresses today. Emitted as the debug form so
-                    // nothing is silently dropped; layer 2 rejects it with a real message.
-                    None => {
+                    // An item with named fields — ADR 0067. The **alphabetically first** field goes
+                    // on the dash's own line when it inlines, which is what makes the block beneath
+                    // line up with it; a `BTreeMap` is what makes "first" mean the same thing every
+                    // time, so this is byte-stable (I2).
+                    Value::Struct(fields) | Value::Map(fields) => {
+                        write_struct_item(output, level + 1, fields);
+                    }
+                    // Deeper nesting than the format expresses. Emitted as the debug form so nothing
+                    // is silently dropped; layer 2 rejects it with a real message.
+                    _ => {
                         let _ = writeln!(output, "{item_pad}- {item}");
                     }
                 }

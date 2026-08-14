@@ -523,6 +523,7 @@ impl App {
         self.load_environments();
         self.load_meshes();
         self.load_materials();
+        self.load_clips();
         result
     }
 
@@ -833,6 +834,60 @@ impl App {
         if let Some(cache) = self.world.service_mut::<MaterialCache>() {
             for (id, material) in found {
                 cache.insert(id, material);
+            }
+        }
+        self
+    }
+
+    /// Turns every clip id an [`AnimationPlayer`] names into the animation behind it — ADR 0066.
+    ///
+    /// Called automatically by [`App::load_scene`], and **self-installing**, which is the same
+    /// departure [`App::load_environments`] makes and for a stronger reason. A clip that never loads
+    /// does not merely look wrong: it means a platform does not move, and **every state hash after
+    /// it differs**. This is the first asset in the engine whose absence changes *simulation* rather
+    /// than the picture, so leaving it behind a setup line somebody could forget is not a risk worth
+    /// taking.
+    ///
+    /// # It does not install `Animatable`, deliberately
+    ///
+    /// Which component types a clip may write is a decision about the *game* — ADR 0066 §4 — and
+    /// there is no defensible default for it. An unallowed target is reported by name in
+    /// `Animatable::missing`, so forgetting that one is loud rather than silent.
+    ///
+    /// # Nothing here is fatal
+    ///
+    /// An id that does not resolve is recorded in `ClipCache::failures` and its player simply holds
+    /// still. ADR 0021 requires a missing asset to be visible and survivable rather than a crash;
+    /// what makes it visible here is that report, and `App::asset_problems` for a file that parsed
+    /// but held no clip.
+    pub fn load_clips(&mut self) -> &mut Self {
+        let wanted =
+            self.ids_named_by(|player: &amadeo_anim::AnimationPlayer| [player.clip.clone()]);
+        if wanted.is_empty() {
+            return self;
+        }
+        let found: Vec<(String, amadeo_anim::AnimationClip)> = self.read_component_assets(&wanted);
+
+        if !self.world.has_service::<amadeo_anim::ClipCache>() {
+            self.world.insert_service(amadeo_anim::ClipCache::new());
+        }
+        let Some(cache) = self.world.service_mut::<amadeo_anim::ClipCache>() else {
+            return self;
+        };
+
+        for (id, clip) in &found {
+            cache.insert(id, clip.clone());
+        }
+        // An id nobody could turn into a clip. Recorded here rather than left to be noticed, because
+        // the symptom is a thing that does not move — which reads as an authoring mistake in the
+        // clip rather than as a missing file.
+        for id in &wanted {
+            if !found.iter().any(|(found_id, _)| found_id == id) {
+                cache.fail(
+                    id,
+                    "no asset with this id holds an `AnimationClip`; check the scene's `assets` \
+                     block and that the file is a `.anim`",
+                );
             }
         }
         self

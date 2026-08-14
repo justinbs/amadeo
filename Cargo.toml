@@ -56,6 +56,10 @@ amadeo-audio = { path = "crates/amadeo-audio", version = "0.1.0" }
 # is drawn through the sprite path and a glyph is a textured quad -- it needs what the renderer has.
 # Still below amadeo-scene, because authoring a menu in a `.scene` file is that crate's business.
 amadeo-ui = { path = "crates/amadeo-ui", version = "0.1.0" }
+# Keyframed animation (ADR 0066). Depends on reflection and the ECS and on nothing that draws or
+# simulates -- a track names a component and a field by *name*, so this crate knows about no
+# component type at all, which is what lets it animate ones written after it.
+amadeo-anim = { path = "crates/amadeo-anim", version = "0.1.0" }
 amadeo-scene = { path = "crates/amadeo-scene", version = "0.1.0" }
 # Above amadeo-scene, because it borrows that crate's scalar encoding (ADR 0028).
 amadeo-snapshot = { path = "crates/amadeo-snapshot", version = "0.1.0" }

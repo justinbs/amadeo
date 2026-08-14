@@ -1,0 +1,21 @@
+scene lantern_sweep
+version 1
+
+entity clip "Lantern sweep"
+  AnimationClip
+    duration 12.0
+    tracks
+      - component "Transform"
+        field "rotation"
+        interpolation Linear
+        keys
+          - time 0.0
+            value -90.0 0.0 0.0
+          - time 3.0
+            value -64.0 0.0 0.0
+          - time 6.0
+            value -90.0 0.0 0.0
+          - time 9.0
+            value -64.0 0.0 180.0
+          - time 12.0
+            value -90.0 0.0 0.0

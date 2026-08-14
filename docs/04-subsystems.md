@@ -488,12 +488,32 @@ does better.
 
 ## 14. Animation — `amadeo-anim` · M3
 
-⚠️ Sprite animation, skeletal animation (glTF skins), blend trees, state machines, and tweens are four
-fairly separate systems. Decide which are engine and which are modules.
-⚠️ Animation state machines and gameplay state machines want to be the same abstraction. Deciding this
-early avoids two parallel half-systems.
-⚠️ Must be tick-deterministic — animation driving gameplay (hitboxes on frames) is common and must
-reproduce exactly.
+✅ **A clip animates a reflected field (ADR 0066).** A track names a component and a field —
+`Transform.rotation`, `PointLight.intensity` — and the engine reads that component as a value,
+patches the field and writes it back, which is what ADR 0029's prefab overrides already did.
+**Nothing in `amadeo-anim` knows about any component type**, so adding an animatable property is
+never engine work. A key carries a bare list of numbers and the width comes from the *target*, so one
+track type covers a scalar, a vector, a colour and an integer index.
+✅ **Tick-deterministic, and the reflex about where it sits was wrong.** `GlobalTransform` and
+`ComputedRect` are derived; animation output is **not**. A clip that moves a `Transform` is a moving
+platform you can stand on, so the clock is hashed, everything it writes is hashed, and `animate` runs
+in `Simulation` rather than `PostSimulation` — physics reads what it wrote, the same tick.
+✅ **An animation state machine will not be shared with an AI one.** This section used to say they
+"want to be the same abstraction". They do not: an animation transition is a **blend over time** and
+an AI transition is instantaneous with side effects. Unreal ships AnimBlueprints and Behavior Trees
+separately on purpose; Unity and Godot have animation state machines and nothing for AI. Keeping them
+apart is also the reversible direction — two systems can be unified later, and a unified one cannot
+be split.
+⚠️ **Skeletal animation and skinning** are the large remaining piece: glTF skins, joint palettes,
+inverse bind matrices and a vertex shader. A genuinely different data path from property animation,
+and the one place the reflected-field approach will not reach — a read-patch-write per bone per tick
+is hopeless at a few hundred of them, so this gets a typed path. Needs a rigged model the repository
+does not have.
+⚠️ **Blending and blend trees.** One clip per player today. Blending needs a pose to blend *into*,
+which is the skeletal representation above, so it waits on it.
+⚠️ **A quaternion track.** Rotation interpolates as Euler degrees, because that is what ADR 0018 says
+a `Transform` holds — right for a door, wrong for anything tumbling, because it takes the long way
+round past 180°. Additive when something needs it.
 
 ## 15. Save/Load & Serialization of Live State — M3
 

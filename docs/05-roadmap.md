@@ -347,8 +347,11 @@ in documents nobody is allowed to correct.
   **This is what exit gate 5 below actually requires**, and it is the milestone's real renderer exam.
 - ✅ `amadeo-audio` — buses, 3D spatialisation, one-shots as events, `NullAudio` and a kira backend
   (ADRs 0059–0061). Still open: ducking, occlusion, compressed audio, a voice cap.
-- `amadeo-anim` — sprite animation, skeletal animation, blend trees, state machines, tweens.
-  **The last named M3 subsystem with nothing built.**
+- 🟡 `amadeo-anim` — **a clip animates a reflected field (ADR 0066)**: a track names a component and a
+  field by name, so nothing in the crate knows about any component type and adding an animatable
+  property is never engine work. Hashed, because a clip that moves a `Transform` is a moving platform.
+  `games/atrium`'s lantern sweeps and its lamp flickers, both authored in `.anim` text.
+  Still to come: skeletal animation and skinning, blending, and a state machine.
 - ✅ `amadeo-ui` — retained-mode game UI: **anchors plus flow** rather than flex (ADR 0062, and the
   reasoning is that a HUD is a placement problem and a menu is a flow problem), text shaped with
   `cosmic-text`, a glyph atlas, focus navigation by **authored order** (ADR 0063), and theming by

@@ -435,7 +435,35 @@ crates/
                      it are what get hashed. Knows nothing about terrain. **An empty mesh is refused
                      by both backends** and most chunks of a real world are empty, so filter with
                      `StaticMesh::is_empty`. Inserting a known id REPLACES; `reset` drops them all.
-— amadeo-anim        sprite anim, skeletal, state machines, tweens
+🟡 amadeo-anim       keyframed animation (ADR 0066). **A track names a COMPONENT AND A FIELD, by
+                     name** -- `Transform.rotation`, `PointLight.intensity` -- and the engine reads
+                     that component as a `Value`, patches the field and writes it back, which is what
+                     ADR 0029's prefab overrides already did. **Nothing in this crate knows about any
+                     component type**, so adding an animatable property is never engine work: a
+                     light's intensity, a material's colour, a sprite's tilesheet region and a UI
+                     panel's paint all animate today, and so will anything added later.
+                     A key carries a bare list of numbers and **the width comes from the TARGET**, so
+                     one track type covers a scalar, a vector, a colour and an integer index; the
+                     component's schema stays the single description of its fields.
+                     **Animation is SIMULATION, not presentation, and the reflex points the wrong
+                     way.** `GlobalTransform` and `ComputedRect` are derived; this is not. A clip that
+                     moves a `Transform` is a moving platform you stand on -- physics reads it the
+                     same tick, a save restores it, and docs/04 §14 requires hitboxes on frames to
+                     reproduce. So the clock is hashed, everything it writes is hashed, and `animate`
+                     runs in **`Simulation`**, not `PostSimulation`.
+                     **`Animatable` is an allow-list a game fills**, because `ComponentRegistry` is
+                     owned by `App` rather than by the `World` and a system cannot reach it. It turns
+                     out to be worth having: a clip cannot write `RigidBody::kind` and hand the solver
+                     a world it disagrees with. An unallowed target is reported in
+                     `Animatable::missing`, never silent.
+                     **A missing clip changes the STATE HASH** -- the first asset in the engine whose
+                     absence changes simulation rather than the picture. `ClipCache` therefore has no
+                     placeholder (`SoundCache`'s rule, harder), `load_clips` installs itself during
+                     `load_scene`, and `ClipCache::failures` is the whole diagnosis.
+                     Still to come: skeletal animation and skinning, blending, and a state machine --
+                     which will NOT be shared with AI (ADR 0066 §5): an animation transition is a
+                     blend over time and an AI transition is instantaneous with side effects, and
+                     Unreal, Unity and Godot all keep them apart on purpose.
 🟡 amadeo-ui         retained-mode game UI (ADR 0062). **Layout is built**: `Anchor` (one `Align` per
                      axis -- Start/Centre/End/Stretch, so sixteen useful placements from four names),
                      `Flow` (None/Row/Column) with `gap`, `align_children` and `grow`, and
@@ -585,6 +613,16 @@ crates/
                      with `- ` and **named fields** otherwise (YAML's rule, and no schema needed), so
                      nested structs, maps and enum payloads all write now. `Option::None` and any
                      *empty* field value still have no spelling, deliberately.
+                     **ADR 0067 filled the one shape ADR 0032 left out: a list whose items have named
+                     fields.** Fields indented under a `- ` line belong to that item, and the field on
+                     the dash's own line is one of them rather than a header (YAML again). Any
+                     repeated compound entry needs this -- a dialogue line, an emitter stage, a state
+                     machine's transitions -- and `.anim` was the first to want one. Canonical form
+                     puts the **alphabetically first** field on the dash line, which is what keeps
+                     `amadeo fmt` byte-stable. **A one-element list is unspellable inline** (`value
+                     22.0` is a scalar, and layer 1 has no schema), so `Vec<T>::from_value` accepts a
+                     single value as a one-element list -- the type resolving an ambiguity the text
+                     really has, exactly as `f32::from_value` accepting an integer already did.
 ✖ amadeo-script      NOT BUILT. ADR 0011: game logic is plain Rust in the game crate.
 🟡 amadeo-agent       the protocol: JSON reader and writer, JSON-RPC envelope, and the methods that
                      need only a world + registry (describe, describe.example, render.describe,
