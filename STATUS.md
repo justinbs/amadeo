@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-12 (session 16)
+**Last updated:** 2026-08-14 (session 17)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE — all four exit gates met.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
@@ -26,7 +26,11 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 ## 📬 For the next session — read this box, then the two below it
 
-**Everything is pushed and CI is green 5/5 through `cfa5bab`.** Verify anyway, the way session 15
+**Everything is pushed through `f91229d`.** The last three CI runs were still in flight when the
+session ended, so **check them first** — `gh run list` — rather than assuming. Everything before them
+was green 5/5, and all four local checks passed on every commit.
+
+Verify pushes the way session 15
 learned to: `git fetch` and then `git log --oneline origin/main..HEAD`. **The fetch is the
 load-bearing half** — session 15 hit a network failure where the fetch died and the comparison ran
 against a stale ref, printing "all pushed" without having checked anything. Read the fetch's exit
@@ -39,19 +43,36 @@ code, not just the log's output.
 
 ### Where things actually are
 
-**Audio is done and has been heard. The interface is built, drawn, navigable and themed.** Session 16
-was long: 16 commits, ADRs 0060–0064, and `amadeo-ui` went from not existing to drawing a real title
-screen. What M3 still needs:
+**Every named M3 subsystem now exists.** Session 17 finished the interface, decided how a game
+pauses, and built `amadeo-anim` from nothing.
 
 | | |
 |---|---|
 | `amadeo-audio` | **Working, and complete enough for a game.** Trait, `NullAudio`, `KiraAudio`, buses, components, collection pass, `VoiceTracker`, WAV decoder, `SoundCache`, **one-shots**, `audio.describe`. Missing: ducking, occlusion, compressed audio, a voice cap |
-| `amadeo-ui` | **Working, seen, navigable and themed.** Anchors, flow, `grow`, `FontCache`, `GlyphAtlas`, `Panel`, `Text`, `collect_ui`, focus navigation, `Theme`, 77 tests — panels *and* a glyph verified by reading back GPU pixels, and `games/atrium` draws a real title in Bebas Neue from a `.theme` file. Missing: **drawing the focus differently**, pointer navigation |
-| `amadeo-anim` | **Nothing.** |
+| `amadeo-ui` | **Working, seen, navigable, themed, and the focus is drawn.** A focused panel resolves to `Accent` and its text to `OnAccent`, substituted in the draw pass so nothing hashable holds an appearance. Missing: pointer navigation, and **ADR 0063's plan for it does not work — read Q36** |
+| `amadeo-anim` | **Working.** A clip animates a *reflected field* (ADR 0066), so nothing in the crate knows about any component type. Hashed, because a clip that moves a `Transform` is a moving platform. Missing: skeletal animation and skinning, blending, a state machine |
 
-### What to build next, in order
+### What to build next
 
-1. **Draw the focus differently — and it is now small.** Navigation works (ADR 0063), the theme
+Nothing is queued the way it was last session — the list is genuinely open now, so these are
+candidates rather than an order.
+
+1. **Skeletal animation.** The largest remaining piece of `amadeo-anim`, and the one place ADR 0066's
+   design deliberately stops: property animation goes through reflection, and a read-patch-write per
+   bone per tick is hopeless at a few hundred bones, so skinning gets its own typed path. Needs a
+   rigged glTF model, which the repository does not have.
+2. **M3's exit gate itself** — the first-person horror slice. Everything it needs *structurally* now
+   exists: screens, pause, menus, sound, animation, lighting, shadows. What it needs next is
+   `modules/`: `mod-behaviour`, `mod-inventory`, `mod-interaction`, and a first-person camera rig.
+3. **Save/load on top of snapshots**, with versioning and migration. Closer than it looks —
+   `.snapshot` works, and `Screen` and `Paused` restore for free because they are ordinary hashed
+   resources.
+4. **Pointer navigation**, but read **Q36** first: ADR 0063's consequences describe a design that
+   cannot work, and the replacement is written up there.
+
+### The old list, for the record — all four are done or deliberately deferred
+
+1. ✅ **Draw the focus differently — and it is now small.** Navigation works (ADR 0063), the theme
    exists (ADR 0064), and `Paint::Accent` is sitting there unused. **No widget consults the focus**,
    so a highlighted menu item looks like every other one. A system in the `Render` stage that
    repaints the focused node's `Panel` and `Text` is a few dozen lines.
@@ -60,7 +81,7 @@ screen. What M3 still needs:
    > focused thing looks* is not, and writing an appearance into a hashed component would put the
    > theme in the state hash.
 
-2. **A pause menu in `games/atrium`.** The first thing that uses layout, text, focus and theme at
+2. ✅ **A pause menu in `games/atrium`.** The first thing that uses layout, text, focus and theme at
    once, and the first honest test of whether Signage holds up **in motion** rather than in a still.
    It needs Escape to toggle `UiNode::visible` on a menu root, three `Focusable` items, and a
    `UiActivated` reader.
@@ -73,21 +94,28 @@ screen. What M3 still needs:
    > is a **hashed** `Screen` resource plus stage gating — hashed because which screen you are on is
    > gameplay, a save must restore it, and a replay must reproduce it.
 
-3. **Pointer and spatial navigation**, which ADR 0063 deliberately puts *outside* the deterministic
-   zone — a presentation-side system writing through the same `Focus`. `ComputedRect::contains` is
-   the primitive, is written, and is unused. Read ADR 0063 before starting: the *placement* of this
-   logic is the whole decision, and putting it in the simulation breaks I3 for every menu.
+3. ⏸️ **Pointer and spatial navigation** — **deferred, and this entry's advice was wrong.** It said to
+   read ADR 0063 because "the *placement* of this logic is the whole decision". Going to build it
+   found that **the ADR's own answer reintroduces the break it exists to prevent**: `Focus` is
+   hashed, so a `Render`-stage system writing it puts the pointer — and, through the rectangles it
+   hit-tests, the window size — into the state hash. Its second claim, that "a replay records the
+   resulting focus moves", is not something the replay format can do at all. **Q36** carries the
+   analysis and the replacement.
 
-4. **`amadeo-anim`**, still completely untouched and the last named M3 subsystem.
+4. ✅ **`amadeo-anim`**, which was completely untouched and is now ADR 0066.
 
-### Two smaller things noted rather than fixed
+### Three things noted rather than fixed
 
 - **Nothing can ask how wide a label will be.** `FontCache::shape` returns the width and nothing
-  surfaces it, so a panel behind a label is sized by hand — the Atrium's title plate was authored,
-  looked at, and corrected by eye. That is the "no intrinsic sizing" trade (`layout.rs` says so) being
-  felt for the first time. Worth closing if it bites again.
+  surfaces it, so a panel behind a label is sized by hand — the Atrium's title plate *and* its pause
+  panel were both authored, looked at, and corrected by eye. **Two occurrences now**, which was the
+  bar session 16 set for closing it.
 - **`padding` is uniform.** Asymmetric padding needs a child's margin. A four-token version is
   additive and nothing written today would change.
+- **There is no scrim token.** A pause menu over a bright scene wants a dimming layer, and the
+  palette has no name for one — `Paint::Custom` would work and is precisely what ADR 0064 says not to
+  use for chrome. The Atrium does without and reads fine, because the room is dim. An eighth token is
+  the answer if a second game wants one.
 
 > **On the text decision, because it is a calibration signal worth keeping.** I recommended the
 > lighter option (rasterise a TTF into a glyph atlas) and listed `cosmic-text` as the heavier
@@ -95,6 +123,14 @@ screen. What M3 still needs:
 > one was *scope*, and `CLAUDE.md` §5 has said since session 6 that he would rather have a complete
 > engine than one that accumulates problems. When the sole case for the smaller option is effort,
 > recommend the complete one.
+>
+> **Session 17 has the matching one in the other direction.** I recommended building pointer
+> navigation and **Justin chose to defer it** for `amadeo-anim`. He was right there too, and it is
+> the same rule read the other way: the *analysis* was the valuable part and it is written down in
+> Q36, while the code would have served nothing in M3. "Prefer the complete option" means not
+> leaving problems behind — not building everything immediately.
+>
+> Both readings together: **do the thinking, then ask what to build with it.**
 
 ### Q12 did not bite, and that is a finding rather than a non-event
 
@@ -144,6 +180,98 @@ WGPU_BACKEND=dx12 WGPU_DX12_COMPILER=fxc cargo test -p amadeo-render --all-featu
 Windows CI has no GPU, uses WARP, and compiles through FXC, which is far stricter than the DXC or
 Vulkan path a real GPU takes. **Ubuntu CI is no help** — with no software fallback it skips every GPU
 test and passes regardless, so a green Ubuntu job says nothing about a shader.
+
+---
+
+## Session 17 — the room stops, and a field it has never heard of moves
+
+**Six commits, three ADRs (0065–0067), one new crate.** Every named M3 subsystem now exists.
+
+### What landed
+
+1. **The focus is drawn** — the last line of ADR 0063, left undone. A focused `Panel` resolves to
+   `Accent` and text inside it to `OnAccent`, **substituted in the draw pass** rather than written
+   into a component, because `Focus` is hashed and an appearance must not be. The rule comes from the
+   palette rather than from taste: ADR 0064 already documents `Accent` as meaning focus, so a menu
+   authored knowing nothing about focus highlights correctly. Verified by rendering two identical
+   panels with one focused and reading the pixels back.
+2. **ADR 0065 — pausing is a per-system opt-in**, resolving Q35. See below; it is the session's
+   expensive decision.
+3. **A pause menu in `games/atrium`**, which is the first thing to use layout, text, focus, theme and
+   pausing at once. Three buttons authored in `atrium.scene`, each carrying a `MenuButton` saying
+   what it means.
+4. **Q36 filed** — pointer navigation deferred, because ADR 0063's plan for it turned out not to
+   work. See below.
+5. **ADR 0066 — `amadeo-anim`**, from nothing. A clip animates a *reflected field*.
+6. **ADR 0067 — a list item may have named fields**, which is the scene-format gap the first `.anim`
+   file fell into.
+
+### The two defects worth remembering, because they are the same defect
+
+**A flag on a parent changes what its children mean, and every reader has to walk up.**
+`UiNode::visible` is a field rather than a despawn so that toggling a menu does not move entities
+between archetypes. The consequence is that `layout_ui` skips a hidden node *and its descendants*,
+never overwriting the rectangles they had while visible — and every node inside a hidden menu still
+says `visible: true`, because it is.
+
+It bit twice, an hour apart:
+
+- **the draw pass** kept drawing a closed menu's buttons off stale rectangles;
+- **`focusable_in_order`** let the focus land inside a closed menu, so the next `confirm` would
+  activate a button nobody could see — **which is the bug ADR 0063 names in its own consequences**,
+  sitting in the code that named it.
+
+Found by building a pause menu, which is what a demo is for. One shared upward walk answers both now.
+
+### Q36: an ADR can be right about a hazard and still name a sink that reintroduces it
+
+ADR 0063's consequences say pointer navigation belongs in "a presentation-side system that writes
+through the same `Focus` resource", and that "a replay records the resulting focus moves rather than
+the pointer that caused them". **Neither half works.** `Focus` is hashed, so a `Render`-stage system
+writing it puts the pointer and the window size into the state hash — the exact I3 break the ADR
+exists to prevent. And `InputChange` is `Button` and `Axis`; nothing in it can record a focus move.
+
+Worth keeping as a *shape* rather than an incident: a decision can be completely right about where a
+hazard comes from and still leave a door open into it, in the section nobody re-reads.
+
+The replacement is written up in Q36 — the lockstep-RTS answer, which is that the interface sits
+outside the simulation and the pointer resolves to a **command** that is what gets recorded.
+
+### ADR 0066's surprise: animation is simulation
+
+The reflex from `GlobalTransform` and `ComputedRect` says a computed value should be derived and
+outside the state hash. **Animation is not.** A clip that moves a `Transform` is a moving platform you
+stand on: physics reads it the same tick, a save restores it, and `docs/04` §14 requires hitboxes on
+frames to reproduce. So the clock is hashed, what it writes is hashed, and `animate` runs in
+`Simulation`.
+
+Its consequence is sharper than it looks: **a missing clip changes the state hash**, which no other
+missing asset in this engine does. A missing texture draws magenta and a missing sound is silence;
+a missing clip means a platform does not move. `ClipCache` therefore has no placeholder, `load_clips`
+installs itself, and `ClipCache::failures` plus `Animatable::missing` are the diagnosis.
+
+### `amadeo check` paid for itself twice in one afternoon
+
+Writing the first two `.anim` files found two format problems, and the validator named both against
+the real schema rather than leaving them as symptoms:
+
+- **a list of structs was unspellable** — ADR 0032's one missing shape, which the writer already knew
+  about and had a `Debug`-form fallback for. Now ADR 0067;
+- **a one-element list was unspellable** — `value 22.0` is one token and layer 1 has no schema, so a
+  scalar track could not be authored at all. Fixed where it belongs: `Vec<T>::from_value` accepts a
+  single value, the type resolving an ambiguity the text genuinely has.
+
+The symptom of the second was "a lamp that did not flicker". The message was
+`list<f32>: expected list, found 64-bit float`.
+
+### Eyeball calls added this session
+
+- **The pause panel's 300×194**, and the 36-pixel buttons in it. Authored by hand because nothing can
+  measure a label, and corrected once by looking at a capture — the first version ran eight pixels
+  past the last button and had its heading in `Dim`, which is the token for things you skim past.
+- **The lantern's sweep** — 12 seconds, ±26° of pitch and a half-turn of yaw at 9s — and **the lamp's
+  flicker**, 2.6 seconds between 19.5 and 23.5. Both set by eye against one capture, and both are one
+  line in a `.anim` file to change.
 
 ---
 
