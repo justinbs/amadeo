@@ -79,6 +79,35 @@ fn load(text: &str) -> App {
 }
 
 #[test]
+fn an_ordinary_load_takes_the_strict_path_and_reports_nothing() {
+    // ADR 0069's named consequence, checked in a real game rather than in a two-component fixture.
+    // Reading a save leniently is only safe because the leniency does not *apply* when nothing has
+    // changed shape — so the full state-hash check is still what an actual load runs through. If
+    // this ever came back `exact: false`, every save in this game would have quietly stopped being
+    // verified, and no other test would notice.
+    let mut app = room();
+    walk(&mut app, 25);
+    let text = save(&app);
+
+    let mut resumed = room();
+    let snapshot = amadeo_snapshot::parse(&text).expect("the save parses");
+    let report = resumed
+        .restore_save(&snapshot, &amadeo_snapshot::Redirects::new())
+        .expect("the save restores");
+
+    assert!(report.exact, "nothing in this build has changed shape");
+    assert!(
+        report.state_hash_checked,
+        "so the recorded hash was enforced, exactly as a snapshot restore would"
+    );
+    assert!(
+        report.is_clean(),
+        "and nothing had to be filled in or dropped: {:?}",
+        report.lines()
+    );
+}
+
+#[test]
 fn a_save_taken_mid_walk_resumes_into_the_same_future() {
     // **The exit gate's actual claim.** Not "the file round-trips" — that a resumed game and one
     // that never stopped are the same game, checked by running both on and comparing where they

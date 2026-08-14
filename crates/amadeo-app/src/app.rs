@@ -369,6 +369,36 @@ impl App {
         result
     }
 
+    /// Puts a **save** back: the same file, read leniently (ADR 0069).
+    ///
+    /// The difference from [`App::restore_snapshot`] is what happens when the file was written by a
+    /// build whose components have since changed shape. A snapshot refuses; a save fills in what
+    /// this build expects, drops what it no longer has, applies `redirects` for anything renamed,
+    /// and reports every one of those in the returned [`SaveReport`](amadeo_snapshot::SaveReport).
+    ///
+    /// **When nothing has changed shape this is the strict path, unchanged** — hard errors and the
+    /// state hash enforced — so an ordinary load by a player who has not updated loses no checking
+    /// at all.
+    ///
+    /// Everything [`App::restore_snapshot`] says about services applies here too: a restore puts
+    /// components and resources back and never a service, so a subsystem caching derived state has
+    /// to notice and rebuild.
+    ///
+    /// # Errors
+    ///
+    /// [`amadeo_snapshot::RestoreError`] for what leniency cannot explain away — a file whose entity
+    /// slots do not add up, and, when the layout matches, anything a snapshot restore would refuse.
+    pub fn restore_save(
+        &mut self,
+        snapshot: &amadeo_snapshot::Snapshot,
+        redirects: &amadeo_snapshot::Redirects,
+    ) -> Result<amadeo_snapshot::SaveReport, amadeo_snapshot::RestoreError> {
+        let registry = self.take_registry();
+        let result = amadeo_snapshot::restore_save(&mut self.world, &registry, snapshot, redirects);
+        self.put_registry(registry);
+        result
+    }
+
     /// Whether a system label is already registered in a stage.
     ///
     /// For **modules that share a prerequisite**. `amadeo_character::install` and

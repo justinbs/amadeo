@@ -45,6 +45,7 @@ use amadeo_render::{
     BoxMesh, Camera, DirectionalLight, Environment, Material, Mesh, PlaneMesh, PointLight,
     SortOrder, SpotLight, TextureCache,
 };
+use amadeo_snapshot::Redirects;
 use amadeo_transform::{
     GlobalTransform, PROPAGATE_TRANSFORMS, Parent, Transform, propagate_transforms,
 };
@@ -152,6 +153,17 @@ pub enum MenuChoice {
 /// as a plain relative path deliberately, so that nothing here has to be unpicked when it is
 /// decided.
 pub const SAVE_FILE: &str = "atrium.save";
+
+/// Renames that let a save written by an older build still load (ADR 0069).
+///
+/// **Optional, and absent is the normal case** — nothing has been renamed yet, and a missing file
+/// means no redirects rather than an error. It sits next to the save for the same reason the save
+/// sits where it does: where user data belongs is still undecided, and a plain relative path is the
+/// thing that will not have to be unpicked.
+///
+/// When a component or one of its fields *is* renamed, adding a line here is the whole fix, and it
+/// can be done by hand without recompiling.
+pub const REDIRECT_FILE: &str = "atrium.redirects";
 
 /// A request the platform layer carries out, because a simulation cannot touch a disk.
 ///
@@ -862,29 +874,54 @@ pub fn serve_save_requests(app: &mut App) -> Vec<String> {
     }
 
     if request.load {
-        said.push(match load_from(app, SAVE_FILE) {
-            Ok(()) => format!("loaded {SAVE_FILE}"),
-            Err(why) => why,
-        });
+        match load_from(app, SAVE_FILE) {
+            Ok(notes) => {
+                said.push(format!("loaded {SAVE_FILE}"));
+                // Anything the save could not supply exactly. Empty on an ordinary load, and every
+                // line is a place the resumed game differs from the saved one (ADR 0069 §5).
+                said.extend(notes);
+            }
+            Err(why) => said.push(why),
+        }
     }
 
     said
 }
 
 /// Reads a save back into a running game.
-fn load_from(app: &mut App, path: &str) -> Result<(), String> {
+///
+/// Uses the **lenient** reading (ADR 0069), which is what makes this a save rather than a snapshot:
+/// a save written before a patch still loads, with anything the newer build expects filled in. When
+/// nothing has changed shape — which is every load by a player who has not updated — it is
+/// byte-for-byte the strict path, hash check included.
+///
+/// Returns the report's lines alongside the outcome so the caller can print them. This game does not
+/// *refuse* a save that needed patching up, because the room is small enough that a defaulted field
+/// is recoverable; a game with more at stake should read the report and decide otherwise, which is
+/// exactly why `restore_save` returns one rather than logging.
+fn load_from(app: &mut App, path: &str) -> Result<Vec<String>, String> {
     let text =
         std::fs::read_to_string(path).map_err(|error| format!("could not read {path}: {error}"))?;
     let snapshot =
         amadeo_snapshot::parse(&text).map_err(|error| format!("{path} will not parse: {error}"))?;
-    app.restore_snapshot(&snapshot)
+
+    // Absent is the normal case, and an unreadable one is worth complaining about rather than
+    // ignoring: a redirect file that silently does nothing is how a rename turns into data loss.
+    let redirects = match std::fs::read_to_string(REDIRECT_FILE) {
+        Ok(text) => Redirects::parse(&text)
+            .map_err(|error| format!("{REDIRECT_FILE} will not parse: {error}"))?,
+        Err(_) => Redirects::new(),
+    };
+
+    let report = app
+        .restore_save(&snapshot, &redirects)
         .map_err(|error| format!("{path} will not restore: {error}"))?;
 
     // See this function's caller for why. The solver is holding the world that was just replaced.
     if let Some(physics) = app.world.service_mut::<Physics>() {
         physics.reset();
     }
-    Ok(())
+    Ok(report.lines())
 }
 
 /// The same room with no window, no GPU, and no keyboard — what the agent inspects.
