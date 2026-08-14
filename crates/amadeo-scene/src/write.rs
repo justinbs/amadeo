@@ -88,11 +88,6 @@ pub fn inline_value(value: &Value) -> Option<String> {
             Some(inner.variant.clone())
         }
         // A *flat* list goes on one line: `position 0.0 0.0`.
-        //
-        // A list of lists must not, even though every element would inline happily: joining them
-        // would render `[[0,0],[4,0]]` as `0.0 0.0 4.0 0.0`, which parses back as one flat list of
-        // four numbers. The grouping would be silently lost, and the round-trip test is what makes
-        // that a caught bug rather than a corrupted scene.
         Value::List(items) => {
             // **An empty list is spelled out, for the reason `Unit` is written `()`.** Joining
             // nothing gives the empty string, so this used to write `name ` — a field with a
