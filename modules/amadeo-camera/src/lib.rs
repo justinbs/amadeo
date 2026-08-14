@@ -1,8 +1,30 @@
-//! A third-person follow camera that keeps itself out of the world — **Q27**.
+//! Camera rigs: a third-person follow camera that keeps itself out of the world (**Q27**), and a
+//! first-person one.
 //!
 //! ```text
 //! amadeo_camera::install(&mut app)?;
 //! ```
+//!
+//! # Two rigs, because `docs/05` asked for two
+//!
+//! Three of the eight target games are first-person and three are third, so the roadmap names the
+//! camera rig as its own module precisely to stop either being privileged. [`FollowCamera`] and
+//! [`FirstPersonCamera`] are separate components rather than one with a `distance` of zero, because
+//! most of the third-person rig's fields — the arm, the return speed, the sweep radius — mean
+//! nothing when the camera is inside the character's head. ADR 0057's precedent: `PointLight` and
+//! `SpotLight` stayed apart so nobody types a cone angle on a bulb.
+//!
+//! **They share [`look_with_mouse`]**, and that sharing is the point rather than a saving. Aiming is
+//! identical for both — yaw onto the parent, pitch onto the camera, both subtracted — and two copies
+//! of those two sign conventions would be two chances to ship a view that turns the wrong way, which
+//! is a bug plausible enough to survive review.
+//!
+//! # A first-person game holds the look button permanently
+//!
+//! Both rigs gate on [`LOOK`], because a third-person game wants a free cursor until you hold the
+//! right button. A first-person game has no cursor, so its window layer sets that action to held and
+//! leaves it — one line, and it keeps the pointer travelling as a **named action** so a replay
+//! records it with nothing new (ADR 0063's argument, one subsystem over).
 //!
 //! # What it is for
 //!
@@ -44,6 +66,9 @@ pub const KEEP_CAMERA_CLEAR: &str = "keep_camera_clear";
 
 /// The label [`look_with_mouse`] is registered under.
 pub const LOOK_WITH_MOUSE: &str = "look_with_mouse";
+
+/// The label [`place_first_person`] is registered under.
+pub const PLACE_FIRST_PERSON: &str = "place_first_person";
 
 /// Held to steer the camera. Bound to the right mouse button by a game's window layer.
 pub const LOOK: &str = "look";
@@ -119,6 +144,69 @@ impl Default for FollowCamera {
 
 impl Component for FollowCamera {}
 
+/// A camera at the eyes of whatever it is a child of.
+///
+/// Put it on the camera entity, which must be a child of the thing being looked out of.
+///
+/// # Why this is a separate component rather than `FollowCamera { distance: 0.0 }`
+///
+/// Because half of `FollowCamera`'s fields would then mean nothing. There is no arm, so no
+/// `distance`, `min_distance` or `return_speed`; and **no sweep**, because a camera inside the
+/// character's own head cannot be occluded by the world — the one thing the third-person rig spends
+/// most of its code on simply does not arise.
+///
+/// The precedent is ADR 0057's: `PointLight` and `SpotLight` stayed two components rather than one
+/// with a cone angle nobody sets on a bulb. An author should not be typing a return speed on a
+/// first-person view.
+///
+/// # The roadmap asked for both, and this is why
+///
+/// Three of the eight target games are first-person and three are third; `docs/05` names the camera
+/// rig as its own module precisely so neither is privileged, and `CLAUDE.md`'s trap 10 warns against
+/// assuming a game has a camera behind a character. Two components, one module, no shared field
+/// pretending to serve both.
+#[derive(Debug, Clone, Copy, PartialEq, amadeo_core::StableHash, amadeo_reflect::Reflect)]
+pub struct FirstPersonCamera {
+    /// How far above the parent's origin the eyes sit, in world units.
+    ///
+    /// Written onto the camera's local translation every tick, so **this component is the authority
+    /// and the transform is derived from it**. Authoring the transform instead would leave two
+    /// numbers meaning the same thing, and a crouch or a stagger later would have to fight one of
+    /// them.
+    #[reflect(min = 0.0, max = 100.0, unit = "world units")]
+    pub height: f32,
+    /// How far a pixel of pointer movement turns the view, in degrees.
+    #[reflect(min = 0.0, max = 10.0, unit = "degrees per pixel")]
+    pub degrees_per_pixel: f32,
+    /// How far down the view may be tilted, in degrees. Negative is downward.
+    #[reflect(min = -89.0, max = 0.0, unit = "degrees")]
+    pub min_pitch: f32,
+    /// How far up the view may be tilted, in degrees.
+    ///
+    /// Both limits stop short of vertical for [`FollowCamera::max_pitch`]'s reason, and it bites
+    /// harder here: a first-person view is *expected* to look almost straight up, so the clamp is
+    /// the only thing between a player and ADR 0018's gimbal problem.
+    #[reflect(min = 0.0, max = 89.0, unit = "degrees")]
+    pub max_pitch: f32,
+}
+
+impl Default for FirstPersonCamera {
+    fn default() -> Self {
+        Self {
+            // Eye height for someone about 1.8 m tall, measured from a capsule's centre rather than
+            // from the floor — a `CharacterController`'s origin is the middle of its capsule.
+            height: 0.7,
+            degrees_per_pixel: 0.18,
+            // Wider than the third-person rig's, both ways. A follow camera that looked straight
+            // down would be under the ground; a head can.
+            min_pitch: -85.0,
+            max_pitch: 85.0,
+        }
+    }
+}
+
+impl Component for FirstPersonCamera {}
+
 /// Where the camera's arm actually is right now, as opposed to where [`FollowCamera`] wants it.
 ///
 /// # Why this is a second component rather than another field
@@ -190,10 +278,24 @@ impl Component for CameraArm {}
 pub fn install(app: &mut App) -> Result<(), RegistryError> {
     app.register_component::<FollowCamera>()?;
     app.register_component::<CameraArm>()?;
+    app.register_component::<FirstPersonCamera>()?;
 
     app.add_system(
         Stage::Simulation,
         system(LOOK_WITH_MOUSE, look_with_mouse).before(KEEP_CAMERA_CLEAR),
+    );
+    // **After the aim, for `keep_camera_clear`'s reason one line down.** `look_with_mouse` writes
+    // this camera's pitch and this writes its translation; running them the other way round is
+    // harmless today because they touch different fields, and declaring the order anyway is what
+    // stops that from being a fact somebody has to rediscover if either grows.
+    //
+    // No `.after(STEP_PHYSICS)` here, unlike the third-person rig: this reads no spatial index and
+    // asks the world nothing. It only needs to run after whatever moved the parent, and since it
+    // writes a *local* translation it does not even need that — `propagate_transforms` composes the
+    // parent's final position in `PostSimulation` either way.
+    app.add_system(
+        Stage::Simulation,
+        system(PLACE_FIRST_PERSON, place_first_person).after(LOOK_WITH_MOUSE),
     );
     app.add_system(
         Stage::Simulation,
@@ -235,24 +337,104 @@ pub fn look_with_mouse(world: &mut World) {
         return;
     }
 
-    let cameras: Vec<(Entity, FollowCamera, Entity)> = world
+    // **Both rigs, one loop.** Aiming is identical for a third-person camera and a first-person one
+    // — yaw to the parent, pitch to the camera, clamped — and only the numbers come from a different
+    // component. Two copies of the two sign conventions below would be two chances to get a flip
+    // backwards, and a view that turns the wrong way is plausible enough to ship.
+    let mut cameras: Vec<Aim> = world
         .query::<(&FollowCamera, &Parent)>()
-        .map(|(entity, (follow, parent))| (entity, *follow, parent.0))
+        .map(|(entity, (follow, parent))| Aim {
+            camera: entity,
+            parent: parent.0,
+            degrees_per_pixel: follow.degrees_per_pixel,
+            min_pitch: follow.min_pitch,
+            max_pitch: follow.max_pitch,
+        })
         .collect();
+    cameras.extend(world.query::<(&FirstPersonCamera, &Parent)>().map(
+        |(entity, (eyes, parent))| Aim {
+            camera: entity,
+            parent: parent.0,
+            degrees_per_pixel: eyes.degrees_per_pixel,
+            min_pitch: eyes.min_pitch,
+            max_pitch: eyes.max_pitch,
+        },
+    ));
+    // Two queries appended rather than interleaved, so the order is a pure function of what is
+    // registered. It only matters if one entity ever carried both, which is a mistake rather than a
+    // configuration — and a stable order makes the result of that mistake reproducible.
+    cameras.sort_by_key(|aim| (aim.camera.index(), aim.camera.generation()));
 
-    for (entity, follow, parent) in cameras {
+    for aim in cameras {
         // Yaw onto the parent. Subtracted, because a turn action is conventionally positive for
         // *left* and moving the pointer right should look right.
-        if let Some(mut transform) = world.get::<Transform>(parent).copied() {
-            transform.rotation[1] -= dx * follow.degrees_per_pixel;
-            world.insert(parent, transform);
+        if let Some(mut transform) = world.get::<Transform>(aim.parent).copied() {
+            transform.rotation[1] -= dx * aim.degrees_per_pixel;
+            world.insert(aim.parent, transform);
         }
 
         // Pitch onto the camera. Also subtracted: a window's y grows *downward*, so pushing the
         // pointer away from you is negative and should raise the view.
+        if let Some(mut transform) = world.get::<Transform>(aim.camera).copied() {
+            transform.rotation[0] = (transform.rotation[0] - dy * aim.degrees_per_pixel)
+                .clamp(aim.min_pitch, aim.max_pitch);
+            world.insert(aim.camera, transform);
+        }
+    }
+}
+
+/// One camera's aiming parameters, whichever rig it belongs to.
+///
+/// Exists so [`look_with_mouse`] has one loop rather than one per rig. The fields are the entire
+/// intersection of what the two components have in common, which is the honest test of whether they
+/// should share a code path at all.
+#[derive(Debug, Clone, Copy)]
+struct Aim {
+    camera: Entity,
+    parent: Entity,
+    degrees_per_pixel: f32,
+    min_pitch: f32,
+    max_pitch: f32,
+}
+
+/// Puts every [`FirstPersonCamera`] at its parent's eye height.
+///
+/// # Why this is a system and not a number in the scene file
+///
+/// Because [`FirstPersonCamera::height`] is then the single place the eye height lives. Authoring
+/// the transform instead would leave two numbers meaning the same thing, and the first feature that
+/// moves the eyes — a crouch, a stagger, a death slump — would have to fight whichever one it did
+/// not know about.
+///
+/// It writes a **local** translation, so the parent's yaw carries the camera round for free: it is a
+/// child entity, and `propagate_transforms` composes the two. Nothing here reads or writes a world
+/// position, which is what keeps this rig immune to the ordering hazard the third-person one has.
+///
+/// # There is no sweep, and that is not an omission
+///
+/// A camera inside the character's own head cannot be occluded by the world, so the two shape casts
+/// `keep_camera_clear` performs — and the flicker they caused — have no first-person equivalent.
+/// The near plane can still clip into a wall the character is pressed against; that is a level
+/// design and collider-radius question rather than a camera one, and every first-person game has it.
+///
+/// # What a capture of this showed, which the tests cannot
+///
+/// **You are inside your own mesh.** Rendered into `games/atrium` with the character's `Mesh` left
+/// on, the amber body fills the frame — and since ADR 0052 turned backface culling off, it fills it
+/// from the inside rather than vanishing. That is not a bug in this rig and it is not something to
+/// fix here: hiding the player's own body is what every first-person game does, and *which* parts to
+/// hide (all of it, or all but the arms) is a question about the game.
+pub fn place_first_person(world: &mut World) {
+    let eyes: Vec<(Entity, f32)> = world
+        .query::<(&FirstPersonCamera,)>()
+        .map(|(entity, (camera,))| (entity, camera.height))
+        .collect();
+
+    for (entity, height) in eyes {
         if let Some(mut transform) = world.get::<Transform>(entity).copied() {
-            transform.rotation[0] = (transform.rotation[0] - dy * follow.degrees_per_pixel)
-                .clamp(follow.min_pitch, follow.max_pitch);
+            // Only the height. Pitch already lives in this transform's rotation, written by
+            // `look_with_mouse`, and overwriting the whole transform would undo it.
+            transform.translation = [0.0, height, 0.0];
             world.insert(entity, transform);
         }
     }

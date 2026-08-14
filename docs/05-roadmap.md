@@ -364,10 +364,18 @@ in documents nobody is allowed to correct.
   file should live.
 - Input remapping UI, controller support.
 - First genre modules, prioritised by the target games (`00-vision.md`):
-  **`mod-charcontroller3d`** (movement, ground detection) with the **camera rig as a separate module**
-  so first- and third-person are both supported — Schedule I and Backrooms are first-person, Palworld
-  is third; **`mod-behaviour`** (AI state machines: patrol, pursue, search, flee);
-  **`mod-inventory`** (items, stacks, containers); **`mod-interaction`** (look-at, pick up, use).
+  - ✅ **movement and ground detection** — `modules/amadeo-character`, ADR 0037. Still to come:
+    crouching, coyote time, imparting velocity to dynamic bodies.
+  - ✅ **the camera rig, as its own module, with both perspectives** — `modules/amadeo-camera` has a
+    third-person `FollowCamera` and a `FirstPersonCamera`, separate components sharing one aiming
+    system. Schedule I and Backrooms are first-person, Palworld is third, and neither is privileged.
+  - ⚠️ **`mod-behaviour`** — AI states: patrol, pursue, search, flee. **The largest remaining piece,
+    and it opens a decision**: a finite state machine, a behaviour tree, or utility scoring. ADR 0066
+    §5 already settled that it will *not* share an abstraction with animation, and noted that the
+    industry's answer for AI has largely moved to behaviour trees. Needs deciding before it is built.
+  - ⚠️ **`mod-inventory`** (items, stacks, containers) and **`mod-interaction`** (look-at, pick up,
+    use). Interaction is buildable on `cast_shape` today (ADR 0054) — a sweep forgives aim in a way a
+    ray does not, which is what an interaction prompt wants.
   2D modules (`mod-tilemap`, `mod-platformer2d`) drop to M7 unless a specific need arises.
 
 **Exit gate**

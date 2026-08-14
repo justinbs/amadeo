@@ -704,8 +704,24 @@ crates/
 modules/             optional, genre-flavored. Core NEVER depends on these. Created by ADR 0037; a
                      module may depend on engine crates and on other modules, and no engine crate may
                      ever depend on a module (I6, one level up).
-🟡 amadeo-camera      the second module. A third-person `FollowCamera` that **sweeps a sphere and pulls
-                     itself in** rather than sitting inside a wall (Q27). **Does not depend on
+🟡 amadeo-camera      the second module. **TWO rigs, because docs/05 asked for two** -- three target
+                     games are first-person and three are third. A third-person `FollowCamera` that
+                     **sweeps a sphere and pulls itself in** rather than sitting inside a wall (Q27),
+                     and a `FirstPersonCamera` that sits at eye height inside its parent.
+                     **Separate components, not `distance: 0`** -- the arm, the return speed and the
+                     sweep radius all mean nothing in first person, which is ADR 0057's
+                     `PointLight`/`SpotLight` precedent. **They SHARE `look_with_mouse`**, and that
+                     is the point rather than a saving: yaw onto the parent and pitch onto the
+                     camera, both subtracted, and two copies of those sign conventions would be two
+                     chances to ship a view that turns the wrong way.
+                     A first-person game **holds `look` permanently** -- one line in its window
+                     layer, which keeps the pointer a named action a replay already records.
+                     `place_first_person` writes only the *local translation*, so the parent's yaw
+                     carries the camera for free and there is no sweep, because a camera inside a
+                     head cannot be occluded. Looking at a capture showed the one real gotcha: with
+                     the character's `Mesh` left on you are **inside your own body**, and ADR 0052
+                     means you see it from the inside rather than not at all.
+                     **Does not depend on
                      amadeo-character** — trap 10 says a camera rig must not assume a character
                      exists, and this follows a `Parent`, whatever that is. `install` declares both
                      orderings because both fail *silently*: the mouse turn before anything reads the
