@@ -33,14 +33,68 @@ The engine already has most of the machinery, which is why this is a decision ra
   That is the hook a migration would hang on.
 - **A patch is already a thing.** ADR 0029's prefab overrides apply named fields over a base and
   leave the rest, and `ComponentRegistry::validate_patch` exists. "Restore leniently: take the fields
-  the file has, default the rest" is that operation, and it would make a save survive an *added*
-  field with no migration code at all.
+  the file has, default the rest" is that operation.
 - **What it would not survive** is a field being renamed, removed, or changed in meaning — which is
   where a real migration (an old version's value tree in, a new one's out) is needed, and where the
   cost is.
 
+### Measured in session 18: leniency alone does not work, and the reason is the hash check
+
+The paragraph above used to claim a lenient restore would make a save survive an added field **with
+no migration code at all**. It would not, and the correction matters enough to be pinned as a test:
+`crates/amadeo-snapshot/tests/a_patch_invalidates_every_save.rs` runs two builds of one component in
+one process, using `#[reflect(name = "Thing")]` so that both *are* the same component as far as ADR
+0017's identity is concerned.
+
+**Being lenient about fields gets past the first error and into a second one.** A defaulted field is
+still a field, it is still hashed, and so the rebuilt world cannot hash to the number the file
+recorded. `restore` compares those and refuses:
+
+```
+adding one field, strict:  BadComponent  { reason: "missing field `b`; required fields are a, b" }
+adding one field, lenient: HashMismatch  { expected: 6783642539998936112, actual: 13968525498961532720 }
+```
+
+Note what the second one means: the world was rebuilt **correctly** and then rejected, because the
+recorded hash describes a component layout that no longer exists.
+
+So the snapshot's integrity check and a save's survival of a patch are **structurally exclusive**,
+not two strictnesses of one idea. That check is not decoration — it is what turns "the restore
+silently produced a slightly different world" into an error at the moment it happens — so a decision
+here has to say explicitly where it goes, and "be lenient about fields" on its own is not an answer.
+
+**The way to keep both is to make the check conditional on the build rather than drop it**, which
+requires the file to record *which build wrote it*. Nothing does today, and that gap is real under
+every option below except the last. It also buys the good case outright: a player who has not
+updated still gets the full exact check, and leniency costs something only when it is actually
+needed.
+
+### Four ways to answer it
+
+In increasing cost. Each includes the one before it.
+
+| | Survives | Cost | Does not survive |
+|---|---|---|---|
+| **A. Lenient restore** | field added or removed, component added or removed | field-level `#[reflect(default)]`, a second restore entry point, a build id in the file | any rename; any change of meaning |
+| **B. A + a redirect file** | the above, plus renames of components and fields | a small text file of `old -> new` and a lookup on restore | change of meaning |
+| **C. B + versioned migrations** | everything, including a field changing units or splitting in two | `TypeInfo::version` written per component, a migration registry a game fills, and the discipline to bump | — |
+| **D. A save is not a world dump** | n/a — the game writes its own save data | none in the engine; all of it in every game | introspection, `amadeo fmt`, one diffable text format |
+
+Two notes on the table. **B's redirect file is Unreal's `CoreRedirects`** — a text file of renames
+rather than migration code, which is the same "authored data, not registered functions" grain as ADR
+0068's facts and ADR 0066's tracks. And **C can be added on top of B later without a format change**,
+provided the version is recorded from the start, which is the argument `TypeInfo::version`'s own doc
+comment already makes for having written it down.
+
 Worth deciding together: whether saves and snapshots stay one format with two strictnesses, or
-diverge into two.
+diverge into two. One format with two *entry points* keeps one parser, one writer, and `amadeo fmt`
+working on both; two formats would duplicate the 1,600 lines in `amadeo-snapshot` for no gain that
+has been identified.
+
+**One consequence to decide deliberately rather than inherit:** a defaulted field is a silent
+gameplay change. A save that loads with a new `battery: 0.0` reads as a bug in the game, not as a
+bug in the save. So whatever lands has to *report* what it defaulted, dropped and redirected, in the
+tradition of `asset_problems`, `SoundCache::failures` and `Animatable::missing`.
 
 ### And where a save file lives is a smaller open question beside it
 
