@@ -32,6 +32,12 @@ pub const ANIM_DESCRIBE: &str = "anim.describe";
 pub struct PlayerReport {
     /// Which entity.
     pub entity: Entity,
+    /// Whether its clock would advance — [`AnimationPlayer::is_running`].
+    ///
+    /// **Asked of the player rather than re-derived here**, which is `docs/07`'s rule for an
+    /// introspection method: two copies of "is this running" drift into a report saying a game is
+    /// animating something it is not.
+    pub running: bool,
     /// The clip's declared asset id.
     pub clip: String,
     /// Whether that id resolved to a clip.
@@ -88,11 +94,7 @@ impl AnimationDescription {
                     .to_string(),
             );
         }
-        if self
-            .players
-            .iter()
-            .all(|player| !player.playing || player.clip.is_empty())
-        {
+        if self.players.iter().all(|player| !player.running) {
             return Some(
                 "every `AnimationPlayer` is either stopped or names no clip. `playing` is a field \
                  rather than a missing component, so a stopped player still appears here"
@@ -157,6 +159,7 @@ pub fn describe_animation(world: &World) -> AnimationDescription {
                 });
             PlayerReport {
                 entity,
+                running: player.is_running(),
                 clip: player.clip.clone(),
                 loaded: clip.is_some(),
                 time: player.time,
@@ -353,6 +356,35 @@ mod tests {
         // rather than a sentence. Something *is* animating; one target is not.
         assert_eq!(description.still_because(), None);
         assert_eq!(description.missing, vec!["Elsewhere.somewhere".to_string()]);
+    }
+
+    #[test]
+    fn the_report_asks_the_player_whether_it_is_running() {
+        // `docs/07`'s rule for an introspection method, checked rather than intended: `animate` and
+        // this both go through `AnimationPlayer::is_running`, so they cannot disagree about which
+        // players are doing anything. Two copies of that predicate would drift into a report saying
+        // a game is animating something it is not.
+        let mut world = working();
+        let entity = world
+            .query::<(&AnimationPlayer,)>()
+            .map(|(entity, _)| entity)
+            .next()
+            .expect("one player");
+
+        assert!(describe_animation(&world).players[0].running);
+
+        // Both ways of not running, and both must reach the report.
+        world.insert(
+            entity,
+            AnimationPlayer {
+                playing: false,
+                ..AnimationPlayer::looping("test")
+            },
+        );
+        assert!(!describe_animation(&world).players[0].running);
+
+        world.insert(entity, AnimationPlayer::looping(""));
+        assert!(!describe_animation(&world).players[0].running);
     }
 
     #[test]

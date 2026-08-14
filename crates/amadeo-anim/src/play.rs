@@ -76,6 +76,18 @@ impl AnimationPlayer {
             ..Self::default()
         }
     }
+
+    /// Whether this player's clock would advance at all.
+    ///
+    /// **Shared with [`describe_animation`](crate::describe_animation) rather than restated there**,
+    /// which is `docs/07`'s rule for an introspection method: derive the answer from the same code
+    /// the real path uses. Two copies of "is this player running" drift into a report saying a game
+    /// is animating something it is not, and **an agent acting on a confident wrong answer is worse
+    /// off than one told nothing**.
+    #[must_use]
+    pub fn is_running(&self) -> bool {
+        self.playing && !self.clip.is_empty()
+    }
 }
 
 impl Component for AnimationPlayer {}
@@ -284,7 +296,7 @@ pub fn animate(world: &mut World) {
     let mut playing: Vec<(Entity, String, f32)> = Vec::new();
 
     for (entity, (player,)) in world.query::<(&AnimationPlayer,)>() {
-        if !player.playing || player.clip.is_empty() {
+        if !player.is_running() {
             continue;
         }
         playing.push((entity, player.clip.clone(), player.time));

@@ -47,6 +47,9 @@ pub fn describe(world: &World) -> Json {
                 ("speed", Json::Float(f64::from(player.speed))),
                 ("looping", Json::Bool(player.looping)),
                 ("playing", Json::Bool(player.playing)),
+                // Asked of the player rather than re-derived, so this and `animate` cannot disagree
+                // about which players are doing anything — `docs/07`'s rule for a describe method.
+                ("running", Json::Bool(player.running)),
             ];
             if let Some(duration) = player.duration {
                 members.push(("duration", Json::Float(f64::from(duration))));

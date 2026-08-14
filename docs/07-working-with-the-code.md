@@ -1423,6 +1423,12 @@ reason — it walks the world rather than reading `FrameData`, because a `Sprite
 carries no entity id (ADR 0023). That is a deliberate divergence with its reasoning written down,
 which is the only acceptable kind.
 
+`anim.describe` obeys it in the smallest possible way, which is worth seeing because it shows how
+little is needed. Almost all of it reads services directly, so there is nothing to mirror — except
+"is this player doing anything", which `animate` also has to decide. That predicate is one method,
+`AnimationPlayer::is_running`, and both call it. Two copies would have drifted into a report saying a
+game is animating something it is not.
+
 ### Three shadow defects with names, and what this engine does about each
 
 These have names because everyone hits them. If shadows ever look wrong, it is almost certainly one
