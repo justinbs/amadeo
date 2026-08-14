@@ -236,8 +236,10 @@ fn choosing_return_to_start_walks_the_character_back() {
     assert!((position(&app, player)[2] - 2.0).abs() > 0.5, "walked away");
 
     tap(&mut app, PAUSE);
-    // Opening lands on the first item, so one step reaches the second.
-    tap(&mut app, UI_NEXT);
+    // Opening lands on the first item, and "return to start" is the fourth.
+    for _ in 0..3 {
+        tap(&mut app, UI_NEXT);
+    }
     tap(&mut app, UI_CONFIRM);
     app.run_ticks(1).expect("a tick runs");
 
@@ -256,7 +258,8 @@ fn choosing_quit_asks_the_platform_to_close() {
     // inside the replay.
     let mut app = room();
     tap(&mut app, PAUSE);
-    for _ in 0..2 {
+    // "Quit" is last of five.
+    for _ in 0..4 {
         tap(&mut app, UI_NEXT);
     }
     tap(&mut app, UI_CONFIRM);
@@ -285,8 +288,10 @@ fn every_button_says_what_it_does_in_the_scene_file() {
         buttons,
         vec![
             (0, MenuChoice::Resume),
-            (1, MenuChoice::ReturnToStart),
-            (2, MenuChoice::Quit),
+            (1, MenuChoice::Save),
+            (2, MenuChoice::Load),
+            (3, MenuChoice::ReturnToStart),
+            (4, MenuChoice::Quit),
         ]
     );
 }

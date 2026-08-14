@@ -455,6 +455,7 @@ dependencies = [
  "amadeo-reflect",
  "amadeo-render",
  "amadeo-scene",
+ "amadeo-snapshot",
  "amadeo-transform",
  "amadeo-ui",
  "anyhow",

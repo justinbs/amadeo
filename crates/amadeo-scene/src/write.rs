@@ -69,6 +69,11 @@ pub fn escape(text: &str) -> String {
 /// Renders one scalar value as it appears after a field name.
 ///
 /// Returns `None` for values that need their own lines — a list of lists, or a nested struct.
+///
+/// Two values are written as **explicit markers** rather than as nothing, because a field with no
+/// value is not something this format has: `Unit` is `()` and an empty list is `[]`. Both are
+/// checked by name when reading, before anything that would treat the brackets as the start of a
+/// `Display`-form value.
 pub fn inline_value(value: &Value) -> Option<String> {
     match value {
         Value::Bool(inner) => Some(inner.to_string()),
@@ -89,6 +94,22 @@ pub fn inline_value(value: &Value) -> Option<String> {
         // four numbers. The grouping would be silently lost, and the round-trip test is what makes
         // that a caught bug rather than a corrupted scene.
         Value::List(items) => {
+            // **An empty list is spelled out, for the reason `Unit` is written `()`.** Joining
+            // nothing gives the empty string, so this used to write `name ` — a field with a
+            // trailing space and no value, which is not something this format has. It parsed back as
+            // `Unit`, so an empty `Vec` anywhere in a value made the file unreadable.
+            //
+            // That is not hypothetical: **the engine wrote snapshots it could not read back**. Every
+            // registered event queue holds two empty lists at rest, so `amadeo snapshot` followed by
+            // `amadeo status --from` failed on `games/atrium`, and had done since events were first
+            // registered. Nothing noticed because nothing had restored one.
+            if items.is_empty() {
+                return Some("[]".to_string());
+            }
+            // A list of lists must not inline, even though every element would inline happily:
+            // joining them would render `[[0,0],[4,0]]` as `0.0 0.0 4.0 0.0`, which parses back as
+            // one flat list of four numbers. The grouping would be silently lost, and the round-trip
+            // test is what makes that a caught bug rather than a corrupted scene.
             if items.iter().any(|item| matches!(item, Value::List(_))) {
                 return None;
             }

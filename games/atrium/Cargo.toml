@@ -35,6 +35,9 @@ amadeo-physics = { workspace = true, features = ["rapier"] }
 amadeo-reflect.workspace = true
 amadeo-render = { workspace = true, features = ["gpu"] }
 amadeo-scene.workspace = true
+# Save and load. A save *is* a snapshot here (ADR 0028's format), which is what makes it a text file
+# a person can diff and an agent can read rather than an opaque blob.
+amadeo-snapshot.workspace = true
 amadeo-transform.workspace = true
 # The interface (ADR 0062). This game is where a panel and a label were first drawn on a screen.
 amadeo-ui.workspace = true

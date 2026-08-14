@@ -511,6 +511,17 @@ fn parse_value(text: &str, field: &str, line: usize) -> Result<Value, ParseError
     if text == "()" {
         return Ok(Value::Unit);
     }
+    // The same treatment for an empty list, and **checked before the bracket guard below**, which
+    // would otherwise refuse it as a `Display`-form value.
+    //
+    // This is the fix for a defect that made the format unusable on any real game: every registered
+    // event queue holds two empty lists at rest, an empty list used to write as a field with no
+    // value at all, and a field with no value reads back as `Unit`. So `amadeo snapshot` followed by
+    // `amadeo status --from` failed on `games/atrium` — **the engine wrote a file it could not
+    // read** — and had done since events were first registered, because nothing had restored one.
+    if text == "[]" {
+        return Ok(Value::List(Vec::new()));
+    }
 
     // A `Display`-form struct or map, which the writer emits so nothing is silently dropped. It
     // cannot be read back, and saying so beats producing a wrong value.

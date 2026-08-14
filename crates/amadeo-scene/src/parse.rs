@@ -285,6 +285,12 @@ fn token_to_value(token: &Token) -> Value {
     match token.text.as_str() {
         "true" => return Value::Bool(true),
         "false" => return Value::Bool(false),
+        // **An empty list, spelled out**, because joining nothing gives nothing and a field with no
+        // value is not something this format has. Written by `inline_value` and read here, so the
+        // two agree by construction.
+        //
+        // Quoted is excluded above, so a game whose string is genuinely `"[]"` still gets a string.
+        "[]" => return Value::List(Vec::new()),
         _ => {}
     }
     // An integer only if it is written as one: `1` is an integer, `1.0` is a float. The text says

@@ -250,9 +250,14 @@ impl ApplicationHandler for Atrium {
                         eprintln!("render error: {error}");
                     }
 
-                    // The one thing the simulation cannot do for itself. Closing a window is not
-                    // gameplay, so the menu records the *decision* in a hashed resource — which
-                    // replays and snapshots like anything else — and the platform layer acts on it.
+                    // The things the simulation cannot do for itself, carried out **between ticks**.
+                    // Touching a disk inside one would put the state of a filesystem into a
+                    // deterministic tick, so the menu records the decision and this acts on it.
+                    for line in atrium::serve_save_requests(&mut running.app) {
+                        eprintln!("{line}");
+                    }
+
+                    // Closing a window is not gameplay either, so it takes the same route.
                     if running.app.world.resource::<Screen>() == Some(&Screen::Quitting) {
                         event_loop.exit();
                         return;

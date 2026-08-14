@@ -141,6 +141,47 @@ impl Physics {
         self.last_error.as_ref()
     }
 
+    /// Throws away everything the solver was caching — see [`PhysicsBackend::reset`].
+    ///
+    /// # Call this after restoring a snapshot, or after loading a level
+    ///
+    /// **What it is measurably for is dropping static geometry.** That is derived data belonging to
+    /// a *level* rather than to a body, it travels by id rather than through
+    /// [`PhysicsBackend::step`], and keeping it would leave the previous world's ground standing in
+    /// the next one. Whatever inserted it puts it back; the terrain streamer does that by noticing
+    /// it is gone.
+    ///
+    /// # The contact-cache argument turns out not to bite, and that is a good thing
+    ///
+    /// The reason this was expected to matter is that a restore puts the **components** back and not
+    /// a solver's contact caches, sleeping islands or warm-start data — ADR 0028's lesson about the
+    /// entity allocator's free list, arriving through a second door.
+    ///
+    /// Measured, it does not happen: a warm solver handed a restored world matches a fresh one
+    /// exactly, even with a settled and sleeping stack of dynamic bodies
+    /// (`tests/reset_clears_the_solver.rs`). That is **ADR 0036's own contract paying off** — a
+    /// backend must not keep state that cannot be rebuilt from the bodies it is given, so a solver
+    /// honouring that has nothing to go stale. The decision that makes physics deterministic is what
+    /// removes the hazard.
+    ///
+    /// Still call it. The static geometry half is real, it is the documented contract for replacing
+    /// a world, and a backend that caches more than rapier does would need it.
+    ///
+    /// # Why this pass-through had to be added
+    ///
+    /// `PhysicsBackend::reset` has existed since ADR 0036 and has been documented since then as the
+    /// thing that makes a physics game snapshot-able. **Nothing outside this crate could call it** —
+    /// the backend is deliberately private (see [`Physics::insert_static_mesh`] for why), so the
+    /// only callers were tests holding a backend directly. Found while building save and load, which
+    /// is the first thing that restores a snapshot into a running game.
+    pub fn reset(&mut self) {
+        self.backend.reset();
+        // The last error belonged to a world that no longer exists. Keeping it would make the next
+        // `Physics::last_error` report a failure from before the restore, which is exactly the kind
+        // of stale diagnostic that sends somebody looking in the wrong place.
+        self.last_error = None;
+    }
+
     /// Adds or replaces static collision geometry held between steps — see
     /// [`PhysicsBackend::insert_static_mesh`].
     ///

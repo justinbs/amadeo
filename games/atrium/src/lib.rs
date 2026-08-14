@@ -15,7 +15,8 @@
 //! cargo run -p atrium
 //! ```
 //!
-//! WASD to walk, Q and E to turn, Space to jump, Escape to quit.
+//! WASD to walk, Q and E to turn, Space to jump. Escape opens a pause menu with save, load and
+//! quit in it; the arrows and Enter move around it.
 //!
 //! # Everything in it is a text file
 //!
@@ -128,11 +129,49 @@ pub enum MenuChoice {
     /// Close the menu and carry on.
     #[default]
     Resume,
+    /// Write the world to [`SAVE_FILE`].
+    Save,
+    /// Put the world back from [`SAVE_FILE`].
+    Load,
     /// Put the character back where they started, standing still.
     ReturnToStart,
     /// Close the game.
     Quit,
 }
+
+/// Where this game's one save lives, relative to the working directory.
+///
+/// # One slot, and a path rather than a save system
+///
+/// M3's exit gate asks for "save → quit → resume from save", which is one slot. Named saves, a
+/// save directory per user and a slot browser are all real features and none of them is this
+/// milestone's question; a game that can save and resume is what proves the *mechanism*.
+///
+/// **Where a save file should actually live is undecided** — ADR 0022's asset root is resolved by a
+/// marker file, and user data is a different problem with different rules on every platform. Left
+/// as a plain relative path deliberately, so that nothing here has to be unpicked when it is
+/// decided.
+pub const SAVE_FILE: &str = "atrium.save";
+
+/// A request the platform layer carries out, because a simulation cannot touch a disk.
+///
+/// # Why this is a resource and not just a function call
+///
+/// Reading and writing files is **not gameplay**, and a system that did it would put the state of a
+/// filesystem inside a deterministic tick — a replay would then depend on what was on disk when it
+/// ran. So the menu records the *decision*, which is hashed and replays like any other, and
+/// `main.rs` acts on it between ticks.
+///
+/// The same split `Screen::Quitting` uses: closing a window is not gameplay either.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub struct SaveRequest {
+    /// Whether the player asked for the world to be written out.
+    pub save: bool,
+    /// Whether the player asked for it to be read back.
+    pub load: bool,
+}
+
+impl Resource for SaveRequest {}
 
 /// Attached to a menu button, saying what choosing it means.
 ///
@@ -255,6 +294,18 @@ pub fn choose_from_menu(world: &mut World) {
             MenuChoice::Resume => {
                 if let Some(screen) = world.resource_mut::<Screen>() {
                     *screen = Screen::Playing;
+                }
+            }
+            // **Recorded, not done.** Touching a disk inside a tick would put the state of a
+            // filesystem into a deterministic simulation; `main.rs` carries these out between ticks.
+            MenuChoice::Save => {
+                if let Some(request) = world.resource_mut::<SaveRequest>() {
+                    request.save = true;
+                }
+            }
+            MenuChoice::Load => {
+                if let Some(request) = world.resource_mut::<SaveRequest>() {
+                    request.load = true;
                 }
             }
             MenuChoice::ReturnToStart => {
@@ -500,6 +551,9 @@ pub fn build_simulation() -> anyhow::Result<App> {
     app.insert_resource(Screen::default());
     app.insert_resource(Paused::default());
     app.insert_resource(Focus::default());
+    // Hashed like the rest, so "the player asked to save" replays and a snapshot restores it. What
+    // it asks *for* happens outside the tick — see `SaveRequest`.
+    app.insert_resource(SaveRequest::default());
     app.register_event::<UiActivated>();
 
     // **In `PreSimulation`, which is the stage that runs while paused.** A toggle that stopped
@@ -615,6 +669,79 @@ pub fn build_simulation() -> anyhow::Result<App> {
     );
 
     Ok(app)
+}
+
+/// Carries out whatever the menu asked for, between ticks.
+///
+/// # Why this is not a system
+///
+/// It reads and writes a **file**, and a system doing that would put the state of a filesystem
+/// inside a deterministic tick: a replay would then depend on what happened to be on disk when it
+/// ran, which is invariant I3 gone for anything that ever saved. So the menu records a
+/// [`SaveRequest`] — hashed, replayable, restorable — and the caller runs this between ticks, where
+/// wall-clock facts are allowed to matter.
+///
+/// **`Physics::reset` after a restore is the load-bearing line**, and not for the reason it looks
+/// like: rapier rebuilds its contacts from the components either way (measured in
+/// `amadeo-physics/tests/reset_clears_the_solver.rs`). It is there because replacing a world must
+/// drop the static geometry belonging to the one being left, and because it is the documented
+/// contract for doing so.
+///
+/// Returns what it did, so a caller can say so. Failures are reported and survivable: a game that
+/// refused to start because a save file was missing would be worse than one that carries on.
+///
+/// # Errors
+///
+/// Never — a failed save or load is reported through the returned strings rather than propagated,
+/// because neither is a reason to stop the game.
+pub fn serve_save_requests(app: &mut App) -> Vec<String> {
+    let mut said = Vec::new();
+
+    let request = app
+        .world
+        .resource::<SaveRequest>()
+        .copied()
+        .unwrap_or_default();
+    if !request.save && !request.load {
+        return said;
+    }
+    // Cleared first, so a request that fails is not retried every frame for the rest of the game.
+    if let Some(slot) = app.world.resource_mut::<SaveRequest>() {
+        *slot = SaveRequest::default();
+    }
+
+    if request.save {
+        let text = amadeo_snapshot::to_text(&app.capture_snapshot());
+        said.push(match std::fs::write(SAVE_FILE, &text) {
+            Ok(()) => format!("saved to {SAVE_FILE} ({} bytes)", text.len()),
+            Err(error) => format!("could not write {SAVE_FILE}: {error}"),
+        });
+    }
+
+    if request.load {
+        said.push(match load_from(app, SAVE_FILE) {
+            Ok(()) => format!("loaded {SAVE_FILE}"),
+            Err(why) => why,
+        });
+    }
+
+    said
+}
+
+/// Reads a save back into a running game.
+fn load_from(app: &mut App, path: &str) -> Result<(), String> {
+    let text =
+        std::fs::read_to_string(path).map_err(|error| format!("could not read {path}: {error}"))?;
+    let snapshot =
+        amadeo_snapshot::parse(&text).map_err(|error| format!("{path} will not parse: {error}"))?;
+    app.restore_snapshot(&snapshot)
+        .map_err(|error| format!("{path} will not restore: {error}"))?;
+
+    // See this function's caller for why. The solver is holding the world that was just replaced.
+    if let Some(physics) = app.world.service_mut::<Physics>() {
+        physics.reset();
+    }
+    Ok(())
 }
 
 /// The same room with no window, no GPU, and no keyboard — what the agent inspects.

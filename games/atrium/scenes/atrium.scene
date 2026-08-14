@@ -465,7 +465,7 @@ entity hud "Interface root"
           right 0.0
           top 0.0
         padding Normal
-        size 300.0 194.0
+        size 300.0 282.0
         visible true
 
       entity pause_heading "Pause heading"
@@ -544,10 +544,112 @@ entity hud "Interface root"
             size 0.0 0.0
             visible true
 
-      entity pause_return "Return to start"
+      entity pause_save "Save"
         Focusable
           enabled true
           order 1
+        MenuButton
+          choice Save
+        Panel
+          order 10
+          paint Surface
+        UiNode
+          align_children Start
+          anchor
+            horizontal Stretch
+            vertical Start
+          flow None
+          gap None
+          grow 0.0
+          margin
+            bottom 0.0
+            left 0.0
+            right 0.0
+            top 0.0
+          padding Snug
+          size 0.0 36.0
+          visible true
+
+        entity pause_save_label "Save label"
+          Text
+            content "SAVE"
+            font "BebasNeue-Regular"
+            order 11
+            paint Ink
+            scale Body
+            wrap false
+          UiNode
+            align_children Start
+            anchor
+              horizontal Stretch
+              vertical Stretch
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left 0.0
+              right 0.0
+              top 0.0
+            padding None
+            size 0.0 0.0
+            visible true
+
+      entity pause_load "Load"
+        Focusable
+          enabled true
+          order 2
+        MenuButton
+          choice Load
+        Panel
+          order 10
+          paint Surface
+        UiNode
+          align_children Start
+          anchor
+            horizontal Stretch
+            vertical Start
+          flow None
+          gap None
+          grow 0.0
+          margin
+            bottom 0.0
+            left 0.0
+            right 0.0
+            top 0.0
+          padding Snug
+          size 0.0 36.0
+          visible true
+
+        entity pause_load_label "Load label"
+          Text
+            content "LOAD"
+            font "BebasNeue-Regular"
+            order 11
+            paint Ink
+            scale Body
+            wrap false
+          UiNode
+            align_children Start
+            anchor
+              horizontal Stretch
+              vertical Stretch
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left 0.0
+              right 0.0
+              top 0.0
+            padding None
+            size 0.0 0.0
+            visible true
+
+      entity pause_return "Return to start"
+        Focusable
+          enabled true
+          order 3
         MenuButton
           choice ReturnToStart
         Panel
@@ -598,7 +700,7 @@ entity hud "Interface root"
       entity pause_quit "Quit"
         Focusable
           enabled true
-          order 2
+          order 4
         MenuButton
           choice Quit
         Panel

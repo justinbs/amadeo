@@ -74,15 +74,23 @@ fn the_interface_is_authored_in_the_scene_file_like_everything_else() {
         .collect();
 
     assert_eq!(
-        panels, 5,
-        "the title's backing plate, the pause panel, and three buttons"
+        panels, 7,
+        "the title's backing plate, the pause panel, and five buttons"
     );
 
     let mut spoken: Vec<&str> = labels.iter().map(|text| text.content.as_str()).collect();
     spoken.sort_unstable();
     assert_eq!(
         spoken,
-        ["PAUSED", "QUIT", "RESUME", "RETURN TO START", "THE ATRIUM"]
+        [
+            "LOAD",
+            "PAUSED",
+            "QUIT",
+            "RESUME",
+            "RETURN TO START",
+            "SAVE",
+            "THE ATRIUM"
+        ]
     );
 
     // Every font is named by asset id (ADR 0020), and the id has to be one the scene declares.
