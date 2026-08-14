@@ -123,6 +123,13 @@ crates.
 > Q36, while the code would have served nothing in M3. "Prefer the complete option" means not
 > leaving problems behind — not building everything immediately.
 >
+> **And a third, later the same session.** Offered four AI architectures with the research behind
+> each, Justin took the recommendation — which is the pattern `CLAUDE.md` §5 already names, and the
+> reason the burden is on the recommendation to have been *earned* rather than on the menu to have
+> been offered. The recommendation there rested on a specific claim (the sequencer is the cheap half;
+> the boundary is the expensive one and is identical for all four), and that claim is what made it
+> safe to be wrong.
+>
 > Both readings together: **do the thinking, then ask what to build with it.**
 
 ### Q12 did not bite, and that is a finding rather than a non-event
