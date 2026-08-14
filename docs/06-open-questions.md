@@ -7,7 +7,25 @@ Priority: **P0** blocks work now · **P1** needed for the current milestone · *
 
 ---
 
-## Q37 · P1 · A save has to survive a patch, and a snapshot deliberately does not
+## ~~Q37~~ · **Resolved — ADR 0069.** A save is a snapshot read leniently, and renames are authored data
+
+**Settled in session 18**, and built in the same one. `restore` is unchanged; `restore_save` reads the
+same bytes leniently, and `games/atrium` loads through it.
+
+**The answer turned on the hash check, which this question originally did not account for** — see the
+measured section below, which is left in because getting it wrong the first time is the useful part.
+The check is now **conditional on the file's layout fingerprint** rather than dropped: when nothing
+has changed shape, a load is byte-for-byte the strict path, hash check included, so a player who has
+not updated loses no verification at all. Missing fields are filled from the **field's** type, an
+enum is refused rather than guessed at, renames come from a text file of `old -> new`, and everything
+defaulted, dropped or redirected comes back in a `SaveReport`.
+
+Real per-version migrations were deliberately **not** built. They are the only thing that survives a
+field changing *meaning* rather than name, and nothing needs one yet — so `TypeInfo::version` is now
+written into every file and read by nothing, which is what keeps them an addition rather than a
+rewrite. **Where a save file should live is still open, and is now Q38.**
+
+---
 
 **Raised in session 17, on making `games/atrium` save and resume.** That works — a resumed game and
 one that never stopped are proven to be the same game — and it works by writing a `.snapshot`.
@@ -96,11 +114,23 @@ gameplay change. A save that loads with a new `battery: 0.0` reads as a bug in t
 bug in the save. So whatever lands has to *report* what it defaulted, dropped and redirected, in the
 tradition of `asset_problems`, `SoundCache::failures` and `Animatable::missing`.
 
-### And where a save file lives is a smaller open question beside it
+---
 
-`games/atrium` writes `atrium.save` in the working directory, deliberately as a placeholder. ADR
-0022's marker-file rule is about **assets**; user data has different conventions on every platform,
-and picking one is a decision nothing so far depends on.
+## Q38 · P2 · Where a save file lives
+
+**Split out of Q37 in session 18**, so that it did not disappear when that one was struck through. It
+is the smaller half and none of ADR 0069 depends on it.
+
+`games/atrium` writes `atrium.save` in the working directory, and `atrium.redirects` beside it, both
+deliberately as placeholders. ADR 0022's marker-file rule is about **assets**; user data has
+different conventions on every platform — `%APPDATA%` on Windows, `~/Library/Application Support` on
+macOS, `$XDG_DATA_HOME` on Linux — and picking one is a decision nothing so far depends on.
+
+Two things that will be wanted at the same time, so they are worth deciding together: **more than one
+slot**, and whether a redirect file is **user data or shipped with the game**. The second is not
+obvious. A redirect describes the *game's* history, so shipping it with the build is the natural
+reading — but that means it has to be found through the asset root rather than beside the save, which
+is a different lookup from the one written today.
 
 ---
 

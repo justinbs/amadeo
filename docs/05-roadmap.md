@@ -358,10 +358,14 @@ in documents nobody is allowed to correct.
   named tokens (ADR 0064). Authored in scene files and visible to introspection, as required.
   Still open: drawing the focus differently, and pointer navigation.
 - Particles / VFX basics.
-- 🟡 Save/load built on snapshots. **Works** — `games/atrium`'s pause menu saves and resumes, and a
-  resumed game is proven to be the same game as one that never stopped. Still open: **versioning and
-  migration** (a snapshot deliberately has none, and a save has to survive a patch), and where a save
-  file should live.
+- ✅ Save/load built on snapshots. `games/atrium`'s pause menu saves and resumes, and a resumed game
+  is proven to be the same game as one that never stopped. **Versioning landed with ADR 0069**: the
+  same file read leniently, with the integrity check made *conditional on a layout fingerprint*
+  rather than dropped — so a player who has not updated keeps the full check, and a save still
+  survives a component gaining, losing or renaming a field. Renames are a text file of `old -> new`.
+  Still open: real per-version migrations, which are the only thing that survives a field changing
+  *meaning* rather than name and which nothing needs yet (`TypeInfo::version` is written into every
+  file so they stay additive), and **where a save file should live — Q38**.
 - Input remapping UI, controller support.
 - First genre modules, prioritised by the target games (`00-vision.md`):
   - ✅ **movement and ground detection** — `modules/amadeo-character`, ADR 0037. Still to come:

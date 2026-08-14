@@ -2394,6 +2394,65 @@ it just left. But the reasoning in the docs now matches the measurement, and
 `reset_clears_the_solver.rs` *reports* the contact-cache result rather than asserting it — a claim
 about somebody else's solver at a pinned version is not a thing to fail a build over.
 
+### A save and a snapshot are the same file read two different ways
+
+This is the pattern ADR 0069 introduced, and the part worth carrying around is *why* it is two entry
+points rather than one lenient reader.
+
+`amadeo_snapshot::restore` is strict: every field required, every name known, and the recorded state
+hash enforced. That last check is the format's whole integrity story — it turns "the restore silently
+produced a slightly different world" into an error at the moment it happens, rather than into a run
+that poisons every assertion after it.
+
+`amadeo_snapshot::restore_save` reads the same bytes for a **player's** save, which has to survive
+the game being patched.
+
+**The thing that is not obvious, and cost a wrong answer before it was measured:** being lenient
+about fields is not enough on its own. Filling in a missing field gets past the first error and
+straight into a second one, because a defaulted field is still a field, it is still hashed, and so
+the rebuilt world cannot hash to the number the file recorded:
+
+```
+strict:   BadComponent { reason: "missing field `b`; required fields are a, b" }
+lenient:  HashMismatch { expected: 6783642539998936112, actual: 13968525498961532720 }
+```
+
+The world was rebuilt **correctly** and then rejected. So the answer is not to drop the check but to
+make it **conditional on the layout**: the file records a fingerprint of the shape of everything in
+it, and
+
+- **fingerprint matches** → nothing has changed shape, so there is no version gap to blame for
+  anything, and the load behaves exactly like `restore`;
+- **fingerprint differs** → fields are defaulted, unknown names dropped, renames applied, everything
+  reported, and the recorded hash is not enforced.
+
+Two consequences worth holding on to. The good case — a player who has not updated — keeps the full
+check, so **leniency costs something only when it is actually needed**. And the strict path stays
+exercised by every ordinary load, which is why `an_ordinary_load_takes_the_strict_path_and_reports_nothing`
+exists in `games/atrium`: a conditional check that quietly stops applying is worse than no check.
+
+**When you add a field to a component**, the section above on Q32 still applies to `.scene` and
+`.material` files — those are authored data and are meant to be strict. What changed is that a
+**save** now survives it, and says so.
+
+**When you rename one**, add a line to a `.redirects` file:
+
+```text
+amadeo-redirects 1
+component Lantern Torch
+field CharacterController top_speed max_speed
+```
+
+Component redirects apply first, and a field redirect names the component by its **new** name. Get
+that backwards and you have a file that looks correct and silently does nothing. Without a redirect,
+a rename is *silent data loss* — the old value is dropped and the new field is defaulted — which is
+why `without_the_redirect_the_same_rename_loses_the_value` sits next to the test that fixes it.
+
+**What the engine will not do is guess an enum.** `default_value` covers scalars, structs, lists,
+maps and `Option`, and refuses an enum, because the first variant is a guess with gameplay meaning —
+`ShadowMode::Off`, `Bus::Effects` and `Screen::Playing` are each plausible and each wrong somewhere.
+A component that gains an enum field is reported by name, and a person decides.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

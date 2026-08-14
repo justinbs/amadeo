@@ -187,10 +187,22 @@ crates/
                      string keys (ADR 0027) — a key type implements ReflectKey, and `to_key` must be
                      injective. Also holds `Reflect for Tick`: a type below this crate cannot
                      implement the trait (I6), so the impl goes where the *trait* lives instead.
+                     **`default_value` builds a default from a schema** (ADR 0069) — zeros, empties,
+                     `Value::Unit` for an absent Option, structs by recursion, and a **fixed-length
+                     array at its real length**, since an empty list for `[f32; 2]` is rejected for
+                     the wrong length and reads as a corrupt file rather than a missing default.
+                     **Refuses an enum**, deliberately and by name. Its tests live in `tests/`
+                     rather than inline because the derive emits `amadeo_reflect::` paths that do not
+                     resolve inside the crate — `tests/derive.rs` is there for the same reason.
 ✅ amadeo-ecs         archetype SoA storage, resources, services, deferred commands,
                      ComponentRegistry (builds a component from a name + a Value), and queries:
                      `world.query::<(&A, Option<&B>)>()` resolves each column once per archetype
                      (ADR 0025). Read-only; mutation stays with for_each_*_mut.
+                     **`insert_resource` records a resource's SCHEMA as well as its builder**, in the
+                     same call for the same reason the builder is recorded there — so the two cannot
+                     disagree about what exists. Components get theirs from ComponentRegistry's
+                     TypeRegistry; resources had nowhere equivalent until ADR 0069 needed one, for a
+                     lenient restore's field list and for the layout fingerprint.
 ✅ amadeo-transform   Transform (3D; 2D is its degenerate case, ADR 0018), Parent, GlobalTransform +
                      propagate_transforms, and a scalar Mat4. GlobalTransform is computed, never
                      authored, and DERIVED so it stays out of the state hash (ADR 0019).
@@ -631,6 +643,33 @@ crates/
                      encoding — format_float is subtle and two copies would drift. **It captures the
                      entity allocator's free list**, which state_hash excludes: without it a restored
                      world hashes identically and then spawns different handles.
+                     **The same file is also a SAVE, read leniently (ADR 0069, closing Q37)** —
+                     `restore` is unchanged and `restore_save` is the other entry point. The thing
+                     that made this a real decision is the **hash check**: being lenient about fields
+                     gets past the first error into a second one, because a defaulted field is still
+                     hashed, so the rebuilt world cannot match the number the file recorded. It is
+                     rebuilt *correctly* and then rejected. So the check is **conditional on a layout
+                     fingerprint** rather than dropped — matching means no version gap exists and the
+                     load IS the strict path, hash and all. **Leniency costs something only when it
+                     is needed, and the strict path stays exercised by every ordinary load.**
+                     The fingerprint **recurses through every type a field names**: a component whose
+                     own field list is unchanged, over a nested struct that gained a field, still
+                     hashes differently, so a top-level fingerprint would enforce a stale hash and
+                     reject a good save. Covers names and types and deliberately *not* docs, ranges,
+                     units or `version`, none of which can move a hash.
+                     A missing field is filled from the **FIELD's** type (`amadeo_reflect::
+                     default_value`), never the component's — a whole-component default would need
+                     `Default` on every component or an opt-in that is silent when forgotten. **An
+                     enum is refused rather than guessed**, because the first variant is a guess with
+                     gameplay meaning. Renames are **authored data**: a `.redirects` text file of
+                     `old -> new`, which is Unreal's CoreRedirects rather than migration code, and
+                     component redirects apply BEFORE field ones, which are keyed by the **new**
+                     component name. Everything defaulted, dropped or redirected comes back in a
+                     `SaveReport`; nothing here decides whether a damaged save is acceptable, because
+                     that is genre knowledge (I4). **Per-component `version` is written and read by
+                     nothing**, so real migrations — the only thing that survives a field changing
+                     *meaning* rather than name — stay an addition rather than a rewrite.
+                     `FORMAT_VERSION` is 2. Where a save file lives is **Q38**.
 🟡 amadeo-scene       the .scene text format (ADR 0014): parser, canonical writer, instantiate into
                      a World, and the `assets` block a scene declares its requirements in (ADR 0021).
                      Prefab instancing landed with ADR 0029: `from` holds an **asset id** (superseding
