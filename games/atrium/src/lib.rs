@@ -34,7 +34,7 @@ use amadeo_app::{App, Paused, Stage, system};
 use amadeo_audio::{
     Audio, AudioListener, AudioSource, COLLECT_AUDIO, SoundCache, SoundPlayed, collect_audio,
 };
-use amadeo_character::CharacterMotion;
+use amadeo_character::{CharacterController, CharacterMotion};
 use amadeo_core::StableHash;
 use amadeo_ecs::{Component, Entity, Resource, World};
 use amadeo_events::WorldEvents;
@@ -323,6 +323,128 @@ pub fn choose_from_menu(world: &mut World) {
     }
 }
 
+/// How far the watcher can see, in metres.
+///
+/// An eyeball number. Big enough to cross most of a twenty-metre room, small enough that standing
+/// behind a pillar at the far end loses it.
+const SIGHT: f32 = 11.0;
+
+/// How fast the watcher closes, in metres per second.
+///
+/// **Slower than the player's 5 m/s, deliberately.** A pursuer that is faster than you is a chase you
+/// cannot win, which is a different game; one that is slower is a pursuer you have to keep moving
+/// away from, which is the shape a stalker wants.
+const WATCHER_SPEED: f32 = 2.6;
+
+/// The label [`watch_for_the_player`] is registered under.
+pub const WATCH_FOR_THE_PLAYER: &str = "watch_for_the_player";
+
+/// The label [`move_the_watcher`] is registered under.
+pub const MOVE_THE_WATCHER: &str = "move_the_watcher";
+
+/// Marks the thing that follows you around.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub struct Watcher;
+
+impl Component for Watcher {}
+
+/// Writes the facts the watcher's state machine reads — ADR 0068's game half.
+///
+/// # This is what "the game supplies the facts" means
+///
+/// `modules/amadeo-behaviour` has no idea what seeing is. It sequences named states and tests named
+/// booleans, and **this function is where a boolean gets its meaning**: `"sees_player"` is true when
+/// the player is within eleven metres. One line of arithmetic, in the game, where it can be read and
+/// changed without touching the module.
+///
+/// A real horror slice would raycast for line of sight here rather than trusting distance — and that
+/// is the point: it would change *this function* and nothing else.
+pub fn watch_for_the_player(world: &mut World) {
+    let Some(player) = world
+        .query::<(&CharacterController, &Transform)>()
+        .map(|(_, (_, transform))| transform.translation)
+        .next()
+    else {
+        return;
+    };
+
+    let watchers: Vec<(Entity, bool)> = world
+        .query::<(&Watcher, &Transform)>()
+        .map(|(entity, (_, transform))| {
+            let to_player = [
+                player[0] - transform.translation[0],
+                player[2] - transform.translation[2],
+            ];
+            let distance = (to_player[0] * to_player[0] + to_player[1] * to_player[1]).sqrt();
+            (entity, distance <= SIGHT)
+        })
+        .collect();
+
+    for (entity, sees) in watchers {
+        if let Some(facts) = world.get_mut::<amadeo_behaviour::Facts>(entity) {
+            facts.set("sees_player", sees);
+        }
+    }
+}
+
+/// Moves the watcher according to whatever state its machine is in — ADR 0068's other game half.
+///
+/// # And this is what "the game reads the state and acts" means
+///
+/// There is no callback and no registered action. A system matches on `Behaviour::state` the same
+/// way `apply_screen` matches on this game's own [`Screen`], and does whatever that word means
+/// *here*. The module never learns that `"pursue"` involves walking.
+///
+/// # It writes a `Transform` directly, and therefore walks through walls
+///
+/// A real pursuer would go through `PhysicsBackend::move_shape` like the character does, and would
+/// then slide along the pillars instead of passing through them. This does not, deliberately: the
+/// point of the watcher is to be a real user for ADR 0068's *state machine*, and giving it a
+/// collider and a controller would be building a second character controller to prove a decision
+/// about AI. **The limitation is stated rather than hidden**, because a watcher clipping a pillar
+/// looks like a physics bug and is an authoring choice.
+pub fn move_the_watcher(world: &mut World) {
+    let Some(player) = world
+        .query::<(&CharacterController, &Transform)>()
+        .map(|(_, (_, transform))| transform.translation)
+        .next()
+    else {
+        return;
+    };
+
+    let moves: Vec<(Entity, [f32; 3])> = world
+        .query::<(&Watcher, &amadeo_behaviour::Behaviour, &Transform)>()
+        .filter(|(_, (_, behaviour, _))| behaviour.state == "pursue")
+        .map(|(entity, (_, _, transform))| {
+            let here = transform.translation;
+            // Horizontal only. A watcher that aimed at the player's centre would walk into the floor
+            // on a slope, and this room is flat anyway.
+            let towards = [player[0] - here[0], player[2] - here[2]];
+            let distance = (towards[0] * towards[0] + towards[1] * towards[1]).sqrt();
+            // Close enough. Without this it jitters across the player's position every tick, which
+            // reads as a bug rather than as arriving.
+            if distance < 1.0 {
+                return (entity, here);
+            }
+            let step = WATCHER_SPEED * amadeo_core::FIXED_DT / distance;
+            (
+                entity,
+                [
+                    here[0] + towards[0] * step,
+                    here[1],
+                    here[2] + towards[1] * step,
+                ],
+            )
+        })
+        .collect();
+
+    for (entity, to) in moves {
+        if let Some(transform) = world.get_mut::<Transform>(entity) {
+            transform.translation = to;
+        }
+    }
+}
+
 /// Puts the highlight on the lowest-numbered menu button.
 ///
 /// Every `Focusable` in this game is a pause-menu button, so there is nothing to narrow the search
@@ -605,6 +727,27 @@ pub fn build_simulation() -> anyhow::Result<App> {
     app.add_system(
         Stage::Simulation,
         system(amadeo_anim::ANIMATE, amadeo_anim::animate),
+    );
+
+    // The watcher (ADR 0068). `install` registers `BehaviourMachine`, `Behaviour` and `Facts`, all
+    // of which `atrium.scene` names — so it has to come before `load_scene`, the same way
+    // `amadeo_character::install` does.
+    amadeo_behaviour::install(&mut app)?;
+    app.register_component::<Watcher>()?;
+
+    // **The two halves the module deliberately does not have.** One says what a fact *means* and the
+    // other says what a state *does*; between them is a state machine that knows neither.
+    //
+    // Perception runs `.before` the machine, so a decision is made on this tick's facts rather than
+    // last tick's — which the module cannot declare for itself, because it cannot see this game's
+    // system names.
+    app.add_system(
+        Stage::Simulation,
+        system(WATCH_FOR_THE_PLAYER, watch_for_the_player).before(amadeo_behaviour::RUN_BEHAVIOURS),
+    );
+    app.add_system(
+        Stage::Simulation,
+        system(MOVE_THE_WATCHER, move_the_watcher).after(amadeo_behaviour::RUN_BEHAVIOURS),
     );
 
     // The one-shot half (ADR 0059's named gap, filled in session 16). Registering the event is what

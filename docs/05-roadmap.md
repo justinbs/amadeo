@@ -369,10 +369,11 @@ in documents nobody is allowed to correct.
   - ✅ **the camera rig, as its own module, with both perspectives** — `modules/amadeo-camera` has a
     third-person `FollowCamera` and a `FirstPersonCamera`, separate components sharing one aiming
     system. Schedule I and Backrooms are first-person, Palworld is third, and neither is privileged.
-  - ⚠️ **`mod-behaviour`** — AI states: patrol, pursue, search, flee. **The largest remaining piece,
-    and it opens a decision**: a finite state machine, a behaviour tree, or utility scoring. ADR 0066
-    §5 already settled that it will *not* share an abstraction with animation, and noted that the
-    industry's answer for AI has largely moved to behaviour trees. Needs deciding before it is built.
+  - ✅ **`mod-behaviour`** — a **state machine over named facts** (ADR 0068). The game writes
+    `"sees_player"` and reads `"pursue"`; the module knows neither. Chosen over a behaviour tree for
+    legibility — "why is it doing that" is one field — and because the expensive half is the
+    *boundary*, which is the same whichever sequencer sits on top. `games/atrium` has a watcher that
+    notices you, chases, searches and gives up, so the module was designed against a real user.
   - ✅ **`mod-interaction`** (look-at, use) — `modules/amadeo-interaction`. A sphere swept forward
     from an `Interactor`, because a ray demands the player aim at a door handle exactly. Built on
     `ShapeHit::entity`, which was added for it: a cast used to say where it stopped and not what it

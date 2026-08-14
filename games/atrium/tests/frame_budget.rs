@@ -64,7 +64,10 @@ fn the_scene_complexity_the_budget_is_quoted_against() {
         .filter(|(_, (light,))| light.shadows != ShadowMode::Off)
         .count();
 
-    assert_eq!(meshes, 11, "drawn meshes");
+    // Twelve since the watcher joined (ADR 0068). It has a mesh and no collider — it walks through
+    // the pillars, which is a real limitation of moving it by writing a `Transform` rather than
+    // through `move_shape`, and is noted in `move_the_watcher` rather than hidden here.
+    assert_eq!(meshes, 12, "drawn meshes");
     assert_eq!(bodies, 11, "bodies with a collider");
     assert_eq!(characters, 1, "characters");
     assert_eq!(casters, 1, "shadow-casting lights");

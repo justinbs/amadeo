@@ -291,6 +291,10 @@ fn token_to_value(token: &Token) -> Value {
         //
         // Quoted is excluded above, so a game whose string is genuinely `"[]"` still gets a string.
         "[]" => return Value::List(Vec::new()),
+        // And an empty map, for the same reason. Read as a `Map` rather than a `Struct` because the
+        // two are structurally identical (ADR 0027) and only a *map* is ever legitimately empty — a
+        // struct with no fields is a unit struct, which reflects as `Unit`.
+        "{}" => return Value::Map(std::collections::BTreeMap::new()),
         _ => {}
     }
     // An integer only if it is written as one: `1` is an integer, `1.0` is a float. The text says

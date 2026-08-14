@@ -77,6 +77,9 @@ amadeo-camera = { path = "modules/amadeo-camera", version = "0.1.0" }
 # is whatever carries an `Interactor`, which may be a camera, a character, or a cursor in a game
 # that has neither -- trap 10 one level along.
 amadeo-interaction = { path = "modules/amadeo-interaction", version = "0.1.0" }
+# AI as a state machine over named facts (ADR 0068). Depends on no other module and on nothing that
+# draws, simulates or collides: it sequences states and the *game* supplies what the facts mean.
+amadeo-behaviour = { path = "modules/amadeo-behaviour", version = "0.1.0" }
 
 # External.
 thiserror = "2"

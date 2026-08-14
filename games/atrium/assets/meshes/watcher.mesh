@@ -1,0 +1,6 @@
+scene watcher
+version 1
+
+entity mesh "Watcher"
+  BoxMesh
+    size 0.7 1.6 0.7

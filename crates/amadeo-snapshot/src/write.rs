@@ -366,7 +366,10 @@ mod tests {
 
     #[test]
     fn an_empty_map_and_a_unit_are_written_differently() {
-        // They would otherwise both be a bare name, and the parser could not tell them apart.
+        // **Both are spelled out, and this test's shape changed once already.** It used to assert
+        // that an empty map wrote as a bare name — which turned out not to round-trip at all: a
+        // field with no value is not something this format has, and it read back as `Unit`. Both are
+        // now explicit markers, and they are still distinct, which is what this has always been for.
         let mut resources = BTreeMap::new();
         resources.insert(
             "Both".to_string(),
@@ -380,8 +383,27 @@ mod tests {
             resources,
             ..empty()
         });
-        assert!(text.contains("    empty\n"), "{text}");
+        assert!(text.contains("    empty {}\n"), "{text}");
         assert!(text.contains("    nothing ()\n"), "{text}");
+    }
+
+    #[test]
+    fn an_empty_map_reads_back_as_an_empty_map() {
+        // The half the test above did not have, and the reason it was wrong. `Facts` in
+        // `modules/amadeo-behaviour` is the first component in the engine to hold a map that starts
+        // empty, and a monster that had never perceived anything could not be saved.
+        let mut resources = BTreeMap::new();
+        resources.insert(
+            "Facts".to_string(),
+            Value::structure([("known", Value::Map(std::collections::BTreeMap::new()))]),
+        );
+
+        let snapshot = Snapshot {
+            resources,
+            ..empty()
+        };
+        let read = crate::parse(&to_text(&snapshot)).expect("an empty map must read back");
+        assert_eq!(read.resources, snapshot.resources);
     }
 
     #[test]

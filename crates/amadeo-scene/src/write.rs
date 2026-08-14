@@ -111,6 +111,13 @@ pub fn inline_value(value: &Value) -> Option<String> {
             let parts: Option<Vec<String>> = items.iter().map(inline_value).collect();
             parts.map(|parts| parts.join(" "))
         }
+        // **An empty map or struct is spelled out too**, and for the empty list's reason exactly: a
+        // block with no lines in it is a field with no value, which this format does not have.
+        //
+        // Found the same way as its sibling — by authoring a real component with one. `Facts` in
+        // `modules/amadeo-behaviour` starts empty, and a monster that had never perceived anything
+        // could not be written to a file.
+        Value::Struct(fields) | Value::Map(fields) if fields.is_empty() => Some("{}".to_string()),
         // These need their own lines, which `write_field` gives them. Since ADR 0032 that is a real
         // indented block rather than a failure: a struct or a map writes as `name value` lines, and
         // an enum variant carrying data writes as its name with those lines beneath it.

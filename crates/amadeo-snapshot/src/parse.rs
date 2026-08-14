@@ -522,6 +522,11 @@ fn parse_value(text: &str, field: &str, line: usize) -> Result<Value, ParseError
     if text == "[]" {
         return Ok(Value::List(Vec::new()));
     }
+    // And an empty map, which had the identical hole: a component holding one — `Facts` in
+    // `modules/amadeo-behaviour` is the first — could be captured and not read back.
+    if text == "{}" {
+        return Ok(Value::Map(std::collections::BTreeMap::new()));
+    }
 
     // A `Display`-form struct or map, which the writer emits so nothing is silently dropped. It
     // cannot be read back, and saying so beats producing a wrong value.

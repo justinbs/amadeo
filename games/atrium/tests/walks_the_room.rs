@@ -107,8 +107,8 @@ fn the_room_loads_from_its_scene_file() {
 
     let meshes = app.world.query::<(&Mesh,)>().count();
     assert_eq!(
-        meshes, 11,
-        "a floor, four walls, four pillars, a plinth and the player's body"
+        meshes, 12,
+        "a floor, four walls, four pillars, a plinth, the player's body, and the watcher"
     );
     assert_eq!(app.world.query::<(&Camera,)>().count(), 1);
     assert_eq!(app.world.query::<(&DirectionalLight,)>().count(), 1);

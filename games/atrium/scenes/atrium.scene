@@ -14,11 +14,13 @@ assets
   pillar
   plinth
   room_tone
+  rust
   signage
   slate
   stone
   wall_north
   wall_side
+  watcher
 
 entity floor "Floor"
   Collider
@@ -304,6 +306,46 @@ entity player "Wanderer"
       rotation -18.0 0.0 0.0
       scale 1.0 1.0 1.0
       translation 0.0 3.35 5.71
+
+entity watcher "The watcher"
+  Behaviour
+    elapsed 0.0
+    state ""
+  BehaviourMachine
+    initial "idle"
+    states
+      - name "idle"
+        transitions
+          - after 0.0
+            to "pursue"
+            unless ""
+            when "sees_player"
+      - name "pursue"
+        transitions
+          - after 0.0
+            to "search"
+            unless "sees_player"
+            when ""
+      - name "search"
+        transitions
+          - after 0.0
+            to "pursue"
+            unless ""
+            when "sees_player"
+          - after 4.0
+            to "idle"
+            unless ""
+            when ""
+  Facts
+    known {}
+  Mesh
+    material "rust"
+    mesh "watcher"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -7.0 0.8 -7.0
+  Watcher
 
 entity ambience "Room tone"
   AudioSource

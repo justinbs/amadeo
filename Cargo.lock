@@ -136,6 +136,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "amadeo-behaviour"
+version = "0.1.0"
+dependencies = [
+ "amadeo-app",
+ "amadeo-core",
+ "amadeo-ecs",
+ "amadeo-events",
+ "amadeo-reflect",
+]
+
+[[package]]
 name = "amadeo-camera"
 version = "0.1.0"
 dependencies = [
@@ -459,6 +470,7 @@ dependencies = [
  "amadeo-anim",
  "amadeo-app",
  "amadeo-audio",
+ "amadeo-behaviour",
  "amadeo-camera",
  "amadeo-character",
  "amadeo-core",

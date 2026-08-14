@@ -307,6 +307,30 @@ impl<T: StableHash, const N: usize> StableHash for [T; N] {
     }
 }
 
+/// A map hashes in **key order**, which is what makes it hashable at all.
+///
+/// # Why `BTreeMap` and not a hash map, stated where it can be enforced
+///
+/// `CLAUDE.md`'s trap 2 lists unordered iteration second among the things that quietly void replay
+/// testing. A `HashMap`'s iteration order varies between runs of the same binary, so hashing one
+/// would produce a different fingerprint for the same contents — and nothing about the failure
+/// would point at a map. There is deliberately **no impl for `HashMap`**, so a component holding one
+/// does not compile rather than reproducing intermittently.
+///
+/// `BTreeMap` iterates in key order, always, so the hash is a pure function of the contents.
+///
+/// The length goes first for [`slice`](StableHash)'s reason: without it, one map's entries could
+/// concatenate into another's.
+impl<K: StableHash + Ord, V: StableHash> StableHash for std::collections::BTreeMap<K, V> {
+    fn stable_hash(&self, hasher: &mut StableHasher) {
+        hasher.write_u64(self.len() as u64);
+        for (key, value) in self {
+            key.stable_hash(hasher);
+            value.stable_hash(hasher);
+        }
+    }
+}
+
 impl<T: StableHash> StableHash for Option<T> {
     fn stable_hash(&self, hasher: &mut StableHasher) {
         match self {
@@ -482,5 +506,46 @@ mod tests {
         let mut hasher = StableHasher::new();
         hasher.write_str("amadeo");
         assert_eq!(hasher.finish(), 0xc3e3_fe2b_8ec1_d932);
+    }
+
+    #[test]
+    fn a_map_hashes_by_contents_and_not_by_insertion_order() {
+        // **The property that makes a map hashable at all.** `BTreeMap` iterates in key order, so
+        // two maps built in different orders are the same map and must fingerprint the same.
+        use std::collections::BTreeMap;
+
+        let mut one = BTreeMap::new();
+        one.insert("sees_player".to_string(), true);
+        one.insert("heard_something".to_string(), false);
+
+        let mut other = BTreeMap::new();
+        other.insert("heard_something".to_string(), false);
+        other.insert("sees_player".to_string(), true);
+
+        assert_eq!(hash_of(&one), hash_of(&other));
+    }
+
+    #[test]
+    fn a_map_notices_a_changed_value_and_a_missing_key() {
+        use std::collections::BTreeMap;
+
+        let mut base = BTreeMap::new();
+        base.insert("sees_player".to_string(), false);
+        let empty: BTreeMap<String, bool> = BTreeMap::new();
+
+        let mut changed = base.clone();
+        changed.insert("sees_player".to_string(), true);
+        assert_ne!(hash_of(&base), hash_of(&changed));
+
+        // And an absent key is not the same as a false one, which is the distinction a length-less
+        // encoding would lose.
+        assert_ne!(hash_of(&base), hash_of(&empty));
+    }
+
+    /// One value's fingerprint, for the two tests above.
+    fn hash_of<T: StableHash>(value: &T) -> u64 {
+        let mut hasher = StableHasher::new();
+        value.stable_hash(&mut hasher);
+        hasher.finish()
     }
 }

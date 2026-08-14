@@ -757,6 +757,29 @@ modules/             optional, genre-flavored. Core NEVER depends on these. Crea
                      a **hashed** component, which is what ADR 0053 exists for.
                      It lived in `games/scarp` first, on the rule that something moves to `modules/`
                      when a *second* game wants it — `games/atrium` is what moved it.
+🟡 amadeo-behaviour  the fourth module: **AI as a state machine over named FACTS** (ADR 0068).
+                     `BehaviourMachine` is authored, `Behaviour` holds the current state and how long
+                     it has been there, `Facts` is a `String -> bool` map, and `BehaviourChanged` is
+                     the on-enter hook without a callback.
+                     **A state machine and not a behaviour tree, for THIS project's reasons rather
+                     than the industry's.** A tree is better at scale and this is not at that scale:
+                     "why is it doing that" is one field you can read, where a tree's answer is a path
+                     that needs tooling before anyone -- person or agent -- can see it.
+                     **The sequencer is the cheap half; the BOUNDARY is the expensive one**, and it is
+                     the same for every architecture. The game writes named facts and the game reads
+                     the state and acts. No registered callbacks, no action functions. Swapping in a
+                     tree later replaces the sequencer and touches neither side.
+                     **Facts are DATA, not a registry of `fn(&World) -> bool`** -- a function pointer
+                     cannot be read by `amadeo query`, so "why did it not transition" would become
+                     "read the game's source", which is what I5 exists to prevent.
+                     **No expression language**, deliberately: `when`/`unless`/`after` and nothing
+                     else. A game wanting `health < 0.3` writes one line of Rust setting
+                     `"badly_hurt"`. Each comparison operator is a step towards the scripting layer
+                     ADR 0011 measured and rejected.
+                     Authored order decides; **at most one transition per tick**, or a machine could
+                     cross its whole graph in a frame and a cycle would hang rather than oscillate.
+                     Shared by **prefab** (ADR 0029) rather than by asset, so there is no cache and no
+                     missing-asset hazard. Still to come: hierarchical states.
 🟡 amadeo-interaction the third module: **looking at things and using them** (docs/05's `mod-interaction`,
                      and M3 exit gate item 4). `Interactor` sweeps a small sphere forward, `Looking`
                      records what it found, `Interactable` says what a thing is, and `Interacted`
@@ -842,6 +865,13 @@ games/               actual games built with the engine
                    route. Building *this* found the empty-list defect that made every snapshot of
                    this game unrestorable, and the fact that no game could call `PhysicsBackend::
                    reset`.
+                   **It has a watcher** (ADR 0068) -- a rust-red figure that notices you, chases,
+                   searches where you were, and gives up after four seconds. Its *mind* is authored
+                   in `atrium.scene`; the game supplies what `"sees_player"` means and what
+                   `"pursue"` does, and `modules/amadeo-behaviour` knows neither. **It has no
+                   collider**, so it walks through pillars: giving it one would mean building a
+                   second character controller to prove a decision about AI, and the limitation is
+                   stated in `move_the_watcher` rather than hidden.
 docs/                design docs and ADRs
 spikes/              separate cargo workspaces holding the evidence behind an ADR. Frozen once
                      written; excluded from the engine workspace. See spikes/README.md.

@@ -2333,6 +2333,12 @@ serialises to nothing serialises to *nothing*, which is not a value. Any encodin
 also the general answer — **build the thing that uses the format end to end**, because a
 round-trip test written against hand-made values will happily never contain an empty one.
 
+**And an empty *map* had exactly the same hole**, found the same way an hour later: `Facts` in
+`modules/amadeo-behaviour` starts empty, so a monster that had never perceived anything could not be
+written to a file. It is `{}` now, beside `[]` and `()`. Three explicit markers, one rule — *a field
+with no value is not something this format has* — and the lesson is that finding one instance of this
+shape is a reason to go looking for its siblings rather than to close the ticket.
+
 ### A one-element list has no inline spelling, and the type is what fixes it
 
 `value 22.0` is one token. Layer 1 of the scene format has no schema, so it produces a **scalar**,
