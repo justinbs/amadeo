@@ -9,7 +9,7 @@
 //! world.spawn();
 //!
 //! let text = amadeo_snapshot::to_text(&capture(&world, &registry));
-//! assert!(text.starts_with("amadeo-snapshot 1\n"));
+//! assert!(text.starts_with("amadeo-snapshot 2\n"));
 //!
 //! // And back into a fresh world.
 //! let document = amadeo_snapshot::parse(&text).expect("valid");
@@ -50,10 +50,16 @@
 //! reasoning applies here: restoring a world should not reach into the process's devices. A restore
 //! puts the *simulation* back; the engine around it carries on as it was.
 
+mod layout;
 mod parse;
+mod redirects;
+mod save;
 mod write;
 
+pub use layout::{SchemaEntry, SchemaKind, fingerprint, schema_of};
 pub use parse::{ParseError, ParseErrorKind, parse};
+pub use redirects::{REDIRECT_VERSION, RedirectError, Redirects};
+pub use save::{Defaulted, Dropped, Redirected, SaveReport, restore_save};
 pub use write::to_text;
 
 use amadeo_core::Tick;
@@ -67,7 +73,11 @@ use std::collections::BTreeMap;
 /// short-lived artefact — it captures one moment of one run — so there is no migration path and a
 /// mismatch is refused rather than guessed at, the same way `.replay` refuses a tick-rate mismatch
 /// (ADR 0007).
-pub const FORMAT_VERSION: u32 = 1;
+///
+/// **2 added the `schema` block and the `schema-hash` header** (ADR 0069), which is what lets the
+/// same file also serve as a save. Files written by version 1 are refused, which is what the
+/// paragraph above permits.
+pub const FORMAT_VERSION: u32 = 2;
 
 /// One entity and everything on it.
 #[derive(Debug, Clone, PartialEq)]
@@ -89,7 +99,25 @@ pub struct Snapshot {
     /// Recorded so a restore can **check its own work**: if the world it rebuilt does not hash to
     /// this, the snapshot and the build disagree and continuing would produce a run that looks
     /// valid and is not. This is the format's integrity check, not decoration.
+    ///
+    /// It is only meaningful against the layout it was computed under — see [`Snapshot::layout`].
     pub state_hash: u64,
+    /// A fingerprint of the *shape* of everything in this file, at capture time.
+    ///
+    /// ADR 0069. `state_hash` describes a particular arrangement of fields, so a build whose
+    /// components have changed shape cannot reproduce it even from a perfectly restored world. This
+    /// is how a reader tells those two cases apart: matching fingerprints mean the recorded hash
+    /// still means what it meant, and [`restore_save`] enforces it exactly like [`restore`] does.
+    ///
+    /// See [`fingerprint`] for what goes into it and what deliberately does not.
+    pub layout: u64,
+    /// What this file contains, by name and schema version.
+    ///
+    /// Written for every component and resource actually present, sorted. Two jobs: it is the input
+    /// to [`fingerprint`], and it records each type's [`version`](amadeo_reflect::TypeInfo::version)
+    /// so that migrations remain an addition rather than a rewrite. **Nothing reads the version
+    /// yet** — ADR 0069 §6 explains why it is written anyway.
+    pub schema: Vec<SchemaEntry>,
     /// Every resource, by canonical name.
     pub resources: BTreeMap<String, Value>,
     /// Every live entity, sorted by index then generation.
@@ -120,9 +148,13 @@ pub fn capture(world: &World, registry: &ComponentRegistry) -> Snapshot {
         })
         .collect();
 
+    let schema = schema_of(world, registry);
+
     Snapshot {
         tick: world.tick(),
         state_hash: world.state_hash(),
+        layout: fingerprint(&schema, world, registry),
+        schema,
         resources: world.resources().into_iter().collect(),
         entities,
         free_slots: world.free_entity_slots(),
@@ -303,7 +335,7 @@ fn classify_component_error(
 /// A gap would leave a slot that is neither live nor free, which could never be allocated again — a
 /// leak nothing would report. A duplicate would mean two entities in one slot. Neither can come from
 /// a captured world; both can come from a hand-edited file, which is a supported thing to do.
-fn validate_slots(snapshot: &Snapshot) -> Result<(), RestoreError> {
+pub(crate) fn validate_slots(snapshot: &Snapshot) -> Result<(), RestoreError> {
     let mut seen: BTreeMap<u32, ()> = BTreeMap::new();
     let mut highest = 0u32;
 

@@ -59,12 +59,14 @@
 
 #![doc(html_no_source)]
 
+mod default;
 mod impls;
 mod info;
 mod registry;
 mod value;
 
 pub use amadeo_derive::Reflect;
+pub use default::{NoDefault, default_value, default_value_for};
 pub use impls::ReflectKey;
 pub use info::{
     FieldInfo, Interpolation, Range, Replication, ScalarKind, SyncPolicy, TypeInfo, TypeKind,

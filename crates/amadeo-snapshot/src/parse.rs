@@ -14,7 +14,7 @@
 //! differently.
 
 use crate::write::INDENT;
-use crate::{FORMAT_VERSION, Snapshot, SnapshotEntity};
+use crate::{FORMAT_VERSION, SchemaEntry, SchemaKind, Snapshot, SnapshotEntity};
 use amadeo_core::Tick;
 use amadeo_ecs::Entity;
 use amadeo_reflect::Value;
@@ -55,10 +55,22 @@ pub enum ParseErrorKind {
     },
 
     /// A required header line is missing.
-    #[error("the header is missing `{name}`; a snapshot needs `tick` and `state-hash`")]
+    #[error(
+        "the header is missing `{name}`; a snapshot needs `tick`, `state-hash` and `schema-hash`"
+    )]
     MissingHeader {
         /// Which header line.
         name: &'static str,
+    },
+
+    /// A line in the `schema` block is not `component Name version`.
+    #[error(
+        "`{found}` is not a schema entry; they are written `component Name 1` or \
+         `resource Name 1`"
+    )]
+    BadSchemaEntry {
+        /// The line that was not one.
+        found: String,
     },
 
     /// A number could not be parsed.
@@ -108,7 +120,10 @@ pub enum ParseErrorKind {
     },
 
     /// A top-level word is not one of the known blocks.
-    #[error("`{found}` is not a snapshot block; the blocks are `resources`, `entities`, `free`")]
+    #[error(
+        "`{found}` is not a snapshot block; the blocks are `schema`, `resources`, `entities`, \
+         `free`"
+    )]
     UnknownBlock {
         /// The word that was not recognised.
         found: String,
@@ -170,10 +185,13 @@ pub fn parse(text: &str) -> Result<Snapshot, ParseError> {
 
     let tick = Tick(take_header_number(&lines, &mut cursor, "tick", 10)?);
     let state_hash = take_header_number(&lines, &mut cursor, "state-hash", 16)?;
+    let layout = take_header_number(&lines, &mut cursor, "schema-hash", 16)?;
 
     let mut snapshot = Snapshot {
         tick,
         state_hash,
+        layout,
+        schema: Vec::new(),
         resources: BTreeMap::new(),
         entities: Vec::new(),
         free_slots: Vec::new(),
@@ -195,6 +213,7 @@ pub fn parse(text: &str) -> Result<Snapshot, ParseError> {
         cursor += 1;
 
         match line.text.as_str() {
+            "schema" => snapshot.schema = parse_schema(&lines, &mut cursor)?,
             "resources" => snapshot.resources = parse_named_values(&lines, &mut cursor, 1)?,
             "entities" => snapshot.entities = parse_entities(&lines, &mut cursor)?,
             "free" => snapshot.free_slots = parse_free(&lines, &mut cursor)?,
@@ -449,6 +468,71 @@ fn parse_entities(lines: &[Line], cursor: &mut usize) -> Result<Vec<SnapshotEnti
     Ok(entities)
 }
 
+/// Reads the `schema` block: `component Name 1` or `resource Name 1` per line.
+///
+/// Three fields rather than two because a component and a resource may legitimately share a
+/// canonical name — ADR 0017 hashes each into its own id space — and a block that conflated them
+/// would describe a layout neither one has.
+fn parse_schema(lines: &[Line], cursor: &mut usize) -> Result<Vec<SchemaEntry>, ParseError> {
+    let mut entries = Vec::new();
+
+    while let Some(line) = lines.get(*cursor) {
+        if line.level < 1 {
+            break;
+        }
+        if line.level > 1 {
+            return Err(ParseError {
+                line: line.number,
+                kind: ParseErrorKind::UnexpectedIndent {
+                    found: line.level,
+                    expected: 1,
+                },
+            });
+        }
+
+        let parts: Vec<&str> = line.text.split_whitespace().collect();
+        let [keyword, name, version] = parts.as_slice() else {
+            return Err(ParseError {
+                line: line.number,
+                kind: ParseErrorKind::BadSchemaEntry {
+                    found: line.text.clone(),
+                },
+            });
+        };
+
+        let kind = match *keyword {
+            "component" => SchemaKind::Component,
+            "resource" => SchemaKind::Resource,
+            _ => {
+                return Err(ParseError {
+                    line: line.number,
+                    kind: ParseErrorKind::BadSchemaEntry {
+                        found: line.text.clone(),
+                    },
+                });
+            }
+        };
+
+        let version = version.parse::<u32>().map_err(|_| ParseError {
+            line: line.number,
+            kind: ParseErrorKind::BadNumber {
+                field: format!("{name}'s schema version"),
+                expected: "a whole number",
+                found: (*version).to_string(),
+            },
+        })?;
+
+        entries.push(SchemaEntry {
+            kind,
+            name: (*name).to_string(),
+            version,
+        });
+        *cursor += 1;
+    }
+
+    Ok(entries)
+}
+
 /// Reads the `free` block.
 fn parse_free(lines: &[Line], cursor: &mut usize) -> Result<Vec<Entity>, ParseError> {
     let mut slots = Vec::new();
@@ -677,7 +761,8 @@ mod tests {
     use super::*;
     use crate::to_text;
 
-    const MINIMAL: &str = "amadeo-snapshot 1\ntick 0\nstate-hash 0000000000000000\n";
+    const MINIMAL: &str =
+        "amadeo-snapshot 2\ntick 0\nstate-hash 0000000000000000\nschema-hash 0000000000000000\n";
 
     #[test]
     fn a_minimal_snapshot_parses() {
@@ -689,10 +774,42 @@ mod tests {
 
     #[test]
     fn the_header_values_come_back() {
-        let text = "amadeo-snapshot 1\ntick 240\nstate-hash 54d624e36fa50dd4\n";
+        let text = "amadeo-snapshot 2\ntick 240\nstate-hash 54d624e36fa50dd4\n\
+                    schema-hash 1f0a77c3b2d94e58\n";
         let snapshot = parse(text).expect("valid");
         assert_eq!(snapshot.tick, Tick(240));
         assert_eq!(snapshot.state_hash, 0x54d6_24e3_6fa5_0dd4);
+        assert_eq!(snapshot.layout, 0x1f0a_77c3_b2d9_4e58);
+    }
+
+    #[test]
+    fn the_schema_block_round_trips_with_both_kinds() {
+        let text = format!("{MINIMAL}\nschema\n  component Transform 1\n  resource SimRng 3\n");
+        let snapshot = parse(&text).expect("valid");
+
+        assert_eq!(
+            snapshot.schema,
+            vec![
+                SchemaEntry {
+                    kind: SchemaKind::Component,
+                    name: "Transform".to_string(),
+                    version: 1,
+                },
+                SchemaEntry {
+                    kind: SchemaKind::Resource,
+                    name: "SimRng".to_string(),
+                    version: 3,
+                },
+            ]
+        );
+        assert_eq!(to_text(&snapshot), text);
+    }
+
+    #[test]
+    fn a_schema_line_that_is_not_one_says_what_they_look_like() {
+        let text = format!("{MINIMAL}schema\n  Transform\n");
+        let error = parse(&text).expect_err("two fields missing");
+        assert!(error.to_string().contains("component Name 1"), "{error}");
     }
 
     #[test]
@@ -711,16 +828,22 @@ mod tests {
 
     #[test]
     fn a_missing_header_line_names_it() {
-        let error = parse("amadeo-snapshot 1\nstate-hash 0\n").expect_err("no tick");
+        let error = parse("amadeo-snapshot 2\nstate-hash 0\n").expect_err("no tick");
         assert!(error.to_string().contains("tick"), "{error}");
     }
 
     #[test]
+    fn a_missing_schema_hash_names_it() {
+        let error = parse("amadeo-snapshot 2\ntick 0\nstate-hash 0\n").expect_err("no schema-hash");
+        assert!(error.to_string().contains("schema-hash"), "{error}");
+    }
+
+    #[test]
     fn errors_carry_a_line_number() {
-        let error = parse("amadeo-snapshot 1\ntick 0\nstate-hash 0\nnonsense\n")
+        let error = parse("amadeo-snapshot 2\ntick 0\nstate-hash 0\nschema-hash 0\nnonsense\n")
             .expect_err("unknown block");
-        assert_eq!(error.line, 4);
-        assert!(error.to_string().starts_with("line 4:"), "{error}");
+        assert_eq!(error.line, 5);
+        assert!(error.to_string().starts_with("line 5:"), "{error}");
     }
 
     #[test]
@@ -781,9 +904,14 @@ mod tests {
     #[test]
     fn text_survives_a_round_trip_unchanged() {
         let text = concat!(
-            "amadeo-snapshot 1\n",
+            "amadeo-snapshot 2\n",
             "tick 240\n",
             "state-hash 54d624e36fa50dd4\n",
+            "schema-hash 1f0a77c3b2d94e58\n",
+            "\n",
+            "schema\n",
+            "  component Velocity 1\n",
+            "  resource Camera2d 1\n",
             "\n",
             "resources\n",
             "  Camera2d\n",
@@ -809,9 +937,10 @@ mod tests {
     #[test]
     fn a_scalar_resource_survives_a_round_trip() {
         let text = concat!(
-            "amadeo-snapshot 1\n",
+            "amadeo-snapshot 2\n",
             "tick 0\n",
             "state-hash 0000000000000000\n",
+            "schema-hash 0000000000000000\n",
             "\n",
             "resources\n",
             "  Countdown 9\n",

@@ -215,7 +215,14 @@ fn a_save_is_a_text_file_a_person_can_read() {
     walk(&mut app, 10);
     let text = save(&app);
 
-    assert!(text.starts_with("amadeo-snapshot 1\n"), "{}", &text[..40]);
+    assert!(text.starts_with("amadeo-snapshot 2\n"), "{}", &text[..40]);
+    // What ADR 0069 added, and the reason a save can outlive the build that wrote it: the shape of
+    // everything in the file, so a reader can tell "this predates a patch" from "this is corrupt".
+    assert!(text.contains("schema-hash "), "the layout is fingerprinted");
+    assert!(
+        text.contains("  component CharacterController 1"),
+        "and each type's version is recorded, even though nothing reads it yet"
+    );
     // The things a save has to contain to be a save at all.
     assert!(text.contains("CharacterController"), "the player is in it");
     assert!(

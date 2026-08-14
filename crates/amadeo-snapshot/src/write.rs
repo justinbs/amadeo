@@ -3,9 +3,14 @@
 //! # The format
 //!
 //! ```text
-//! amadeo-snapshot 1
+//! amadeo-snapshot 2
 //! tick 240
 //! state-hash 54d624e36fa50dd4
+//! schema-hash 1f0a77c3b2d94e58
+//!
+//! schema
+//!   component Transform 1
+//!   resource SimRng 1
 //!
 //! resources
 //!   Camera2d
@@ -74,6 +79,24 @@ pub fn to_text(snapshot: &Snapshot) -> String {
     // Hex, and fixed-width. A state hash is a `u64`, and the protocol already learned in session 6
     // that these have to travel as text rather than as JSON numbers.
     let _ = writeln!(out, "state-hash {:016x}", snapshot.state_hash);
+    // Hex and fixed-width for the same reason as the state hash. This one says whether that one is
+    // still meaningful — ADR 0069.
+    let _ = writeln!(out, "schema-hash {:016x}", snapshot.layout);
+
+    if !snapshot.schema.is_empty() {
+        let _ = writeln!(out);
+        let _ = writeln!(out, "schema");
+        for entry in &snapshot.schema {
+            let _ = writeln!(
+                out,
+                "{}{} {} {}",
+                pad(1),
+                entry.kind.keyword(),
+                entry.name,
+                entry.version
+            );
+        }
+    }
 
     if !snapshot.resources.is_empty() {
         let _ = writeln!(out);
@@ -206,6 +229,8 @@ mod tests {
         Snapshot {
             tick: Tick(0),
             state_hash: 0,
+            layout: 0,
+            schema: Vec::new(),
             resources: BTreeMap::new(),
             entities: Vec::new(),
             free_slots: Vec::new(),
@@ -219,7 +244,7 @@ mod tests {
         let text = to_text(&empty());
         assert_eq!(
             text,
-            "amadeo-snapshot 1\ntick 0\nstate-hash 0000000000000000\n"
+            "amadeo-snapshot 2\ntick 0\nstate-hash 0000000000000000\nschema-hash 0000000000000000\n"
         );
     }
 
@@ -228,14 +253,17 @@ mod tests {
         let snapshot = Snapshot {
             tick: Tick(240),
             state_hash: 0x54d6_24e3_6fa5_0dd4,
+            layout: 0x1f0a_77c3_b2d9_4e58,
             ..empty()
         };
         let text = to_text(&snapshot);
 
-        assert!(text.starts_with("amadeo-snapshot 1\n"), "{text}");
+        assert!(text.starts_with("amadeo-snapshot 2\n"), "{text}");
         assert!(text.contains("tick 240\n"), "{text}");
         // Fixed-width hex, so two snapshots line up in a diff.
         assert!(text.contains("state-hash 54d624e36fa50dd4\n"), "{text}");
+        // The number that says whether the one above still means anything (ADR 0069).
+        assert!(text.contains("schema-hash 1f0a77c3b2d94e58\n"), "{text}");
     }
 
     #[test]

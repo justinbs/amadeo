@@ -108,6 +108,19 @@ pub struct World {
     /// Not simulation state, and excluded from [`World::state_hash`]: it describes what *can* be
     /// built, not what is.
     resource_builders: BTreeMap<String, ResourceBuilder>,
+    /// Each resource type's schema, by the same canonical names as `resource_builders`.
+    ///
+    /// Recorded in the same call for the same reason, so the two cannot disagree about what exists.
+    /// Components get this from [`ComponentRegistry`](crate::ComponentRegistry), which owns a
+    /// `TypeRegistry`; resources had nowhere equivalent until ADR 0069 needed one.
+    ///
+    /// Two things read it. A **lenient restore** needs a resource's field list to know what to
+    /// default when a save predates a field, and the snapshot's **layout fingerprint** needs it to
+    /// answer whether the recorded state hash still means what it meant. Neither is possible from
+    /// `resource_builders` alone, which says how to build a resource and nothing about its shape.
+    ///
+    /// Not simulation state, and excluded from [`World::state_hash`], exactly like the builders.
+    resource_schemas: BTreeMap<String, amadeo_reflect::TypeInfo>,
     /// Which canonical name first claimed each [`ComponentId`], for the ADR 0017 collision guard.
     ///
     /// Only populated in debug builds — see [`World::guard_against_name_collision`]. It is a
@@ -138,6 +151,7 @@ impl World {
             archetype_index,
             resources: BTreeMap::new(),
             resource_builders: BTreeMap::new(),
+            resource_schemas: BTreeMap::new(),
             services: BTreeMap::new(),
             tick: Tick::ZERO,
             #[cfg(debug_assertions)]
@@ -244,6 +258,10 @@ impl World {
         // would have reported an empty schema for a real game's own components.
         self.resource_builders
             .insert(T::type_name(), rebuild_resource::<T>);
+        // Same call, same reason (ADR 0069): a resource that can be rebuilt is one whose shape is
+        // known, so a lenient restore can tell "this save predates a field" from "this save is
+        // wrong".
+        self.resource_schemas.insert(T::type_name(), T::type_info());
 
         let previous = self
             .resources
@@ -308,6 +326,28 @@ impl World {
     /// Every resource name this world knows how to rebuild, in order.
     pub fn restorable_resources(&self) -> impl Iterator<Item = &str> {
         self.resource_builders.keys().map(String::as_str)
+    }
+
+    /// One resource type's schema, if this world has ever held one.
+    ///
+    /// The resource-side counterpart of
+    /// [`ComponentRegistry::info`](crate::ComponentRegistry::info). Present for exactly the names
+    /// [`World::restorable_resources`] lists, because both are recorded by
+    /// [`World::insert_resource`].
+    #[must_use]
+    pub fn resource_schema(&self, name: &str) -> Option<&amadeo_reflect::TypeInfo> {
+        self.resource_schemas.get(name)
+    }
+
+    /// Every resource schema this world knows, by name, in sorted order.
+    ///
+    /// Sorted because anything derived from it has to be reproducible (invariant I3) — the layout
+    /// fingerprint in `amadeo-snapshot` is a hash *over this sequence*, so an arbitrary order would
+    /// make the same world fingerprint differently on two runs.
+    pub fn resource_schemas(&self) -> impl Iterator<Item = (&str, &amadeo_reflect::TypeInfo)> {
+        self.resource_schemas
+            .iter()
+            .map(|(name, info)| (name.as_str(), info))
     }
 
     /// Every resource, as a name paired with its reflected state.

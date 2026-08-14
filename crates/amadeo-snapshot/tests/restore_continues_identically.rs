@@ -308,9 +308,10 @@ fn restoring_over_a_dirty_world_replaces_it_rather_than_merging() {
 fn a_snapshot_naming_an_unknown_component_says_so() {
     // The likely failure when a snapshot outlives the build that took it.
     let text = concat!(
-        "amadeo-snapshot 1\n",
+        "amadeo-snapshot 2\n",
         "tick 0\n",
         "state-hash 0000000000000000\n",
+        "schema-hash 0000000000000000\n",
         "\n",
         "entities\n",
         "  0:0\n",
@@ -359,9 +360,10 @@ fn a_slot_that_is_neither_live_nor_free_is_refused() {
     // Cannot come from a captured world; can come from a hand-edited file, which is a supported
     // thing to do. A gap would leave a slot that could never be allocated again.
     let text = concat!(
-        "amadeo-snapshot 1\n",
+        "amadeo-snapshot 2\n",
         "tick 0\n",
         "state-hash 0000000000000000\n",
+        "schema-hash 0000000000000000\n",
         "\n",
         "entities\n",
         "  0:0\n",
