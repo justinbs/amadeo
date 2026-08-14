@@ -59,9 +59,8 @@ its keep: it found a real defect in `amadeo-interaction` on the first try.
 Nothing blocking. The eyeball list below still stands, plus these:
 
 - **The brass key's numbers** — the reach is 2.5 m with a 0.25 m sweep radius, and the reaching child
-  sits 0.35 m above the player's centre. That height is not cosmetic: **a sweep is horizontal, so
-  reach is a band at the interactor's own height**, and it had to clear the plinth top. An item on
-  the floor is currently unreachable. Looking down is the fix and is not built.
+  sits 0.35 m above the player's centre. That height is not cosmetic: **reach is a band around the
+  interactor's forward line**, and it had to clear the plinth top.
 - **The key's place and size**, standing upright on the plinth at `y = 1.2`. It stands rather than
   lies for the same geometric reason.
 
@@ -113,10 +112,12 @@ milestone is mostly the exit gate itself.
    interaction, inventory, behaviour, audio, UI, save/load, pausing. This is the biggest single piece
    of work left and it is mostly **content**. The gate asks for a flashlight and a key-type item, and
    the key half is now demonstrated in `games/atrium`.
-2. **Looking down.** An interactor sweeps horizontally, so an item on the floor cannot be reached.
-   The horror slice is first-person with a pitching camera, which makes this land naturally — put the
-   `Interactor` on the camera and the pitch comes free. Worth doing *with* the slice rather than
-   before it, so it has a real user.
+2. **A runtime-driven aim.** ~~An interactor sweeps horizontally, so an item on the floor cannot be
+   reached.~~ **Checked, and that was wrong** — an authored pitch reaches the floor with nothing
+   built, because an interactor is an ordinary entity and the sweep follows its forward
+   (`aiming_down` in the module pins it). What is actually missing is a pitch **driven at runtime**,
+   which the horror slice gets for free by putting the `Interactor` on a first-person camera. Not a
+   task of its own any more.
 3. **Skeletal animation**, the largest unbuilt piece of a named subsystem. ADR 0066 §5 says where the
    reflected-field design deliberately stops: a read-patch-write per bone per tick is hopeless at a
    few hundred bones, so skinning gets its own typed path. **Blocked on an asset** — the repository
@@ -259,9 +260,16 @@ test and passes regardless, so a green Ubuntu job says nothing about a shader.
   away. Every existing test put the interactor on a lone entity with no collider anywhere — **the
   arrangement the module's docs called usual was the one nothing covered.** Fixed with `body_of`,
   and three tests added that fail when the old behaviour is put back.
-- **Reach is a band at the interactor's height**, because the sweep is horizontal, and whatever an
-  object rests on blocks the sweep to it. That is why the Atrium's interactor is a child above the
-  plinth top and why the key stands upright. **An item on the floor is currently unreachable.**
+- **Reach is a band around the interactor's forward line**, and whatever an object rests on blocks
+  the sweep to it. That is why the Atrium's interactor is a child above the plinth top and why the
+  key stands upright.
+- **And then a claim I published turned out to be wrong, which is the more useful entry.** I wrote
+  that an item on the floor was unreachable and that looking down was unbuilt, and put it in three
+  documents before checking. An interactor is an **ordinary entity with an ordinary `Transform`**, so
+  an authored pitch aims the sweep down and reaches a key on the floor with nothing built — pinned at
+  −20° by `aiming_down`, with level and −35° pinned as misses so the angle reads as a tuning number
+  rather than a switch. Only a *runtime-driven* pitch is missing. **When a component composes out of
+  `Transform` and `Parent`, check whether the thing you are calling unbuilt is already authorable.**
 
 ### Three habits that paid, again
 

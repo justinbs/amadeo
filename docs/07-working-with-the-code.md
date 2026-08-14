@@ -2493,12 +2493,26 @@ anywhere, so **the arrangement the module's own docs called usual was the one ar
 covered** — a shape worth checking for in any module: what does the documentation say is typical, and
 is that what the tests actually build?
 
-**A sweep is horizontal, so reach is a band at the interactor's own height** — and whatever an object
-rests on blocks the sweep to it. A key on a plinth cannot be reached by an interactor at plinth-top
-height, because the plinth is in the way for the whole 1.5 m to the middle. The Atrium puts the
-interactor on a child *above* the plinth top. Looking down is not built, so an item on the floor is
-currently out of reach; that is a real limitation rather than a bug, and it is where a first-person
-game with a pitching camera would differ.
+**A sweep follows the interactor's forward, so reach is a band around that line** — and whatever an
+object rests on blocks the sweep to it. A key on a plinth cannot be reached by an interactor at
+plinth-top height, because the plinth is in the way for the whole 1.5 m to the middle. The Atrium
+puts the interactor on a child *above* the plinth top.
+
+**And a correction worth reading, because it is about how a limitation gets invented.** The first
+version of this section said an item on the floor was unreachable and that "looking down is not
+built". Both were wrong, and they went into three documents before anybody checked. An interactor is
+an **ordinary entity with an ordinary `Transform`**, so pitching it in a scene file aims the sweep
+downwards and a key on the floor is reachable with nothing built —
+`aiming_down::a_pitched_interactor_reaches_it_with_nothing_built` pins it at −20°.
+
+The angle is a real tuning number rather than a switch: level misses the floor, and −35° misses it
+again, because the sweep is a line that has already passed under the key by the time it arrives.
+Both ends are pinned, so nobody reads the middle case as "any downward angle works".
+
+What *is* missing is a pitch **driven at runtime** by a camera or a mouse, which belongs to whatever
+does the aiming rather than to this module. The general lesson: when a component composes out of
+`Transform` and `Parent`, ask whether the thing you are about to call unbuilt is already authorable
+— the answer here was one test away, and the wrong answer had already been written down as fact.
 
 *(More entries land as the engine takes shape: asset handles.)*
 

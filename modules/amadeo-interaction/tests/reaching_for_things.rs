@@ -354,3 +354,110 @@ mod on_a_child {
         assert_eq!(looking_at(&world, tip), Some(thing));
     }
 }
+
+/// Reaching *downwards*, which turns out to need nothing built.
+///
+/// # Why this is here
+///
+/// Session 18 shipped a claim that an item on the floor is unreachable and that "looking down is not
+/// built". **That was wrong**, and it was written into three documents before anybody checked it.
+/// The sweep travels along the interactor's own forward, and an interactor is an ordinary entity
+/// with an ordinary `Transform` — so a pitch authored in a scene file aims it downwards, and a key
+/// on the floor is reachable today.
+///
+/// What is genuinely missing is a pitch *driven at runtime* by a camera or a mouse, which is a
+/// different thing and belongs to whatever does the aiming.
+#[cfg(feature = "rapier")]
+mod aiming_down {
+    use super::*;
+
+    /// A body with a reaching point pitched `degrees` below level.
+    fn body_aiming_down(degrees: f32) -> (World, Entity) {
+        let mut world = World::new();
+        world.insert_service(Physics::new(Box::new(amadeo_physics::RapierPhysics::new())));
+        world.insert_resource(Gravity::default());
+        world.insert_resource(InputState::new());
+        world.register_event::<Interacted>();
+
+        let body = world.spawn();
+        world.insert(body, Transform::default());
+        world.insert(body, RigidBody::default());
+        world.insert(body, Collider::cuboid(0.8, 1.8, 0.8));
+
+        let hand = world.spawn();
+        world.insert(
+            hand,
+            Transform {
+                translation: [0.0, 0.35, 0.0],
+                rotation: [degrees, 0.0, 0.0],
+                ..Transform::default()
+            },
+        );
+        world.insert(
+            hand,
+            Interactor {
+                reach: 2.5,
+                radius: 0.25,
+            },
+        );
+        world.insert(hand, Parent(body));
+
+        (world, hand)
+    }
+
+    /// Something lying on the floor, 1.2 m ahead and 5 cm tall.
+    fn key_on_the_floor(world: &mut World) -> Entity {
+        let key = world.spawn();
+        world.insert(
+            key,
+            Transform {
+                translation: [0.0, 0.05, -1.2],
+                ..Transform::default()
+            },
+        );
+        world.insert(key, RigidBody::default());
+        world.insert(key, Collider::cuboid(0.2, 0.05, 0.4));
+        world.insert(key, Interactable::new("Pick it up"));
+        step_physics(world);
+        key
+    }
+
+    #[test]
+    fn a_level_interactor_cannot_reach_the_floor() {
+        // The control case, and the true half of the claim: reach is a band at the sweep's own
+        // height, so a level interactor passes over a key entirely.
+        let (mut world, hand) = body_aiming_down(0.0);
+        let _key = key_on_the_floor(&mut world);
+        propagate_transforms(&mut world);
+        update_interactions(&mut world);
+
+        assert_eq!(looking_at(&world, hand), None);
+    }
+
+    #[test]
+    fn a_pitched_interactor_reaches_it_with_nothing_built() {
+        let (mut world, hand) = body_aiming_down(-20.0);
+        let key = key_on_the_floor(&mut world);
+        propagate_transforms(&mut world);
+        update_interactions(&mut world);
+
+        assert_eq!(
+            looking_at(&world, hand),
+            Some(key),
+            "the sweep follows the interactor's own forward, so an authored pitch aims it down"
+        );
+    }
+
+    #[test]
+    fn too_steep_misses_again_which_makes_the_angle_a_real_tuning_number() {
+        // Not a bug, and worth pinning so nobody reads the test above as "any downward angle
+        // works". The sweep is a line: past a certain pitch it has already passed under the key by
+        // the time it gets there.
+        let (mut world, hand) = body_aiming_down(-35.0);
+        let _key = key_on_the_floor(&mut world);
+        propagate_transforms(&mut world);
+        update_interactions(&mut world);
+
+        assert_eq!(looking_at(&world, hand), None);
+    }
+}

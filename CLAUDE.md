@@ -867,10 +867,18 @@ modules/             optional, genre-flavored. Core NEVER depends on these. Crea
                      there is no symptom. `body_of` walks up to the nearest collider. Every test in
                      the module put the interactor on a lone entity with no collider anywhere, so
                      **the arrangement its own docs call usual was the one nothing covered.**
-                     **A sweep is HORIZONTAL and starts where the interactor is**, so what it can
-                     reach is a band at its own height -- and whatever an object rests on blocks the
-                     sweep to it. `games/atrium` puts the interactor on a child above the plinth top
-                     for exactly that reason. Looking down is not built.
+                     **A sweep follows the interactor's own forward, so reach is a band around that
+                     line** -- and whatever an object rests on blocks the sweep to it.
+                     `games/atrium` puts the interactor on a child above the plinth top for exactly
+                     that reason. **Aiming DOWN needs nothing built**: an interactor is an ordinary
+                     entity, so a pitch authored in a scene file reaches a key on the floor, and
+                     `aiming_down` pins that at -20 degrees. It is a real tuning number rather than a
+                     switch -- level misses the floor and -35 misses it again, because the sweep is a
+                     line that has already passed under the key by then. What is genuinely missing is
+                     a pitch **driven at runtime** by a camera or a mouse, which belongs to whatever
+                     does the aiming. *(Session 18 first claimed the floor was unreachable and that
+                     looking down was unbuilt; that was written into three documents before it was
+                     checked, and it was wrong.)*
 🟡 amadeo-character   the first module. `CharacterController` (speed, acceleration, jump, turn, slope,
                      step height) and `CharacterMotion` (velocity, grounded), driven by named input
                      actions, moved by `PhysicsBackend::move_shape`. `install(&mut app)?` registers
