@@ -130,13 +130,18 @@ milestone is mostly the exit gate itself.
    you escape through and a warden that catches you. That is **gate items 1** (a playable loop with
    a win and a lose state) and **3** (a pursuer with distinct AI states, driven by `mod-behaviour`).
    Still to come, and it is most of what remains in the milestone:
-   - **Bounded procedural interiors from handcrafted pieces** (gate item 2) — the one genuine design
-     fork left. Worth researching and putting to Justin rather than inventing.
+   - **Bounded procedural interiors from handcrafted pieces** (gate item 2) — **researched and
+     written up as Q40, and it wants a decision.** The usual question is which algorithm; here the
+     first question is what the generator *produces*, because I1 makes a seed-only level
+     unauthorable. Three algorithm families are costed there, with a recommendation.
    - **A title screen** and the rest of item 1's shell. `games/atrium` proves save and resume; the
      Warren has not wired it up.
    - **Audio** (item 6). Horror lives there and this game is silent.
-   - **A HUD.** `warren::prompt` returns the text a HUD would draw and nothing draws it, so the door
-     tells you it is locked only in a test. Needs a font asset — `games/atrium` ships Bebas Neue.
+   - ~~A HUD~~ — **done**: two lines authored in the scene, saying what is in reach and how the run
+     ended. **Its pixels are unverified in this game**, and that is worth knowing: the content is
+     tested headlessly and `amadeo-ui` has its own draw tests, but nothing has captured this HUD on
+     a screen, because a capture cannot stand the player in front of a door. Session 18's own lesson
+     says a green suite is not a picture.
    - **Atmosphere** (item 5), which is where the lighting numbers below stop being placeholders.
 2. **A runtime-driven aim.** ~~An interactor sweeps horizontally, so an item on the floor cannot be
    reached.~~ **Checked, and that was wrong** — an authored pitch reaches the floor with nothing
