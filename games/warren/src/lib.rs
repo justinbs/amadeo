@@ -921,6 +921,122 @@ pub fn lay_out(seed: u64, count: usize) -> Layout {
     Layout { seed, rooms }
 }
 
+/// How far apart room centres sit, in world units.
+///
+/// One number rather than a per-piece size, because rooms are placed on a grid without rotation
+/// (see [`Side`]) — so a piece that did not fill its cell would leave a gap rather than misalign,
+/// which is a content decision rather than a generator one.
+pub const CELL: f32 = 12.0;
+
+/// The prefab a room's shell comes from.
+pub const ROOM_PIECE: &str = "room_shell";
+
+/// The prefab a doorway comes from.
+pub const DOORWAY_PIECE: &str = "doorway";
+
+/// Turns a [`Layout`] into scene text (ADR 0071 §1).
+///
+/// # Why two pieces rather than fifteen
+///
+/// The obvious design gives each room a piece chosen by which of its four sides have doors, which
+/// needs a library of **sixteen** shells before anything can be generated at all. Instead a room is
+/// one shell, and each door is a separate `doorway` piece placed in the wall between two cells. Two
+/// pieces cover every layout this generator can produce, and adding a third — a shell with a
+/// different interior — needs no change here.
+///
+/// # Each door is emitted once
+///
+/// A door belongs to two rooms. Only `North` and `West` are written, because every door is one of
+/// those from exactly one of the two cells it joins — emitting from both sides would put two
+/// doorways in one wall, which reads as a doubled frame rather than as a bug.
+///
+/// # Byte-stability (I2)
+///
+/// Rooms arrive sorted from [`lay_out`] and sides are written in [`Side::ALL`] order, so one layout
+/// produces one file. `amadeo fmt --check` on the output is a free regression test for that.
+#[must_use]
+pub fn to_scene(layout: &Layout) -> String {
+    let mut out = String::new();
+    // **The seed rides in the scene's name**, which is how ADR 0071 §4's "a file can say how to make
+    // it again" is honoured. The format has no comments, and inventing one to carry a number would
+    // be trap 4 — the format is a designed artefact, not whatever a writer needs it to be.
+    out.push_str(&format!(
+        "scene warren_generated_{}\nversion 1\n\n",
+        layout.seed
+    ));
+
+    out.push_str("assets\n");
+    out.push_str(&format!("  {DOORWAY_PIECE}\n"));
+    out.push_str(&format!("  {ROOM_PIECE}\n\n"));
+
+    for room in &layout.rooms {
+        let (x, z) = (room.cell.0 as f32 * CELL, room.cell.1 as f32 * CELL);
+        out.push_str(&format!(
+            "entity {} \"Room\" from \"{ROOM_PIECE}\"\n",
+            cell_id("room", room.cell)
+        ));
+        out.push_str(&place(x, 0.0, z, 0.0));
+
+        for &side in &room.doors {
+            // See the docs above: one of the two rooms writes it, and this is the rule that picks
+            // which. A door is in a north or west wall from exactly one side.
+            if !matches!(side, Side::North | Side::West) {
+                continue;
+            }
+            let (dx, dz) = match side {
+                Side::North => (x, z - CELL / 2.0),
+                Side::West => (x - CELL / 2.0, z),
+                // Unreachable by the filter above, and written out rather than `unreachable!()`
+                // because a panic in a generator is a worse failure than a doorway in the wrong wall.
+                Side::East | Side::South => (x, z),
+            };
+            // A doorway in an east or west wall is the same piece turned a quarter turn.
+            let turn = if matches!(side, Side::West) {
+                90.0
+            } else {
+                0.0
+            };
+            out.push_str(&format!(
+                "entity {} \"Doorway\" from \"{DOORWAY_PIECE}\"\n",
+                cell_id(&format!("door_{}", side_name(side)), room.cell)
+            ));
+            out.push_str(&place(dx, 0.0, dz, turn));
+        }
+    }
+
+    out
+}
+
+/// A scene-safe entity id for a cell, since a negative coordinate cannot go in an identifier.
+fn cell_id(prefix: &str, cell: (i32, i32)) -> String {
+    let part = |value: i32| {
+        if value < 0 {
+            format!("n{}", value.abs())
+        } else {
+            value.to_string()
+        }
+    };
+    format!("{prefix}_{}_{}", part(cell.0), part(cell.1))
+}
+
+/// The lower-case name of a side, for an entity id.
+fn side_name(side: Side) -> &'static str {
+    match side {
+        Side::North => "north",
+        Side::East => "east",
+        Side::South => "south",
+        Side::West => "west",
+    }
+}
+
+/// A `Transform` override block, in the canonical field order the writer emits.
+fn place(x: f32, y: f32, z: f32, turn: f32) -> String {
+    format!(
+        "  Transform\n    rotation 0.0 {turn:?} 0.0\n    scale 1.0 1.0 1.0\n    \
+         translation {x:?} {y:?} {z:?}\n\n"
+    )
+}
+
 // --- The HUD ------------------------------------------------------------------------------------
 
 /// Marks the line that says what using the thing in front of you would do.

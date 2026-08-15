@@ -148,3 +148,83 @@ fn one_room_is_a_layout_with_no_doors() {
     assert!(layout.is_connected());
     assert!(!layout.has_loop(), "one room cannot loop back to itself");
 }
+
+// --- The scene it writes (ADR 0071 §1) ----------------------------------------------------------
+
+#[test]
+fn the_generated_scene_parses() {
+    // **The point of ADR 0071 in one assertion.** A generated level is a text file, so the test of
+    // the writer is that the engine's own parser accepts it — not that its bytes match something
+    // this test also wrote.
+    let scene = warren::to_scene(&lay_out(3, 10));
+    amadeo_scene::parse(&scene).expect("a generated level has to be a scene the engine can read");
+}
+
+#[test]
+fn it_writes_a_room_per_cell_and_a_doorway_per_door() {
+    let layout = lay_out(11, 12);
+    let scene = warren::to_scene(&layout);
+    let document = amadeo_scene::parse(&scene).expect("parses");
+
+    let rooms = document
+        .entities
+        .iter()
+        .filter(|entity| entity.prefab.as_deref() == Some(warren::ROOM_PIECE))
+        .count();
+    let doorways = document
+        .entities
+        .iter()
+        .filter(|entity| entity.prefab.as_deref() == Some(warren::DOORWAY_PIECE))
+        .count();
+
+    assert_eq!(rooms, layout.rooms.len());
+    // **Once per door, not once per side.** Emitting from both rooms would put two doorways in one
+    // wall, which reads as a doubled frame rather than as a bug.
+    assert_eq!(doorways, layout.door_count());
+}
+
+#[test]
+fn every_room_is_a_prefab_instance_rather_than_loose_geometry() {
+    // ADR 0071 §2: a piece is a prefab. A generator that emitted walls directly would work and would
+    // put level geometry in generated text rather than in a piece somebody can open and edit.
+    let document = amadeo_scene::parse(&warren::to_scene(&lay_out(4, 8))).expect("parses");
+    assert!(
+        document
+            .entities
+            .iter()
+            .all(|entity| entity.prefab.is_some()),
+        "every entity a layout emits should be an instance of a piece"
+    );
+}
+
+#[test]
+fn the_same_layout_writes_the_same_bytes() {
+    // Byte-stability (I2), which is what makes a generated level diffable and what lets
+    // `amadeo fmt --check` be a regression test for this writer.
+    let layout = lay_out(77, 12);
+    assert_eq!(warren::to_scene(&layout), warren::to_scene(&layout));
+}
+
+#[test]
+fn the_seed_survives_into_the_file() {
+    // ADR 0071 §4: a file says how to make it again. In the scene's *name*, because the format has
+    // no comments and inventing one to carry a number would be trap 4.
+    let scene = warren::to_scene(&lay_out(4242, 6));
+    assert!(
+        scene.starts_with("scene warren_generated_4242\n"),
+        "{scene}"
+    );
+}
+
+#[test]
+fn the_pieces_it_needs_are_declared() {
+    // ADR 0021: a scene declares its requirements. Forgetting this is the exact shape of the bug
+    // that left the Warren's HUD with no words on it — a missing declaration has no symptom.
+    let document = amadeo_scene::parse(&warren::to_scene(&lay_out(9, 8))).expect("parses");
+    for piece in [warren::ROOM_PIECE, warren::DOORWAY_PIECE] {
+        assert!(
+            document.assets.iter().any(|id| id == piece),
+            "`{piece}` is instanced but never declared"
+        );
+    }
+}
