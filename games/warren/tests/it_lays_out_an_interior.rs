@@ -221,10 +221,74 @@ fn the_pieces_it_needs_are_declared() {
     // ADR 0021: a scene declares its requirements. Forgetting this is the exact shape of the bug
     // that left the Warren's HUD with no words on it — a missing declaration has no symptom.
     let document = amadeo_scene::parse(&warren::to_scene(&lay_out(9, 8))).expect("parses");
-    for piece in [warren::ROOM_PIECE, warren::DOORWAY_PIECE] {
+    for piece in [
+        warren::ROOM_PIECE,
+        warren::DOORWAY_PIECE,
+        warren::WALL_PIECE,
+    ] {
         assert!(
             document.assets.iter().any(|id| id == piece),
             "`{piece}` is instanced but never declared"
         );
     }
+}
+
+#[test]
+fn every_side_of_every_room_is_closed_by_something() {
+    // **The property additive geometry forces.** A doorway cannot cut a hole in a wall, so a wall is
+    // something a side *has* rather than something a shell comes with — which means a side with
+    // neither piece is a room open to the void, and nothing else would notice.
+    //
+    // Counted rather than inspected: every side is either shared (written once, by one of its two
+    // rooms) or outer (written by its only room), so the total is exactly the sum of both.
+    let layout = lay_out(21, 12);
+    let document = amadeo_scene::parse(&warren::to_scene(&layout)).expect("parses");
+
+    // Walked plainly rather than folded: every room's four sides are either shared with a
+    // neighbour or on the outside, and a shared one is seen twice.
+    let mut shared_seen = 0usize;
+    let mut outer = 0usize;
+    for room in &layout.rooms {
+        for side in warren::Side::ALL {
+            if layout.at(side.step(room.cell)).is_some() {
+                shared_seen += 1;
+            } else {
+                outer += 1;
+            }
+        }
+    }
+    let shared = shared_seen / 2;
+
+    let placed = document
+        .entities
+        .iter()
+        .filter(|entity| {
+            matches!(
+                entity.prefab.as_deref(),
+                Some(warren::WALL_PIECE) | Some(warren::DOORWAY_PIECE)
+            )
+        })
+        .count();
+
+    assert_eq!(
+        placed,
+        shared + outer,
+        "every shared side once and every outer side once"
+    );
+}
+
+#[test]
+fn a_doorway_goes_where_there_is_a_door_and_a_wall_where_there_is_not() {
+    let layout = lay_out(31, 10);
+    let document = amadeo_scene::parse(&warren::to_scene(&layout)).expect("parses");
+
+    let doorways = document
+        .entities
+        .iter()
+        .filter(|entity| entity.prefab.as_deref() == Some(warren::DOORWAY_PIECE))
+        .count();
+
+    // One per door, still — a doorway is a shared side by definition, so the dedupe rule applies.
+    assert_eq!(doorways, layout.door_count());
+    assert!(doorways > 0, "a layout with a loop has doors");
 }

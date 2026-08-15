@@ -934,21 +934,31 @@ pub const ROOM_PIECE: &str = "room_shell";
 /// The prefab a doorway comes from.
 pub const DOORWAY_PIECE: &str = "doorway";
 
+/// The prefab a blank wall comes from.
+pub const WALL_PIECE: &str = "wall";
+
 /// Turns a [`Layout`] into scene text (ADR 0071 §1).
 ///
-/// # Why two pieces rather than fifteen
+/// # Why three pieces rather than sixteen
 ///
-/// The obvious design gives each room a piece chosen by which of its four sides have doors, which
-/// needs a library of **sixteen** shells before anything can be generated at all. Instead a room is
-/// one shell, and each door is a separate `doorway` piece placed in the wall between two cells. Two
-/// pieces cover every layout this generator can produce, and adding a third — a shell with a
-/// different interior — needs no change here.
+/// The obvious design gives each room a shell chosen by which of its four sides have doors, which
+/// needs a library of **sixteen** before anything can be generated at all. Instead a room is a
+/// shell with no walls at all — floor and ceiling — and every side gets its own piece: a `wall`
+/// where the room is closed, a `doorway` where it is not.
 ///
-/// # Each door is emitted once
+/// **Additive geometry is what forces this**, and it is worth being explicit about. A doorway
+/// cannot cut a hole in a solid wall, because nothing here subtracts one shape from another. So a
+/// wall is something a side *has*, not something a shell comes with, and "no door" is a piece
+/// rather than the absence of one.
 ///
-/// A door belongs to two rooms. Only `North` and `West` are written, because every door is one of
-/// those from exactly one of the two cells it joins — emitting from both sides would put two
-/// doorways in one wall, which reads as a doubled frame rather than as a bug.
+/// # A shared side is emitted once, an outer side always
+///
+/// A side between two rooms belongs to both, and only the room that sees it as `North` or `West`
+/// writes it — every shared side is one of those from exactly one of the two cells. Emitting from
+/// both would stack two walls in one place, which reads as z-fighting rather than as a bug.
+///
+/// A side with **no** neighbour is seen by one room only, so it is always written. Getting that
+/// backwards leaves the level open to the void along half its boundary.
 ///
 /// # Byte-stability (I2)
 ///
@@ -965,9 +975,14 @@ pub fn to_scene(layout: &Layout) -> String {
         layout.seed
     ));
 
+    // Sorted, because the assets block is (ADR 0021) and byte-stability starts at the header.
     out.push_str("assets\n");
-    out.push_str(&format!("  {DOORWAY_PIECE}\n"));
-    out.push_str(&format!("  {ROOM_PIECE}\n\n"));
+    let mut pieces = [DOORWAY_PIECE, ROOM_PIECE, WALL_PIECE];
+    pieces.sort_unstable();
+    for piece in pieces {
+        out.push_str(&format!("  {piece}\n"));
+    }
+    out.push('\n');
 
     for room in &layout.rooms {
         let (x, z) = (room.cell.0 as f32 * CELL, room.cell.1 as f32 * CELL);
@@ -977,28 +992,38 @@ pub fn to_scene(layout: &Layout) -> String {
         ));
         out.push_str(&place(x, 0.0, z, 0.0));
 
-        for &side in &room.doors {
-            // See the docs above: one of the two rooms writes it, and this is the rule that picks
-            // which. A door is in a north or west wall from exactly one side.
-            if !matches!(side, Side::North | Side::West) {
+        for side in Side::ALL {
+            // A shared side is written by whichever room sees it as north or west; an outer side is
+            // seen by one room and is always written. See this function's docs for why getting the
+            // second half backwards leaves the level open to the void along half its boundary.
+            let shared = layout.at(side.step(room.cell)).is_some();
+            if shared && !matches!(side, Side::North | Side::West) {
                 continue;
             }
+
+            let half = CELL / 2.0;
             let (dx, dz) = match side {
-                Side::North => (x, z - CELL / 2.0),
-                Side::West => (x - CELL / 2.0, z),
-                // Unreachable by the filter above, and written out rather than `unreachable!()`
-                // because a panic in a generator is a worse failure than a doorway in the wrong wall.
-                Side::East | Side::South => (x, z),
+                Side::North => (x, z - half),
+                Side::South => (x, z + half),
+                Side::West => (x - half, z),
+                Side::East => (x + half, z),
             };
-            // A doorway in an east or west wall is the same piece turned a quarter turn.
-            let turn = if matches!(side, Side::West) {
+            // A side wall is the same piece turned a quarter turn.
+            let turn = if matches!(side, Side::East | Side::West) {
                 90.0
             } else {
                 0.0
             };
+
+            let (piece, label) = if room.doors.contains(&side) {
+                (DOORWAY_PIECE, "Doorway")
+            } else {
+                (WALL_PIECE, "Wall")
+            };
+            let prefix = format!("{}_{}", label.to_lowercase(), side_name(side));
             out.push_str(&format!(
-                "entity {} \"Doorway\" from \"{DOORWAY_PIECE}\"\n",
-                cell_id(&format!("door_{}", side_name(side)), room.cell)
+                "entity {} \"{label}\" from \"{piece}\"\n",
+                cell_id(&prefix, room.cell)
             ));
             out.push_str(&place(dx, 0.0, dz, turn));
         }
