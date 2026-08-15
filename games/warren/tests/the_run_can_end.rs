@@ -341,3 +341,48 @@ fn an_unchanged_hud_is_not_rewritten() {
         "half a second of standing still must not rewrite the HUD"
     );
 }
+
+// --- Room pieces (ADR 0071) ---------------------------------------------------------------------
+
+#[test]
+fn a_socket_is_a_component_a_scene_can_author() {
+    // The first concrete piece of ADR 0071. Nothing generates yet; what this pins is that a socket
+    // is *authored data* — a registered component with a kind and an open flag — rather than
+    // something a generator infers from a bounding box.
+    let mut app = room();
+
+    // The Warren is one handcrafted room and authors none yet, which is the honest starting state.
+    assert!(warren::open_sockets(&app.world).is_empty());
+
+    // A piece declares a doorway by putting one on a child entity. Placed and aimed by that
+    // entity's own `Transform`, which is why `Socket` carries neither.
+    let doorway = app.world.spawn();
+    app.world.insert(doorway, Transform::default());
+    app.world.insert(doorway, warren::Socket::new("corridor"));
+
+    let found = warren::open_sockets(&app.world);
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].1.kind, "corridor");
+    assert!(found[0].1.open);
+
+    // A used socket stays visible rather than being removed, so a layout that came out wrong can
+    // still be read back with `amadeo query`.
+    if let Some(socket) = app.world.get_mut::<warren::Socket>(doorway) {
+        socket.open = false;
+    }
+    assert!(warren::open_sockets(&app.world).is_empty());
+    assert!(app.world.get::<warren::Socket>(doorway).is_some());
+}
+
+#[test]
+fn open_sockets_come_back_in_a_reproducible_order() {
+    // The seeded-RNG half of determinism is worthless if the *sequence* it feeds is not
+    // reproducible. Two worlds built the same way must offer a generator the same sockets in the
+    // same order, or two machines lay out different levels from one seed.
+    let first = room();
+    let second = room();
+
+    let left: Vec<_> = warren::open_sockets(&first.world);
+    let right: Vec<_> = warren::open_sockets(&second.world);
+    assert_eq!(left, right);
+}

@@ -205,6 +205,7 @@ pub fn build_simulation() -> anyhow::Result<App> {
     // This game's own marks, and the one thing it can end as.
     app.register_component::<WayOut>()?;
     app.register_component::<Warden>()?;
+    app.register_component::<Socket>()?;
     app.register_component::<PromptLine>()?;
     app.register_component::<EndingLine>()?;
     app.insert_resource(Outcome::default());
@@ -597,6 +598,76 @@ pub fn label_the_door(world: &mut World) {
 #[must_use]
 pub fn outcome(world: &World) -> Outcome {
     world.resource::<Outcome>().copied().unwrap_or_default()
+}
+
+// --- Room pieces (ADR 0071) ---------------------------------------------------------------------
+
+/// A place on a room piece where another piece may join.
+///
+/// # Authored, never inferred
+///
+/// ADR 0071 §2. A generator could guess at doorways from bounding boxes, and that would be deriving
+/// *authored intent* from a mesh — ADR 0044 §2's objection to treating the shape of a thing as
+/// anything but content. It would also be unfixable by hand, which is the property the whole
+/// decision exists to protect: a generated level is a file precisely so somebody can open it and
+/// move a door.
+///
+/// # A socket is a place and a facing, and the facing is the whole mechanism
+///
+/// Two sockets join when they **face each other**. That makes stitching a *placement* rather than a
+/// search: given a piece, a socket on it, and a socket on the piece being added, the second piece's
+/// transform is fully determined — rotate until the facings oppose, then translate until the places
+/// coincide. Nothing has to be solved or backtracked.
+///
+/// The place and the facing both come from the entity's own `Transform`, which is why this component
+/// carries neither: a socket is a child entity of a piece, so it is positioned and aimed exactly the
+/// way a camera or a light is, and **-Z is forward** as it is everywhere else (ADR 0018). Repeating
+/// the position here would be two numbers meaning one thing, which is the mistake
+/// `FirstPersonCamera::height` documents.
+#[derive(Debug, Clone, PartialEq, Eq, Default, StableHash, Reflect)]
+pub struct Socket {
+    /// What may connect here.
+    ///
+    /// Two sockets join only when their kinds match, so a corridor mouth does not open onto a
+    /// cupboard. A `String` rather than an enum because **what kinds exist is content**: a game with
+    /// vents and one with airlocks should not need an engine change, and this is the same call ADR
+    /// 0068 makes for the names of facts.
+    pub kind: String,
+    /// Whether the generator may still attach something here.
+    ///
+    /// A field rather than removing the component, for `Interactable::enabled`'s reason: a socket
+    /// that has been used must not move between archetypes to say so, and a *used* socket is still
+    /// worth being able to see in `amadeo query` when a layout comes out wrong.
+    pub open: bool,
+}
+
+impl Component for Socket {}
+
+impl Socket {
+    /// A socket of one kind, open.
+    #[must_use]
+    pub fn new(kind: &str) -> Self {
+        Self {
+            kind: kind.to_string(),
+            open: true,
+        }
+    }
+}
+
+/// Every open socket in the world, with the piece it belongs to.
+///
+/// Sorted by entity, so a generator walking this makes the same choices in the same order on every
+/// machine — the seeded-RNG half of determinism is worthless if the *sequence* it feeds is not
+/// reproducible (I3).
+#[must_use]
+pub fn open_sockets(world: &World) -> Vec<(Entity, Socket)> {
+    let mut found: Vec<(Entity, Socket)> = world
+        .query::<(&Socket,)>()
+        .filter(|(_, (socket,))| socket.open)
+        .map(|(entity, (socket,))| (entity, socket.clone()))
+        .collect();
+    found.sort_by_key(|(entity, _)| (entity.index(), entity.generation()));
+    found
 }
 
 // --- The HUD ------------------------------------------------------------------------------------
