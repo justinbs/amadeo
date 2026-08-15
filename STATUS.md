@@ -126,12 +126,18 @@ crates.
 **Every named M3 subsystem and all five named genre modules now exist.** What is left in the
 milestone is mostly the exit gate itself.
 
-1. **M3's exit gate** — `games/warren` now exists and is its spine: one handcrafted room, first
-   person, a torch you look at, take and light. Still to come, and it is most of the gate:
-   **procedural interiors from handcrafted pieces** (the one genuine design fork left — worth
-   researching and putting to Justin rather than inventing), a pursuing entity, win and lose states,
-   a title screen, audio, and a HUD for the interaction prompt. `warren::prompt` returns the text
-   and nothing draws it yet.
+1. **M3's exit gate** — `games/warren` has one handcrafted room, first person, a torch, a key, a door
+   you escape through and a warden that catches you. That is **gate items 1** (a playable loop with
+   a win and a lose state) and **3** (a pursuer with distinct AI states, driven by `mod-behaviour`).
+   Still to come, and it is most of what remains in the milestone:
+   - **Bounded procedural interiors from handcrafted pieces** (gate item 2) — the one genuine design
+     fork left. Worth researching and putting to Justin rather than inventing.
+   - **A title screen** and the rest of item 1's shell. `games/atrium` proves save and resume; the
+     Warren has not wired it up.
+   - **Audio** (item 6). Horror lives there and this game is silent.
+   - **A HUD.** `warren::prompt` returns the text a HUD would draw and nothing draws it, so the door
+     tells you it is locked only in a test. Needs a font asset — `games/atrium` ships Bebas Neue.
+   - **Atmosphere** (item 5), which is where the lighting numbers below stop being placeholders.
 2. **A runtime-driven aim.** ~~An interactor sweeps horizontally, so an item on the floor cannot be
    reached.~~ **Checked, and that was wrong** — an authored pitch reaches the floor with nothing
    built, because an interactor is an ordinary entity and the sweep follows its forward
@@ -159,6 +165,9 @@ tuned** — judge them with `--ticks 5`, because a tick-0 capture of this game i
 - **The torch beam**: `BEAM_INTENSITY` 30 in `lib.rs`, 11°/26° cone, 18 m range, **and it casts** —
   the shadows work, and a flashlight that casts is most of the atmosphere in a game like this.
 - **Movement**: 2.6 m/s and no jump, which is a horror-pace guess rather than a measured one.
+- **The warden**: sight 9 m, speed 1.9 m/s, reach 0.9 m, and five seconds of searching before it
+  gives up. Speed is the one that matters — it must stay under the player's, and a test reads the
+  player's authored speed out of the scene rather than repeating it.
 - **The room**: 12 × 16 × 3 m, one lamp, two crates.
 
 ### One caution that stands, and one that is retired

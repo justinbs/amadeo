@@ -896,10 +896,12 @@ games/               actual games built with the engine
                      verified_without_eyes.rs checks the screen through render.describe.
                      NOTE it has two binaries, so it sets `default-run` — without that
                      `cargo run -p vault` is ambiguous and every CLI command against it fails.
-  warren           M3's exit gate, **spine only**: one handcrafted room, first person, a torch you
-                   look at, take and light (`cargo run -p warren`). None of the gate's *content* is
-                   here -- no procedural interiors, no pursuer, no win or lose, no title screen, no
-                   audio, no HUD (`warren::prompt` returns the text and nothing draws it).
+  warren           M3's exit gate, in progress: one handcrafted room, first person, and a loop you
+                   can win and lose (`cargo run -p warren`). Find the torch, find the key, reach the
+                   door -- and a warden hunts you, its mind authored in the scene as four states over
+                   one named fact (ADR 0068, second game). Still missing and still most of the gate:
+                   procedural interiors, a title screen, audio, and a HUD (`warren::prompt` returns
+                   the text and nothing draws it).
                    Built before the level design because **`FirstPersonCamera` had no game using
                    it** -- the Scarp and the Atrium are both third person. The `Interactor` is on
                    the **camera**, so the mouse drives the sweep's pitch: where an interactor is
