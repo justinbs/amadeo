@@ -670,6 +670,257 @@ pub fn open_sockets(world: &World) -> Vec<(Entity, Socket)> {
     found
 }
 
+// --- Laying out an interior (ADR 0071) ----------------------------------------------------------
+
+/// Which way a socket faces, on the grid an interior is laid out over.
+///
+/// Cardinal only, and rooms are placed **without rotation**. That is the simplification that makes
+/// stitching arithmetic rather than geometry: a socket facing east joins the west socket of the cell
+/// next door, and the second piece's position follows from the grid rather than from a matrix.
+///
+/// Rotation is the obvious extension and is deliberately not here yet — it buys varied *pieces*, and
+/// what the exit gate asks for is a varied *layout*.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Side {
+    /// Towards -Z, which is forward everywhere else in this engine (ADR 0018).
+    North,
+    /// Towards +X.
+    East,
+    /// Towards +Z.
+    South,
+    /// Towards -X.
+    West,
+}
+
+impl Side {
+    /// Every side, in a fixed order.
+    ///
+    /// **Fixed, not arbitrary**: the generator walks this to choose a direction, so its order is
+    /// part of what a seed means. Shuffling it would change every layout ever generated.
+    pub const ALL: [Side; 4] = [Side::North, Side::East, Side::South, Side::West];
+
+    /// The side a socket on this side must meet.
+    #[must_use]
+    pub fn opposite(self) -> Side {
+        match self {
+            Side::North => Side::South,
+            Side::East => Side::West,
+            Side::South => Side::North,
+            Side::West => Side::East,
+        }
+    }
+
+    /// The cell one step this way.
+    #[must_use]
+    pub fn step(self, cell: (i32, i32)) -> (i32, i32) {
+        match self {
+            Side::North => (cell.0, cell.1 - 1),
+            Side::East => (cell.0 + 1, cell.1),
+            Side::South => (cell.0, cell.1 + 1),
+            Side::West => (cell.0 - 1, cell.1),
+        }
+    }
+}
+
+/// One placed room, and which of its sides are open onto a neighbour.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlacedRoom {
+    /// Where on the grid. Multiply by the cell size to get world units.
+    pub cell: (i32, i32),
+    /// The sides that lead somewhere, sorted.
+    pub doors: Vec<Side>,
+}
+
+/// A whole interior, as cells and the doors between them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Layout {
+    /// The seed that produced it, so a file can say how to make it again (ADR 0071 §4).
+    pub seed: u64,
+    /// Every room, **sorted by cell** so the output is byte-stable (I2).
+    pub rooms: Vec<PlacedRoom>,
+}
+
+impl Layout {
+    /// The room at a cell, if one was placed there.
+    #[must_use]
+    pub fn at(&self, cell: (i32, i32)) -> Option<&PlacedRoom> {
+        self.rooms.iter().find(|room| room.cell == cell)
+    }
+
+    /// Whether every room can be reached from the first one.
+    ///
+    /// Worth having as a *query* rather than only as an invariant: a generator that produced an
+    /// island would produce a level with an unreachable key, and that is the failure a player
+    /// experiences as the game being broken rather than as the game being hard.
+    #[must_use]
+    pub fn is_connected(&self) -> bool {
+        let Some(first) = self.rooms.first() else {
+            return true;
+        };
+        let mut seen: Vec<(i32, i32)> = vec![first.cell];
+        let mut frontier = vec![first.cell];
+
+        while let Some(cell) = frontier.pop() {
+            let Some(room) = self.at(cell) else {
+                continue;
+            };
+            for side in &room.doors {
+                let next = side.step(cell);
+                if self.at(next).is_some() && !seen.contains(&next) {
+                    seen.push(next);
+                    frontier.push(next);
+                }
+            }
+        }
+        seen.len() == self.rooms.len()
+    }
+
+    /// How many doors there are, counting each once rather than once per side.
+    #[must_use]
+    pub fn door_count(&self) -> usize {
+        self.rooms
+            .iter()
+            .map(|room| room.doors.len())
+            .sum::<usize>()
+            / 2
+    }
+
+    /// Whether the layout contains a cycle — a route out and back that repeats no door.
+    ///
+    /// **The property ADR 0071 asks for by name.** For a connected graph this is just "more doors
+    /// than a tree would have": a tree over `n` rooms has exactly `n - 1`, so anything more closes a
+    /// loop. Cheaper and far more legible than walking for one.
+    #[must_use]
+    pub fn has_loop(&self) -> bool {
+        !self.rooms.is_empty() && self.door_count() >= self.rooms.len()
+    }
+}
+
+/// Lays out `count` rooms from a seed, and closes a loop.
+///
+/// Returns `count` rooms, **or `count + 1`** when closing the loop needed a new one — see the second
+/// pass below. A level of dead ends is a gameplay failure and one extra room is not, so that is the
+/// trade taken deliberately.
+///
+/// # How it works, in one paragraph
+///
+/// Walk. Start at the origin, and repeatedly step to a neighbouring cell that is empty, opening a
+/// door behind you. When the walk paints itself into a corner, back up to a room that still has an
+/// empty neighbour. That gives a connected, tree-shaped run of rooms — and then **one more door is
+/// added between two rooms that are adjacent but not yet joined**, which is what turns the tree into
+/// a loop.
+///
+/// The loop is added deliberately rather than hoped for, which is ADR 0071 §3: a tree of rooms forces
+/// backtracking, and being chased down a dead end you have already cleared is the failure a horror
+/// slice cannot afford.
+///
+/// # Determinism
+///
+/// Every choice comes from `rng` and every collection walked is ordered — `Side::ALL` is a fixed
+/// array and `rooms` is sorted before it is returned. Two machines given one seed produce one
+/// layout, byte for byte.
+#[must_use]
+pub fn lay_out(seed: u64, count: usize) -> Layout {
+    let mut rng = amadeo_core::Rng::new(seed);
+    let mut cells: Vec<(i32, i32)> = vec![(0, 0)];
+    let mut doors: Vec<((i32, i32), Side)> = Vec::new();
+
+    // The walk. `path` is where it can back up to, which is what stops it dead-ending early.
+    let mut path: Vec<(i32, i32)> = vec![(0, 0)];
+    while cells.len() < count.max(1) {
+        let Some(&here) = path.last() else {
+            break;
+        };
+        let free: Vec<Side> = Side::ALL
+            .into_iter()
+            .filter(|side| !cells.contains(&side.step(here)))
+            .collect();
+
+        let Some(index) = rng.pick_index(free.len()) else {
+            // Boxed in. Step back and try somewhere earlier; if there is nowhere, the grid around
+            // the walk is full and the layout is as large as it is going to get.
+            path.pop();
+            if path.is_empty() {
+                break;
+            }
+            continue;
+        };
+        let side = free[index];
+        let next = side.step(here);
+        cells.push(next);
+        doors.push((here, side));
+        path.push(next);
+    }
+
+    // **The loop, added rather than hoped for.** Two ways, tried in order, and the second is the one
+    // that makes it reliable.
+    cells.sort_unstable();
+    let joined = |doors: &[((i32, i32), Side)], a: (i32, i32), side: Side| {
+        doors.contains(&(a, side)) || doors.contains(&(side.step(a), side.opposite()))
+    };
+
+    // 1. Two rooms that already touch without a door between them. A walk that doubles back leaves
+    //    these lying around, and one door closes the cycle for free.
+    let mut closed = false;
+    'touching: for &cell in &cells {
+        for side in Side::ALL {
+            if cells.contains(&side.step(cell)) && !joined(&doors, cell, side) {
+                doors.push((cell, side));
+                closed = true;
+                break 'touching;
+            }
+        }
+    }
+
+    // 2. Otherwise **add a room** in an empty cell that touches two placed ones, and open it to
+    //    both. A walk that never doubles back — a spiral, or a straight run — leaves no pair for the
+    //    first pass to find, and seed 0 was exactly that. Without this the generator quietly hands
+    //    back a tree, which is a level of dead ends.
+    if !closed {
+        let mut candidates: Vec<((i32, i32), Vec<Side>)> = Vec::new();
+        for &cell in &cells {
+            for side in Side::ALL {
+                let empty = side.step(cell);
+                if cells.contains(&empty) {
+                    continue;
+                }
+                let touching: Vec<Side> = Side::ALL
+                    .into_iter()
+                    .filter(|reach| cells.contains(&reach.step(empty)))
+                    .collect();
+                if touching.len() >= 2 {
+                    candidates.push((empty, touching));
+                }
+            }
+        }
+        // Sorted and deduplicated before choosing, so the pick is reproducible rather than
+        // dependent on the order the scan happened to reach cells in (I3).
+        candidates.sort();
+        candidates.dedup();
+        if let Some((empty, touching)) = candidates.first() {
+            cells.push(*empty);
+            cells.sort_unstable();
+            for &side in touching {
+                doors.push((*empty, side));
+            }
+        }
+    }
+
+    let rooms = cells
+        .iter()
+        .map(|&cell| {
+            let mut open: Vec<Side> = Side::ALL
+                .into_iter()
+                .filter(|&side| joined(&doors, cell, side))
+                .collect();
+            open.sort_unstable();
+            PlacedRoom { cell, doors: open }
+        })
+        .collect();
+
+    Layout { seed, rooms }
+}
+
 // --- The HUD ------------------------------------------------------------------------------------
 
 /// Marks the line that says what using the thing in front of you would do.

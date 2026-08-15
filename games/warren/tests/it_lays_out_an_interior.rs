@@ -1,0 +1,150 @@
+//! ADR 0071's room graph: bounded, connected, reproducible, and looped on purpose.
+//!
+//! # What is being proved, and what is not
+//!
+//! The *layout*, not the scene file. This is the graph half of ADR 0071 — which cells hold rooms and
+//! which sides have doors — and it is separated from emitting text precisely because it is the half
+//! with properties worth asserting. A writer either produces a scene `amadeo check` accepts or it
+//! does not, and that is a better test of the writer than anything written here would be.
+
+use warren::{Side, lay_out};
+
+#[test]
+fn one_seed_gives_one_layout() {
+    // The property everything else rests on. A seeded generator whose *sequence* is not reproducible
+    // silently lays out different levels on different machines, which is I3 gone for every
+    // generated level — and it would show up as two players describing different rooms rather than
+    // as anything a test failure would name.
+    let first = lay_out(20_250_815, 12);
+    let second = lay_out(20_250_815, 12);
+    assert_eq!(first, second);
+}
+
+#[test]
+fn different_seeds_give_different_layouts() {
+    // The control for the test above: one that always returned the same thing would pass it.
+    let a = lay_out(1, 12);
+    let b = lay_out(2, 12);
+    assert_ne!(a.rooms, b.rooms);
+}
+
+#[test]
+fn it_places_the_rooms_it_was_asked_for_or_one_more() {
+    // Bounded, which is the word the exit gate uses. A walk that could not back up would stop early
+    // and quietly hand back a smaller level than anybody asked for, so the lower bound is the real
+    // assertion.
+    //
+    // **The upper bound is `count + 1`, and that is a real consequence rather than slack.** When a
+    // walk never doubles back there is no pair of touching rooms to join, so the generator adds one
+    // room that touches two others to close the cycle. Asking for a hard count and getting a tree
+    // would be the worse trade — a level of dead ends is a gameplay failure, and one extra room is
+    // not.
+    for seed in 0..32u64 {
+        let layout = lay_out(seed, 14);
+        assert!(
+            (14..=15).contains(&layout.rooms.len()),
+            "seed {seed} produced {} rooms",
+            layout.rooms.len()
+        );
+    }
+}
+
+#[test]
+fn every_room_is_reachable() {
+    // An unreachable room is a level with a key nobody can get to, and a player experiences that as
+    // the game being broken rather than as the game being hard. Checked across many seeds because a
+    // connectivity bug is exactly the kind that one lucky seed hides.
+    for seed in 0..64u64 {
+        let layout = lay_out(seed, 12);
+        assert!(
+            layout.is_connected(),
+            "seed {seed} produced an island: {:?}",
+            layout.rooms
+        );
+    }
+}
+
+#[test]
+fn there_is_always_a_loop() {
+    // **ADR 0071 §3 by name.** A tree of rooms forces backtracking, and being chased back down a
+    // corridor you have already cleared is the failure a horror slice cannot afford. So a cycle is
+    // requested rather than hoped for, and this is what says the request was honoured.
+    for seed in 0..64u64 {
+        let layout = lay_out(seed, 10);
+        assert!(
+            layout.has_loop(),
+            "seed {seed} produced a tree, which is a level of dead ends: {} rooms, {} doors",
+            layout.rooms.len(),
+            layout.door_count()
+        );
+    }
+}
+
+#[test]
+fn doors_agree_from_both_sides() {
+    // A door is one thing seen from two rooms. If a room lists a door its neighbour does not, the
+    // level has a one-way wall — which reads to a player as a door that does not open, and to a
+    // generator as nothing at all.
+    for seed in 0..32u64 {
+        let layout = lay_out(seed, 12);
+        for room in &layout.rooms {
+            for &side in &room.doors {
+                let neighbour = layout
+                    .at(side.step(room.cell))
+                    .unwrap_or_else(|| panic!("seed {seed}: a door onto an empty cell"));
+                assert!(
+                    neighbour.doors.contains(&side.opposite()),
+                    "seed {seed}: {:?} opens {side:?} but {:?} does not open back",
+                    room.cell,
+                    neighbour.cell
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn no_two_rooms_share_a_cell() {
+    for seed in 0..32u64 {
+        let layout = lay_out(seed, 16);
+        let mut cells: Vec<(i32, i32)> = layout.rooms.iter().map(|room| room.cell).collect();
+        cells.sort_unstable();
+        let before = cells.len();
+        cells.dedup();
+        assert_eq!(
+            before,
+            cells.len(),
+            "seed {seed} stacked two rooms in a cell"
+        );
+    }
+}
+
+#[test]
+fn the_rooms_come_back_sorted() {
+    // Byte-stability (I2) starts here: the writer emits them in this order, so an unsorted layout
+    // would make two identical levels produce two different files.
+    let layout = lay_out(99, 12);
+    let mut sorted = layout.rooms.clone();
+    sorted.sort_by_key(|room| room.cell);
+    assert_eq!(layout.rooms, sorted);
+}
+
+#[test]
+fn a_side_and_its_opposite_step_back_to_where_they_started() {
+    // The arithmetic the whole stitch rests on. Cheap, and it is the sort of thing that is wrong by
+    // a sign for a long time before anybody notices.
+    for side in Side::ALL {
+        let there = side.step((3, -2));
+        assert_eq!(side.opposite().step(there), (3, -2));
+    }
+}
+
+#[test]
+fn one_room_is_a_layout_with_no_doors() {
+    // The degenerate case, which a generator asked for a loop could easily divide by zero on.
+    let layout = lay_out(5, 1);
+    assert_eq!(layout.rooms.len(), 1);
+    assert_eq!(layout.door_count(), 0);
+    assert!(layout.is_connected());
+    assert!(!layout.has_loop(), "one room cannot loop back to itself");
+}
