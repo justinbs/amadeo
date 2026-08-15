@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 publish = false
+# Two binaries now, so `cargo run -p warren` would otherwise be ambiguous and every CLI command
+# against this game would fail with it. `games/vault` and `games/atrium` both learned this.
+default-run = "warren"
 
 [dependencies]
 # `gpu` for the same reason `games/atrium` asks for it: this game opens a window.

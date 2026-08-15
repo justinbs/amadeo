@@ -1,0 +1,27 @@
+scene wall
+version 1
+
+assets
+  plaster
+  wall_full
+
+entity wall "Wall"
+  Collider
+    friction 0.9
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 12.0 3.0 0.3
+  Mesh
+    material "plaster"
+    mesh "wall_full"
+  RigidBody
+    angular_damping 0.0
+    gravity false
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 1.5 0.0

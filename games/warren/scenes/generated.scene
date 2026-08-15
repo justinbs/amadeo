@@ -1,0 +1,344 @@
+scene warren_generated_20250815
+version 1
+
+assets
+  doorway
+  room_shell
+  wall
+
+entity room_0_n1 "Room" from "room_shell"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 -12.0
+
+entity wall_north_0_n1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 -18.0
+
+entity wall_west_0_n1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation -6.0 0.0 -12.0
+
+entity room_0_0 "Room" from "room_shell"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+entity doorway_north_0_0 "Doorway" from "doorway"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 -6.0
+
+entity wall_east_0_0 "Wall" from "wall"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation 6.0 0.0 0.0
+
+entity wall_south_0_0 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 6.0
+
+entity wall_west_0_0 "Wall" from "wall"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation -6.0 0.0 0.0
+
+entity room_1_n1 "Room" from "room_shell"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 12.0 0.0 -12.0
+
+entity wall_north_1_n1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 12.0 0.0 -18.0
+
+entity wall_south_1_n1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 12.0 0.0 -6.0
+
+entity doorway_west_1_n1 "Doorway" from "doorway"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation 6.0 0.0 -12.0
+
+entity room_2_n1 "Room" from "room_shell"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 24.0 0.0 -12.0
+
+entity wall_north_2_n1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 24.0 0.0 -18.0
+
+entity wall_south_2_n1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 24.0 0.0 -6.0
+
+entity doorway_west_2_n1 "Doorway" from "doorway"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation 18.0 0.0 -12.0
+
+entity room_3_n1 "Room" from "room_shell"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 36.0 0.0 -12.0
+
+entity wall_north_3_n1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 36.0 0.0 -18.0
+
+entity wall_south_3_n1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 36.0 0.0 -6.0
+
+entity doorway_west_3_n1 "Doorway" from "doorway"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation 30.0 0.0 -12.0
+
+entity room_4_n1 "Room" from "room_shell"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 48.0 0.0 -12.0
+
+entity wall_north_4_n1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 48.0 0.0 -18.0
+
+entity wall_south_4_n1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 48.0 0.0 -6.0
+
+entity doorway_west_4_n1 "Doorway" from "doorway"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation 42.0 0.0 -12.0
+
+entity room_5_n1 "Room" from "room_shell"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 60.0 0.0 -12.0
+
+entity wall_north_5_n1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 60.0 0.0 -18.0
+
+entity doorway_west_5_n1 "Doorway" from "doorway"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation 54.0 0.0 -12.0
+
+entity room_5_0 "Room" from "room_shell"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 60.0 0.0 0.0
+
+entity doorway_north_5_0 "Doorway" from "doorway"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 60.0 0.0 -6.0
+
+entity wall_east_5_0 "Wall" from "wall"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation 66.0 0.0 0.0
+
+entity wall_west_5_0 "Wall" from "wall"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation 54.0 0.0 0.0
+
+entity room_5_1 "Room" from "room_shell"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 60.0 0.0 12.0
+
+entity doorway_north_5_1 "Doorway" from "doorway"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 60.0 0.0 6.0
+
+entity wall_south_5_1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 60.0 0.0 18.0
+
+entity wall_west_5_1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation 54.0 0.0 12.0
+
+entity room_6_n1 "Room" from "room_shell"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 72.0 0.0 -12.0
+
+entity wall_north_6_n1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 72.0 0.0 -18.0
+
+entity wall_south_6_n1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 72.0 0.0 -6.0
+
+entity doorway_west_6_n1 "Doorway" from "doorway"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation 66.0 0.0 -12.0
+
+entity room_6_1 "Room" from "room_shell"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 72.0 0.0 12.0
+
+entity wall_north_6_1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 72.0 0.0 6.0
+
+entity wall_south_6_1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 72.0 0.0 18.0
+
+entity doorway_west_6_1 "Doorway" from "doorway"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation 66.0 0.0 12.0
+
+entity room_7_n1 "Room" from "room_shell"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 84.0 0.0 -12.0
+
+entity wall_north_7_n1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 84.0 0.0 -18.0
+
+entity wall_east_7_n1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation 90.0 0.0 -12.0
+
+entity doorway_west_7_n1 "Doorway" from "doorway"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation 78.0 0.0 -12.0
+
+entity room_7_0 "Room" from "room_shell"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 84.0 0.0 0.0
+
+entity doorway_north_7_0 "Doorway" from "doorway"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 84.0 0.0 -6.0
+
+entity wall_east_7_0 "Wall" from "wall"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation 90.0 0.0 0.0
+
+entity wall_west_7_0 "Wall" from "wall"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation 78.0 0.0 0.0
+
+entity room_7_1 "Room" from "room_shell"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 84.0 0.0 12.0
+
+entity doorway_north_7_1 "Doorway" from "doorway"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 84.0 0.0 6.0
+
+entity wall_east_7_1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation 90.0 0.0 12.0
+
+entity wall_south_7_1 "Wall" from "wall"
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 84.0 0.0 18.0
+
+entity doorway_west_7_1 "Doorway" from "doorway"
+  override Transform
+    rotation 0.0 90.0 0.0
+    scale 1.0 1.0 1.0
+    translation 78.0 0.0 12.0
+

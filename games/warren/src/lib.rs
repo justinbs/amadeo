@@ -1056,8 +1056,12 @@ fn side_name(side: Side) -> &'static str {
 
 /// A `Transform` override block, in the canonical field order the writer emits.
 fn place(x: f32, y: f32, z: f32, turn: f32) -> String {
+    // **`override`, not a bare component.** Every piece already puts a `Transform` on its own root,
+    // and ADR 0029 refuses a silent replacement: an override has to be spelled out so that it is
+    // visible in the file (I1). Emitting the bare form parses and passes `amadeo check`, and then
+    // fails at *load* — which is how this was found, and is worth knowing about `check`'s reach.
     format!(
-        "  Transform\n    rotation 0.0 {turn:?} 0.0\n    scale 1.0 1.0 1.0\n    \
+        "  override Transform\n    rotation 0.0 {turn:?} 0.0\n    scale 1.0 1.0 1.0\n    \
          translation {x:?} {y:?} {z:?}\n\n"
     )
 }
