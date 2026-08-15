@@ -2514,6 +2514,31 @@ does the aiming rather than to this module. The general lesson: when a component
 `Transform` and `Parent`, ask whether the thing you are about to call unbuilt is already authorable
 — the answer here was one test away, and the wrong answer had already been written down as fact.
 
+### A font that is not declared draws nothing, and no test will tell you
+
+`FontCache::new()` starts with an **empty** database — deliberately, because a game that falls back
+to whatever the operating system has installed looks different on every machine (ADR 0062). The
+cache fills itself through `FontCache::ensure`, which reads the bytes **out of the asset store**. So
+a font reaches the screen only if the scene **declares it in its `assets` block** (ADR 0021), by id:
+
+```text
+assets
+  BebasNeue-Regular
+```
+
+Miss that line and every `Text` node shapes to **nothing at all**. Not a substitute typeface, not a
+placeholder box — ADR 0060's rule, because a wrong typeface silently replacing the right one is how
+a look drifts unnoticed.
+
+**The trap is that nothing fails.** The scene loads, `collect_ui` runs, the layout is correct, and
+`Text::content` holds exactly the right string. Session 18 shipped the Warren's HUD with a full
+green suite and a `Text` whose content was asserted in three tests, and the screen had no words on
+it. The tests assert what a line *says*; only a capture can tell you whether it was *drawn*.
+
+Two things follow. When adding text to a game, declare the font in the same edit — it is the line
+most easily forgotten because it is nowhere near the `Text`. And when a HUD is invisible, check the
+`assets` block before anything else: `FontCache::failures` names the id, and is the whole diagnosis.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---
