@@ -28,13 +28,16 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 > ### A capture at tick 0 is not a picture of your game
 >
-> `propagate_transforms` runs in `PostSimulation`, so **at tick 0 no child has a composed
-> `GlobalTransform`** — and every renderer path falls back to the *local* transform when one is
-> missing. `amadeo capture` renders at tick 0 by default, so a capture of any game whose camera or
-> lights are parented shows them at their local coordinates. **Every game here parents its camera.**
-> Use `--ticks 5`.
+> `propagate_transforms` runs in `PostSimulation`, so **before any tick has run no child has a
+> composed `GlobalTransform`** — and every renderer path falls back to the *local* transform when one
+> is missing. A tick-0 capture therefore draws every parented camera, light and mesh at its local
+> coordinates, and **every game here parents its camera.**
 >
-> This cost most of a session. **Q39 was filed at P0 against a renderer bug that does not exist**:
+> **Closed where it bit: `amadeo capture` now simulates one tick by default**, and `--ticks 0` still
+> does exactly what it says. Keep the hazard in mind anyway — it is a property of the *world before
+> its first tick*, not of the CLI, so anything else that reads a fresh world has it too.
+>
+> It cost most of a session first. **Q39 was filed at P0 against a renderer bug that does not exist**:
 > the Warren's torch beam is a grandchild of the player at local `y = -0.1`, which put it inside the
 > floor slab, where it correctly shadowed the whole room with the floor it was buried in. Q39 is
 > withdrawn and `docs/06` has the full account, including the second wrong claim — a `PointLight`
@@ -123,8 +126,6 @@ crates.
 **Every named M3 subsystem and all five named genre modules now exist.** What is left in the
 milestone is mostly the exit gate itself.
 
-0. **Make `amadeo capture` default to one tick**, or refuse zero with a message saying why — see the
-   box at the top and Q39. Small, and it removes the trap that cost most of session 18.
 1. **M3's exit gate** — `games/warren` now exists and is its spine: one handcrafted room, first
    person, a torch you look at, take and light. Still to come, and it is most of the gate:
    **procedural interiors from handcrafted pieces** (the one genuine design fork left — worth
