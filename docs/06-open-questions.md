@@ -7,7 +7,22 @@ Priority: **P0** blocks work now · **P1** needed for the current milestone · *
 
 ---
 
-## Q40 · P1 · What a generated interior *is*, before which algorithm generates it
+## ~~Q40~~ · **Resolved — ADR 0071.** A generated interior is a scene file, stitched from socketed pieces
+
+**Decided by Justin in session 18**, on the analysis below: a **room graph**, and the output is a
+**file** rather than a seed.
+
+The artefact question is the one that mattered. A generated level that is text is one `amadeo fmt`,
+`amadeo check`, prefab instancing, snapshots and the editor all already work on — and one a person
+can open and move a door in. WFC and cyclic generation stay available, on the same pieces and the
+same socket data, so neither is foreclosed by starting here.
+
+The analysis is kept below rather than replaced by its answer, because *putting the artefact before
+the algorithm* is the reusable part and it will come up again.
+
+---
+
+### The original analysis
 
 **Raised in session 18**, on reaching M3's exit gate item 2: "bounded procedural interiors —
 assembled from handcrafted room pieces, not one static level. Tests the scene composition and prefab
