@@ -4,16 +4,20 @@
 //! cargo run -p warren
 //! ```
 //!
-//! WASD to walk, the mouse to look, F to take what is in front of you. The torch is on the near
+//! WASD to walk, the mouse to look, F to use what is in front of you. The torch is on the near
 //! crate; picking it up lights the beam.
 //!
 //! # What exists so far, and what does not
 //!
-//! **One handcrafted room, and the spine that every later version needs.** `docs/05`'s exit gate
-//! asks for bounded procedural interiors assembled from handcrafted room pieces, a pursuing entity,
-//! a win and a lose state, and a title screen. None of that is here yet. What *is* here is the
-//! vertical slice the rest hangs off — the thing `CLAUDE.md` asks for in preference to a complete
-//! horizontal layer.
+//! **One handcrafted room, and a loop you can win and lose.** Find the torch, find the key, reach
+//! the door — and the warden is looking for you. That is `docs/05`'s exit gate items 1 (a playable
+//! loop with a win and a lose state) and 3 (a pursuing entity with distinct AI states, driven by
+//! `mod-behaviour`).
+//!
+//! **Still missing, and it is most of the gate**: bounded procedural interiors assembled from
+//! handcrafted room pieces, a title screen, audio, and a HUD — `warren::prompt` returns the text a
+//! HUD would draw and nothing draws it yet. Save and resume are not wired up either; `games/atrium`
+//! proves that mechanism and this game has not needed it.
 //!
 //! # Why this room exists now rather than after the level design
 //!
@@ -33,13 +37,16 @@
 //! camera. `amadeo check games/warren/scenes/warren.scene` validates the lot.
 
 use amadeo_app::{App, Stage, system};
+use amadeo_behaviour::{Behaviour, Facts};
 use amadeo_character::{CharacterController, CharacterMotion};
-use amadeo_ecs::{Entity, World};
+use amadeo_core::StableHash;
+use amadeo_ecs::{Component, Entity, Resource, World};
 use amadeo_events::WorldEvents;
 use amadeo_input::{InputDriver, NullSource};
 use amadeo_interaction::{Interactable, Interacted, Interactor, Looking};
 use amadeo_inventory::{Inventory, Item, StoredIn};
 use amadeo_physics::{Collider, Gravity, Physics, RapierPhysics, RigidBody, Velocity};
+use amadeo_reflect::Reflect;
 use amadeo_render::{
     BoxMesh, Camera, Environment, Material, Mesh, PlaneMesh, PointLight, SpotLight, TextureCache,
 };
@@ -182,11 +189,18 @@ pub fn build_simulation() -> anyhow::Result<App> {
     app.insert_service(Physics::new(Box::new(RapierPhysics::new())));
     app.insert_resource(Gravity::earth());
 
-    // **Before `load_scene`**, all three: each registers the components its own scene lines name.
+    // **Before `load_scene`**, all of them: each registers the components its own scene lines name,
+    // and a component the registry has not heard of stops the scene loading.
     amadeo_character::install(&mut app)?;
     amadeo_camera::install(&mut app)?;
     amadeo_interaction::install(&mut app)?;
     amadeo_inventory::install(&mut app)?;
+    amadeo_behaviour::install(&mut app)?;
+
+    // This game's own two marks, and the one thing it can end as.
+    app.register_component::<WayOut>()?;
+    app.register_component::<Warden>()?;
+    app.insert_resource(Outcome::default());
 
     // Input is sampled before anything reads it, which is what `PreSimulation` is for. Both the
     // character and the camera read *named actions*, so this is the only place in the game that
@@ -220,6 +234,32 @@ pub fn build_simulation() -> anyhow::Result<App> {
     app.add_system(
         Stage::PostSimulation,
         system(CARRY_THE_TORCH, carry_the_torch).after(TAKE_WHAT_YOU_USED),
+    );
+    // Same tick as the pickup, for the same reason: using the door on the tick the key reached your
+    // pocket has to work, or the game looks like it ignored you.
+    app.add_system(
+        Stage::PostSimulation,
+        system(TRY_THE_DOOR, try_the_door).after(TAKE_WHAT_YOU_USED),
+    );
+    app.add_system(
+        Stage::PostSimulation,
+        system(LABEL_THE_DOOR, label_the_door).after(TAKE_WHAT_YOU_USED),
+    );
+
+    // The warden. Perception **before** the machine and action **after** it, which is ADR 0068's
+    // boundary: the module sequences states and this game supplies both sides of it.
+    app.add_system(
+        Stage::Simulation,
+        system(WATCH_FOR_YOU, watch_for_you).before(amadeo_behaviour::RUN_BEHAVIOURS),
+    );
+    app.add_system(
+        Stage::Simulation,
+        system(MOVE_THE_WARDEN, move_the_warden).after(amadeo_behaviour::RUN_BEHAVIOURS),
+    );
+    // Last, so it judges where everything actually ended up this tick rather than where it was.
+    app.add_system(
+        Stage::PostSimulation,
+        system(SETTLE_THE_RUN, settle_the_run).after(PROPAGATE_TRANSFORMS),
     );
 
     Ok(app)
@@ -289,3 +329,235 @@ pub fn grounded(world: &World) -> bool {
 
 /// The label the propagation system runs under, re-exported so `main.rs` need not import transform.
 pub const PROPAGATE: &str = PROPAGATE_TRANSFORMS;
+
+// --- The loop: a key, a door, and something that wants you not to reach it -----------------------
+
+/// The item id the key is authored with.
+pub const KEY: &str = "key";
+
+/// How the run ended, or that it has not.
+///
+/// # Why this is the game's and not the engine's
+///
+/// M3's exit gate asks for a win state and a lose state, and **what those mean is genre knowledge** —
+/// invariant I4 one level up, the same split `games/atrium` draws with its `Screen`. The engine has
+/// no notion of winning, and this room's answer would be wrong for the next one.
+///
+/// An ordinary reflected resource, so it is hashed, a snapshot restores it, and `amadeo query` can
+/// read it. None of that had to be built.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub enum Outcome {
+    /// Still going.
+    #[default]
+    Playing,
+    /// Out through the door with the key. The win.
+    Escaped,
+    /// The warden reached you. The lose.
+    Caught,
+}
+
+impl Resource for Outcome {}
+
+/// Marks the door as the way out. A game-level fact: the engine sees an `Interactable` like any
+/// other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub struct WayOut;
+
+impl Component for WayOut {}
+
+/// Marks the thing that hunts you.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub struct Warden;
+
+impl Component for Warden {}
+
+/// How far the warden can see you, in metres. An eyeball number.
+pub const WARDEN_SIGHT: f32 = 9.0;
+
+/// How fast it moves, in metres per second.
+///
+/// **Slower than you**, deliberately — you walk at 2.6. A chase you cannot win is a cutscene.
+pub const WARDEN_SPEED: f32 = 1.9;
+
+/// How close it has to get to catch you, in metres.
+pub const WARDEN_REACH: f32 = 0.9;
+
+/// The label [`watch_for_you`] is registered under.
+pub const WATCH_FOR_YOU: &str = "watch_for_you";
+
+/// The label [`move_the_warden`] is registered under.
+pub const MOVE_THE_WARDEN: &str = "move_the_warden";
+
+/// The label [`settle_the_run`] is registered under.
+pub const SETTLE_THE_RUN: &str = "settle_the_run";
+
+/// The label [`try_the_door`] is registered under.
+pub const TRY_THE_DOOR: &str = "try_the_door";
+
+/// The label [`label_the_door`] is registered under.
+pub const LABEL_THE_DOOR: &str = "label_the_door";
+
+/// Where the player is, if there is one.
+fn player_at(world: &World) -> Option<[f32; 3]> {
+    let player = player(world)?;
+    Some(world.get::<Transform>(player)?.translation)
+}
+
+/// Straight-line distance between two places.
+fn distance(a: [f32; 3], b: [f32; 3]) -> f32 {
+    let d = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+}
+
+/// Writes the one fact the warden's machine reads.
+///
+/// **This is the whole of what the game owes `modules/amadeo-behaviour`.** The module sequences
+/// named states and knows nothing about sight, distance or players; the machine in `warren.scene`
+/// names `"sees_you"` and this decides what that means.
+///
+/// Runs *before* the machine, so a decision is made on this tick's facts rather than last tick's —
+/// which the module cannot declare for itself, because it cannot see this game's system names.
+pub fn watch_for_you(world: &mut World) {
+    let Some(you) = player_at(world) else {
+        return;
+    };
+    let seen: Vec<(Entity, bool)> = world
+        .query::<(&Warden, &Transform)>()
+        .map(|(entity, (_, at))| (entity, distance(at.translation, you) <= WARDEN_SIGHT))
+        .collect();
+
+    for (entity, sees) in seen {
+        if let Some(facts) = world.get_mut::<Facts>(entity) {
+            facts.set("sees_you", sees);
+        }
+    }
+}
+
+/// Acts on whatever state the machine settled into.
+///
+/// The other half of that boundary: the module says *which* state, and this says what the state
+/// does. Swapping the sequencer for a behaviour tree later would replace neither this nor
+/// [`watch_for_you`], which is ADR 0068's whole argument.
+///
+/// # It has no collider, and that is stated rather than hidden
+///
+/// The warden walks through crates. Giving it one means building a second character controller to
+/// prove a point about pursuit, which `games/atrium`'s watcher declined for the same reason. The
+/// room is open enough that it does not read as broken, and it is the first thing to fix if the
+/// pursuit ever needs to feel fair.
+pub fn move_the_warden(world: &mut World) {
+    let Some(you) = player_at(world) else {
+        return;
+    };
+
+    let moving: Vec<(Entity, [f32; 3])> = world
+        .query::<(&Warden, &Behaviour, &Transform)>()
+        .filter(|(_, (_, mind, _))| mind.state == "pursue")
+        .map(|(entity, (_, _, at))| (entity, at.translation))
+        .collect();
+
+    for (entity, at) in moving {
+        let gap = distance(at, you);
+        if gap <= f32::EPSILON {
+            continue;
+        }
+        let step = WARDEN_SPEED * amadeo_core::FIXED_DT;
+        // Horizontal only, so it walks the floor rather than swimming towards your eyes.
+        let toward = [(you[0] - at[0]) / gap, (you[2] - at[2]) / gap];
+        if let Some(transform) = world.get_mut::<Transform>(entity) {
+            transform.translation[0] += toward[0] * step;
+            transform.translation[2] += toward[1] * step;
+        }
+    }
+}
+
+/// Decides whether the run is over, and how.
+///
+/// Both endings are settled here rather than where each is caused, so "how can this run end" is one
+/// list in one place. **A run that has already ended is left alone** — being caught after escaping
+/// would be a memorable bug, and it is one tick away without this.
+pub fn settle_the_run(world: &mut World) {
+    if outcome(world) != Outcome::Playing {
+        return;
+    }
+    let Some(you) = player_at(world) else {
+        return;
+    };
+
+    let caught = world
+        .query::<(&Warden, &Transform)>()
+        .any(|(_, (_, at))| distance(at.translation, you) <= WARDEN_REACH);
+
+    if caught && let Some(settled) = world.resource_mut::<Outcome>() {
+        *settled = Outcome::Caught;
+    }
+}
+
+/// Opens the way out when somebody uses it while carrying the key.
+///
+/// Reads the same `Interacted` event [`take_what_you_used`] does and runs after it, so using the
+/// door on the very tick you picked the key up works. A one-tick edge there reads as the game
+/// ignoring you.
+pub fn try_the_door(world: &mut World) {
+    if outcome(world) != Outcome::Playing {
+        return;
+    }
+    let used: Vec<Interacted> = world
+        .read_events::<Interacted>()
+        .iter()
+        .map(|record| record.event)
+        .collect();
+
+    for event in used {
+        if world.get::<WayOut>(event.target).is_none() {
+            continue;
+        }
+        let Some(carrier) = carrier_of(world, event.interactor) else {
+            continue;
+        };
+        if amadeo_inventory::count_of(world, carrier, KEY) == 0 {
+            continue;
+        }
+        if let Some(settled) = world.resource_mut::<Outcome>() {
+            *settled = Outcome::Escaped;
+        }
+    }
+}
+
+/// Keeps the door's prompt honest about whether it will open.
+///
+/// A **field on the component rather than two doors**: `Interactable::enabled` exists for exactly
+/// this reason, and a locked door that becomes unlocked must not move between archetypes to say so.
+///
+/// The locked wording lives in `warren.scene` where content belongs; the unlocked one is here, which
+/// is the single place this game puts player-facing words in code. Worth noticing as a small wart —
+/// it wants a second `Interactable` field, or a game-side lookup, once there is a second door.
+pub fn label_the_door(world: &mut World) {
+    let Some(carrier) = player(world) else {
+        return;
+    };
+    let has_key = amadeo_inventory::count_of(world, carrier, KEY) > 0;
+    let wanted = if has_key {
+        "Unlock the door and leave"
+    } else {
+        "The door is locked"
+    };
+
+    let doors: Vec<Entity> = world
+        .query::<(&WayOut,)>()
+        .map(|(entity, _)| entity)
+        .collect();
+    for door in doors {
+        if let Some(interactable) = world.get_mut::<Interactable>(door)
+            && interactable.prompt != wanted
+        {
+            interactable.prompt = wanted.to_string();
+        }
+    }
+}
+
+/// How this run ended, or that it has not.
+#[must_use]
+pub fn outcome(world: &World) -> Outcome {
+    world.resource::<Outcome>().copied().unwrap_or_default()
+}

@@ -1,0 +1,6 @@
+scene warden
+version 1
+
+entity mesh "Warden"
+  BoxMesh
+    size 0.65 1.85 0.65

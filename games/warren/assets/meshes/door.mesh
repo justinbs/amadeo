@@ -1,0 +1,6 @@
+scene door
+version 1
+
+entity mesh "Door"
+  BoxMesh
+    size 1.6 2.4 0.16

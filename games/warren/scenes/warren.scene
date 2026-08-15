@@ -2,16 +2,21 @@ scene warren
 version 1
 
 assets
+  brass
   carpet
   ceiling
   crate_box
+  door
   floor
+  key
   plaster
+  rust
   steel
   timber
   torch
   wall_end
   wall_long
+  warden
   warren_look
 
 entity floor "Floor"
@@ -304,3 +309,96 @@ entity player "You"
         rotation 0.0 0.0 0.0
         scale 1.0 1.0 1.0
         translation 0.12 -0.1 0.0
+
+entity key "Brass key"
+  Collider
+    friction 0.6
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 0.16 0.34 0.05
+  Interactable
+    enabled true
+    prompt "Take the brass key"
+  Item
+    count 1
+    kind "key"
+    max_stack 1
+  Mesh
+    material "brass"
+    mesh "key"
+  RigidBody
+    angular_damping 0.0
+    gravity false
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 3.9 1.07 -5.2
+
+entity door "The way out"
+  Collider
+    friction 0.6
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 1.6 2.4 0.16
+  Interactable
+    enabled true
+    prompt "The door is locked"
+  Mesh
+    material "timber"
+    mesh "door"
+  RigidBody
+    angular_damping 0.0
+    gravity false
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -4.0 1.2 -7.85
+  WayOut
+
+entity warden "The warden"
+  Behaviour
+    elapsed 0.0
+    state ""
+  BehaviourMachine
+    initial "idle"
+    states
+      - name "idle"
+        transitions
+          - after 0.0
+            to "pursue"
+            unless ""
+            when "sees_you"
+      - name "pursue"
+        transitions
+          - after 0.0
+            to "search"
+            unless "sees_you"
+            when ""
+      - name "search"
+        transitions
+          - after 0.0
+            to "pursue"
+            unless ""
+            when "sees_you"
+          - after 5.0
+            to "idle"
+            unless ""
+            when ""
+  Facts
+    known {}
+  Mesh
+    material "rust"
+    mesh "warden"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 4.6 0.93 -7.0
+  Warden

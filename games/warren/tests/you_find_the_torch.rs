@@ -111,9 +111,10 @@ fn the_room_loads_and_the_player_is_first_person() {
         app.world.get::<FirstPersonCamera>(eyes).is_some(),
         "and the camera is the first-person rig, which no game had used before this one"
     );
-    // Eleven meshes: floor, ceiling, four walls, two crates, the torch. The lamp and the beam are
-    // lights rather than geometry, and the player has no body mesh -- you would be inside it.
-    assert_eq!(app.world.query::<(&amadeo_render::Mesh,)>().count(), 9);
+    // Floor, ceiling, four walls, two crates, the torch, the key, the door, the warden. The lamp
+    // and the beam are lights rather than geometry, and the player has no body mesh -- in first
+    // person you would be standing inside it.
+    assert_eq!(app.world.query::<(&amadeo_render::Mesh,)>().count(), 12);
 }
 
 #[test]

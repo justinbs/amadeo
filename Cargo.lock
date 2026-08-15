@@ -3127,6 +3127,7 @@ name = "warren"
 version = "0.1.0"
 dependencies = [
  "amadeo-app",
+ "amadeo-behaviour",
  "amadeo-camera",
  "amadeo-character",
  "amadeo-core",
