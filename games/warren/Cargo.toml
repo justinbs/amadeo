@@ -30,6 +30,7 @@ amadeo-reflect.workspace = true
 amadeo-render.workspace = true
 amadeo-scene.workspace = true
 amadeo-transform.workspace = true
+amadeo-ui.workspace = true
 anyhow = "1"
 winit = "0.30"
 

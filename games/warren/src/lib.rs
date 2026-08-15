@@ -14,10 +14,12 @@
 //! loop with a win and a lose state) and 3 (a pursuing entity with distinct AI states, driven by
 //! `mod-behaviour`).
 //!
+//! A HUD says what is in reach and how the run ended, authored in the scene like everything else.
+//!
 //! **Still missing, and it is most of the gate**: bounded procedural interiors assembled from
-//! handcrafted room pieces, a title screen, audio, and a HUD — `warren::prompt` returns the text a
-//! HUD would draw and nothing draws it yet. Save and resume are not wired up either; `games/atrium`
-//! proves that mechanism and this game has not needed it.
+//! handcrafted room pieces (**Q40** — the artefact question comes before the algorithm), a title
+//! screen, and audio. Save and resume are not wired up either; `games/atrium` proves that mechanism
+//! and this game has not needed it.
 //!
 //! # Why this room exists now rather than after the level design
 //!
@@ -52,6 +54,9 @@ use amadeo_render::{
 };
 use amadeo_transform::{
     GlobalTransform, PROPAGATE_TRANSFORMS, Parent, Transform, propagate_transforms,
+};
+use amadeo_ui::{
+    COLLECT_UI, ComputedRect, FontCache, LAYOUT_UI, Text, UiNode, collect_ui, layout_ui_system,
 };
 
 /// Where this game's assets live, relative to the project root (ADR 0022).
@@ -197,10 +202,29 @@ pub fn build_simulation() -> anyhow::Result<App> {
     amadeo_inventory::install(&mut app)?;
     amadeo_behaviour::install(&mut app)?;
 
-    // This game's own two marks, and the one thing it can end as.
+    // This game's own marks, and the one thing it can end as.
     app.register_component::<WayOut>()?;
     app.register_component::<Warden>()?;
+    app.register_component::<PromptLine>()?;
+    app.register_component::<EndingLine>()?;
     app.insert_resource(Outcome::default());
+
+    // The interface (ADR 0062). `ComputedRect` is registered although nothing authors one, because
+    // it is a component an agent should be able to *see* — "where did that line end up" is the
+    // question `world.entity` exists to answer.
+    app.register_component::<UiNode>()?;
+    app.register_component::<ComputedRect>()?;
+    app.register_component::<Text>()?;
+
+    // **Layout before collection, and the ordering is load-bearing**: `collect_ui` reads the
+    // rectangles `layout_ui_system` writes, so the other way round draws an empty interface on the
+    // first frame and a one-frame-stale one forever after.
+    //
+    // No `Theme` asset — this game ships none, so the built-in Signage look draws it. That is
+    // `TextureCache`'s argument again: a last resort that is itself a file cannot cover the case
+    // where files are the problem.
+    app.insert_service(FontCache::new());
+    app.insert_service(amadeo_render::Overlay::default());
 
     // Input is sampled before anything reads it, which is what `PreSimulation` is for. Both the
     // character and the camera read *named actions*, so this is the only place in the game that
@@ -260,6 +284,19 @@ pub fn build_simulation() -> anyhow::Result<App> {
     app.add_system(
         Stage::PostSimulation,
         system(SETTLE_THE_RUN, settle_the_run).after(PROPAGATE_TRANSFORMS),
+    );
+    // After the run is settled, so the ending appears on the tick it happens rather than the next.
+    app.add_system(
+        Stage::PostSimulation,
+        system(WRITE_THE_HUD, write_the_hud).after(SETTLE_THE_RUN),
+    );
+
+    // Drawn in `Render`, where nothing it does can reach the state hash. What the lines *say* was
+    // decided above, in the deterministic zone.
+    app.add_system(Stage::Render, system(LAYOUT_UI, layout_ui_system));
+    app.add_system(
+        Stage::Render,
+        system(COLLECT_UI, collect_ui).after(LAYOUT_UI),
     );
 
     Ok(app)
@@ -560,4 +597,72 @@ pub fn label_the_door(world: &mut World) {
 #[must_use]
 pub fn outcome(world: &World) -> Outcome {
     world.resource::<Outcome>().copied().unwrap_or_default()
+}
+
+// --- The HUD ------------------------------------------------------------------------------------
+
+/// Marks the line that says what using the thing in front of you would do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub struct PromptLine;
+
+impl Component for PromptLine {}
+
+/// Marks the line that says how the run ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub struct EndingLine;
+
+impl Component for EndingLine {}
+
+/// The label [`write_the_hud`] is registered under.
+pub const WRITE_THE_HUD: &str = "write_the_hud";
+
+/// Puts this tick's prompt and ending into the two authored `Text` nodes.
+///
+/// # Why this runs in `PostSimulation` rather than in `Render`
+///
+/// `Text` is an ordinary component, so **its content is in the state hash**. That rules out writing
+/// it from a draw pass, which is ADR 0063's split seen from a third side: the focus highlight is
+/// substituted during collection precisely so the theme never reaches the hash.
+///
+/// Writing it here is safe, and the reason is specific rather than general. It is a pure function of
+/// [`Looking`] and [`Outcome`], and although `Looking` is *derived* it is recomputed every tick from
+/// transforms and the physics index — both already hashed — and, unlike `ComputedRect`, it **does
+/// not depend on the window size**. So two machines running the same inputs write the same string.
+/// A HUD line derived from a rectangle instead would put the resolution into the hash and break I3
+/// for every player on a different monitor.
+///
+/// After `propagate_transforms`, because `Looking` is written by `update_interactions`, which is.
+pub fn write_the_hud(world: &mut World) {
+    let ending = match outcome(world) {
+        Outcome::Playing => String::new(),
+        Outcome::Escaped => "YOU GOT OUT".to_string(),
+        Outcome::Caught => "IT FOUND YOU".to_string(),
+    };
+    // Nothing to point at once the run is over, and a stale "the door is locked" under a lose
+    // screen reads as the game still running.
+    let prompt = if ending.is_empty() {
+        prompt(world).unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    let lines: Vec<(Entity, String)> = world
+        .query::<(&PromptLine,)>()
+        .map(|(entity, _)| (entity, prompt.clone()))
+        .chain(
+            world
+                .query::<(&EndingLine,)>()
+                .map(|(entity, _)| (entity, ending.clone())),
+        )
+        .collect();
+
+    for (entity, wanted) in lines {
+        // Compared before writing, so a HUD that says the same thing as last tick does not move the
+        // state hash — which it would every tick otherwise, for no change anyone can see.
+        if let Some(text) = world.get_mut::<Text>(entity)
+            && text.content != wanted
+        {
+            text.content = wanted;
+        }
+    }
 }

@@ -271,3 +271,73 @@ fn app_speed() -> f32 {
         .expect("the player has one")
         .speed
 }
+
+// --- The HUD ------------------------------------------------------------------------------------
+
+/// What a HUD line currently says.
+fn line_says<T: amadeo_ecs::Component>(app: &App) -> String {
+    app.world
+        .query::<(&T,)>()
+        .map(|(entity, _)| entity)
+        .next()
+        .and_then(|entity| app.world.get::<amadeo_ui::Text>(entity))
+        .map(|text| text.content.clone())
+        .unwrap_or_default()
+}
+
+#[test]
+fn the_prompt_line_says_what_you_are_looking_at() {
+    // The door told you it was locked only in a test until this existed. A prompt the player cannot
+    // see is a prompt that is not there.
+    let mut app = room();
+    banish_the_warden(&mut app);
+
+    assert_eq!(
+        line_says::<warren::PromptLine>(&app),
+        "",
+        "nothing in reach, nothing to say"
+    );
+
+    stand_at(&mut app, [-4.0, 1.0, -6.4]);
+    assert_eq!(line_says::<warren::PromptLine>(&app), "The door is locked");
+}
+
+#[test]
+fn the_ending_line_stays_empty_until_the_run_ends() {
+    let mut app = room();
+    banish_the_warden(&mut app);
+    assert_eq!(line_says::<warren::EndingLine>(&app), "");
+
+    let player = player(&app.world).expect("a character");
+    let key = thing_of_kind(&app, KEY);
+    amadeo_inventory::store(&mut app.world, key, player).expect("room");
+    stand_at(&mut app, [-4.0, 1.0, -6.4]);
+    tap_use(&mut app);
+
+    assert_eq!(line_says::<warren::EndingLine>(&app), "YOU GOT OUT");
+    // And the prompt gets out of the way: a stale "unlock the door" under a win screen reads as the
+    // game still running.
+    assert_eq!(line_says::<warren::PromptLine>(&app), "");
+}
+
+#[test]
+fn an_unchanged_hud_is_not_rewritten() {
+    // `Text` is an ordinary component, so its content is **hashed**. `write_the_hud` therefore
+    // compares before writing, and this is what says so.
+    //
+    // **Not asserted against `state_hash`**, which was the first attempt and cannot work: the hash
+    // includes the tick number by construction, so it changes every tick no matter what. What can be
+    // observed is the thing the guard actually protects — that the string does not churn.
+    let mut app = room();
+    banish_the_warden(&mut app);
+    app.run_ticks(5).expect("ticks run");
+
+    let settled = line_says::<warren::PromptLine>(&app);
+    app.run_ticks(30).expect("half a second runs");
+
+    assert_eq!(
+        settled,
+        line_says::<warren::PromptLine>(&app),
+        "half a second of standing still must not rewrite the HUD"
+    );
+}

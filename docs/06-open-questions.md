@@ -7,6 +7,99 @@ Priority: **P0** blocks work now · **P1** needed for the current milestone · *
 
 ---
 
+## Q40 · P1 · What a generated interior *is*, before which algorithm generates it
+
+**Raised in session 18**, on reaching M3's exit gate item 2: "bounded procedural interiors —
+assembled from handcrafted room pieces, not one static level. Tests the scene composition and prefab
+instancing design under real use."
+
+`games/warren` is one handcrafted room. Making it many is the largest single piece of work left in
+the milestone, and **the algorithm is the second question.** The first is what the generator
+produces, and it is a question this engine has to answer differently from most, because of I1.
+
+### Why the artefact comes first here
+
+In most engines a level generator is a runtime system: it runs at load, builds objects, and the
+result exists only in memory. Amadeo cannot assume that, because **text files are the only source of
+truth** (I1) and the editor is a client that reads and writes them. So:
+
+- If a level **is a seed**, then a generated level is not authorable. Nobody — human or agent — can
+  open the interesting one, move a door, and keep it. `amadeo check` has nothing to validate, and
+  the editor has nothing to show. The generator is the authority and I1 is narrowed to "the *inputs*
+  are text".
+- If a level **is a generated scene file**, the generator is a *tool* rather than a runtime. Its
+  output is ordinary text, so every existing thing works on it unchanged — `amadeo fmt`, `amadeo
+  check`, prefab instancing, the snapshot format, the editor when it exists. A designer generates
+  twenty, keeps the good one, and edits it by hand.
+
+**There is precedent pulling both ways, and it is worth being precise about it.** ADR 0043's terrain
+*is* a function of its seed, streamed at runtime — but ADR 0046 then had to add `TerrainEdits` as a
+hashed resource so that digging survived, which is exactly the "generated base plus authored
+changes" shape arrived at the hard way. An interior is small, bounded, and wants to feel *designed*,
+which is the opposite end of that trade from a horizon of hills.
+
+### The three algorithm families, once the artefact is settled
+
+Researched rather than recalled; sources at the end.
+
+| | What it is | Strength | Cost here |
+|---|---|---|---|
+| **Room graph + socket stitching** | Pick a layout graph, place handcrafted rooms, join them where doorway sockets match | Simple, controllable, and **prefabs already do most of it** (ADR 0029) | Layouts can feel like beads on a string without deliberate loops |
+| **Wave function collapse** | Constraint-solve a grid of socketed tiles against adjacency rules learnt from handcrafted examples | Coherent infinite variation; the strongest "this was designed" texture at tile scale | A *search*: it can fail and backtrack, which is awkward under a fixed tick, and global guarantees ("the key is reachable before the door") are hard to state |
+| **Cyclic generation** | Transform a *mission* graph by grammar rules — add a shortcut, nest a loop — then realise it as rooms | Best designed-feel of the three; loops are planned rather than lucky, which is what stops backtracking being tedious | The most machinery, and a grammar is its own authoring surface to design |
+
+The horror slice's actual needs are modest and worth stating plainly: **a bounded space, a key
+somewhere, a door somewhere else, and enough loop that being chased is not a dead end.** That is
+squarely room-graph territory, and cyclic generation is the natural upgrade path from it — Unexplored
+builds cycles *first* precisely because a tree of rooms forces backtracking.
+
+### What has to be true whichever is chosen
+
+- **Determinism (I3).** Generation runs off `SimRng` or a seed given to it, never `HashMap`
+  iteration, never wall-clock. If the layout is a file this matters less at runtime and more for
+  `amadeo fmt` being byte-stable; if it is a seed, it is load-bearing for every replay.
+- **Pieces are prefabs.** ADR 0029 already instantiates a prefab by asset id with top-level
+  overrides, which is what a room piece is. Nothing new is needed to *have* pieces.
+- **Sockets are authored data.** A doorway is a named point on a piece with a facing. That is a
+  component on a child entity, and it should be authorable in the scene file like everything else
+  rather than inferred from geometry.
+
+### The recommendation, if it is wanted
+
+**Generated scene files, produced by a room graph with socket stitching**, for three reasons that are
+this project's rather than the genre's:
+
+1. **It keeps I1 whole.** A generated level is a text file, so the editor, the validator, the
+   formatter and the agent all keep working on it with nothing built. That is a large amount of
+   existing machinery that a seed-at-runtime design would simply not reach.
+2. **Most of it exists.** Prefab instancing, asset ids, the scene writer and `amadeo check` are all
+   built and tested. The new part is a graph, a socket component, and a writer — not a system.
+3. **It is the honest size of the problem.** The gate wants bounded interiors, not an infinite
+   world. Twenty rooms stitched into a loop is the whole requirement.
+
+Cyclic generation is where to go if the layouts read as boring, and WFC is where to go if the
+*rooms* rather than the layout are the thing that wants variety. Both sit on top of the same pieces
+and the same socket data, so neither is foreclosed.
+
+### What is genuinely undecided and should not be guessed
+
+- **Does the generator run in the game, or as `amadeo generate`?** A CLI tool fits the "it is a file"
+  answer and matches `amadeo import-gltf`, which is already a standalone text-producing command.
+  Running it in-game would mean a game generating and then *writing* a scene, which is the disk
+  access inside a tick that `games/atrium`'s save path already refuses.
+- **Does a run pick from pre-generated levels, or generate on start?** The horror slice wants a fresh
+  layout per run, which pulls towards runtime — and straight back into the artefact question above.
+  A middle answer exists: generate *n* levels as files at build time and pick one per run, which is
+  bounded, diffable and still varied.
+
+**Sources:** socket-based adjacency and WFC as constrained modular assembly —
+<https://drcodes.com/posts/wave-function-collapse-master-procedural-dungeon-generation>; cyclic
+generation and why trees of rooms force backtracking —
+<https://www.gamedeveloper.com/design/unexplored-s-secret-cyclic-dungeon-generation-> and
+<https://www.boristhebrave.com/2021/04/10/dungeon-generation-in-unexplored/>.
+
+---
+
 ## ~~Q37~~ · **Resolved — ADR 0069.** A save is a snapshot read leniently, and renames are authored data
 
 **Settled in session 18**, and built in the same one. `restore` is unchanged; `restore_save` reads the
