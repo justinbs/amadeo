@@ -1203,6 +1203,9 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
         compact: false,
     };
 
+    // Whether `--ticks` appeared at all, which is not the same as it being zero.
+    let mut ticks_given = false;
+
     // Positional arguments, with the flags stripped out. Flags may appear anywhere, which is what
     // people expect and costs nothing to allow.
     let mut positional: Vec<String> = Vec::new();
@@ -1234,6 +1237,10 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
             }
             "--ticks" => {
                 let raw = value_after("--ticks")?;
+                // Recorded separately from the value, so that `--ticks 0` on a capture stays zero
+                // while an *absent* flag can pick a per-command default. See the end of this
+                // function.
+                ticks_given = true;
                 options.ticks = raw.parse().with_context(|| {
                     format!("`{raw}` is not a tick count; --ticks takes a whole number (60 per simulated second)")
                 })?;
@@ -1410,6 +1417,25 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
         other => bail!("unknown command `{other}`. Run `amadeo --help` for what there is"),
     };
 
+    // **A capture simulates one tick unless it was told not to.**
+    //
+    // `propagate_transforms` runs in `PostSimulation`, so before any tick has run *no child entity
+    // has a composed `GlobalTransform`* — and every renderer path falls back to the local transform
+    // when one is missing, deliberately, so that forgetting to register propagation is slightly
+    // wrong rather than catastrophic. Together those mean a tick-0 capture draws every parented
+    // camera, light and mesh at its **local** coordinates.
+    //
+    // That is almost never the picture anyone wanted, and it does not look like a mistake: in
+    // session 18 it put a torch beam inside a floor slab, produced a convincingly black room, and
+    // cost most of a session and a withdrawn P0 (Q39). Every game in this repository parents its
+    // camera.
+    //
+    // One tick rather than a warning, because a warning about a picture is read after the picture
+    // is. `--ticks 0` still does exactly what it says — this only fills in a default nobody chose.
+    if matches!(command, Command::Capture { .. }) && !ticks_given {
+        options.ticks = 1;
+    }
+
     Ok((command, options))
 }
 
@@ -1453,7 +1479,10 @@ RUNS IN THE GAME (launches it, asks, exits)
 
 OPTIONS
     -p, --package <name>     override the game named in amadeo.toml
-        --ticks <n>          simulate n ticks before answering (60 = 1 second)
+        --ticks <n>          simulate n ticks before answering (60 = 1 second).
+                             capture defaults to 1 rather than 0: before any tick has run,
+                             nothing parented has a composed transform, so a tick-0 picture
+                             draws every child at its local coordinates
         --from <file>        restore a .snapshot first, then run --ticks more
         --compact            one line of JSON instead of indented
     -h, --help               this
@@ -1483,6 +1512,39 @@ mod tests {
                 other => panic!("expected describe, got {other:?}"),
             }
         }
+    }
+
+    #[test]
+    fn a_capture_simulates_one_tick_by_default() {
+        // Before any tick has run, `propagate_transforms` has not composed a single child — so a
+        // tick-0 picture draws every parented camera and light at its *local* coordinates. Every
+        // game in this repository parents its camera, and the resulting picture does not look like
+        // a mistake: it cost a session and a withdrawn P0 (Q39).
+        let (_, options) = parse_args(&["capture", "shot.png"]).expect("parses");
+        assert_eq!(options.ticks, 1);
+    }
+
+    #[test]
+    fn an_explicit_tick_count_is_never_overridden() {
+        // Including zero, which is the whole reason this is tracked separately from the value.
+        // Someone asking for tick 0 wants tick 0 — most likely to look at exactly the hazard above.
+        let (_, options) = parse_args(&["--ticks", "0", "capture", "shot.png"]).expect("parses");
+        assert_eq!(options.ticks, 0);
+
+        let (_, options) = parse_args(&["--ticks", "300", "capture", "shot.png"]).expect("parses");
+        assert_eq!(options.ticks, 300);
+    }
+
+    #[test]
+    fn no_other_command_gained_a_default_tick() {
+        // The default belongs to `capture` alone. `status` and `snapshot` answer about the world as
+        // it was asked for, and silently advancing one tick would make two of those disagree with
+        // a replay for a reason nobody could see.
+        let (_, options) = parse_args(&["status"]).expect("parses");
+        assert_eq!(options.ticks, 0);
+
+        let (_, options) = parse_args(&["snapshot", "world.snapshot"]).expect("parses");
+        assert_eq!(options.ticks, 0);
     }
 
     #[test]
