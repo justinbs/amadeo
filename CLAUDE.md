@@ -904,11 +904,15 @@ games/               actual games built with the engine
                    it** -- the Scarp and the Atrium are both third person. The `Interactor` is on
                    the **camera**, so the mouse drives the sweep's pitch: where an interactor is
                    parented *is* its aim.
-                   **Capturing it found Q39, which is P0 and blocks the milestone**: punctual lights
-                   do not light a room with no `DirectionalLight` in it. The `spill` directional at
-                   0.12 is a placeholder standing in for that bug, `ceiling_lamp` contributes
-                   nothing, and the beam is `shadows false` because `true` kills all punctual
-                   lighting. Do not tune any of those numbers before fixing Q39.
+                   **Capture it with `--ticks 5`, never at tick 0.** `propagate_transforms` runs in
+                   `PostSimulation`, so a tick-0 capture places every child at its **local**
+                   transform -- which puts this game's beam at `y = -0.1`, inside the floor slab,
+                   where it shadows the whole room with the floor it is buried in. That cost most of
+                   session 18 and a withdrawn P0 (**Q39**). Every game here parents its camera, so
+                   it applies to all of them.
+                   It also names an environment with `sky ""`, so **nothing lights an upward-facing
+                   floor**; the dim `spill` directional is standing in for an ambient and a real sky
+                   is the honest fix.
   scarp            M2.5's exit gate: a generated world you walk on and dig into
                    (`cargo run -p scarp`). **Nothing is authored but the player, the camera and the
                    sun** -- the ground is a function of the seed, streamed in chunks. `Highlands` is

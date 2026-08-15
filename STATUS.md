@@ -26,19 +26,20 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 ## 📬 For the next session — read this box, then the two below it
 
-> ### Start with Q39. It is P0 and it blocks the milestone.
+> ### A capture at tick 0 is not a picture of your game
 >
-> **Punctual lights do not light a room that has no `DirectionalLight` in it.** A shadow-casting
-> spot in such a scene kills punctual lighting entirely — its own included — and a `PointLight`
-> alone lights nothing even with the spot off. `docs/06` has five captures' worth of reproduction
-> and the likely cause (ADR 0058 puts a spot's shadow map in a layer of the array the *cascades*
-> use, and with no directional light there are no cascades).
+> `propagate_transforms` runs in `PostSimulation`, so **at tick 0 no child has a composed
+> `GlobalTransform`** — and every renderer path falls back to the *local* transform when one is
+> missing. `amadeo capture` renders at tick 0 by default, so a capture of any game whose camera or
+> lights are parented shows them at their local coordinates. **Every game here parents its camera.**
+> Use `--ticks 5`.
 >
-> This is not a side issue: M3's exit gate asks for "a dark corridor with a moving flashlight",
-> which **is** a shadow-casting spot in a scene with no sun. Every scene the renderer has ever drawn
-> has a sun in it, including every capture test, which is exactly why nothing caught it.
->
-> Found by capturing `games/warren` and looking at the picture, with the whole suite green.
+> This cost most of a session. **Q39 was filed at P0 against a renderer bug that does not exist**:
+> the Warren's torch beam is a grandchild of the player at local `y = -0.1`, which put it inside the
+> floor slab, where it correctly shadowed the whole room with the floor it was buried in. Q39 is
+> withdrawn and `docs/06` has the full account, including the second wrong claim — a `PointLight`
+> that "lit nothing" was simply dim enough that the ACES toe crushed it to exactly 0/255, and
+> *exactly* zero read as a switch rather than as a small number.
 
 **Everything is pushed through `1e9bc35`.** Runs through `cadfeff` are green **5/5**; the last two
 were still in flight when the session ended. Check with `gh run list` rather than assuming — `gh`
@@ -122,8 +123,8 @@ crates.
 **Every named M3 subsystem and all five named genre modules now exist.** What is left in the
 milestone is mostly the exit gate itself.
 
-0. **Q39, before anything else.** See the box at the top. The exit gate's core requirement does not
-   render today.
+0. **Make `amadeo capture` default to one tick**, or refuse zero with a message saying why — see the
+   box at the top and Q39. Small, and it removes the trap that cost most of session 18.
 1. **M3's exit gate** — `games/warren` now exists and is its spine: one handcrafted room, first
    person, a torch you look at, take and light. Still to come, and it is most of the gate:
    **procedural interiors from handcrafted pieces** (the one genuine design fork left — worth
@@ -146,15 +147,16 @@ milestone is mostly the exit gate itself.
 
 ### The Warren's eyeball numbers, all waiting on Justin
 
-All in `games/warren/scenes/warren.scene`, all one line each, and **all suspect until Q39 is fixed**
-— it is hard to tune lighting when two of the three lights do nothing.
+All in `games/warren/scenes/warren.scene` unless noted, all one line each, and **all only roughly
+tuned** — judge them with `--ticks 5`, because a tick-0 capture of this game is not a picture of it.
 
-- **`spill`, a `DirectionalLight` at intensity 0.12.** A placeholder standing in for the bug, not a
-  lighting decision. It is the only reason the room is visible at all.
-- **`ceiling_lamp` at intensity 12** — currently contributes **nothing**. Left in because it is what
-  the room should be lit by once Q39 is closed.
-- **The torch beam**: 24 intensity, 11°/26° cone, 18 m range, and `shadows false` **because true
-  breaks everything**. A flashlight that casts is most of the atmosphere in a game like this.
+- **`spill`, a `DirectionalLight` at 0.06.** Stands in for light leaking from elsewhere, so the room
+  is navigable before you find the torch. It is doing an ambient's job and there is a real question
+  under it: this game names an environment with `sky ""`, so **nothing lights an upward-facing floor
+  at all**. A dim sky would be the honest fix.
+- **`ceiling_lamp` at intensity 14, range 8**, which is what the room is actually lit by.
+- **The torch beam**: `BEAM_INTENSITY` 30 in `lib.rs`, 11°/26° cone, 18 m range, **and it casts** —
+  the shadows work, and a flashlight that casts is most of the atmosphere in a game like this.
 - **Movement**: 2.6 m/s and no jump, which is a horror-pace guess rather than a measured one.
 - **The room**: 12 × 16 × 3 m, one lamp, two crates.
 

@@ -213,7 +213,7 @@ entity torch "Torch"
 entity spill "Spill from somewhere"
   DirectionalLight
     colour 0.72 0.76 0.85
-    intensity 0.12
+    intensity 0.06
     shadow_bias 0.03
     shadow_distance 22.0
     shadow_resolution 1024
@@ -226,12 +226,12 @@ entity spill "Spill from somewhere"
 entity ceiling_lamp "The one working lamp"
   PointLight
     colour 0.85 0.86 0.78
-    intensity 12.0
-    range 7.0
+    intensity 14.0
+    range 8.0
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 2.7 5.0
+    translation 0.0 2.6 2.0
 
 entity player "You"
   CharacterController
@@ -299,7 +299,7 @@ entity player "You"
         range 18.0
         shadow_bias 0.03
         shadow_resolution 1024
-        shadows false
+        shadows true
       Transform
         rotation 0.0 0.0 0.0
         scale 1.0 1.0 1.0

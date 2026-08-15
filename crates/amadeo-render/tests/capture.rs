@@ -1639,3 +1639,86 @@ fn a_spot_light_casts_a_shadow() {
         "outside the blocker's shadow the two should match: {clear_on:?} against {clear_off:?}"
     );
 }
+
+/// A shadow-casting spot light in a scene with **no directional light at all**.
+///
+/// # Why this scene rather than another
+///
+/// Every other capture test here has a `DirectionalLight` in it, and so does every game in the
+/// repository. That left one configuration completely uncovered — and it is exactly the one M3's
+/// exit gate asks for, a dark corridor lit by a moving flashlight. A spot here takes **layer 0** of
+/// the shadow array, where the cascades normally sit, so it is the case where the directional path
+/// and the spot path are most likely to disagree about an index.
+///
+/// The control is the *same light with shadows off*. Nothing occludes this floor, so asking for a
+/// shadow map must not change the picture — and comparing against that rather than against an
+/// absolute value is what stops this passing against a spot the renderer ignored entirely.
+///
+/// # It was written to reproduce a bug that turned out not to exist
+///
+/// Session 18 filed Q39 against a black screen in `games/warren`. This test is what disproved it:
+/// the configuration works. The screen was black because a capture at **tick 0** renders child
+/// transforms that `propagate_transforms` has never composed, so the game's beam — a grandchild of
+/// the player — sat at its local `y = -0.1`, inside the floor slab, and quite correctly shadowed
+/// everything with the floor it was buried in.
+///
+/// The test is worth keeping anyway. It is precisely the coverage gap that made the wrong diagnosis
+/// plausible for as long as it was.
+#[test]
+fn a_shadow_casting_spot_lights_a_scene_that_has_no_sun() {
+    let mut lit = an_unlit_floor();
+    let torch = lit.spawn();
+    // Above the floor and aimed straight down, so the cone lands in the middle of the picture.
+    let mut placement = Transform::at_xyz(0.0, 4.0, 0.0);
+    placement.rotation = [-90.0, 0.0, 0.0];
+    lit.insert(torch, placement);
+    lit.insert(
+        torch,
+        SpotLight {
+            colour: [1.0, 1.0, 1.0],
+            intensity: 60.0,
+            range: 16.0,
+            inner_angle: 14.0,
+            outer_angle: 30.0,
+            shadows: true,
+            ..SpotLight::default()
+        },
+    );
+
+    // The same light with shadows off. It is the control, and it is what says the geometry, the
+    // angles and the intensity are all fine — the *only* difference is the flag.
+    let mut without = an_unlit_floor();
+    let plain = without.spawn();
+    let mut placement = Transform::at_xyz(0.0, 4.0, 0.0);
+    placement.rotation = [-90.0, 0.0, 0.0];
+    without.insert(plain, placement);
+    without.insert(
+        plain,
+        SpotLight {
+            colour: [1.0, 1.0, 1.0],
+            intensity: 60.0,
+            range: 16.0,
+            inner_angle: 14.0,
+            outer_angle: 30.0,
+            shadows: false,
+            ..SpotLight::default()
+        },
+    );
+
+    let (Some(with_shadows), Some(no_shadows)) =
+        (capture(&mut lit, 64, 64), capture(&mut without, 64, 64))
+    else {
+        return;
+    };
+
+    let shadowed = pixel_at(&with_shadows, 32, 32);
+    let plain_pixel = pixel_at(&no_shadows, 32, 32);
+
+    // Nothing occludes this floor, so asking for a shadow map must not change the picture at all.
+    assert!(
+        shadowed[0] as i32 > plain_pixel[0] as i32 - 8,
+        "a spot light with nothing between it and the floor should light that floor whether or not \
+         it casts. With shadows it reads {shadowed:?}; with the same light and shadows off it reads \
+         {plain_pixel:?}"
+    );
+}

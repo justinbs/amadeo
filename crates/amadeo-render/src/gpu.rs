@@ -3497,16 +3497,23 @@ impl RenderBackend for WgpuBackend {
                     0.0,
                 ],
                 light_colour: [light.colour[0], light.colour[1], light.colour[2], 0.0],
-                shadow_params: match shadow {
-                    Some(shadow) => [
-                        1.0 / shadow.resolution.max(1) as f32,
-                        // The flag the shader tests to tell a real shadow map from the placeholder.
-                        1.0,
-                        shadow.count as f32,
-                        0.0,
-                    ],
-                    None => [0.0, 0.0, 0.0, 0.0],
-                },
+                shadow_params: [
+                    // **The texel size of the atlas, not of the cascades.** Both the directional
+                    // path and ADR 0058's spot path use this to step their PCF taps, and they
+                    // sample *one shared array* — so deriving it from the directional light alone
+                    // left it at zero in a scene lit only by a torch, which collapses a spot's 3×3
+                    // filter onto a single tap. `View::shadow_atlas` is the one place that decides
+                    // the array's size, so it is the one place this can honestly come from.
+                    view.shadow_atlas()
+                        .map_or(0.0, |(resolution, _)| 1.0 / resolution.max(1) as f32),
+                    // The flag the shader tests to tell a real *cascade* map from the placeholder.
+                    // Directional-only, deliberately: a spot decides for itself from its own
+                    // `shadow.x`, and folding the two together is what made the two consumers of
+                    // this struct share a switch that only one of them owns.
+                    if shadow.is_some() { 1.0 } else { 0.0 },
+                    shadow.map_or(0.0, |shadow| shadow.count as f32),
+                    0.0,
+                ],
                 cascade_far,
                 cascade_bias,
                 // The camera's world position is the translation column of its world transform —

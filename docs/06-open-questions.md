@@ -116,58 +116,54 @@ tradition of `asset_problems`, `SoundCache::failures` and `Animatable::missing`.
 
 ---
 
-## Q39 · **P0** · Punctual lights do not light a room that has no directional light
+## ~~Q39~~ · **Withdrawn in session 18 — there was no renderer bug.** A capture at tick 0 is not a picture of the game
 
-**Found in session 18, by capturing `games/warren` and looking at it.** Every headless test passed.
-The picture was black.
+Filed at P0 against a black screen in `games/warren`, on two claims. **Both were wrong**, and how
+they were wrong is the part worth keeping.
 
-This is **P0 because it sits on M3's exit gate**, which asks for "a dark corridor with a moving
-flashlight that reads as genuinely atmospheric" — that is, a shadow-casting spot light in a scene
-with no sun, which is exactly the configuration that fails. Every scene the renderer has ever been
-exercised against has a `DirectionalLight` in it: the Atrium, the Scarp, and every capture test.
+### What was claimed, and what is actually true
 
-### The reproduction, which is four captures apart
+1. *"A shadow-casting spot in a scene with no directional light kills punctual lighting."* No. That
+   configuration works, and `a_shadow_casting_spot_lights_a_scene_that_has_no_sun` in
+   `crates/amadeo-render/tests/capture.rs` now pins it.
+2. *"A `PointLight` alone lights nothing."* No. It was far too dim — intensity 12 at 2.7 m against a
+   0.28-albedo carpet, with no ambient reaching the floor and an ACES toe that crushes the result to
+   **exactly** 0/255. "Exactly zero" read as a switch being off when it was a number being small.
 
-`games/warren` is a closed interior: floor, ceiling, four walls, two crates. Lighting is one
-`PointLight` near the ceiling and one `SpotLight` on the camera.
+### The real cause, which is a genuine trap
 
-| Scene | Result |
-|---|---|
-| `PointLight` 5, spot `shadows true` | **black** — nothing lit |
-| `PointLight` **20**, spot intensity 24, `shadows true` | **black, essentially unchanged** |
-| the same, plus a `DirectionalLight` at 0.35 | the room renders correctly |
-| no directional light, spot `shadows` **false** | **the spot's cone lights the far wall** |
-| no directional light, spot off, `PointLight` 20 alone | **black** |
+**`propagate_transforms` runs in `PostSimulation`, so at tick 0 no child has a composed
+`GlobalTransform`.** Every renderer path falls back to the *local* transform when one is missing —
+deliberately, so that forgetting to register propagation is slightly wrong rather than catastrophic.
 
-Two separate faults, and the second is the surprising one:
+`amadeo capture` renders at tick 0 by default. So a capture of any game whose camera or lights are
+parented shows them **at their local coordinates**. The Warren's beam is a grandchild of the player
+at local `y = -0.1`, which put it inside the floor slab — where it quite correctly shadowed the whole
+room with the floor it was buried in. `--ticks 5` renders the game as it actually looks.
 
-1. **A shadow-casting spot in a scene with no directional light kills punctual lighting entirely** —
-   its own included. Turning `shadows` off brings the spot back. This has the shape ADR 0058
-   describes: a spot's shadow map is *a layer of the same array the cascades use*, and with no
-   directional light there are no cascades and presumably no array, so the bind fails or the pass is
-   skipped. `View::shadow_atlas` is named there as the one place that decides layers and size.
-2. **A `PointLight` alone lights nothing**, even with the spot off and shadows off. At intensity 20,
-   range 7, 3 m from a surface with albedo 0.28, it should be plainly visible. It is not. Whether
-   this is the same root cause or a second one is **not yet established**, and finding out is the
-   first thing to do.
+**Every game in this repository parents its camera**, so this affects all of them, and it is why a
+capture can disagree with a running game for reasons that have nothing to do with rendering.
 
-### Why no test caught it
+### What to do about it
 
-Because every test asserts on *numbers a headless run can produce*, and the GPU capture tests all
-draw scenes with a sun. This is `amadeo-look-at-the-output` again, and the third time in this
-project that a green suite has hidden something visible — after the inside-out mesher and the
-shader that only failed under FXC.
+Nothing is broken, so this is a sharp edge to blunt rather than a defect to fix. In rough order of
+value:
 
-**Worth adding with the fix:** a capture test whose scene has *no* directional light. That is one
-line of scene text and it is the entire coverage gap.
+- **`amadeo capture` could default to one tick rather than zero**, or refuse zero with a message
+  saying why. A picture of a world whose hierarchy has never been composed is almost never what the
+  person asking for it wanted.
+- Failing that, it could **warn** when the world holds a `Parent` and no `GlobalTransform`.
 
-### What `games/warren` does meanwhile
+### What did come out of it
 
-It carries a dim `DirectionalLight` called `spill`, at intensity 0.12, so the room is navigable and
-somebody can look at it. **That is a placeholder standing in for a bug, not a lighting decision**,
-and the `ceiling_lamp` beside it currently contributes nothing at all. The torch beam is authored
-`shadows false` for the same reason — a flashlight that casts is most of the atmosphere in a game
-like this, and getting it back is what fixing this buys.
+- **The coverage gap was real.** No capture test had a scene without a `DirectionalLight`, and
+  neither did any game. There is one now, and that gap is what made the wrong diagnosis plausible
+  for as long as it was.
+- **A smaller defect, genuinely fixed.** `shadow_params.x` — the PCF texel size shared by the cascade
+  path and ADR 0058's spot path — was derived from the *directional* light's shadow, so it was `0.0`
+  in a scene lit only by a spot. That collapsed a spot's 3×3 filter onto a single tap: harder shadow
+  edges, not a black screen. It now comes from `View::shadow_atlas`, which is the one place that
+  decides the array's size.
 
 ---
 
