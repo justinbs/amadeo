@@ -396,11 +396,12 @@ in documents nobody is allowed to correct.
 scale. Chosen in session 2 as the smallest genuinely finishable complete game that is also the hardest
 test of the renderer. Reasoning in `00-vision.md` § The first game to actually finish.
 
-1. 🟡 **Complete, not a demo.** Title screen → playable loop → lose state (caught) and win state
+1. ✅ **Complete, not a demo.** Title screen → playable loop → lose state (caught) and win state
    (escape) → pause → save → quit → resume from save. With sound design and music.
-   `games/warren` has the loop, both endings and a HUD. **Missing: the title screen, pause, save and
-   resume, and all of the audio.** `games/atrium` proves every one of those mechanisms, so what is
-   left is wiring rather than building.
+   `games/warren` has all of it: five screens authored in `hud.scene`, both endings, a HUD, a save
+   slot, and a way to start over. The sound is placeholder rather than sound *design* — six
+   generated clips, meant to be replaced by dropping real `.wav` files in with the same ids — and
+   there is no music.
 2. ✅ **Bounded procedural interiors** — assembled from handcrafted room pieces, not one static
    level. **ADR 0071 for the artefact, ADR 0072 for what building it found.** `games/warren`'s
    `layout` binary writes a scene from a seeded room graph over **eleven** prefab pieces, always
@@ -422,8 +423,15 @@ test of the renderer. Reasoning in `00-vision.md` § The first game to actually 
 5. **Atmosphere holds up.** A dark corridor with a moving flashlight that reads as genuinely
    atmospheric. This is the renderer's real exam: dynamic lighting, shadow quality, fog, and a
    post-process stack. If this works, the other two art directions are easier.
-6. **Audio carries weight.** Spatialised sound, occlusion or at least attenuation, reactive music or
-   stingers. Horror lives or dies here, which makes it a good forcing function for the audio system.
+6. 🟡 **Audio carries weight.** Spatialised sound, occlusion or at least attenuation, reactive music
+   or stingers. Horror lives or dies here, which makes it a good forcing function for the audio
+   system.
+   `games/warren` has the spatialisation and the stingers: a **looping breath on the warden**, so
+   distance and direction tell you where it is without seeing it, plus footsteps, a chime and a
+   sting for each ending. Attenuation and panning are kira's, which is why ADR 0059 chose it.
+   **Still open: occlusion** — the warden is exactly as loud through a wall as through a doorway,
+   which in a game made of corridors is the thing most worth fixing next — and reactive music, of
+   which there is none at all.
 7. Built collaboratively: Justin does some of it, Claude does some of it, in the same repo, with clean
    git history and no merge disasters.
 8. Runs at a stable 60fps on this machine, verified against declared budgets.

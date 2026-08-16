@@ -2604,6 +2604,36 @@ door. The ladder, cheapest first, and each rung sees something the one below can
 | A test that stands on the floor | Geometry that is not where the file says |
 | A test that plays the loop | Everything else |
 
+### A snapshot taken before the world is finished records a world that never existed
+
+`games/warren` keeps the world exactly as it loaded so that a run can be started over, and captured
+it at the end of `build_from_scene`. Restoring it failed with *"something about this build differs
+from the one that took the snapshot"* — which was true, and was this: every caller installs an input
+driver **after** `build_from_scene` returns, `amadeo_input::install` inserts `InputState`, and
+`InputState` is a **hashed resource**. So the file described a world that was one resource short of
+any world that ever ran, and ADR 0069's integrity check refused it.
+
+Two things to take from it:
+
+- **A snapshot is of the whole world, including the parts a caller has not added yet.** If you
+  capture one during construction, capture it after *everything* is in — or insert the missing piece
+  yourself first, which is what the Warren does with a default `InputState`.
+- **The check earned its keep on the first thing that was not a deliberate test of it.** It is easy
+  to read an integrity check as ceremony; this one turned a silent, subtly-wrong restore into an
+  error message that named the cause.
+
+### A game with more than one menu must not reimplement "which item is first"
+
+`navigate_focus` deliberately will not seat the highlight when nothing is focused (ADR 0063), so a
+game does it. `games/atrium` wrote its own three-line version and it is correct — because with one
+menu, the only focusable items in the world are the ones that are on screen.
+
+With **three** menus in one scene, two are hidden at any moment, and a highlight inside a hidden one
+is unreachable: the player presses a direction and watches nothing happen. So use
+`amadeo_ui::focusable_in_order`, which is the same list `navigate_focus` walks and already skips
+anything hidden *anywhere above it*. Reimplementing it means the game and the engine can disagree
+about what is reachable, and the disagreement has no symptom.
+
 ### The formatter is a regression test, if something runs it
 
 ADR 0071 said `amadeo fmt --check` on generator output was "a free regression test". Free only if

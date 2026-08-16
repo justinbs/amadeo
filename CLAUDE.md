@@ -607,6 +607,12 @@ crates/
                      `Focus` is a hashed RESOURCE (where the highlight sits is gameplay and a save
                      should restore it); `UiActivated` carries the entity, because the engine does not
                      know what a button MEANS (I4, one level up).
+                     **`focusable_in_order` is public**, because `navigate_focus` deliberately will
+                     not seat the highlight and so a GAME has to -- and a game that reimplements
+                     "which item is first" gets a different answer from the engine's the moment it
+                     forgets that hidden means hidden *anywhere above*. `games/atrium` reimplements
+                     it correctly because it has one menu and the question never arises;
+                     `games/warren` has three and it arises immediately.
                      **Edge-triggered: a held direction moves once.** Key repeat is a *timing*
                      feature and timing is what a fixed tick expresses worst.
                      **Pointer navigation is NOT "a presentation system writing `Focus`", and ADR
@@ -944,6 +950,20 @@ games/               actual games built with the engine
                    **Building it found the defect ADR 0072 fixes**, which had scattered every
                    generated interior across a hundred metres and was invisible to `amadeo check`,
                    to a green suite, and to a capture at tick 1.
+                   **It has the whole shell** (ADR 0065): five screens -- title, playing, paused,
+                   ended, quitting -- all authored in `hud.scene`, with `Menu { screen }` carrying
+                   which screen a menu belongs to so a fourth is a scene edit with no Rust. Save and
+                   resume work, and so does **starting over**, which restores the world exactly as it
+                   loaded from a `FreshStart` **service** -- a resource holding it would be replaced
+                   by the very restore it exists to perform (ADR 0009).
+                   **And it makes a noise** (ADR 0059-0061): six clips from `cargo run -p warren
+                   --bin sounds`, a **spatial breath on the warden** so distance and direction say
+                   where it is, footsteps, a chime, and a sting for each ending. The ears are on the
+                   camera, which in first person is also your head. The generator adds **noise that
+                   loops** -- a band expands additively into whole multiples of the loop frequency
+                   with scattered phases, so it has no seam to click on; the spread across a band is
+                   squared rather than geometric because geometric wants `powf` and this has to
+                   write byte-identical files.
                    Built before the level design because **`FirstPersonCamera` had no game using
                    it** -- the Scarp and the Atrium are both third person. The `Interactor` is on
                    the **camera**, so the mouse drives the sweep's pitch: where an interactor is

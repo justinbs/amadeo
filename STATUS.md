@@ -58,17 +58,25 @@ rather than assuming — `gh` is not on PATH, so prefix with
 
 ### Session 19 in one paragraph
 
-**M3 exit gate item 2 is done rather than demonstrated.** The generator now chooses five
-**landmarks** out of the room graph — start, exit, key, torch, warden — places them as instances of
-eight new content **pieces**, and `games/warren` boots into the generated level. Along the way it
-found the engine defect described in the box above (**ADR 0072**), which had made every generated
-interior wrong since the day the generator was written and was invisible to `amadeo check`, to a
-green test suite, and to a capture taken at tick 1.
+**M3's exit gate went from two items to five.** Item 2 (bounded procedural interiors) is done rather
+than demonstrated, item 1's shell exists, and item 6 (audio) is built. What is left of the gate is
+**item 5, atmosphere**, plus the parts of item 1 that are wiring rather than building.
 
-`scenes/warren.scene` survives as the handcrafted room and now instances the same eight pieces, so
-each of them has two users. The tests split the same way: the loop tests play the handcrafted room
-because they are about *rules*, and `the_level_is_a_level.rs` plays the generated one and ends by
-walking out of it.
+The generator now chooses five **landmarks** out of the room graph — start, exit, key, torch, warden
+— places them as instances of eleven content **pieces**, and `games/warren` boots into the generated
+level. `scenes/warren.scene` survives as the handcrafted room and instances the same pieces, so each
+has two users. The game has a title screen, a pause menu, save and resume, and a way to start over;
+it has a room tone, footsteps, a chime, two stings, and a **spatial breath on the warden** so you can
+tell where it is without seeing it.
+
+Along the way it found the engine defect in the box above (**ADR 0072**), which had made every
+generated interior wrong since the day the generator was written and was invisible to `amadeo check`,
+to a green test suite, and to a capture taken at tick 1.
+
+**Three engine changes, all small and all forced by a game wanting something:** scenes compose their
+hierarchy at load, physics stores a body's pose in its own space, and `amadeo_ui::focusable_in_order`
+is public because a game with more than one menu has to seat the focus and must not reimplement the
+visibility rule.
 
 ### The three things worth not rediscovering, session 19
 
@@ -85,6 +93,13 @@ walking out of it.
   now sharing the same pieces — located the fault in ten minutes. The second time, `render.describe`
   and a printed position settled in one run what three paragraphs of arithmetic had not. This is
   session 18's lesson 4 applied rather than restated.
+- **And a fourth, which is the diagnostic tools paying for themselves.** Both of the session's
+  silent failures were named by a `describe` in one line. `amadeo audio` said "nothing in the world
+  has an `AudioListener`" rather than the true and useless "there are no voices" — ADR 0060's
+  ordering rule catching a real fault. And ADR 0069's save integrity check refused a snapshot taken
+  before `amadeo_input::install` adds `InputState`, saying that something about the build differed
+  from the one that took it. It did: the file recorded a world that never quite existed. **Both of
+  those were checks written for a hypothetical and earned on a real mistake within a session.**
 
 ### Session 18 in one paragraph
 
@@ -180,9 +195,16 @@ milestone is mostly the exit gate itself.
      plays it through. **What is left here is content, not mechanism**: one room shell, one wall, one
      doorway, and a level that reads as a grid because it is one. Rotation of pieces is the obvious
      next step and ADR 0071 deliberately left it out.
-   - **A title screen** and the rest of item 1's shell. `games/atrium` proves save and resume; the
-     Warren has not wired it up.
-   - **Audio** (item 6). Horror lives there and this game is silent.
+   - ~~A title screen~~ and ~~the rest of item 1's shell~~ — **done.** Five screens: title, playing,
+     paused, ended, quitting, all authored in `hud.scene` and all driven by `Menu { screen }` so
+     that a fourth menu is a scene edit with no Rust. Save and resume work, and so does starting
+     over, which restores the world exactly as it loaded.
+   - ~~Audio~~ (item 6) — **done.** Six sounds from `cargo run -p warren --bin sounds`, a spatial
+     breath on the warden, footsteps, a chime and two stings. **Placeholders**: drop a real `.wav`
+     in with the same id and nothing else changes.
+   - **Atmosphere** (item 5) is now the whole of what is left, and it is the renderer's real exam:
+     "a dark corridor with a moving flashlight that reads as genuinely atmospheric". The torch
+     casts and the shadows work; what is missing is fog, and a sky (see the `spill` note below).
    - ~~A HUD~~ — **done**: two lines authored in the scene, saying what is in reach and how the run
      ended. **Its pixels are unverified in this game**, and that is worth knowing: the content is
      tested headlessly and `amadeo-ui` has its own draw tests, but nothing has captured this HUD on
@@ -241,6 +263,19 @@ The older ones, unchanged:
   player's authored speed out of the scene rather than repeating it.
 - **The handcrafted room**: 12 × 16 × 3 m, one lamp, two crates. No longer what the game boots into,
   but still what the rule tests play and still where the pieces were cut from.
+
+**The sounds, all new and all placeholders** — the descriptions are a table of frequencies at the top
+of `games/warren/src/bin/sounds.rs`, and re-running it rewrites the `.wav` files:
+
+- **`warden_breath`, peak 0.55, four seconds** — the one that matters. A slow low pulse with breath
+  over it, spatial, so distance and direction tell you where the warden is. **Four seconds so the
+  pulse is slow**; a shorter loop reads as machinery. If a chase feels unfair, this is the knob.
+- **`warren_tone`, peak 0.14** — the room, lower and emptier than the Atrium's, non-spatial.
+- **`footstep`, peak 0.4, and `STRIDE` 0.95 m** — how far you walk between steps. Set by arithmetic
+  against the authored 2.6 m/s rather than by ear, which is the honest description of it.
+- **`caught` at 0.75 and `escaped` at 0.5** — the two endings. `caught` is a tritone and is the one
+  sound in the game allowed to be unpleasant.
+- **`taken`, peak 0.45** — picking something up.
 
 ### One caution that stands, and one that is retired
 
