@@ -33,3 +33,7 @@ Desktop.ini
 # Profiling output
 *.trace
 *.chrometrace
+
+# Save files written by a game or by its tests. Where these should actually live is Q38;
+# until that is decided they land in the working directory, which is the repository root.
+*.save

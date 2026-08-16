@@ -291,6 +291,12 @@ obvious. A redirect describes the *game's* history, so shipping it with the buil
 reading — but that means it has to be found through the asset root rather than beside the save, which
 is a different lookup from the one written today.
 
+**Session 19 gave it a second user and nudged the priority.** `games/warren` writes `warren.save` and
+`warren.redirects` the same way, which means two games now duplicate the same placeholder — and one
+of them has a **test** that writes a save file into the working directory, so `cargo test` leaves
+litter in the repository root. That is the first concrete cost of not deciding, and it is small: the
+test removes its own file, and would not have to if there were a place for them.
+
 ---
 
 ## Q36 · P2 · A pointer cannot select a menu item the way ADR 0063 assumed
