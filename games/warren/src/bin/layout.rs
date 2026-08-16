@@ -50,6 +50,27 @@ fn main() -> anyhow::Result<()> {
     );
 
     let layout = warren::lay_out(seed, rooms);
+
+    // **The gate that did not exist, and the reason a bad level shipped.**
+    //
+    // Every earlier check asked whether a layout was *valid* — connected, looped, byte-stable. None
+    // asked whether it was any good, so seed 20250815 went in with the key one door from the door it
+    // opens and nothing anywhere noticed: it loaded, it validated, the whole suite was green, and the
+    // capture was a room. A bad layout is indistinguishable from a good one unless something says
+    // what good means.
+    //
+    // It **refuses** rather than warning. A warning printed by a tool that then does the thing anyway
+    // is a warning nobody reads, and this one is being added precisely because nobody looked.
+    let shortcomings = layout.shortcomings();
+    if !shortcomings.is_empty() {
+        eprintln!("seed {seed} makes a poor level and was not written:");
+        for problem in &shortcomings {
+            eprintln!("  - {problem}");
+        }
+        eprintln!("\nTry another seed. Most work; this one is a bad draw.");
+        std::process::exit(1);
+    }
+
     let scene = warren::to_scene(&layout);
 
     if let Some(parent) = path.parent() {

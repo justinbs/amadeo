@@ -482,3 +482,54 @@ fn the_generated_door_is_where_the_layout_says_it_is() {
         "the door is at {door:?}, and the exit room spans {half} either side of ({cx}, {cz})"
     );
 }
+
+// --- The level is a good one, not merely a valid one --------------------------------------------
+
+#[test]
+fn the_shipped_level_has_no_shortcomings() {
+    // **The test whose absence let a bad level ship.** Everything else in this file checks that the
+    // generator produces something *valid* — connected, looped, byte-stable, one of each piece.
+    // Seed 20250815 passed every one of those and put the key one door from the door it opens, so a
+    // player walked ninety-six metres in a straight line and used the key next door to the exit.
+    //
+    // A bad layout is indistinguishable from a good one from the outside: it loads, it validates,
+    // the suite is green and the capture is a room. The only thing that can tell them apart is a
+    // rule written down.
+    assert_eq!(
+        shipped().shortcomings(),
+        Vec::<String>::new(),
+        "the seed this game ships with makes a level that is not worth playing"
+    );
+}
+
+#[test]
+fn the_generator_finds_a_playable_layout_for_most_seeds() {
+    // The control. A gate that almost every seed fails is not a quality bar, it is a broken
+    // generator — and one almost every seed passes is not a bar at all. Both failure modes are worth
+    // catching, so this asserts a band rather than a floor.
+    let good = (0..120u64)
+        .filter(|seed| lay_out(*seed, GENERATED_ROOMS).shortcomings().is_empty())
+        .count();
+    assert!(
+        (30..=110).contains(&good),
+        "{good} of 120 seeds make a playable level, which is either too few to be usable or too \
+         many for the check to mean anything"
+    );
+}
+
+#[test]
+fn the_key_is_a_journey_from_the_door_it_opens() {
+    // The specific regression. Stated as a distance rather than through `shortcomings`, so that
+    // relaxing the gate later cannot quietly relax this.
+    let layout = shipped();
+    let from_exit = layout.distances_from(layout.landmarks.exit);
+    let steps = from_exit
+        .iter()
+        .find(|(cell, _)| *cell == layout.landmarks.key)
+        .map(|(_, steps)| *steps)
+        .expect("the key is reachable from the exit");
+    assert!(
+        steps >= 3,
+        "the key is {steps} door(s) from the exit, which is a lock with its key taped to it"
+    );
+}

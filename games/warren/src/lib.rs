@@ -95,7 +95,14 @@ pub const GENERATED_SCENE: &str = include_str!("../scenes/generated.scene");
 /// Recorded here as well as in the scene's own name so that a test can regenerate the shipped level
 /// and compare — which is what stops the committed file drifting away from the generator that is
 /// supposed to produce it.
-pub const GENERATED_SEED: u64 = 20_250_815;
+///
+/// **Chosen rather than picked**, which the previous one was not. The date-shaped seed this game
+/// shipped with produced eight rooms in a dead-straight ninety-six-metre line with the key one door
+/// from the exit — a bad draw that nothing caught, because nothing had an opinion about what a good
+/// layout was. `Layout::shortcomings` now has one, `--bin layout` refuses a seed that fails it, and
+/// this is the first seed that passes: fourteen rooms over seven cells by five, an eleven-door
+/// journey, and the key ten doors from the door it opens.
+pub const GENERATED_SEED: u64 = 3;
 
 /// How many rooms [`GENERATED_SCENE`] was asked for. The generator may add one to close a loop.
 pub const GENERATED_ROOMS: usize = 14;
@@ -1000,6 +1007,71 @@ impl Layout {
             / 2
     }
 
+    /// Everything about this layout that would make it a poor level to play, in plain sentences.
+    ///
+    /// # Why a generator needs this and why it did not have it
+    ///
+    /// `is_connected` and `has_loop` check that a layout is *valid*. Nothing checked that it was any
+    /// **good** — and the seed this game shipped with was a bad draw: the key landed one door from
+    /// the door it opens, so a player walked ninety-six metres in a straight line, picked the key up
+    /// next door to the exit, and used it. There was no fetch in the level at all.
+    ///
+    /// It shipped because a bad layout looks exactly like a good one from the outside. It loads, it
+    /// validates, every test passes, and the capture is a room. **The only thing that can tell them
+    /// apart is a rule written down**, which is what this is.
+    ///
+    /// Returned as sentences rather than a `bool` because "this seed is bad" is not actionable and
+    /// "the key is 1 door from the exit; it should be at least 3" is.
+    #[must_use]
+    pub fn shortcomings(&self) -> Vec<String> {
+        let mut found = Vec::new();
+        let marks = self.landmarks;
+        let from_start = distances(&self.rooms, marks.start);
+        let from_exit = distances(&self.rooms, marks.exit);
+        let steps = |table: &[((i32, i32), u32)], cell| steps_to(table, cell).unwrap_or(0);
+
+        if !self.is_connected() {
+            found.push("some rooms cannot be reached from the start".to_string());
+        }
+        if !self.has_loop() {
+            found.push(
+                "there is no loop, so every dead end has to be backtracked out of".to_string(),
+            );
+        }
+
+        // **The one that shipped.** A key beside the door it opens is a lock with its own key taped
+        // to it. Three doors is not far; it is far enough that fetching it is a journey.
+        let key_to_exit = steps(&from_exit, marks.key);
+        if key_to_exit < 3 {
+            found.push(format!(
+                "the key is {key_to_exit} door(s) from the exit; it wants at least 3, or opening \
+                 the door is not something the player travelled for"
+            ));
+        }
+
+        // A key you trip over on the way out of the first room is not found, it is handed to you.
+        let key_from_start = steps(&from_start, marks.key);
+        if key_from_start < 3 {
+            found.push(format!(
+                "the key is {key_from_start} door(s) from the start, which is close enough to pick \
+                 up before the level has begun"
+            ));
+        }
+
+        // Two objectives in one room is one room doing two jobs and every other room doing none.
+        if marks.key == marks.torch {
+            found.push("the key and the torch are in the same room".to_string());
+        }
+
+        // The whole journey. Anything shorter is a corridor with a door at the end.
+        let journey = steps(&from_start, marks.exit);
+        if journey < 4 {
+            found.push(format!("the exit is only {journey} door(s) from the start"));
+        }
+
+        found
+    }
+
     /// Whether the layout contains a cycle — a route out and back that repeats no door.
     ///
     /// **The property ADR 0071 asks for by name.** For a connected graph this is just "more doors
@@ -1202,6 +1274,30 @@ fn distances(rooms: &[PlacedRoom], origin: (i32, i32)) -> Vec<((i32, i32), u32)>
     found
 }
 
+/// The highest-scoring item, with ties going to the **first** — which, since every table here is
+/// sorted by cell, means the lowest cell.
+///
+/// # Why not `max_by_key`
+///
+/// Because `max_by_key` returns the **last** maximum, and several comments in this file claimed the
+/// opposite ("ties go to the lowest cell", "the lowest cell wins a tie"). They were wrong, and it
+/// was not cosmetic: the key-placement rule below ties on every room in a branchless layout, so the
+/// tie-break *was* the rule, and it silently chose the room with the highest coordinate.
+///
+/// Written out rather than reached for with `min_by_key` on a negated score, which would need signed
+/// arithmetic on unsigned step counts and would be the sort of cleverness that hides this again.
+fn best<T, K: Ord>(items: impl Iterator<Item = T>, score: impl Fn(&T) -> K) -> Option<T> {
+    let mut best: Option<(K, T)> = None;
+    for item in items {
+        let key = score(&item);
+        match &best {
+            Some((current, _)) if *current >= key => {}
+            _ => best = Some((key, item)),
+        }
+    }
+    best.map(|(_, item)| item)
+}
+
 /// How far `cell` is from wherever a distance table was measured, if it was reached at all.
 fn steps_to(table: &[((i32, i32), u32)], cell: (i32, i32)) -> Option<u32> {
     table
@@ -1226,20 +1322,38 @@ fn choose_landmarks(rooms: &[PlacedRoom]) -> Landmarks {
     let start = START;
     let from_start = distances(rooms, start);
 
-    let exit = from_start
-        .iter()
-        .max_by_key(|(_, steps)| *steps)
-        .map_or(start, |(cell, _)| *cell);
+    let exit = best(from_start.iter(), |(_, steps)| (*steps, 0)).map_or(start, |(cell, _)| *cell);
     let from_exit = distances(rooms, exit);
 
-    // The biggest detour: furthest from the start and from the exit *at once*. Everywhere on a
-    // shortest route between the two scores the same total, so the winner is off that route
-    // whenever anywhere is — which is the whole point of fetching a key.
-    let key = from_start
-        .iter()
-        .filter(|(cell, _)| *cell != start && *cell != exit)
-        .max_by_key(|(cell, steps)| steps + steps_to(&from_exit, *cell).unwrap_or(0))
-        .map_or(exit, |(cell, _)| *cell);
+    // **Two scores, and the second one is the fix.**
+    //
+    // The first is the detour: furthest from the start and from the exit *at once*. Everywhere on a
+    // shortest route between the two scores the same total, so a room that scores higher is off that
+    // route — which is the whole point of fetching a key.
+    //
+    // That is right when the graph has branches and **silently useless when it does not**. A layout
+    // that is a tree plus one closing edge, with both arcs the same length, gives *every* room the
+    // same total — so the choice falls entirely to the tie-break, and the tie-break used to be
+    // whatever `max_by_key` happened to return. It returns the **last** maximum, the table is sorted
+    // by cell, so the winner was the highest coordinate: reliably a room near the exit.
+    //
+    // On the seed this game shipped with, that put the key **one door from the door it opens**. The
+    // level had no fetch in it at all, and nothing noticed, because the rule's *docs* said the
+    // opposite and no test compared the two.
+    //
+    // So the second score is distance from the exit. When the detour is real it changes nothing;
+    // when every room ties, it turns "somewhere near the exit" into "as far from the exit as this
+    // layout allows", which is the best a branchless graph can do.
+    let key = best(
+        from_start
+            .iter()
+            .filter(|(cell, _)| *cell != start && *cell != exit),
+        |(cell, steps)| {
+            let from_the_exit = steps_to(&from_exit, *cell).unwrap_or(0);
+            (steps + from_the_exit, from_the_exit)
+        },
+    )
+    .map_or(exit, |(cell, _)| *cell);
 
     // One door from the start, in `Side::ALL` order. A one-room level puts it underfoot.
     let torch = room_at(rooms, start)
