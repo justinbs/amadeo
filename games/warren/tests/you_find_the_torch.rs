@@ -7,6 +7,14 @@
 //! **first-person** arrangement composes. The `Interactor` is on the camera, the camera is a child
 //! of the character, the pitch comes from the mouse, and the bag is on the character. Every one of
 //! those is a seam, and `games/atrium` exercises none of them because it is third person.
+//!
+//! # Against the handcrafted room, deliberately
+//!
+//! The game boots into a generated level and `the_level_is_a_level.rs` plays that one. What is being
+//! proved here is an *arrangement*, not a level, and the handcrafted room is the one whose
+//! coordinates are written down — "walk north for four hundred ticks and hit a wall" is a sentence
+//! about a seam only when the room has a wall to the north. In a generated interior it is a sentence
+//! about which side the generator happened to put a doorway on.
 
 use amadeo_app::App;
 use amadeo_camera::{FirstPersonCamera, LOOK, LOOK_Y};
@@ -21,7 +29,7 @@ use amadeo_transform::Transform;
 use warren::{BEAM_INTENSITY, TORCH, eyes, holding_torch, is_stored, player, prompt};
 
 fn room() -> App {
-    let mut app = warren::build_simulation().expect("the room builds");
+    let mut app = warren::build_handcrafted().expect("the room builds");
     amadeo_input::install(
         &mut app.world,
         InputDriver::new(Box::new(ScriptedSource::new())),

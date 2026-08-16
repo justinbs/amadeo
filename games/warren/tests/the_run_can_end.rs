@@ -4,8 +4,19 @@
 //!
 //! Item 1's middle clause ("playable loop → lose state (caught) and win state (escape)") and item 3
 //! ("at least one pursuing entity with distinct AI states, driven by `mod-behaviour`"). Not the
-//! title screen, not the procedural interiors, and not the save loop — `games/atrium` proves that
-//! one and this game has not needed it yet.
+//! title screen and not the save loop — `games/atrium` proves that one and this game has not needed
+//! it yet.
+//!
+//! # It plays the handcrafted room, deliberately
+//!
+//! The game boots into a *generated* level and `the_level_is_a_level.rs` is the file that plays it.
+//! Everything here is about the **rules** — a locked door, a pursuit, an ending that sticks — and
+//! rules are easier to state against a room whose coordinates are written down. Being able to say
+//! "stand at `-4, 1, -6.4`" rather than "find the door and work out which side of it to stand on"
+//! is worth a great deal in a test whose subject is something else.
+//!
+//! Both files matter and neither replaces the other: this one would still pass if the generator
+//! stopped placing a door, and that one would still pass if the door never locked.
 //!
 //! # The endings are driven, not asserted into place
 //!
@@ -24,7 +35,7 @@ use amadeo_transform::Transform;
 use warren::{KEY, Outcome, WARDEN_SIGHT, Warden, outcome, player};
 
 fn room() -> App {
-    let mut app = warren::build_simulation().expect("the room builds");
+    let mut app = warren::build_handcrafted().expect("the room builds");
     amadeo_input::install(
         &mut app.world,
         InputDriver::new(Box::new(ScriptedSource::new())),

@@ -7,7 +7,8 @@
 //! WASD to walk, the mouse to look, F to take what is in front of you, Escape to quit.
 //!
 //! See the crate docs in `lib.rs` for what this is *for*. The short version: the first-person camera
-//! rig has existed since session 17 and no game had ever used it.
+//! rig has existed since session 17 and no game had ever used it, and the level you walk around in
+//! is generated (ADR 0071) rather than authored.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -167,7 +168,7 @@ impl ApplicationHandler for Warren {
         // To **stderr**, not stdout: stdout is the agent protocol (ADR 0016).
         eprintln!("Amadeo — the Warren.");
         eprintln!("WASD to walk, the mouse to look, F to take what is in front of you.");
-        eprintln!("The torch is on the near crate. Escape to quit.");
+        eprintln!("The torch is one room away. Find the key, then find the door. Escape to quit.");
 
         self.running = Some(Running {
             window,

@@ -34,13 +34,15 @@ fn main() -> anyhow::Result<()> {
         Some(raw) => raw.parse().map_err(|_| {
             anyhow::anyhow!("`{raw}` is not a seed; it takes a whole number, as in `20250815`")
         })?,
-        None => 20_250_815,
+        // The shipped level's own seed, so running this with no arguments rewrites `generated.scene`
+        // as it already is rather than replacing the level the game plays with a different one.
+        None => warren::GENERATED_SEED,
     };
     let rooms: usize = match arguments.get(1) {
         Some(raw) => raw.parse().map_err(|_| {
             anyhow::anyhow!("`{raw}` is not a room count; it takes a whole number, as in `14`")
         })?,
-        None => 14,
+        None => warren::GENERATED_ROOMS,
     };
     let path = arguments.get(2).map_or_else(
         || PathBuf::from("games/warren/scenes/generated.scene"),

@@ -4,28 +4,44 @@
 //! cargo run -p warren
 //! ```
 //!
-//! WASD to walk, the mouse to look, F to use what is in front of you. The torch is on the near
-//! crate; picking it up lights the beam.
+//! WASD to walk, the mouse to look, F to use what is in front of you. The torch is one room away;
+//! picking it up lights the beam.
 //!
 //! # What exists so far, and what does not
 //!
-//! **One handcrafted room, and a loop you can win and lose.** Find the torch, find the key, reach
-//! the door — and the warden is looking for you. That is `docs/05`'s exit gate items 1 (a playable
-//! loop with a win and a lose state) and 3 (a pursuing entity with distinct AI states, driven by
-//! `mod-behaviour`).
+//! **A generated interior with a loop you can win and lose.** Wake up, find the torch next door,
+//! find the key, reach the door — and the warden is looking for you. That is `docs/05`'s exit gate
+//! items 1 (a playable loop with a win and a lose state), 2 (bounded procedural interiors) and 3 (a
+//! pursuing entity with distinct AI states, driven by `mod-behaviour`).
 //!
 //! A HUD says what is in reach and how the run ended, authored in the scene like everything else.
 //!
-//! **Still missing, and it is most of the gate**: bounded procedural interiors assembled from
-//! handcrafted room pieces (**Q40** — the artefact question comes before the algorithm), a title
-//! screen, and audio. Save and resume are not wired up either; `games/atrium` proves that mechanism
-//! and this game has not needed it.
+//! **Still missing**: a title screen, audio, and the atmosphere pass. Save and resume are not wired
+//! up either; `games/atrium` proves that mechanism and this game has not needed it.
 //!
-//! # Why this room exists now rather than after the level design
+//! # A level is a graph, a set of landmarks, and a pile of pieces
+//!
+//! `lay_out` picks the rooms and the doors between them, then chooses five [`Landmarks`] out of the
+//! graph — where you start, where the way out is, and where the key, the torch and the warden go.
+//! `to_scene` renders all of that as text. Every entity it emits is an instance of a **piece** in
+//! `assets/pieces/`, so moving a lamp is an edit to `room_lamp.scene` and reaches every level ever
+//! generated.
+//!
+//! The generator writes a file and stops (ADR 0071 §1), so the level the game plays is
+//! `scenes/generated.scene` — committed, diffable, and editable by hand. `--bin layout` rewrites it.
+//!
+//! # Why the handcrafted room still exists
+//!
+//! `scenes/warren.scene` is where every content piece was cut from, and it is now a *second user*
+//! for each of them: a change to `way_out.scene` that breaks a level shows up in two scenes rather
+//! than one. It is also the room whose coordinates are written down, which is why the tests about
+//! the game's **rules** play it and only `the_level_is_a_level.rs` plays the generated one.
+//!
+//! # Why this game exists at all
 //!
 //! Two modules had never been used by a game, which is the "designed against zero users" risk this
 //! project keeps naming. `games/atrium` retired that for `amadeo-interaction`. This retires it for
-//! **`FirstPersonCamera`**, which has been built since session 17 with no game behind it — the
+//! **`FirstPersonCamera`**, which had been built since session 17 with no game behind it — the
 //! Scarp and the Atrium are both third person.
 //!
 //! It also cashes the thing session 18 got wrong twice over. An `Interactor` sweeps along its own
@@ -35,8 +51,9 @@
 //!
 //! # Everything in it is a text file
 //!
-//! `scenes/warren.scene` is the whole room — walls, ceiling, crates, the torch, the player and the
-//! camera. `amadeo check games/warren/scenes/warren.scene` validates the lot.
+//! `amadeo check -p warren games/warren/scenes/generated.scene` validates the generated level, and
+//! `amadeo capture -p warren --ticks 5` draws it. **`check` is not a load** — it says nothing about
+//! whether the floor is under the player, which is why `the_level_is_a_level.rs` stands on it.
 
 use amadeo_app::{App, Stage, system};
 use amadeo_behaviour::{Behaviour, Facts};
@@ -62,8 +79,30 @@ use amadeo_ui::{
 /// Where this game's assets live, relative to the project root (ADR 0022).
 const ASSET_DIRECTORY: &str = "games/warren/assets";
 
-/// The scene the game starts in, compiled in so the binary runs from any directory.
-const SCENE: &str = include_str!("../scenes/warren.scene");
+/// The level the game plays: a generated interior, committed as text (ADR 0071).
+///
+/// Compiled in so the binary runs from any directory. Rewrite it with
+/// `cargo run -p warren --bin layout` and the change arrives in a reviewable diff, which is the
+/// whole reason a generated level is a file.
+pub const GENERATED_SCENE: &str = include_str!("../scenes/generated.scene");
+
+/// The seed [`GENERATED_SCENE`] was made from.
+///
+/// Recorded here as well as in the scene's own name so that a test can regenerate the shipped level
+/// and compare — which is what stops the committed file drifting away from the generator that is
+/// supposed to produce it.
+pub const GENERATED_SEED: u64 = 20_250_815;
+
+/// How many rooms [`GENERATED_SCENE`] was asked for. The generator may add one to close a loop.
+pub const GENERATED_ROOMS: usize = 14;
+
+/// The one handcrafted room, which is no longer what the game boots into.
+///
+/// Kept, and worth keeping. It is where every content piece was cut from, it is the only place the
+/// lighting and the spacing were tuned by eye, and it is a second user for each piece — so a change
+/// to `way_out.scene` that breaks a level shows up in two scenes rather than one. `build_handcrafted`
+/// loads it.
+pub const HANDCRAFTED_SCENE: &str = include_str!("../scenes/warren.scene");
 
 /// A fixed seed, so two runs of the same inputs are the same run.
 const DEFAULT_SEED: u64 = 0x7761_7272_656e_0001;
@@ -159,12 +198,34 @@ pub fn carry_the_torch(world: &mut World) {
     }
 }
 
-/// The room, with no window and no GPU — what the agent and the tests drive.
+/// The generated Warren, with no window and no GPU — what the agent and the tests drive.
 ///
 /// # Errors
 ///
 /// If a component fails to register, the assets will not scan, or the scene will not load.
 pub fn build_simulation() -> anyhow::Result<App> {
+    build_from_scene(GENERATED_SCENE)
+}
+
+/// The one handcrafted room instead, for tests about the *rules* rather than about the level.
+///
+/// # Errors
+///
+/// Whatever [`build_from_scene`] returns.
+pub fn build_handcrafted() -> anyhow::Result<App> {
+    build_from_scene(HANDCRAFTED_SCENE)
+}
+
+/// Builds the game around whichever scene text it is handed.
+///
+/// Both levels need exactly the same registrations, systems and services — they differ only in
+/// their geometry — so there is one of this and two callers rather than two of everything. A second
+/// copy is how a generated level ends up missing a system nobody noticed the handcrafted one had.
+///
+/// # Errors
+///
+/// If a component fails to register, the assets will not scan, or the scene will not load.
+pub fn build_from_scene(scene: &str) -> anyhow::Result<App> {
     let mut app = App::with_seed(amadeo_app::requested_seed().unwrap_or(DEFAULT_SEED));
 
     // Everything the scene file names has to be registered before it loads, or the load fails with
@@ -235,8 +296,8 @@ pub fn build_simulation() -> anyhow::Result<App> {
         system(amadeo_input::SAMPLE_INPUT, amadeo_input::sample_input),
     );
 
-    let document = amadeo_scene::parse(SCENE)
-        .map_err(|error| anyhow::anyhow!("games/warren/scenes/warren.scene: {error}"))?;
+    let document = amadeo_scene::parse(scene)
+        .map_err(|error| anyhow::anyhow!("games/warren/scenes/: {error}"))?;
     app.load_scene(&document)?;
 
     // Last in the simulation, so composed transforms reflect where everything finally ended up —
@@ -303,7 +364,7 @@ pub fn build_simulation() -> anyhow::Result<App> {
     Ok(app)
 }
 
-/// The same room with no keyboard either.
+/// The same level with no keyboard either.
 ///
 /// # Errors
 ///
@@ -729,6 +790,43 @@ pub struct PlacedRoom {
     pub cell: (i32, i32),
     /// The sides that lead somewhere, sorted.
     pub doors: Vec<Side>,
+    /// Whether this room's ceiling lamp still works.
+    ///
+    /// **Part of the layout rather than of the writer**, so that [`to_scene`] stays a pure function
+    /// of a [`Layout`] — everything random happens in [`lay_out`], where one seeded `Rng` decides
+    /// the whole level. A writer that rolled its own dice would make "the same layout writes the
+    /// same bytes" a property of nothing.
+    pub lit: bool,
+}
+
+/// The handful of places in an interior that mean something.
+///
+/// # Why these are chosen here rather than by the writer
+///
+/// A room graph is a shape; a *level* is a shape with somewhere to start, somewhere to end, and a
+/// reason to walk between them. Choosing those is graph work — it is all shortest paths — so it
+/// belongs beside the graph and can be tested without producing a single line of text.
+///
+/// Every rule below is a deterministic function of the graph, with ties broken by cell order. No
+/// dice: where the key is has to be *good*, and a die roll cannot tell a detour from a dead end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Landmarks {
+    /// Where the player wakes up. Always the cell the walk began at.
+    pub start: (i32, i32),
+    /// Where the way out is: the room **furthest from the start** by doors walked.
+    pub exit: (i32, i32),
+    /// Where the key is: the room with the largest *detour*, meaning the greatest total distance
+    /// from the start and from the exit at once.
+    ///
+    /// On the shortest route between the two that total is constant, so anything off that route
+    /// scores higher — which is exactly "the key is not on your way to the door".
+    pub key: (i32, i32),
+    /// Where the torch is: one door from the start, so the first thing you do is walk through a
+    /// doorway in the dark and pick up a light.
+    pub torch: (i32, i32),
+    /// Where the warden begins: the room closest to **half way** to the exit, so you meet it on the
+    /// journey rather than at the start or standing on the finish line.
+    pub warden: (i32, i32),
 }
 
 /// A whole interior, as cells and the doors between them.
@@ -738,13 +836,21 @@ pub struct Layout {
     pub seed: u64,
     /// Every room, **sorted by cell** so the output is byte-stable (I2).
     pub rooms: Vec<PlacedRoom>,
+    /// Where the things that make it a level go.
+    pub landmarks: Landmarks,
 }
 
 impl Layout {
     /// The room at a cell, if one was placed there.
     #[must_use]
     pub fn at(&self, cell: (i32, i32)) -> Option<&PlacedRoom> {
-        self.rooms.iter().find(|room| room.cell == cell)
+        room_at(&self.rooms, cell)
+    }
+
+    /// How many doors away each room is from `origin`, as `(cell, doors walked)` sorted by cell.
+    #[must_use]
+    pub fn distances_from(&self, origin: (i32, i32)) -> Vec<((i32, i32), u32)> {
+        distances(&self.rooms, origin)
     }
 
     /// Whether every room can be reached from the first one.
@@ -822,11 +928,11 @@ impl Layout {
 #[must_use]
 pub fn lay_out(seed: u64, count: usize) -> Layout {
     let mut rng = amadeo_core::Rng::new(seed);
-    let mut cells: Vec<(i32, i32)> = vec![(0, 0)];
+    let mut cells: Vec<(i32, i32)> = vec![START];
     let mut doors: Vec<((i32, i32), Side)> = Vec::new();
 
     // The walk. `path` is where it can back up to, which is what stops it dead-ending early.
-    let mut path: Vec<(i32, i32)> = vec![(0, 0)];
+    let mut path: Vec<(i32, i32)> = vec![START];
     while cells.len() < count.max(1) {
         let Some(&here) = path.last() else {
             break;
@@ -906,7 +1012,7 @@ pub fn lay_out(seed: u64, count: usize) -> Layout {
         }
     }
 
-    let rooms = cells
+    let rooms: Vec<PlacedRoom> = cells
         .iter()
         .map(|&cell| {
             let mut open: Vec<Side> = Side::ALL
@@ -914,11 +1020,139 @@ pub fn lay_out(seed: u64, count: usize) -> Layout {
                 .filter(|&side| joined(&doors, cell, side))
                 .collect();
             open.sort_unstable();
-            PlacedRoom { cell, doors: open }
+            PlacedRoom {
+                cell,
+                doors: open,
+                // **The room you wake up in always works; after that it is luck.** Waking in the
+                // pitch dark before you have found the torch is not atmosphere, it is a player who
+                // cannot tell the game has started. `cells` is sorted before this runs, so the
+                // sequence of draws is the same on every machine (I3).
+                lit: cell == START || rng.chance(LAMPS_WORKING),
+            }
         })
         .collect();
 
-    Layout { seed, rooms }
+    let landmarks = choose_landmarks(&rooms);
+    Layout {
+        seed,
+        rooms,
+        landmarks,
+    }
+}
+
+/// The cell every walk begins at, which is also where the player wakes up.
+pub const START: (i32, i32) = (0, 0);
+
+/// The chance that a room other than the start has a working lamp.
+///
+/// **An eyeball number, and the one that decides how dark the Warren is.** Too high and the torch is
+/// pointless; too low and the level is a black maze before you have found it. A room is lit or it is
+/// not, rather than everywhere being dimly lit, because a dark room next to a working one reads as
+/// lighting that has failed in patches — which is a *place*. Uniform gloom reads as a setting.
+pub const LAMPS_WORKING: f32 = 0.45;
+
+/// The room at a cell, in a list that may not be a finished [`Layout`] yet.
+fn room_at(rooms: &[PlacedRoom], cell: (i32, i32)) -> Option<&PlacedRoom> {
+    rooms.iter().find(|room| room.cell == cell)
+}
+
+/// How many doors away each room is from `origin`, as `(cell, doors walked)` sorted by cell.
+///
+/// A plain breadth-first walk, returned as a sorted `Vec` rather than a map. That is deliberate
+/// twice over: a `HashMap` would put iteration order into a generator (trap 2), and over the twenty
+/// rooms this deals in a linear scan beats hashing anyway.
+///
+/// A room the walk cannot reach is **absent** rather than present with a large number, so a caller
+/// that forgets to handle an island gets nothing rather than a wrong answer.
+fn distances(rooms: &[PlacedRoom], origin: (i32, i32)) -> Vec<((i32, i32), u32)> {
+    let mut found: Vec<((i32, i32), u32)> = Vec::new();
+    if room_at(rooms, origin).is_none() {
+        return found;
+    }
+    found.push((origin, 0));
+
+    // A `Vec` plus a read cursor, which is a breadth-first queue without reaching for `VecDeque`.
+    let mut next = 0usize;
+    while next < found.len() {
+        let (cell, steps) = found[next];
+        next += 1;
+        let Some(room) = room_at(rooms, cell) else {
+            continue;
+        };
+        for &side in &room.doors {
+            let neighbour = side.step(cell);
+            if room_at(rooms, neighbour).is_some()
+                && !found.iter().any(|(seen, _)| *seen == neighbour)
+            {
+                found.push((neighbour, steps + 1));
+            }
+        }
+    }
+
+    found.sort_unstable();
+    found
+}
+
+/// How far `cell` is from wherever a distance table was measured, if it was reached at all.
+fn steps_to(table: &[((i32, i32), u32)], cell: (i32, i32)) -> Option<u32> {
+    table
+        .iter()
+        .find(|(seen, _)| *seen == cell)
+        .map(|(_, steps)| *steps)
+}
+
+/// Picks the start, the exit, the key, the torch and the warden's post out of a room graph.
+///
+/// # Every rule is "furthest" or "half way", and a tie goes to the lowest cell
+///
+/// Deterministic all the way down, and — the reason it is worth more than a die roll — *legible when
+/// a level comes out wrong*. "The exit is in the room furthest from the start" is a sentence
+/// somebody can check against a picture. "The generator rolled a four" is not.
+///
+/// Tie-breaking is not an afterthought here. Every table these read is sorted by cell and every
+/// comparison is strict, so the lowest cell wins — which is what makes a layout reproducible rather
+/// than merely repeatable on one machine.
+#[must_use]
+fn choose_landmarks(rooms: &[PlacedRoom]) -> Landmarks {
+    let start = START;
+    let from_start = distances(rooms, start);
+
+    let exit = from_start
+        .iter()
+        .max_by_key(|(_, steps)| *steps)
+        .map_or(start, |(cell, _)| *cell);
+    let from_exit = distances(rooms, exit);
+
+    // The biggest detour: furthest from the start and from the exit *at once*. Everywhere on a
+    // shortest route between the two scores the same total, so the winner is off that route
+    // whenever anywhere is — which is the whole point of fetching a key.
+    let key = from_start
+        .iter()
+        .filter(|(cell, _)| *cell != start && *cell != exit)
+        .max_by_key(|(cell, steps)| steps + steps_to(&from_exit, *cell).unwrap_or(0))
+        .map_or(exit, |(cell, _)| *cell);
+
+    // One door from the start, in `Side::ALL` order. A one-room level puts it underfoot.
+    let torch = room_at(rooms, start)
+        .and_then(|room| room.doors.first().map(|side| side.step(start)))
+        .unwrap_or(start);
+
+    // Half way to the exit, measured in doors walked rather than in metres — a room two doors away
+    // through a loop is nearer than one two cells away through a wall.
+    let half = steps_to(&from_start, exit).unwrap_or(0) / 2;
+    let warden = from_start
+        .iter()
+        .filter(|(cell, _)| *cell != start)
+        .min_by_key(|(_, steps)| steps.abs_diff(half))
+        .map_or(start, |(cell, _)| *cell);
+
+    Landmarks {
+        start,
+        exit,
+        key,
+        torch,
+        warden,
+    }
 }
 
 /// How far apart room centres sit, in world units.
@@ -936,6 +1170,92 @@ pub const DOORWAY_PIECE: &str = "doorway";
 
 /// The prefab a blank wall comes from.
 pub const WALL_PIECE: &str = "wall";
+
+/// The prefab the player, the camera and the torch beam come from.
+pub const PLAYER_PIECE: &str = "player_start";
+
+/// The prefab the door out comes from.
+pub const EXIT_PIECE: &str = "way_out";
+
+/// The prefab the key and the crate it sits on come from.
+pub const KEY_PIECE: &str = "lost_key";
+
+/// The prefab the torch and the crate it sits on come from.
+pub const TORCH_PIECE: &str = "dropped_torch";
+
+/// The prefab a working ceiling lamp comes from.
+pub const LAMP_PIECE: &str = "room_lamp";
+
+/// The prefab the warden comes from.
+pub const WARDEN_PIECE: &str = "warden_post";
+
+/// The prefab the dim light leaking in from elsewhere comes from.
+pub const SPILL_PIECE: &str = "spill";
+
+/// The prefab the two HUD lines come from.
+pub const HUD_PIECE: &str = "hud";
+
+/// Every piece a generated level instances — which is also, once sorted, its `assets` block.
+///
+/// Listed by constant rather than by id on purpose, and **sorted at the point of use** rather than
+/// here: the two orders are not the same, and hand-maintaining a sorted list of ids whose names are
+/// spelled differently from their constants is exactly the sort of thing that goes quietly wrong.
+/// `amadeo fmt --check` on the output is what would have caught it, and did.
+pub const PIECES: [&str; 9] = [
+    DOORWAY_PIECE,
+    HUD_PIECE,
+    KEY_PIECE,
+    LAMP_PIECE,
+    PLAYER_PIECE,
+    ROOM_PIECE,
+    SPILL_PIECE,
+    TORCH_PIECE,
+    WALL_PIECE,
+];
+
+/// How high off the floor the player's body sits when placed.
+///
+/// **A generator constant rather than an authored one, and the exception is worth naming.** Every
+/// other content piece has a root at floor level and authors its own heights in its children, so
+/// that moving a lamp up is an edit to `room_lamp.scene` and nothing else. The player cannot work
+/// that way: an override replaces a whole `Transform`, and the character controller reads and
+/// writes the *local* transform of the entity carrying it — so the player has to be a prefab root
+/// with no parent, and a root's height is whatever the override says.
+pub const PLAYER_STAND: f32 = 1.0;
+
+/// How high off the floor the warden sits when placed.
+///
+/// [`PLAYER_STAND`]'s exception for [`PLAYER_STAND`]'s reason: `watch_for_you`, `move_the_warden`
+/// and `settle_the_run` all read the warden's plain `Transform` and compare it against the player's,
+/// so both have to be unparented roots or those distances are measured in different spaces.
+pub const WARDEN_STAND: f32 = 0.93;
+
+/// How far from a room's centre a prop stands, in world units.
+///
+/// Well inside the twelve-metre cell, so a crate never clips a wall whichever sides that room has.
+const PROP_OFFSET: f32 = 3.2;
+
+/// How far in from a wall's plane the door out sits.
+///
+/// A shade more than the wall's own thickness, so the door reads as set into the opening rather than
+/// as a slab z-fighting with the plaster.
+const DOOR_INSET: f32 = 0.28;
+
+/// The yaw, in degrees, whose forward direction is `side`.
+///
+/// Forward is -Z (ADR 0018), and `Mat4::from_euler_degrees` puts the local +Z axis at
+/// `[sin(yaw), 0, cos(yaw)]` — so forward is `[-sin(yaw), 0, -cos(yaw)]` and the four cardinals fall
+/// out as below. Pinned by a test against the real matrix rather than trusted, because a facing that
+/// is ninety degrees out is entirely plausible and entirely wrong.
+#[must_use]
+pub fn facing(side: Side) -> f32 {
+    match side {
+        Side::North => 0.0,
+        Side::West => 90.0,
+        Side::South => 180.0,
+        Side::East => 270.0,
+    }
+}
 
 /// Turns a [`Layout`] into scene text (ADR 0071 §1).
 ///
@@ -977,7 +1297,7 @@ pub fn to_scene(layout: &Layout) -> String {
 
     // Sorted, because the assets block is (ADR 0021) and byte-stability starts at the header.
     out.push_str("assets\n");
-    let mut pieces = [DOORWAY_PIECE, ROOM_PIECE, WALL_PIECE];
+    let mut pieces = PIECES;
     pieces.sort_unstable();
     for piece in pieces {
         out.push_str(&format!("  {piece}\n"));
@@ -987,7 +1307,7 @@ pub fn to_scene(layout: &Layout) -> String {
     for room in &layout.rooms {
         let (x, z) = (room.cell.0 as f32 * CELL, room.cell.1 as f32 * CELL);
         out.push_str(&format!(
-            "entity {} \"Room\" from \"{ROOM_PIECE}\"\n",
+            "entity {} \"Room\" from {ROOM_PIECE}\n",
             cell_id("room", room.cell)
         ));
         out.push_str(&place(x, 0.0, z, 0.0));
@@ -1022,14 +1342,121 @@ pub fn to_scene(layout: &Layout) -> String {
             };
             let prefix = format!("{}_{}", label.to_lowercase(), side_name(side));
             out.push_str(&format!(
-                "entity {} \"{label}\" from \"{piece}\"\n",
+                "entity {} \"{label}\" from {piece}\n",
                 cell_id(&prefix, room.cell)
             ));
             out.push_str(&place(dx, 0.0, dz, turn));
         }
+
+        // The lamp goes in with its room rather than in a pass of its own, so a room's geometry and
+        // its light sit next to each other in the file a person has to read.
+        if room.lit {
+            out.push_str(&format!(
+                "entity {} \"Lamp\" from {LAMP_PIECE}\n",
+                cell_id("lamp", room.cell)
+            ));
+            out.push_str(&place(x, 0.0, z, 0.0));
+        }
     }
 
-    out
+    write_contents(&mut out, layout);
+
+    // Every entity above is written with a blank line after it, which leaves one too many at the
+    // end. Trimmed here rather than by making the last writer special, so adding a tenth thing to
+    // `write_contents` cannot reintroduce it. `amadeo fmt --check` on the output is what noticed.
+    let trimmed = out.trim_end().to_string();
+    format!("{trimmed}\n")
+}
+
+/// Writes the things that make a shape into a level: a player, a torch, a key, a door, a warden.
+///
+/// Split out of [`to_scene`] because it answers a different question. Everything above places
+/// *geometry* from a room's own four sides; everything here places one thing in one chosen room, and
+/// which room is [`Landmarks`]' answer rather than this function's.
+fn write_contents(out: &mut String, layout: &Layout) {
+    let marks = layout.landmarks;
+    let centre = |cell: (i32, i32)| (cell.0 as f32 * CELL, cell.1 as f32 * CELL);
+
+    // **The player faces the way out of the start room**, which is the cheapest piece of direction a
+    // level can give: you wake up looking at a doorway rather than at plaster.
+    let (sx, sz) = centre(marks.start);
+    let look = layout
+        .at(marks.start)
+        .and_then(|room| room.doors.first().copied())
+        .map_or(0.0, facing);
+    out.push_str(&format!("entity you \"You\" from {PLAYER_PIECE}\n"));
+    out.push_str(&place(sx, PLAYER_STAND, sz, look));
+
+    let (tx, tz) = centre(marks.torch);
+    out.push_str(&format!("entity torch \"Torch\" from {TORCH_PIECE}\n"));
+    out.push_str(&place(tx - PROP_OFFSET, 0.0, tz - PROP_OFFSET, 0.0));
+
+    let (kx, kz) = centre(marks.key);
+    out.push_str(&format!("entity key \"Key\" from {KEY_PIECE}\n"));
+    out.push_str(&place(kx + PROP_OFFSET, 0.0, kz + PROP_OFFSET, 0.0));
+
+    // The door goes **in a wall**, not in the middle of a room, so a side has to be chosen for it.
+    let side = exit_side(layout);
+    let (ex, ez) = centre(marks.exit);
+    let inset = CELL / 2.0 - DOOR_INSET;
+    let (dx, dz) = match side {
+        Side::North => (ex, ez - inset),
+        Side::South => (ex, ez + inset),
+        Side::West => (ex - inset, ez),
+        Side::East => (ex + inset, ez),
+    };
+    out.push_str(&format!(
+        "entity way_out \"The way out\" from {EXIT_PIECE}\n"
+    ));
+    // Facing **into** the room, which is the side's opposite: a door in the north wall is looked at
+    // from the south.
+    out.push_str(&place(dx, 0.0, dz, facing(side.opposite())));
+
+    // Offset like the props rather than dead centre, and for a reason beyond looks: in a layout too
+    // small to have a room that is not the start — a one-room level — the warden's own rule falls
+    // back to the start cell, and a warden standing *inside* the player ends the run before it
+    // begins. A corner it does not share with the torch or the key is the whole fix.
+    let (wx, wz) = centre(marks.warden);
+    out.push_str(&format!(
+        "entity warden \"The warden\" from {WARDEN_PIECE}\n"
+    ));
+    out.push_str(&place(
+        wx + PROP_OFFSET,
+        WARDEN_STAND,
+        wz - PROP_OFFSET,
+        0.0,
+    ));
+
+    // Neither of these is placed anywhere, so neither takes an override — and an override naming a
+    // component its prefab does not carry is refused at load, which is what would happen if the HUD
+    // were handed a `Transform` (ADR 0029). A blank line after each keeps the file's shape uniform.
+    out.push_str(&format!(
+        "entity spill \"Spill from somewhere\" from {SPILL_PIECE}\n\n"
+    ));
+    out.push_str(&format!("entity hud \"HUD\" from {HUD_PIECE}\n\n"));
+}
+
+/// Which side of the exit room the door out is set into.
+///
+/// **An outer side first**, so the way out leads outside rather than into the next room. A room with
+/// four neighbours has none, so a side that is merely walled is the fallback, and a room with four
+/// doors — which needs a loop through every neighbour — falls back to north with a door in it.
+/// All three cases produce a usable level; only the first produces a sensible one.
+#[must_use]
+pub fn exit_side(layout: &Layout) -> Side {
+    let cell = layout.landmarks.exit;
+    let Some(room) = layout.at(cell) else {
+        return Side::North;
+    };
+    Side::ALL
+        .into_iter()
+        .find(|side| layout.at(side.step(cell)).is_none())
+        .or_else(|| {
+            Side::ALL
+                .into_iter()
+                .find(|side| !room.doors.contains(side))
+        })
+        .unwrap_or(Side::North)
 }
 
 /// A scene-safe entity id for a cell, since a negative coordinate cannot go in an identifier.
