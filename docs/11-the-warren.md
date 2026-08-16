@@ -172,9 +172,11 @@ This section is the contract.
 
 ### What it senses
 
-**Sound, and nothing else.** It has no sight model at all — not a cone, not a raycast. This is
-absolute, because the moment sight exists the light-versus-dark trade in §4 becomes a second,
-competing system and neither reads clearly.
+**No sight model at all** — not a cone, not a raycast. This is absolute, because the moment sight
+exists the light-versus-dark trade in §4 becomes a second, competing system and neither reads
+clearly.
+
+**At range, sound and nothing else:**
 
 | The player is | Heard at |
 |---|---|
@@ -187,6 +189,33 @@ competing system and neither reads clearly.
 Surfaces modify it: standing water and steel plate carry further than dust and carpet, by roughly
 half again. That is one number per floor material and it is what makes the flooded section in §4 a
 real cost rather than a description.
+
+### And at arm's length, it checks — which is what stops standing still being invincibility
+
+The table above, alone, is a **hard-off switch on the entire threat**. Standing still is heard
+"never" and there is no sight, so the warden cannot detect a motionless player at *any* range,
+including zero, including in the middle of a lit corridor while it walks through the room. The
+optimal play would be: walk in bursts, freeze the instant the tread stops, repeat. That is not a
+decision, it is a metronome — and it is a strictly better exploit than the "hold walk" one this
+document already fixed once.
+
+The fix is in the fiction rather than bolted on. **It is counting.** An institution counting bodies
+does not scan a room from the doorway; it walks the route and puts its hand on each bunk.
+
+> **The warden checks fixed points on its route — bunks, racking bays, the tally boards — and a
+> player at or beside one is found, silent or not.**
+
+| | |
+|---|---|
+| Check radius | 1.2 m — arm's length, not a room |
+| Pause at a check | ~2 s, and it is audible: the tread stops and something else happens |
+| Checks per section | 4–6, at authored points on the piece, so they are learnable |
+
+Ranged detection stays "sound and nothing else", so §4's trade is untouched. What changes is that
+standing still is now a choice about **where** rather than a free action: the safe spots are the ones
+the warden does not check, and learning which those are is the game's spatial knowledge. It also
+means a check point is a *place with a history* — a bunk that is still made up is a bunk it still
+checks.
 
 ### How it moves
 
@@ -260,38 +289,108 @@ source per fitting and a reduction in how far the warden's own sound carries —
 engine does today. It also makes darkness genuinely *desirable* rather than merely tolerable, which
 the first draft never achieved.
 
+### What "lit" means, and the two things this repair broke
+
+Fixing §4 in isolation broke two other sections, and neither was traced. Both are recorded because
+the failure mode — repair one section, contradict two others — is the same one that produced the
+sense-model contradiction above.
+
+**It broke §3.** That section promises the warden is *never clearly seen*, justified explicitly on
+the engine having no skeletal animation. But three sections became **compulsorily lit**, including
+the one described as where the warden spends most of its patrol — so the design was guaranteeing a
+full-light encounter with a rigid, unanimated mesh sliding at 2.9 m/s, on the critical path, where
+before it was avoidable. That is the single thing most likely to collapse the illusion.
+
+**It broke §9**, which says near-silence is the default and *"a single sound is an event"*. By the
+endgame the landing and three sections would all be humming continuously, so the soundscape at the
+moment of maximum tension would be a drone.
+
+Both are repaired by being precise about one word:
+
+> **"Lit" means a handful of pooled fittings with real dark between them — never an evenly lit
+> space. The warden stays in the dark between the pools.**
+
+- The player is **never in a lit pool at the same time as the warden**, so §3's promise holds. What
+  you see is a shape crossing the edge of a pool, which is the silhouette §3 wants and the only thing
+  the engine can render convincingly.
+- It is what §6 asks for anyway — contrast, not uniform gloom — so this costs nothing it was not
+  already buying.
+- And the hum is **per fitting, spatial, and narrow-band**: a buzz sitting on the tread's own
+  frequency, loud enough to mask that specific sound within a pool and quiet enough that the section
+  is not filled. So a lit section is *quiet with deaf spots*, rather than a drone, and §9's rule
+  survives.
+
+The fiction carries it: the warden avoids the pools because a warden with a lamp of its own has no
+reason to stand under one, and because the boards say the circuits were only ever meant for the
+gangways.
+
 ### What the player is spending
 
 The second thing the first draft got wrong: **nothing was scarce**, so there was a dominant strategy
 and it was "hold walk for twenty minutes". A resource with no scarcity is not a resource, and a
 stealth system whose safe option is permanently affordable is a slow walk rather than a decision.
 
-So the lamp is a **shelter-issue accumulator lamp with a charge**, and it dims as it drains. There
-are charging points, and they are at the isolators.
+So the lamp is a **shelter-issue accumulator lamp with a charge**, and it dims as it drains.
 
-That single object ties the whole loop together: light, route and time become one budget. It is also
-how The Bunker solves the same problem — the scarcity is on the light, not on the darkness — with the
-difference that a charge cannot be hoarded or spent early, so there is no inventory management and no
-counting of jerrycans.
+**It can be switched off, and that has to be said, because everything else hangs from it.** A hand
+lamp obviously can be, and pretending otherwise would be the kind of unstated rule this document
+exists to stop. But if the charge drained *only while the lamp was on*, the player would simply
+switch it off in every lit section — so the number of draining sections would fall as the game
+progressed, and the pressure curve would run **backwards**: tightest at the start when nothing is
+hunting, loosest during the climax.
 
-**Design targets, provisional and to be tuned by play**: a full charge lasts about a third of a
-first run, so the route is planned around three visits to a charging point, and a lamp run flat still
-gives a faint usable glow rather than a black screen — Frictional's rule that a pitch-black image is
-not exciting, applied to the failure case.
+> **The charge drains whenever the lamp is on, or you are moving. Standing in the dark is the only
+> thing that is free.**
+
+That is the same accumulator the shelter issued for a shift underground, and it makes the resource
+agree with the threat rather than fighting it: the safe action is also the cheap one, and both cost
+you the clock.
+
+### Where you can recharge, and why it is the best moment in the design
+
+**Not at the isolators.** The first draft put the charging points on the objectives, which means the
+critical path tops you up for free and the resource never binds on the route — it only bites when
+you leave it. That makes the charge **a tax on exploration**, which is precisely the voluntary risk
+§1 quotes Frictional as the source of the fear. Exactly backwards.
+
+Charging points are on the **wall circuits**, which means they are wherever the fittings are, which
+means:
+
+> **The only places you can recharge are the places you cannot hear.**
+
+Standing in a deaf, humming, lit room, for a stretch of time you cannot shorten, listening to
+nothing, is the best moment this design has. One of the three is deliberately *off* the isolator
+route, so a full run cannot be done without leaving the path once.
+
+**The four numbers, provisional and to be tuned by play:**
+
+| | |
+|---|---|
+| A full charge | 6 minutes of moving-or-lit, against a 20-minute run |
+| A full top-up | 25 seconds, standing at the point |
+| Interruptible | yes, and it keeps what it took — so a partial charge is a real choice |
+| Reusable | yes, unlimited. The scarcity is *time and exposure*, not a consumable |
+
+A lamp run flat still gives a faint usable glow rather than a black screen — Frictional's rule that a
+pitch-black image is not exciting, applied to the failure case.
 
 ### How the three sections differ
 
 The first draft claimed agency and then made the three spurs interchangeable, so the choice of where
 to go first was cosmetic. Each has one concrete, mechanical difference:
 
-| Section | What it costs you |
-|---|---|
-| **The flooded one** (lower cross-passages) | Standing water. **You cannot move quietly at all** — every step carries half again as far. The only safe state is standing still |
-| **The half-lit one** (nearest the substation) | Some fittings still have residual power, so it arrives *already* partly humming. You can see, and you were never able to hear |
-| **The warden's own** (intact, re-racked as archive) | Undamaged, quiet, well ordered — and it is where the warden spends most of its patrol. The easiest section to move through and the likeliest place to meet it |
+The first version of this table gave all three the same cost at different settings — two were
+loudness and the third was a probability — so it was one axis pretending to be three. Each now poses
+a **different kind of question**:
 
-There is no correct order. There is an order that suits how much charge you have left, which is the
-decision the loop exists to produce.
+| Section | The question it asks | What it costs you |
+|---|---|---|
+| **The flooded one** (lower cross-passages) | *Sound* | Standing water: every step carries half again as far, and you cannot move quietly at all. The only silent state is standing still — which §3a has just made a choice about *where* |
+| **The stripped one** (re-racked as archive) | *Search* | Its isolator is unmarked. The racking was renumbered when the archive moved in, so you have to read the boards to work out which bay it is in — with a lamp, in the dark, while something patrols |
+| **The warden's own** (still made up, bunks and all) | *Timing* | Its isolator is behind a bulkhead, and opening a bulkhead is heard **everywhere**. The question is not where it is or how quietly you can reach it. It is *when you are willing to announce yourself* |
+
+There is no correct order. There is an order that suits how much charge you have left and where you
+last heard the tread, which is the decision the loop exists to produce.
 
 ### The three beats
 
@@ -461,7 +560,7 @@ even an unlit wall has two colours in it.
 |---|---|---|---|
 | Ring lining | bone white, `0.62 0.60 0.55` | 0.9 | rust bleeding through at the joints |
 | Floor, dry | dark grey-brown | 0.95 | dust over concrete |
-| Floor, flooded | near-black | 0.25 | the one reflective surface in the game |
+| Floor, flooded | near-black | 0.35, metallic 0.2 | see the note below |
 | Bunk / racking steel | cold grey-green | 0.7 | the institution's own colour |
 | Doors and bulkheads | lead grey | 0.8 | |
 | Signage enamel | bone, with the section letter in black | 0.4 | matches the interface exactly (§8) |
@@ -504,6 +603,31 @@ The layers, and what each is for:
 5. **One practical per chamber that means something** — a lit inspection lamp on the generator, a
    bulkhead light over a door.
 
+### The light budget, which is a hard engine limit and has to be designed to
+
+`MAX_PUNCTUAL_LIGHTS = 8` and `MAX_SHADOW_SPOTS = 2`, and **the nearest lights win the cut**. Nothing
+warns you: the ninth light is silently dropped by distance.
+
+Walk down a 100 m tunnel with a fitting every 10 m and you will watch lights **pop in and out at the
+budget boundary** — which is the most machine-made artefact available, in the one system this
+document calls the medium. So:
+
+- **No more than six fittings within a tunnel's visible run.** That leaves the hand lamp and one
+  chamber practical always under the cap, whatever else is on screen.
+- **The fittings do not cast shadows.** The two casting slots are the hand lamp and one practical per
+  chamber, and that is the whole budget. This is also correct artistically: a pooled fitting overhead
+  wants to read as a wash, and the shadows that matter are the ones your own lamp throws.
+- Sparse fittings are what §4's "pools with real dark between" needs anyway, so the engine limit and
+  the design want the same thing. Where a limit and a design agree, take it as confirmation.
+
+**The flooded floor needs its own note.** The first draft made it roughness 0.25 and called it "the
+one reflective surface in the game" — but it would be reflecting `gloom.rs`'s deliberately near-black
+ambient, so it would read as a hole rather than as water. It is roughness 0.35 with a little metallic
+instead, and **its read comes from the hand lamp's specular highlight**: the one surface that shows
+you where you are by throwing your own light back at you. That is a better idea than reflectivity for
+its own sake, and it makes the flooded section legible in the dark, which is the section where you
+most need to know where the floor is.
+
 **The failure mode to avoid is uniform gloom**, which is what the game has now: everything equally
 and mildly visible, no pools, no contrast, nothing to walk towards. Contrast is the point. A corridor
 with one working fitting halfway down is frightening; a corridor at 15% brightness everywhere is
@@ -540,9 +664,17 @@ because in the fiction they are made by the same institution.
 
 The first draft said "a shelter sign, not a panel", which is a direction rather than a screen.
 
-- **The camera is fixed and does not turn.** It sits in the lift car, looking out through the open
-  cage door at the landing wall opposite. It never moves and there is no player input to it. (Today
-  it turns with the mouse while the menu is up, which was a bug and is fixed.)
+- **The title screen needs a camera of its own, and does not have one.** Today it simply shows the
+  play camera, wherever the player happens to have spawned — which is why the title plate currently
+  floats over an arbitrary bit of room. It wants a **second `Camera` entity in the lift car** with a
+  lower `order`, active only while `Screen::Title`, and `active false` once the run begins.
+- **It is fixed and does not turn.** No player input reaches it.
+  *(The mouse did turn the view behind the menu until commit `581aa0f`. That was a genuine bug and
+  not, as it appears from the code today, impossible: `look_with_mouse` is registered in
+  `Stage::Simulation` without `.while_paused()`, so it should have been skipped — but this game never
+  inserted the `Paused` resource, and `resource_mut` on a resource that does not exist is silent, so
+  nothing was ever skipped. Worth keeping because the shape recurs: reading the code in its fixed
+  state makes the bug look like it could never have happened.)*
 - **What it is looking at** is the landing's enamel sign, lit by the one working fitting: the letter,
   the section name, and beneath it in small institutional type `DEEP SHELTER No. 4 · SUB-SURFACE
   ARCHIVE · NO ADMITTANCE WITHOUT AUTHORITY`.
@@ -607,24 +739,59 @@ Already built: spatial sources, one-shots, buses, a room tone. What the design n
 
 ### How long a run is
 
-**Twenty minutes, unhurried, first time through.** Every dimension in §5 and the whole dressing
-budget follows from this one number, and the first draft did not state it.
+**Twenty minutes, unhurried, first time through.** Roughly: three minutes of descent and
+orientation, twelve across the three sections, five for the generator and the run back.
 
-Roughly: three minutes of descent and orientation, twelve of the three sections, five for the
-generator and the run back. Three sections at four minutes each is what sets the tunnel lengths.
+**And that does not set the tunnel lengths**, which the first draft claimed it did without doing the
+arithmetic. At 2.6 m/s a 120 m tunnel is **46 seconds** one way, so four minutes in a section is not
+four minutes of walking — it is about ninety seconds of movement and two and a half minutes of
+**standing still, listening, searching and waiting**.
+
+That is the correct answer and it is worth stating rather than hiding, because it says what the
+sections are actually made of: the pacing comes from the §4 costs — reading boards in the dark,
+waiting out a patrol, holding still at a check point, charging for twenty-five seconds you cannot
+shorten — and not from distance. A design that tried to fill twelve minutes with walking would need
+1.8 km of tunnel and would be a corridor simulator.
+
+So the tunnels are **60–120 m because that is what a deep-level shelter is**, and the time comes from
+everything else.
 
 ### The asset budget
 
 With no artist and every asset generated by a Rust binary, a count is the real feasibility check on
 this whole document.
 
+**The constraint that decides this table**: the engine's only mesh components are `BoxMesh`,
+`PlaneMesh`, `ArchMesh` and `GltfPart`. There is **no raw-geometry path in the scene format** — you
+cannot author vertices in text — and `amadeo-gltf` is a *reader* with no writer, so a Rust binary
+cannot emit a prop the way `sounds.rs` emits a clip.
+
+So "16 meshes" honestly means **16 assemblies of boxes, planes and arch sections**. Every entry below
+is checked against that, and four entries from the first draft failed it:
+
 | | Count | Notes |
 |---|---|---|
-| Meshes | ~16 | arch section, cross-passage, bulkhead, door, racking, bunk frame, lamp fitting, isolator, generator, lift cage, sign plate, crate, trolley, mattress, debris, the warden |
+| Meshes | ~16 | All box/plane/arch assemblies. Arch section, cross-passage, bulkhead, door, racking, bunk frame, lamp fitting, isolator, lift cage, sign plate, crate, charging point, tally board, the warden |
 | Materials | ~10 | §5a's table |
-| Sound clips | ~14 | footfall × 4 surfaces, lamp hum, lamp rattle, breath, warden tread × 3 states, isolator, generator, lift, sting |
+| Sound clips | ~16 | footfall × 4 surfaces, fitting hum, lamp rattle, breath, warden tread × 3 states, warden check, isolator, bulkhead, generator, lift, **3 stings** (taken / escaped / caught — §8 requires the endings to differ, and all three already exist) |
 | Sections | 3 + landing + plant room | |
 | Signs | one per junction | text, not textures |
+
+**The four that were cut or re-specified**, because a box version of each is exactly the grey-box
+tell this document exists to eliminate:
+
+- **The generator** — kept, as a bolted assembly of boxes with a pipe run of thin arch sections. A
+  machine genuinely is rectilinear, so this one survives honestly.
+- **The trolley** — cut. Wheels are the one thing boxes cannot fake.
+- **The mattress** — kept but re-specified: a thin box *on a bunk frame*, which is what a stripped
+  shelter mattress looks like anyway. It reads because of what it is on, not because of its shape.
+- **"Debris"** — cut as a concept and replaced with a **collapse built from arch sections at
+  angles**. A pile of boxes reads as a pile of boxes; a tunnel ring that has come out of true reads
+  as a tunnel that has failed, and it is the same primitive already needed for the walls.
+
+If a prop genuinely needs curved geometry later, that is a raw-geometry `.mesh` variant or a glTF
+writer — **engine work, on the plan as its own line with a fallback**, exactly like occlusion.
+Nothing in this slice requires it.
 
 Anything that pushes those materially past these numbers is out of scope for the slice.
 
@@ -643,10 +810,11 @@ only item here that is expensive to undo, so it should follow the slice rather t
 | 3 | **Mission-then-space generator** — spine with three spurs, irregular cross-passages, conditions per §5.2 | The linearity complaint, at its root, and the one hard thing to undo |
 | 4 | **Signage and the alphabet**, with the ordering constraint from §5.4 | Wayfinding stops being decoration |
 | 5 | **The loop**: isolators, the charge, the generator, light-deafens-you | Replaces key-and-door |
-| 6 | **The warden** to §3a's specification: senses, speeds, states, tells | The threat stops being `distance <= 9` |
+| 5a | **A way to make noise on purpose** — see below | A hunted-by-sound game where the player cannot *make* sound has removed half the system |
+| 6 | **The warden** to §3a's specification: senses, speeds, states, tells, check points | The threat stops being `distance <= 9` |
 | 6a | **Audio occlusion** — `amadeo-audio` + a physics query, in a *lower crate* | See below. Own line, because it can slip for reasons the game cannot control |
 | 7 | **Interface**: title screen, scrim, reticle, form-styled pause, separated endings, brightness | The menu complaint |
-| 8 | **The story surfaces**: tallies, section conditions, the docket | Carried by three things rather than one optional prop |
+| 8 | **The story surfaces**: tallies, section conditions, the docket, and the chalked *WARREN* amendment on the landing sign | Carried by four things rather than one optional prop — including the one that makes the title a word the world actually uses |
 | 9 | **Tuning pass**, and **music/ambience**, which `docs/05` records as open and this document had not mentioned | |
 
 **Item 6a is the risk on this plan.** §9 promotes occlusion from polish to a gameplay requirement,
@@ -658,6 +826,21 @@ loud through a wall as through a doorway makes the whole sound model meaningless
 is blocked, resolved with `cast_shape`, which does exist. Cruder than real occlusion and enough to
 make the mechanic honest.
 
+**Item 5a is the other half of the sound system, and the first draft did not have it at all.** A game
+about being hunted by sound in which the player can only ever *avoid* making noise is playing half a
+system: the player has no way to put a sound somewhere on purpose, so they can never lie to it. The
+Bunker gives you bricks and bottles; Amnesia gives you objects to throw.
+
+**One throwable** is enough: a bolt out of the racking, with a fixed audible radius where it lands.
+It turns "where is it" into "where can I send it", which is the difference between hiding and
+playing.
+
+*Its dependency, and the fallback so it cannot block*: a real impact sound needs **collision events**,
+which `amadeo-physics` does not have (its own docs list joints, raycasts and collision events as
+still to come). The fallback needs nothing new — emit the `SoundPlayed` at the throw's predicted
+landing point after a fixed flight time. Less accurate, indistinguishable at the pace this game moves,
+and it means 5a cannot slip for engine reasons.
+
 ### Migration
 
 This document implies a near-total rewrite and the first draft said nothing about what happens to
@@ -665,7 +848,10 @@ what exists. It is a slice, not a fresh repository:
 
 | What exists | What happens to it |
 |---|---|
-| `assets/pieces/` — 11 prefabs | `player_start`, `hud`, `ambience`, `spill` survive. `room_shell`, `wall`, `doorway` are replaced by the arch kit. `lost_key`, `way_out` are replaced by the isolators and the lift |
+| `assets/pieces/` — **12** prefabs | `player_start`, `hud`, `ambience`, `spill` survive. `room_shell`, `wall`, `doorway` are replaced by the arch kit. `lost_key`, `way_out` are replaced by the isolators and the lift |
+| `dropped_torch.scene` | **Deleted.** The lamp is carried from the start — it is shelter issue and the clerk signed for it |
+| `room_lamp.scene` | **Becomes the emergency fitting**, and is the one existing piece the new mechanic is built directly on: it grows a mesh (it currently has none), a hum, and an off state |
+| `warden_post.scene` | **Becomes a patrol node**, of which there are now several — the check points in §3a rather than one spawn position |
 | `scenes/warren.scene` — the handcrafted room | **Becomes the slice** (plan item 1). It is already the place where things are tuned by eye, and it is where the rule tests live |
 | The six generated `.wav`s | `warren_tone` and `footstep` survive; `warden_breath` is replaced by §3a's three tread states; `taken`, `escaped`, `caught` survive |
 | The key and the door | Removed. `WayOut` becomes the lift; `Item`/`Inventory` stay, because the lamp and the docket are items |
