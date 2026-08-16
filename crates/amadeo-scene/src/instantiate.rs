@@ -206,6 +206,33 @@ pub fn instantiate(
 /// where ADR 0021's barrier already lives — a prefab is an asset, so it is resident before the
 /// first tick like any other.
 ///
+/// # It composes the hierarchy before it returns, and that is not a convenience
+///
+/// A loaded scene has a `GlobalTransform` on everything, immediately, without waiting for a tick.
+///
+/// [`propagate_transforms`](amadeo_transform::propagate_transforms) is a `PostSimulation` system, so
+/// without this a freshly loaded world has none at all — and **every consumer falls back to the
+/// local transform when one is missing**. For a root those are the same thing. For a child they are
+/// not, so between a scene loading and the first tick *finishing*, every parented camera, light,
+/// collider and mesh sits at its own local coordinates rather than where the file puts it.
+///
+/// That has now cost two sessions, in two different disguises. Session 18 lost most of one to a
+/// torch beam authored at `y = -0.1` under a camera: at tick 0 it was drawn a tenth of a metre
+/// *underground*, inside a floor slab, correctly shadowing the whole room with the floor it was
+/// buried in — and the conclusion drawn was that the renderer was broken. Session 19 hit the same
+/// fault one tick later, because `step_physics` runs in `Simulation` and propagation does not run
+/// until `PostSimulation`: a scene whose props are prefab instances therefore has *all of their
+/// colliders stacked at the piece origin for the whole of tick 1*, and the symptom was a door
+/// reported as within arm's reach from ninety metres away.
+///
+/// Doing it here rather than asking every caller to remember is the choice this project keeps
+/// making: the step that would be forgotten is the step whose absence has no symptom.
+///
+/// **Safe by construction.** `GlobalTransform` is DERIVED, so ADR 0019 keeps it out of the state
+/// hash and computing it earlier cannot move a replay or a golden recording. A world that never
+/// runs the system at all now gets one correct composition instead of none, which is strictly better
+/// than the fallback it had.
+///
 /// # Errors
 ///
 /// [`InstantiateError`], having despawned everything it created.
@@ -231,8 +258,11 @@ pub fn instantiate_with(
         for entity in created.into_iter().rev() {
             world.despawn(entity);
         }
+        return outcome.map(|()| result);
     }
 
+    // Only on success, so a scene that failed to load leaves nothing composed behind it.
+    amadeo_transform::propagate_transforms(world);
     outcome.map(|()| result)
 }
 

@@ -53,9 +53,9 @@ pub use query::{ShapeCast, ShapeHit, ShapeMotion, ShapeMove};
 pub use rapier::RapierPhysics;
 
 use amadeo_core::StableHash;
-use amadeo_ecs::{Resource, Service, World};
+use amadeo_ecs::{Entity, Resource, Service, World};
 use amadeo_reflect::Reflect;
-use amadeo_transform::{GlobalTransform, Transform};
+use amadeo_transform::{GlobalTransform, Mat4, Parent, Transform};
 
 /// The label the app layer registers [`step_physics`] under.
 pub const STEP_PHYSICS: &str = "step_physics";
@@ -269,6 +269,14 @@ pub fn step_physics(world: &mut World) {
         .unwrap_or_else(Gravity::none)
         .acceleration;
 
+    // Which bodies hang off something else. Collected up front because a query cannot ask the world
+    // a second question while it is running, and sorted so the lookup below is a binary search.
+    let mut parented: Vec<Entity> = world
+        .query::<(&RigidBody, &Parent)>()
+        .map(|(entity, _)| entity)
+        .collect();
+    parented.sort_unstable();
+
     // `GlobalTransform` when propagation has run, the local transform otherwise — the same fallback
     // the renderer uses, and for the same reason: requiring it would mean forgetting one system
     // makes physics silently wrong rather than slightly wrong.
@@ -281,14 +289,31 @@ pub fn step_physics(world: &mut World) {
             Option<&Collider>,
         )>()
         .map(|(entity, (body, transform, velocity, global, collider))| {
-            let placement = match global {
-                Some(global) => global.to_mat4().translation(),
-                None => transform.translation,
+            // **A child's pose comes from the composed matrix; a root's comes from its own.**
+            //
+            // For a child there is no choice: its `Transform` is relative to its parent, so a door
+            // authored square inside a piece that is turned a quarter turn has a local rotation of
+            // zero and a world rotation of ninety degrees. Hand the solver the zero and it builds
+            // the collider facing the wrong way.
+            //
+            // For a root the two are the same thing by definition — and the local one is
+            // **fresher**. Propagation runs in `PostSimulation`, so a `GlobalTransform` read here
+            // is always a tick old, and anything that wrote a `Transform` since is silently undone
+            // by the write-back below. That is how a body placed between ticks snaps back to where
+            // it was, and it is a real thing that happened the moment scene loading started
+            // composing the hierarchy up front.
+            let child = parented.binary_search(&entity).is_ok();
+            let (placement, orientation) = match (child, global) {
+                (true, Some(global)) => {
+                    let matrix = global.to_mat4();
+                    (matrix.translation(), matrix.to_euler_degrees())
+                }
+                _ => (transform.translation, transform.rotation),
             };
             BodyState {
                 entity,
                 translation: placement,
-                rotation: transform.rotation,
+                rotation: orientation,
                 velocity: velocity.copied().unwrap_or_default(),
                 body: *body,
                 // Optional, and absence means "collides with nothing" rather than "give it a
@@ -324,18 +349,75 @@ pub fn step_physics(world: &mut World) {
     };
 
     for result in results {
+        // **A static body is authored, not simulated.** The solver was handed its pose and hands
+        // the same pose back, so writing it in can only ever be a no-op or a mistake — and it was a
+        // mistake, because the pose comes back in *world* space while a `Transform` is in its
+        // parent's. Skipping is both cheaper and the only defensible reading of "static".
+        if world
+            .get::<RigidBody>(result.entity)
+            .is_some_and(|body| body.kind == BodyKind::Static)
+        {
+            continue;
+        }
+
         // A body despawned during the step simply is not here any more. Skipping is right: the
         // alternative is resurrecting a handle, which the generational index would refuse anyway.
         if let Some(transform) = world.get::<Transform>(result.entity) {
             let mut moved = *transform;
-            moved.translation = result.translation;
-            moved.rotation = result.rotation;
+            let (translation, rotation) = in_its_own_space(world, result.entity, &result);
+            moved.translation = translation;
+            moved.rotation = rotation;
             world.insert(result.entity, moved);
         }
         if world.get::<Velocity>(result.entity).is_some() {
             world.insert(result.entity, result.velocity);
         }
     }
+}
+
+/// Turns a solver's world-space answer back into the space the entity's own `Transform` is written
+/// in — which for a child is its parent's, and for a root is the world.
+///
+/// # The bug this exists to stop
+///
+/// A backend is given world poses and returns world poses; a `Transform` on a child is **relative to
+/// its parent**. Writing one straight into the other therefore stores the world position as if it
+/// were a local one, and `propagate_transforms` then applies the parent on top of it — so every
+/// tick, a parented body moves by its parent's offset again. It reads as geometry sliding away from
+/// where the file puts it, and it is invisible on tick one because nothing has propagated yet.
+///
+/// It went unnoticed because until ADR 0071's room pieces there was no reason to put a collider on
+/// anything but a prefab root. A piece with more than one collider has no choice: a prefab has
+/// exactly one root, so a doorway's two jambs and its lintel are all children.
+///
+/// # What it does not handle
+///
+/// A **scaled** parent. The scale is dropped here, as it is everywhere else in this crate — a
+/// collider carries its own size and nothing scales a shape — so a body under a scaled parent lands
+/// in the right place with an unscaled collider. Reporting that would need an error channel
+/// `step_physics` does not have, and a scaled physics body is ill-defined anyway.
+fn in_its_own_space(world: &World, entity: Entity, result: &BodyResult) -> ([f32; 3], [f32; 3]) {
+    let world_pose = (result.translation, result.rotation);
+
+    // Each `else` is a root, an orphan, or a parent so degenerate it has no inverse. In all three
+    // the honest answer is the world pose: it is what the old code always did, and for a root it is
+    // exactly right.
+    let Some(parent) = world.get::<Parent>(entity).map(|parent| parent.0) else {
+        return world_pose;
+    };
+    let Some(global) = world.get::<GlobalTransform>(parent) else {
+        return world_pose;
+    };
+    let Some(inverse) = global.to_mat4().inverse_rigid() else {
+        return world_pose;
+    };
+
+    let placed = inverse.mul(&Mat4::from_transform(
+        result.translation,
+        result.rotation,
+        [1.0, 1.0, 1.0],
+    ));
+    (placed.translation(), placed.to_euler_degrees())
 }
 
 #[cfg(test)]
@@ -352,6 +434,138 @@ mod tests {
         world.insert(entity, RigidBody::dynamic(1.0));
         world.insert(entity, Velocity::default());
         (world, entity)
+    }
+
+    /// A body hanging off a root that has been moved and turned — a prefab piece, in other words.
+    ///
+    /// The root is placed and rotated so that composing it is not the identity in either respect:
+    /// a bug that only added the parent's translation would still pass against an unrotated one.
+    fn piece_world() -> (World, amadeo_ecs::Entity, amadeo_ecs::Entity) {
+        let mut world = World::new();
+        world.insert_service(Physics::new(Box::new(NullPhysics::new())));
+        world.insert_resource(Gravity::none());
+
+        let root = world.spawn();
+        world.insert(
+            root,
+            Transform {
+                translation: [30.0, 0.0, -12.0],
+                rotation: [0.0, 90.0, 0.0],
+                scale: [1.0, 1.0, 1.0],
+            },
+        );
+
+        let child = world.spawn();
+        world.insert(
+            child,
+            Transform {
+                translation: [0.0, 1.2, 0.0],
+                rotation: [0.0, 0.0, 0.0],
+                scale: [1.0, 1.0, 1.0],
+            },
+        );
+        world.insert(child, Parent(root));
+        world.insert(child, RigidBody::default());
+        world.insert(child, Collider::cuboid(1.6, 2.4, 0.16));
+
+        amadeo_transform::propagate_transforms(&mut world);
+        (world, root, child)
+    }
+
+    #[test]
+    fn a_body_on_a_piece_stays_where_the_piece_puts_it() {
+        // **The defect this pins made every generated interior wrong, and hid for a whole session.**
+        //
+        // A backend is handed world poses and returns world poses. A `Transform` on a child is
+        // relative to its parent. Writing one straight into the other stores the world position as
+        // if it were local, and `propagate_transforms` then applies the parent *again* — so a
+        // parented body walks away from its piece by the piece's own offset, once per tick.
+        //
+        // It was invisible until ADR 0071's room pieces, because nothing before them had a reason
+        // to put a collider on anything but a prefab root. A piece with two colliders has no
+        // choice: a prefab has exactly one root, so a doorway's jambs and its lintel are children.
+        //
+        // And it was invisible on the *first* tick, which is why a capture taken at tick one looked
+        // fine. Nothing had propagated yet, so the fallback to the local transform was still in
+        // play and the first step was correct.
+        let (mut world, _root, child) = piece_world();
+        let placed = world
+            .get::<GlobalTransform>(child)
+            .expect("composed")
+            .to_mat4()
+            .translation();
+
+        for _ in 0..30 {
+            step_physics(&mut world);
+            amadeo_transform::propagate_transforms(&mut world);
+        }
+
+        let after = world
+            .get::<GlobalTransform>(child)
+            .expect("still composed")
+            .to_mat4()
+            .translation();
+        assert_eq!(
+            placed, after,
+            "half a second of physics moved a static body off its piece"
+        );
+    }
+
+    #[test]
+    fn a_moving_body_on_a_piece_is_stored_in_the_pieces_own_space() {
+        // The other half, and the one that would still be wrong if `step_physics` merely skipped
+        // static bodies. A body the solver *may* move has its answer converted back through the
+        // parent, so what lands in the `Transform` is a local offset — and composing it returns the
+        // world position the solver actually reported.
+        let (mut world, _root, child) = piece_world();
+        world.insert(child, RigidBody::dynamic(1.0));
+        world.insert(child, Velocity::default());
+        world.insert_resource(Gravity::earth());
+
+        step_physics(&mut world);
+        let stored = world
+            .get::<Transform>(child)
+            .expect("still there")
+            .translation;
+        amadeo_transform::propagate_transforms(&mut world);
+        let composed = world
+            .get::<GlobalTransform>(child)
+            .expect("composed")
+            .to_mat4()
+            .translation();
+
+        // It fell, so the world position is below where it started and the *local* one is not the
+        // world one — which is the whole claim. A local transform that equalled the world position
+        // would mean the conversion had not happened.
+        assert!(composed[1] < 1.2, "gravity should have pulled it down");
+        assert!(
+            (stored[0] - composed[0]).abs() > 1.0,
+            "a local offset of {stored:?} should not match the world position {composed:?}"
+        );
+    }
+
+    #[test]
+    fn a_body_placed_between_ticks_stays_where_it_was_put() {
+        // Moving something by writing its `Transform` is what a test, a teleport and a level
+        // transition all do. It used to be undone on the next step whenever the world had a
+        // composed `GlobalTransform` to read instead — which, since scene loading started composing
+        // the hierarchy up front, is always. The read now prefers a root's own transform, which is
+        // the same value one tick fresher.
+        let (mut world, entity) = falling_world();
+        world.insert(entity, RigidBody::kinematic());
+        step_physics(&mut world);
+        amadeo_transform::propagate_transforms(&mut world);
+
+        if let Some(transform) = world.get_mut::<Transform>(entity) {
+            transform.translation = [50.0, 4.0, -7.0];
+        }
+        step_physics(&mut world);
+
+        let now = world.get::<Transform>(entity).expect("there").translation;
+        assert!(
+            (now[0] - 50.0).abs() < 0.01 && (now[2] + 7.0).abs() < 0.01,
+            "it was put at 50, 4, -7 and the step moved it to {now:?}"
+        );
     }
 
     #[test]
