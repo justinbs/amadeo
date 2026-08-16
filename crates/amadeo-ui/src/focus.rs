@@ -199,9 +199,21 @@ pub fn navigate_focus(world: &mut World) {
 /// **That is the exact bug ADR 0063 names in its consequences**, and it was here anyway: found by
 /// `games/atrium`'s pause menu, which is what a demo is for.
 ///
-/// [`ancestry`](crate::layout::ancestry) is the same walk the draw pass uses, deliberately shared —
-/// it reads `Parent` and a `bool` and no rectangle, so it is safe inside the deterministic zone.
-fn focusable_in_order(world: &World) -> Vec<Entity> {
+/// `layout::ancestry` is the same walk the draw pass uses, deliberately shared — it reads `Parent`
+/// and a `bool` and no rectangle, so it is safe inside the deterministic zone.
+///
+/// # Why a game can call this
+///
+/// [`navigate_focus`] deliberately does **not** seat the focus when nothing is focused (ADR 0063): a
+/// menu that grabbed the highlight the moment it appeared would override whatever the game wanted
+/// focused, one tick after the scene loaded. So the game has to do it — and a game that reimplements
+/// "which item is first" gets a *different answer from the engine's* the moment it forgets the
+/// visibility rule above, which is a highlight sitting on a button inside a closed menu.
+///
+/// `games/atrium` did reimplement it, correctly, because it has exactly one menu and the question
+/// never arises. `games/warren` has three and it arises immediately.
+#[must_use]
+pub fn focusable_in_order(world: &World) -> Vec<Entity> {
     let mut items: Vec<(i32, Entity)> = world
         .query::<(&Focusable, &UiNode)>()
         .filter(|(_, (focusable, _))| focusable.enabled)

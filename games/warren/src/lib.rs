@@ -55,13 +55,13 @@
 //! `amadeo capture -p warren --ticks 5` draws it. **`check` is not a load** — it says nothing about
 //! whether the floor is under the player, which is why `the_level_is_a_level.rs` stands on it.
 
-use amadeo_app::{App, Stage, system};
+use amadeo_app::{App, Paused, Stage, system};
 use amadeo_behaviour::{Behaviour, Facts};
 use amadeo_character::{CharacterController, CharacterMotion};
 use amadeo_core::StableHash;
 use amadeo_ecs::{Component, Entity, Resource, World};
 use amadeo_events::WorldEvents;
-use amadeo_input::{InputDriver, NullSource};
+use amadeo_input::{ActionId, InputDriver, InputState, NullSource};
 use amadeo_interaction::{Interactable, Interacted, Interactor, Looking};
 use amadeo_inventory::{Inventory, Item, StoredIn};
 use amadeo_physics::{Collider, Gravity, Physics, RapierPhysics, RigidBody, Velocity};
@@ -73,7 +73,8 @@ use amadeo_transform::{
     GlobalTransform, PROPAGATE_TRANSFORMS, Parent, Transform, propagate_transforms,
 };
 use amadeo_ui::{
-    COLLECT_UI, ComputedRect, FontCache, LAYOUT_UI, Text, UiNode, collect_ui, layout_ui_system,
+    COLLECT_UI, ComputedRect, Focus, Focusable, FontCache, LAYOUT_UI, Text, UiActivated, UiNode,
+    collect_ui, layout_ui_system,
 };
 
 /// Where this game's assets live, relative to the project root (ADR 0022).
@@ -271,12 +272,24 @@ pub fn build_from_scene(scene: &str) -> anyhow::Result<App> {
     app.register_component::<EndingLine>()?;
     app.insert_resource(Outcome::default());
 
+    // The shell (ADR 0065). `Screen` is this game's and is the **authority**; the engine's `Paused`
+    // is projected from it by `apply_screen`, which is what stops a menu hanging over a running
+    // game. `Requested` records what the menu asked the disk for; nothing inside a tick does it.
+    app.register_component::<Menu>()?;
+    app.register_component::<MenuButton>()?;
+    app.insert_resource(Screen::default());
+    app.insert_resource(Requested::default());
+
     // The interface (ADR 0062). `ComputedRect` is registered although nothing authors one, because
     // it is a component an agent should be able to *see* — "where did that line end up" is the
     // question `world.entity` exists to answer.
     app.register_component::<UiNode>()?;
     app.register_component::<ComputedRect>()?;
     app.register_component::<Text>()?;
+    app.register_component::<amadeo_ui::Panel>()?;
+    app.register_component::<Focusable>()?;
+    app.insert_resource(Focus::default());
+    app.register_event::<UiActivated>();
 
     // **Layout before collection, and the ordering is load-bearing**: `collect_ui` reads the
     // rectangles `layout_ui_system` writes, so the other way round draws an empty interface on the
@@ -295,10 +308,35 @@ pub fn build_from_scene(scene: &str) -> anyhow::Result<App> {
         Stage::PreSimulation,
         system(amadeo_input::SAMPLE_INPUT, amadeo_input::sample_input),
     );
+    // In `PreSimulation`, because that stage runs whether or not the game is paused — a system that
+    // stopped while paused could never unpause. After the sample, so `just_pressed` means this tick.
+    app.add_system(
+        Stage::PreSimulation,
+        system(APPLY_SCREEN, apply_screen).after(amadeo_input::SAMPLE_INPUT),
+    );
 
     let document = amadeo_scene::parse(scene)
         .map_err(|error| anyhow::anyhow!("games/warren/scenes/: {error}"))?;
     app.load_scene(&document)?;
+
+    // **`InputState` before the snapshot below, and this line is load-bearing.**
+    //
+    // `amadeo_input::install` inserts it, and every caller of this function installs a driver
+    // *afterwards* — so without this the snapshot records a world with no `InputState`, and
+    // `InputState` is a hashed resource. Restoring it then rebuilds a world that is genuinely
+    // different from the one the file describes, and ADR 0069's integrity check refuses it with
+    // "something about this build differs from the one that took the snapshot". Which was true, and
+    // was this.
+    //
+    // Inserting it here is harmless twice over: `install` replaces it with an identical default a
+    // moment later, and a game with no driver at all still wants somewhere for input to be.
+    app.insert_resource(amadeo_input::InputState::new());
+
+    // **The world exactly as it loaded**, kept so a run can be started over. Captured here rather
+    // than by the caller because this is the only moment it is true: one tick later the player has
+    // begun to fall, and a "fresh start" that restored a world mid-fall would be subtly not one.
+    let fresh = amadeo_snapshot::to_text(&app.capture_snapshot());
+    app.insert_service(FreshStart(fresh));
 
     // Last in the simulation, so composed transforms reflect where everything finally ended up —
     // and so the camera, a *child* of the player, follows this tick's movement rather than last
@@ -348,9 +386,30 @@ pub fn build_from_scene(scene: &str) -> anyhow::Result<App> {
         system(SETTLE_THE_RUN, settle_the_run).after(PROPAGATE_TRANSFORMS),
     );
     // After the run is settled, so the ending appears on the tick it happens rather than the next.
+    //
+    // **And `.while_paused()`, which is not optional** (ADR 0065). The tick a run ends on is the
+    // last tick this stage runs at all: `apply_screen` sees the outcome next tick and freezes the
+    // world, so a HUD that stopped with it would keep whatever it said at the moment of dying —
+    // leaving "unlock the door and leave" sitting under the ending, which reads as the game still
+    // running. Everything it writes is a pure function of hashed state, so running it while paused
+    // is safe as well as necessary.
     app.add_system(
         Stage::PostSimulation,
-        system(WRITE_THE_HUD, write_the_hud).after(SETTLE_THE_RUN),
+        system(WRITE_THE_HUD, write_the_hud)
+            .after(SETTLE_THE_RUN)
+            .while_paused(),
+    );
+
+    // **The two menu systems, and both must run while paused** (ADR 0065). Everything they respond
+    // to happens while the world is frozen — and on the title screen the world has never run at all,
+    // so without `.while_paused()` the game could not be started, let alone unpaused.
+    app.add_system(
+        Stage::Simulation,
+        system(amadeo_ui::NAVIGATE_FOCUS, amadeo_ui::navigate_focus).while_paused(),
+    );
+    app.add_system(
+        Stage::Simulation,
+        system(CHOOSE_FROM_MENU, choose_from_menu).while_paused(),
     );
 
     // Drawn in `Render`, where nothing it does can reach the state hash. What the lines *say* was
@@ -1532,9 +1591,16 @@ pub fn write_the_hud(world: &mut World) {
         Outcome::Escaped => "YOU GOT OUT".to_string(),
         Outcome::Caught => "IT FOUND YOU".to_string(),
     };
-    // Nothing to point at once the run is over, and a stale "the door is locked" under a lose
-    // screen reads as the game still running.
-    let prompt = if ending.is_empty() {
+    // Nothing to point at unless the game is actually being played. A stale "the door is locked"
+    // under a lose screen reads as the game still running, and one behind the title plate reads as
+    // the title screen being a level.
+    //
+    // **Both conditions, and they are not the same tick.** `settle_the_run` ends the run in this
+    // stage and `apply_screen` moves the screen in the *next* tick's `PreSimulation`, so testing the
+    // screen alone leaves the prompt up for one frame underneath the ending. Testing the outcome
+    // alone would leave it up behind the pause menu and the title plate. One line each.
+    let playing = screen(world) == Screen::Playing && ending.is_empty();
+    let prompt = if playing {
         prompt(world).unwrap_or_default()
     } else {
         String::new()
@@ -1559,4 +1625,403 @@ pub fn write_the_hud(world: &mut World) {
             text.content = wanted;
         }
     }
+}
+
+// --- The shell: a title screen, a pause, a save, and a way to try again -------------------------
+
+/// What the Warren is doing, as far as the player is concerned.
+///
+/// # This is the authority; the engine's `Paused` is projected from it
+///
+/// ADR 0065 §5: what screens exist is genre knowledge (I4), so the engine has no concept of one. It
+/// knows only whether the gameplay stages are running, and [`apply_screen`] writes that from this
+/// every tick. Nothing else writes `Paused`, so the two cannot drift into a menu over a running
+/// game.
+///
+/// `games/atrium` has the same enum with three variants. This one has five, and the two extra are
+/// the whole of what M3's exit gate item 1 asks for beyond a pause menu: somewhere to start from and
+/// somewhere to arrive when the run ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub enum Screen {
+    /// The title plate, before a run has begun. **The default**, so a fresh world starts here.
+    #[default]
+    Title,
+    /// Walking around the Warren.
+    Playing,
+    /// The pause menu is up and the world is frozen.
+    Paused,
+    /// The run is over, one way or the other, and the ending is on screen.
+    ///
+    /// Entered from [`Outcome`] rather than chosen: `settle_the_run` decides *that* a run ended and
+    /// this decides what the player sees when it did, which is the same split `Screen` and `Paused`
+    /// draw one level down.
+    Ended,
+    /// The player chose to quit; the window closes on the next frame.
+    ///
+    /// Terminal — nothing gets out of it. A game shutting down and then not shutting down because
+    /// somebody was still holding a key would be a memorable bug.
+    Quitting,
+}
+
+impl Resource for Screen {}
+
+/// Which screen a menu belongs to.
+///
+/// **One marker with a field, rather than one marker type per menu.** The Atrium has a single
+/// `PauseMenu` component because it has a single menu; three of them would be three components,
+/// three queries and three chances for a menu to be left visible over another. This way
+/// [`apply_screen`] shows exactly the menus whose screen is current, and adding a fourth menu is a
+/// scene edit with no Rust at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub struct Menu {
+    /// The screen this menu is the interface for.
+    pub screen: Screen,
+}
+
+impl Component for Menu {}
+
+/// What choosing one of the menu's buttons means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub enum MenuChoice {
+    /// Start a run from the title screen.
+    #[default]
+    Begin,
+    /// Close the pause menu and carry on.
+    Resume,
+    /// Write the world to [`SAVE_FILE`].
+    Save,
+    /// Put the world back from [`SAVE_FILE`].
+    Load,
+    /// Throw this run away and start another.
+    TryAgain,
+    /// Close the game.
+    Quit,
+}
+
+/// Attached to a menu button, saying what choosing it means.
+///
+/// ADR 0063's split cashed, exactly as `games/atrium` cashes it: `UiActivated` names an entity and
+/// deliberately nothing else, because the engine does not know what a button *means*. This is the
+/// game supplying that half, in the scene file beside the button rather than as a table of entity
+/// ids in Rust that would go stale the moment somebody reordered the menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub struct MenuButton {
+    /// What this button does.
+    pub choice: MenuChoice,
+}
+
+impl Component for MenuButton {}
+
+/// Where this game's one save lives, relative to the working directory.
+///
+/// One slot, and a path rather than a save system — M3's exit gate asks for "save, quit, resume from
+/// save", which is one slot. **Where a save file should actually live is Q38**, so this is
+/// deliberately a plain relative path that will not have to be unpicked.
+pub const SAVE_FILE: &str = "warren.save";
+
+/// Renames that let a save written by an older build still load (ADR 0069).
+///
+/// Optional, and absent is the normal case. A missing file means no redirects rather than an error.
+pub const REDIRECT_FILE: &str = "warren.redirects";
+
+/// Something the platform layer carries out between ticks, because a simulation cannot touch a disk.
+///
+/// # Why a resource and not a function call
+///
+/// Reading and writing files is **not gameplay**, and a system that did it would put the state of a
+/// filesystem inside a deterministic tick — a replay would then depend on what was on disk when it
+/// ran. So the menu records the *decision*, which is hashed and replays like any other, and the
+/// caller acts on it between ticks. `Screen::Quitting` uses the same split: closing a window is not
+/// gameplay either.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub struct Requested {
+    /// Write the world out.
+    pub save: bool,
+    /// Read it back.
+    pub load: bool,
+    /// Throw this run away and start a fresh one.
+    pub restart: bool,
+}
+
+impl Resource for Requested {}
+
+/// The world exactly as it loaded, kept so that a run can be started over.
+///
+/// # A service, and that is what makes it work
+///
+/// It has to survive a restore, and ADR 0009 says a snapshot restores resources and **never**
+/// services. A resource holding this would be replaced by the very restore it exists to perform, so
+/// the second attempt at trying again would restore a snapshot of a world that was itself restored.
+///
+/// It is also not gameplay by any reading — the text of a snapshot has no business in a state hash.
+#[derive(Debug)]
+pub struct FreshStart(pub String);
+
+impl amadeo_ecs::Service for FreshStart {}
+
+/// The label [`apply_screen`] is registered under.
+pub const APPLY_SCREEN: &str = "apply_screen";
+
+/// The label [`choose_from_menu`] is registered under.
+pub const CHOOSE_FROM_MENU: &str = "choose_from_menu";
+
+/// The action that opens and closes the pause menu.
+pub const PAUSE: &str = "pause";
+
+/// Which screen the game is on.
+#[must_use]
+pub fn screen(world: &World) -> Screen {
+    world.resource::<Screen>().copied().unwrap_or_default()
+}
+
+/// Moves the screen on, then projects everything that follows from it.
+///
+/// # Why this runs in `PreSimulation`
+///
+/// That stage runs **whether or not the game is paused** (ADR 0065), and a system that stopped
+/// running while paused could never unpause. It is also after `sample_input`, which is what makes
+/// `just_pressed` mean this tick's keypress.
+///
+/// # One writer for everything derived from the screen
+///
+/// The transitions are a handful of lines and the rest is projection: the engine's `Paused`, which
+/// menus are visible, and where the highlight sits. Doing all of that here rather than at each place
+/// the screen changes is what stops a menu being visible over a running game — there is one place
+/// that decides, and it runs every tick rather than only on the tick something changed.
+pub fn apply_screen(world: &mut World) {
+    let toggled = world
+        .resource::<InputState>()
+        .is_some_and(|input| input.just_pressed(ActionId::new(PAUSE)));
+
+    let current = screen(world);
+    let next = match (current, toggled) {
+        (Screen::Playing, true) => Screen::Paused,
+        (Screen::Paused, true) => Screen::Playing,
+        // **The run ending moves the screen, and nothing else does.** `settle_the_run` decides that
+        // a run is over; this decides what is on screen because of it. Checked every tick rather
+        // than on the tick it changed, so a restored save that was already over arrives here too.
+        (Screen::Playing, false) if outcome(world) != Outcome::Playing => Screen::Ended,
+        // Including `Title`, `Ended` and `Quitting`. Escape does not leave any of them: there is
+        // nothing to pause on a title screen, and a run that has ended has no state to go back to.
+        (screen, _) => screen,
+    };
+    if let Some(slot) = world.resource_mut::<Screen>() {
+        *slot = next;
+    }
+
+    // Everything except `Playing` is a screen with a menu on it, so everything except `Playing`
+    // freezes the world. That is one line because the enum was chosen to make it one.
+    let paused = next != Screen::Playing;
+    if let Some(state) = world.resource_mut::<Paused>() {
+        state.paused = paused;
+    }
+
+    // Collected before writing, because the query borrows the world. Only the nodes whose
+    // visibility is actually wrong are touched: writing an identical `UiNode` every tick would work
+    // and would also mean the state hash could never tell a menu opening from one already open.
+    let stale: Vec<(Entity, bool)> = world
+        .query::<(&Menu, &UiNode)>()
+        .filter(|(_, (menu, node))| node.visible != (menu.screen == next))
+        .map(|(entity, (menu, _))| (entity, menu.screen == next))
+        .collect();
+    for (root, wanted) in stale {
+        if let Some(node) = world.get_mut::<UiNode>(root) {
+            node.visible = wanted;
+        }
+    }
+
+    // **The highlight has to be inside the menu that is up.** `focusable_in_order` already ignores
+    // anything in a hidden subtree (session 18), so a focus left on a button of the menu that just
+    // closed is not merely wrong, it is unreachable — the player would press a direction and watch
+    // nothing happen. Re-seating it whenever it is not on something reachable covers the screen
+    // changing, a button being disabled, and the world being restored, all in one comparison.
+    //
+    // `navigate_focus` deliberately will not do this for us (ADR 0063): a menu that focused an item
+    // the moment it appeared would override whatever the game wanted focused. The engine knows how a
+    // menu moves; the game knows when one is up.
+    let reachable = amadeo_ui::focusable_in_order(world);
+    let settled = world
+        .resource::<Focus>()
+        .and_then(|focus| focus.entity)
+        .filter(|entity| reachable.contains(entity));
+    let wanted = if paused {
+        settled.or_else(|| reachable.first().copied())
+    } else {
+        None
+    };
+    if let Some(focus) = world.resource_mut::<Focus>()
+        && focus.entity != wanted
+    {
+        focus.entity = wanted;
+    }
+}
+
+/// Acts on a menu button being chosen.
+///
+/// # Why it runs while paused
+///
+/// It is the one gameplay system that must (ADR 0065): everything it responds to happens while the
+/// world is frozen, and on the title screen the world has never run at all.
+///
+/// # It records, and lets one place project
+///
+/// "Resume" does not hide a menu or unpause the engine — it moves [`Screen`], and [`apply_screen`]
+/// does the rest next tick. Save, load and restart do not touch a disk; they move [`Requested`], and
+/// [`serve_requests`] does that between ticks. Two writers for one piece of derived state is exactly
+/// how the halves get out of step.
+pub fn choose_from_menu(world: &mut World) {
+    // `UiActivated` was sent last tick and swapped in at the end of it, so there is no ordering
+    // constraint against `navigate_focus` -- declaring one would suggest a same-tick handoff the
+    // event buffers do not provide.
+    let chosen: Vec<MenuChoice> = world
+        .read_events::<UiActivated>()
+        .iter()
+        .filter_map(|record| world.get::<MenuButton>(record.event.entity))
+        .map(|button| button.choice)
+        .collect();
+
+    for choice in chosen {
+        match choice {
+            MenuChoice::Begin | MenuChoice::Resume => {
+                if let Some(screen) = world.resource_mut::<Screen>() {
+                    *screen = Screen::Playing;
+                }
+            }
+            MenuChoice::Save => {
+                if let Some(request) = world.resource_mut::<Requested>() {
+                    request.save = true;
+                }
+            }
+            MenuChoice::Load => {
+                if let Some(request) = world.resource_mut::<Requested>() {
+                    request.load = true;
+                }
+            }
+            MenuChoice::TryAgain => {
+                if let Some(request) = world.resource_mut::<Requested>() {
+                    request.restart = true;
+                }
+            }
+            MenuChoice::Quit => {
+                if let Some(screen) = world.resource_mut::<Screen>() {
+                    *screen = Screen::Quitting;
+                }
+            }
+        }
+    }
+}
+
+/// Carries out whatever the menu asked for, between ticks.
+///
+/// # Why this is not a system
+///
+/// It reads and writes **files**, and a system doing that would put the state of a filesystem inside
+/// a deterministic tick: a replay would then depend on what happened to be on disk when it ran,
+/// which is invariant I3 gone for anything that ever saved.
+///
+/// **`Physics::reset` after any world replacement is the load-bearing line.** Not for the reason it
+/// looks like — rapier rebuilds its contacts from the components either way (measured in
+/// `amadeo-physics/tests/reset_clears_the_solver.rs`) — but because replacing a world must drop the
+/// static geometry belonging to the one being left, and a generated interior is a great deal of
+/// static geometry.
+///
+/// Returns what it did, so a caller can say so. Failures are reported and survivable: a game that
+/// refused to start because a save file was missing would be worse than one that carries on.
+///
+/// # Errors
+///
+/// Never. A failed save or load is reported through the returned strings rather than propagated,
+/// because neither is a reason to stop the game.
+pub fn serve_requests(app: &mut App) -> Vec<String> {
+    let mut said = Vec::new();
+    let request = app
+        .world
+        .resource::<Requested>()
+        .copied()
+        .unwrap_or_default();
+    if !request.save && !request.load && !request.restart {
+        return said;
+    }
+    // Cleared first, so a request that fails is not retried every frame for the rest of the game.
+    if let Some(slot) = app.world.resource_mut::<Requested>() {
+        *slot = Requested::default();
+    }
+
+    if request.save {
+        let text = amadeo_snapshot::to_text(&app.capture_snapshot());
+        said.push(match std::fs::write(SAVE_FILE, &text) {
+            Ok(()) => format!("saved to {SAVE_FILE} ({} bytes)", text.len()),
+            Err(error) => format!("could not write {SAVE_FILE}: {error}"),
+        });
+    }
+
+    if request.load {
+        match std::fs::read_to_string(SAVE_FILE) {
+            Ok(text) => match restore_from(app, &text) {
+                Ok(notes) => {
+                    said.push(format!("loaded {SAVE_FILE}"));
+                    said.extend(notes);
+                }
+                Err(why) => said.push(why),
+            },
+            Err(error) => said.push(format!("could not read {SAVE_FILE}: {error}")),
+        }
+    }
+
+    if request.restart {
+        // Cloned out first: the restore needs the world mutably and the text lives in a service on
+        // it. A snapshot of this level is a few hundred kilobytes and a restart is a keypress, so
+        // the copy is not worth a dance around the borrow checker.
+        let fresh = app
+            .world
+            .service::<FreshStart>()
+            .map(|start| start.0.clone());
+        match fresh {
+            Some(text) => match restore_from(app, &text) {
+                Ok(_) => {
+                    // **Straight into the run, not back to the title.** The snapshot was taken
+                    // before the first tick, so the screen it holds is `Title` — restoring it and
+                    // stopping would send somebody who asked to try again back to the menu they
+                    // just left.
+                    if let Some(screen) = app.world.resource_mut::<Screen>() {
+                        *screen = Screen::Playing;
+                    }
+                    said.push("started again".to_string());
+                }
+                Err(why) => said.push(why),
+            },
+            None => said.push("nothing recorded the world it started as".to_string()),
+        }
+    }
+
+    said
+}
+
+/// Puts a snapshot back, leniently, and drops whatever the solver was caching.
+///
+/// Lenient because a save may have been written by an older build (ADR 0069) — and the restart path
+/// uses the same door, because a snapshot taken by *this* build matches the layout fingerprint and
+/// therefore takes the strict path, hash check and all. **Leniency costs nothing when it is not
+/// needed**, which is the whole of ADR 0069's argument.
+fn restore_from(app: &mut App, text: &str) -> Result<Vec<String>, String> {
+    let snapshot =
+        amadeo_snapshot::parse(text).map_err(|error| format!("will not parse: {error}"))?;
+
+    // Absent is the normal case, and an unreadable one is worth complaining about rather than
+    // ignoring: a redirect file that silently does nothing is how a rename turns into data loss.
+    let redirects = match std::fs::read_to_string(REDIRECT_FILE) {
+        Ok(text) => amadeo_snapshot::Redirects::parse(&text)
+            .map_err(|error| format!("{REDIRECT_FILE} will not parse: {error}"))?,
+        Err(_) => amadeo_snapshot::Redirects::new(),
+    };
+
+    let report = app
+        .restore_save(&snapshot, &redirects)
+        .map_err(|error| format!("will not restore: {error}"))?;
+
+    // The solver is holding the world that was just replaced — see [`serve_requests`].
+    if let Some(physics) = app.world.service_mut::<Physics>() {
+        physics.reset();
+    }
+    Ok(report.lines())
 }

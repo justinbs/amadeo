@@ -48,20 +48,14 @@ entity hud "HUD"
       size 520.0 34.0
       visible true
 
-  entity ending_line "Ending"
-    EndingLine
-    Text
-      content ""
-      font "BebasNeue-Regular"
-      order 10
-      paint Accent
-      scale Title
-      wrap false
+  entity title_menu "Title menu"
+    Menu
+      screen Title
     UiNode
-      align_children Centre
+      align_children Start
       anchor
-        horizontal Centre
-        vertical Centre
+        horizontal Stretch
+        vertical Stretch
       flow None
       gap None
       grow 0.0
@@ -71,5 +65,643 @@ entity hud "HUD"
         right 0.0
         top 0.0
       padding None
-      size 720.0 80.0
-      visible true
+      size 0.0 0.0
+      visible false
+
+    entity title_menu_panel "Title menu panel"
+      Panel
+        order 10
+        paint Raised
+      UiNode
+        align_children Stretch
+        anchor
+          horizontal Centre
+          vertical Centre
+        flow Column
+        gap Snug
+        grow 0.0
+        margin
+          bottom 0.0
+          left 0.0
+          right 0.0
+          top 0.0
+        padding Normal
+        size 320.0 224.0
+        visible true
+
+      entity title_heading "Title heading"
+        Text
+          content "THE WARREN"
+          font "BebasNeue-Regular"
+          order 11
+          paint Accent
+          scale Title
+          wrap false
+        UiNode
+          align_children Start
+          anchor
+            horizontal Stretch
+            vertical Start
+          flow None
+          gap None
+          grow 0.0
+          margin
+            bottom 0.0
+            left 0.0
+            right 0.0
+            top 0.0
+          padding None
+          size 0.0 60.0
+          visible true
+
+      entity title_begin "Begin"
+        Focusable
+          enabled true
+          order 0
+        MenuButton
+          choice Begin
+        Panel
+          order 10
+          paint Surface
+        UiNode
+          align_children Start
+          anchor
+            horizontal Stretch
+            vertical Start
+          flow None
+          gap None
+          grow 0.0
+          margin
+            bottom 0.0
+            left 0.0
+            right 0.0
+            top 0.0
+          padding Snug
+          size 0.0 36.0
+          visible true
+
+        entity title_begin_label "Begin label"
+          Text
+            content "BEGIN"
+            font "BebasNeue-Regular"
+            order 11
+            paint Ink
+            scale Body
+            wrap false
+          UiNode
+            align_children Start
+            anchor
+              horizontal Stretch
+              vertical Stretch
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left 0.0
+              right 0.0
+              top 0.0
+            padding None
+            size 0.0 0.0
+            visible true
+
+      entity title_continue "Continue"
+        Focusable
+          enabled true
+          order 1
+        MenuButton
+          choice Load
+        Panel
+          order 10
+          paint Surface
+        UiNode
+          align_children Start
+          anchor
+            horizontal Stretch
+            vertical Start
+          flow None
+          gap None
+          grow 0.0
+          margin
+            bottom 0.0
+            left 0.0
+            right 0.0
+            top 0.0
+          padding Snug
+          size 0.0 36.0
+          visible true
+
+        entity title_continue_label "Continue label"
+          Text
+            content "CONTINUE"
+            font "BebasNeue-Regular"
+            order 11
+            paint Ink
+            scale Body
+            wrap false
+          UiNode
+            align_children Start
+            anchor
+              horizontal Stretch
+              vertical Stretch
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left 0.0
+              right 0.0
+              top 0.0
+            padding None
+            size 0.0 0.0
+            visible true
+
+      entity title_quit "Quit"
+        Focusable
+          enabled true
+          order 2
+        MenuButton
+          choice Quit
+        Panel
+          order 10
+          paint Surface
+        UiNode
+          align_children Start
+          anchor
+            horizontal Stretch
+            vertical Start
+          flow None
+          gap None
+          grow 0.0
+          margin
+            bottom 0.0
+            left 0.0
+            right 0.0
+            top 0.0
+          padding Snug
+          size 0.0 36.0
+          visible true
+
+        entity title_quit_label "Quit label"
+          Text
+            content "QUIT"
+            font "BebasNeue-Regular"
+            order 11
+            paint Ink
+            scale Body
+            wrap false
+          UiNode
+            align_children Start
+            anchor
+              horizontal Stretch
+              vertical Stretch
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left 0.0
+              right 0.0
+              top 0.0
+            padding None
+            size 0.0 0.0
+            visible true
+
+  entity pause_menu "Pause menu"
+    Menu
+      screen Paused
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible false
+
+    entity pause_menu_panel "Pause menu panel"
+      Panel
+        order 10
+        paint Raised
+      UiNode
+        align_children Stretch
+        anchor
+          horizontal Centre
+          vertical Centre
+        flow Column
+        gap Snug
+        grow 0.0
+        margin
+          bottom 0.0
+          left 0.0
+          right 0.0
+          top 0.0
+        padding Normal
+        size 320.0 238.0
+        visible true
+
+      entity pause_heading "Pause heading"
+        Text
+          content "PAUSED"
+          font "BebasNeue-Regular"
+          order 11
+          paint Ink
+          scale Heading
+          wrap false
+        UiNode
+          align_children Start
+          anchor
+            horizontal Stretch
+            vertical Start
+          flow None
+          gap None
+          grow 0.0
+          margin
+            bottom 0.0
+            left 0.0
+            right 0.0
+            top 0.0
+          padding None
+          size 0.0 30.0
+          visible true
+
+      entity pause_resume "Resume"
+        Focusable
+          enabled true
+          order 0
+        MenuButton
+          choice Resume
+        Panel
+          order 10
+          paint Surface
+        UiNode
+          align_children Start
+          anchor
+            horizontal Stretch
+            vertical Start
+          flow None
+          gap None
+          grow 0.0
+          margin
+            bottom 0.0
+            left 0.0
+            right 0.0
+            top 0.0
+          padding Snug
+          size 0.0 36.0
+          visible true
+
+        entity pause_resume_label "Resume label"
+          Text
+            content "RESUME"
+            font "BebasNeue-Regular"
+            order 11
+            paint Ink
+            scale Body
+            wrap false
+          UiNode
+            align_children Start
+            anchor
+              horizontal Stretch
+              vertical Stretch
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left 0.0
+              right 0.0
+              top 0.0
+            padding None
+            size 0.0 0.0
+            visible true
+
+      entity pause_save "Save"
+        Focusable
+          enabled true
+          order 1
+        MenuButton
+          choice Save
+        Panel
+          order 10
+          paint Surface
+        UiNode
+          align_children Start
+          anchor
+            horizontal Stretch
+            vertical Start
+          flow None
+          gap None
+          grow 0.0
+          margin
+            bottom 0.0
+            left 0.0
+            right 0.0
+            top 0.0
+          padding Snug
+          size 0.0 36.0
+          visible true
+
+        entity pause_save_label "Save label"
+          Text
+            content "SAVE"
+            font "BebasNeue-Regular"
+            order 11
+            paint Ink
+            scale Body
+            wrap false
+          UiNode
+            align_children Start
+            anchor
+              horizontal Stretch
+              vertical Stretch
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left 0.0
+              right 0.0
+              top 0.0
+            padding None
+            size 0.0 0.0
+            visible true
+
+      entity pause_load "Load"
+        Focusable
+          enabled true
+          order 2
+        MenuButton
+          choice Load
+        Panel
+          order 10
+          paint Surface
+        UiNode
+          align_children Start
+          anchor
+            horizontal Stretch
+            vertical Start
+          flow None
+          gap None
+          grow 0.0
+          margin
+            bottom 0.0
+            left 0.0
+            right 0.0
+            top 0.0
+          padding Snug
+          size 0.0 36.0
+          visible true
+
+        entity pause_load_label "Load label"
+          Text
+            content "LOAD"
+            font "BebasNeue-Regular"
+            order 11
+            paint Ink
+            scale Body
+            wrap false
+          UiNode
+            align_children Start
+            anchor
+              horizontal Stretch
+              vertical Stretch
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left 0.0
+              right 0.0
+              top 0.0
+            padding None
+            size 0.0 0.0
+            visible true
+
+      entity pause_quit "Quit"
+        Focusable
+          enabled true
+          order 3
+        MenuButton
+          choice Quit
+        Panel
+          order 10
+          paint Surface
+        UiNode
+          align_children Start
+          anchor
+            horizontal Stretch
+            vertical Start
+          flow None
+          gap None
+          grow 0.0
+          margin
+            bottom 0.0
+            left 0.0
+            right 0.0
+            top 0.0
+          padding Snug
+          size 0.0 36.0
+          visible true
+
+        entity pause_quit_label "Quit label"
+          Text
+            content "QUIT"
+            font "BebasNeue-Regular"
+            order 11
+            paint Ink
+            scale Body
+            wrap false
+          UiNode
+            align_children Start
+            anchor
+              horizontal Stretch
+              vertical Stretch
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left 0.0
+              right 0.0
+              top 0.0
+            padding None
+            size 0.0 0.0
+            visible true
+
+  entity ended_menu "Ending menu"
+    Menu
+      screen Ended
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible false
+
+    entity ended_menu_panel "Ending menu panel"
+      Panel
+        order 10
+        paint Raised
+      UiNode
+        align_children Stretch
+        anchor
+          horizontal Centre
+          vertical Centre
+        flow Column
+        gap Snug
+        grow 0.0
+        margin
+          bottom 0.0
+          left 0.0
+          right 0.0
+          top 0.0
+        padding Normal
+        size 320.0 180.0
+        visible true
+
+      entity ending_line "Ending"
+        EndingLine
+        Text
+          content ""
+          font "BebasNeue-Regular"
+          order 11
+          paint Accent
+          scale Title
+          wrap false
+        UiNode
+          align_children Start
+          anchor
+            horizontal Stretch
+            vertical Start
+          flow None
+          gap None
+          grow 0.0
+          margin
+            bottom 0.0
+            left 0.0
+            right 0.0
+            top 0.0
+          padding None
+          size 0.0 60.0
+          visible true
+
+      entity ended_again "Try again"
+        Focusable
+          enabled true
+          order 0
+        MenuButton
+          choice TryAgain
+        Panel
+          order 10
+          paint Surface
+        UiNode
+          align_children Start
+          anchor
+            horizontal Stretch
+            vertical Start
+          flow None
+          gap None
+          grow 0.0
+          margin
+            bottom 0.0
+            left 0.0
+            right 0.0
+            top 0.0
+          padding Snug
+          size 0.0 36.0
+          visible true
+
+        entity ended_again_label "Try again label"
+          Text
+            content "TRY AGAIN"
+            font "BebasNeue-Regular"
+            order 11
+            paint Ink
+            scale Body
+            wrap false
+          UiNode
+            align_children Start
+            anchor
+              horizontal Stretch
+              vertical Stretch
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left 0.0
+              right 0.0
+              top 0.0
+            padding None
+            size 0.0 0.0
+            visible true
+
+      entity ended_quit "Quit"
+        Focusable
+          enabled true
+          order 1
+        MenuButton
+          choice Quit
+        Panel
+          order 10
+          paint Surface
+        UiNode
+          align_children Start
+          anchor
+            horizontal Stretch
+            vertical Start
+          flow None
+          gap None
+          grow 0.0
+          margin
+            bottom 0.0
+            left 0.0
+            right 0.0
+            top 0.0
+          padding Snug
+          size 0.0 36.0
+          visible true
+
+        entity ended_quit_label "Quit label"
+          Text
+            content "QUIT"
+            font "BebasNeue-Regular"
+            order 11
+            paint Ink
+            scale Body
+            wrap false
+          UiNode
+            align_children Start
+            anchor
+              horizontal Stretch
+              vertical Stretch
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left 0.0
+              right 0.0
+              top 0.0
+            padding None
+            size 0.0 0.0
+            visible true

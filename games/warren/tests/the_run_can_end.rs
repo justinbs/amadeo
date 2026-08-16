@@ -40,6 +40,15 @@ fn room() -> App {
         &mut app.world,
         InputDriver::new(Box::new(ScriptedSource::new())),
     );
+    // **Past the title screen.** A fresh world starts on `Screen::Title` with the gameplay stages
+    // frozen, so a test that did not do this would be testing a paused game — and would fail in a
+    // way that says "the prompt is empty" rather than "the run never started".
+    //
+    // Written directly rather than by driving the menu, deliberately: what this file is about is
+    // the rules, and `the_shell_holds_together.rs` is where the buttons themselves are pressed.
+    if let Some(screen) = app.world.resource_mut::<warren::Screen>() {
+        *screen = warren::Screen::Playing;
+    }
     app
 }
 

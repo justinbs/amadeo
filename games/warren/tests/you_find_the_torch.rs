@@ -34,6 +34,10 @@ fn room() -> App {
         &mut app.world,
         InputDriver::new(Box::new(ScriptedSource::new())),
     );
+    // Past the title screen; see `the_run_can_end.rs` for why every builder here does this.
+    if let Some(screen) = app.world.resource_mut::<warren::Screen>() {
+        *screen = warren::Screen::Playing;
+    }
     app
 }
 

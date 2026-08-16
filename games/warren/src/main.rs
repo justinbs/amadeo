@@ -4,7 +4,7 @@
 //! cargo run -p warren
 //! ```
 //!
-//! WASD to walk, the mouse to look, F to take what is in front of you, Escape to quit.
+//! WASD to walk, the mouse to look, F to take what is in front of you, Escape to pause.
 //!
 //! See the crate docs in `lib.rs` for what this is *for*. The short version: the first-person camera
 //! rig has existed since session 17 and no game had ever used it, and the level you walk around in
@@ -20,7 +20,8 @@ use amadeo_character::{MOVE_FORWARD, MOVE_RIGHT};
 use amadeo_input::{InputDriver, LiveSource};
 use amadeo_interaction::USE;
 use amadeo_render::{RENDER_QUADS, Renderer, WgpuBackend, render_quads};
-use warren::{build_headless, build_simulation};
+use amadeo_ui::{UI_CONFIRM, UI_NEXT, UI_PREVIOUS};
+use warren::{PAUSE, Screen, build_headless, build_simulation};
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -55,6 +56,12 @@ struct HeldKeys {
     right: bool,
     /// F, which takes whatever is in front of you.
     use_it: bool,
+    /// Escape, which opens and closes the pause menu.
+    pause: bool,
+    /// Down and up through a menu, and Enter to choose.
+    menu_next: bool,
+    menu_previous: bool,
+    menu_confirm: bool,
 }
 
 /// Pointer movement accumulated since the last frame.
@@ -97,6 +104,10 @@ impl Warren {
                 live.set_axis_from_keys(MOVE_FORWARD, keys.back, keys.forward);
                 live.set_axis_from_keys(MOVE_RIGHT, keys.left, keys.right);
                 live.set_button(USE, keys.use_it);
+                live.set_button(PAUSE, keys.pause);
+                live.set_button(UI_NEXT, keys.menu_next);
+                live.set_button(UI_PREVIOUS, keys.menu_previous);
+                live.set_button(UI_CONFIRM, keys.menu_confirm);
 
                 // **`LOOK` is held permanently, and that is the first-person difference.** The
                 // camera module gates the look axes on it so that a *third*-person game can keep a
@@ -168,7 +179,8 @@ impl ApplicationHandler for Warren {
         // To **stderr**, not stdout: stdout is the agent protocol (ADR 0016).
         eprintln!("Amadeo — the Warren.");
         eprintln!("WASD to walk, the mouse to look, F to take what is in front of you.");
-        eprintln!("The torch is one room away. Find the key, then find the door. Escape to quit.");
+        eprintln!("Escape to pause; arrows and Enter to choose.");
+        eprintln!("The torch is one room away. Find the key, then find the door.");
 
         self.running = Some(Running {
             window,
@@ -201,15 +213,21 @@ impl ApplicationHandler for Warren {
             } => {
                 let held = state == ElementState::Pressed;
                 match code {
-                    // Still an exit rather than a pause menu. The Atrium has the menu; this game
-                    // has not reached its title screen yet, and pretending otherwise would be a
-                    // button that goes nowhere.
-                    KeyCode::Escape => event_loop.exit(),
-                    KeyCode::KeyW | KeyCode::ArrowUp => self.keys.forward = held,
-                    KeyCode::KeyS | KeyCode::ArrowDown => self.keys.back = held,
-                    KeyCode::KeyA | KeyCode::ArrowLeft => self.keys.left = held,
-                    KeyCode::KeyD | KeyCode::ArrowRight => self.keys.right = held,
+                    // **No longer an exit.** Escape opens the pause menu, and "quit" is a button on
+                    // it — which is what M3's exit gate item 1 means by a complete game rather than
+                    // a demo you close with the window chrome.
+                    KeyCode::Escape => self.keys.pause = held,
+                    KeyCode::KeyW => self.keys.forward = held,
+                    KeyCode::KeyS => self.keys.back = held,
+                    KeyCode::KeyA => self.keys.left = held,
+                    KeyCode::KeyD => self.keys.right = held,
                     KeyCode::KeyF => self.keys.use_it = held,
+                    // **The arrows drive the menu and not the character**, deliberately: a menu is
+                    // up whenever they do anything, and a key that means two things depending on
+                    // the screen is a key that eventually does the wrong one.
+                    KeyCode::ArrowDown => self.keys.menu_next = held,
+                    KeyCode::ArrowUp => self.keys.menu_previous = held,
+                    KeyCode::Enter | KeyCode::Space => self.keys.menu_confirm = held,
                     _ => {}
                 }
             }
@@ -240,6 +258,21 @@ impl ApplicationHandler for Warren {
                     // and feels like it is dropping input, because it is.
                     if ticks > 0 {
                         self.look = Look::default();
+                    }
+
+                    // **Between ticks, which is the whole point of it.** Saving, loading and
+                    // starting over all touch a disk or replace a world, and a system doing either
+                    // would put the state of a filesystem inside a deterministic simulation. The
+                    // menu records what it wants; this is where it happens.
+                    for said in warren::serve_requests(&mut running.app) {
+                        eprintln!("{said}");
+                    }
+
+                    // Terminal, and read after the tick that could have set it so quitting takes
+                    // effect on the frame it was chosen rather than the one after.
+                    if running.app.world.resource::<Screen>() == Some(&Screen::Quitting) {
+                        event_loop.exit();
+                        return;
                     }
 
                     if let Err(error) = running.app.render() {
