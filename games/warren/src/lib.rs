@@ -282,6 +282,13 @@ pub fn build_from_scene(scene: &str) -> anyhow::Result<App> {
     app.register_component::<MenuButton>()?;
     app.insert_resource(Screen::default());
     app.insert_resource(Requested::default());
+    // **The engine's `Paused`, and forgetting this line is silent.** `apply_screen` projects the
+    // screen onto it with `resource_mut`, which hands back `None` when the resource was never
+    // inserted — so every pause was a no-op, the world kept simulating behind the title screen, and
+    // the only visible sign was that the view still turned with the mouse. Justin found it by
+    // playing the game, which is the only way it could have been found: the test that should have
+    // caught it checked the player's *translation*, and a player with no input does not move.
+    app.insert_resource(Paused::default());
 
     // The interface (ADR 0062). `ComputedRect` is registered although nothing authors one, because
     // it is a component an agent should be able to *see* — "where did that line end up" is the

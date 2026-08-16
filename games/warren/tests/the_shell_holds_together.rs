@@ -396,3 +396,45 @@ fn quit_is_terminal() {
     app.run_ticks(30).expect("half a second runs");
     assert_eq!(screen(&app.world), Screen::Quitting);
 }
+
+#[test]
+fn the_view_does_not_turn_behind_a_menu() {
+    // **The defect this exists for shipped, and a player found it by playing.**
+    //
+    // `apply_screen` projects the screen onto the engine's `Paused` with `resource_mut`, which hands
+    // back `None` when the resource was never inserted — and this game never inserted it. So every
+    // pause was a no-op: the world simulated behind the title screen and the mouse still turned the
+    // view, which is the only symptom a frozen-looking world has.
+    //
+    // **`a_paused_world_does_not_move` above did not catch it, and could not have.** It compares the
+    // player's translation, and a player with no movement input does not move whether the game is
+    // paused or not. A test of "is it frozen" has to drive something that *would* change, and the
+    // view is the one thing a player can always move.
+    let mut app = booted();
+    app.run_ticks(2).expect("ticks run");
+
+    let player = player(&app.world).expect("a character");
+    let eyes = warren::eyes(&app.world).expect("a camera");
+    let before = (
+        app.world.get::<Transform>(player).expect("placed").rotation,
+        app.world.get::<Transform>(eyes).expect("placed").rotation,
+    );
+
+    for _ in 0..60 {
+        if let Some(state) = app.world.resource_mut::<amadeo_input::InputState>() {
+            state.set_button(amadeo_input::ActionId::new(amadeo_camera::LOOK), true);
+            state.set_axis(amadeo_input::ActionId::new(amadeo_camera::LOOK_X), 20.0);
+            state.set_axis(amadeo_input::ActionId::new(amadeo_camera::LOOK_Y), 20.0);
+        }
+        app.run_ticks(1).expect("a tick runs");
+    }
+
+    let after = (
+        app.world.get::<Transform>(player).expect("placed").rotation,
+        app.world.get::<Transform>(eyes).expect("placed").rotation,
+    );
+    assert_eq!(
+        before, after,
+        "a second of mouse turned the view behind a menu"
+    );
+}
