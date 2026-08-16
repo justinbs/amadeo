@@ -70,9 +70,9 @@ pub use ibl::{
     SPECULAR_SIZE, SkyCache, irradiance, prefilter_specular,
 };
 pub use mesh::{
-    BoxMesh, DirectionalLight, GltfPart, MAX_PUNCTUAL_LIGHTS, MAX_SHADOW_LAYERS, MAX_SHADOW_SPOTS,
-    Material, MaterialCache, Mesh, MeshCache, MeshData, PlaneMesh, PointLight, ShadowMode,
-    SpotLight, Vertex,
+    ArchMesh, BoxMesh, DirectionalLight, GltfPart, MAX_PUNCTUAL_LIGHTS, MAX_SHADOW_LAYERS,
+    MAX_SHADOW_SPOTS, Material, MaterialCache, Mesh, MeshCache, MeshData, PlaneMesh, PointLight,
+    ShadowMode, SpotLight, Vertex,
 };
 pub use sprites::{COLLECT_SPRITES, collect_sprites};
 pub use textures::{

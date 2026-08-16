@@ -23,9 +23,9 @@
 
 use amadeo_ecs::World;
 use amadeo_render::{
-    BoxMesh, Camera, DirectionalLight, Environment, EnvironmentCache, Fog, Material, MaterialCache,
-    Mesh, MeshCache, NullBackend, PointLight, Quad, RenderBackend, Renderer, ShadowMode, SpotLight,
-    TextureData, Vignette, WgpuBackend, render_quads,
+    ArchMesh, BoxMesh, Camera, DirectionalLight, Environment, EnvironmentCache, Fog, Material,
+    MaterialCache, Mesh, MeshCache, NullBackend, PointLight, Quad, RenderBackend, Renderer,
+    ShadowMode, SpotLight, TextureData, Vignette, WgpuBackend, render_quads,
 };
 use amadeo_transform::Transform;
 
@@ -1820,5 +1820,82 @@ fn fog_thickens_with_distance() {
     assert!(
         far < near,
         "the further box should be more fogged: near {near}, far {far}"
+    );
+}
+
+#[test]
+fn an_arch_draws_as_a_vault_rather_than_a_box() {
+    // **The engine's first curved primitive, checked on a screen and not only in arithmetic.**
+    // Its unit tests pin the geometry; this pins that the geometry becomes pixels, and it is worth
+    // having separately because a normal pointing the wrong way is arithmetically fine and renders
+    // black (ADR 0052 means it still *draws* — it is just lit from behind).
+    //
+    // The camera sits inside a section looking down its length with a lamp overhead. A vault lights
+    // brightly at the crown and falls off towards the springing, so the test is that the top of the
+    // frame is lit and the lower corners are not — which a cuboid room would fail, since a flat
+    // ceiling under a point light has no falloff across the frame's width.
+    let mut world = World::new();
+
+    let eye = world.spawn();
+    let mut place = Transform::at(0.0, 0.0);
+    place.translation = [0.0, 1.6, 3.0];
+    world.insert(eye, place);
+    world.insert(eye, Camera::perspective(70.0));
+
+    let mut meshes = MeshCache::new();
+    meshes.insert(
+        "tunnel",
+        ArchMesh {
+            width: 5.0,
+            height: 3.4,
+            length: 16.0,
+            segments: 16,
+            floor: true,
+        }
+        .tessellate(),
+    );
+    world.insert_service(meshes);
+
+    let mut materials = MaterialCache::new();
+    materials.insert(
+        "plaster",
+        Material {
+            base_colour: [0.55, 0.53, 0.47, 1.0],
+            roughness: 0.95,
+            ..Material::default()
+        },
+    );
+    world.insert_service(materials);
+
+    let tunnel = world.spawn();
+    world.insert(tunnel, Transform::at(0.0, 0.0));
+    world.insert(tunnel, Mesh::new("tunnel", "plaster"));
+
+    let lamp = world.spawn();
+    let mut lit = Transform::at(0.0, 0.0);
+    lit.translation = [0.0, 2.6, -1.0];
+    world.insert(lamp, lit);
+    world.insert(
+        lamp,
+        PointLight {
+            colour: [0.9, 0.85, 0.7],
+            intensity: 12.0,
+            range: 9.0,
+        },
+    );
+
+    let Some(image) = capture(&mut world, 128, 96) else {
+        return;
+    };
+
+    let crown = pixel_at(&image, 64, 10);
+    let corner = pixel_at(&image, 4, 90);
+    assert!(
+        crown[0] > 40,
+        "the crown of the vault should catch the lamp, got {crown:?}"
+    );
+    assert!(
+        crown[0] > corner[0] + 20,
+        "a vault falls off from crown to springing; crown {crown:?} corner {corner:?}"
     );
 }

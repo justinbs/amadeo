@@ -465,6 +465,217 @@ impl PlaneMesh {
     }
 }
 
+/// A barrel vault: a length of tunnel with a flat floor and a curved roof, seen from **inside**.
+///
+/// # Why the engine needed a curved primitive at all
+///
+/// It had two procedural shapes, and both are axis-aligned boxes — `PlaneMesh` is one face of one.
+/// So every wall, floor, prop and character in every game built on this engine so far is a cuboid,
+/// and a review of `games/warren` measured exactly that: thirteen meshes, thirteen boxes. A world
+/// made only of boxes reads as a test scene no matter how well it is lit, because nothing in it has
+/// a silhouette.
+///
+/// This is the smallest primitive that fixes it, and it is not arbitrary: an arched section is what
+/// a bored tunnel, a cellar, a culvert, a subway and a shelter all actually are, so one shape covers
+/// most interiors that are not rooms.
+///
+/// # Inside out, deliberately
+///
+/// The normals point **inward**, towards the axis, because this is a space you stand in rather than
+/// an object you look at. That is the opposite of every other shape here, and it is the one thing
+/// about this type worth checking twice — a vault with outward normals is lit from behind every
+/// surface and reads as uniformly black, which looks like a missing light rather than a wrong sign.
+///
+/// ADR 0052 means winding does not decide visibility, so a mistake here would *not* make it
+/// invisible. It would make it subtly, inexplicably dark, which is worse.
+/// `an_arch_is_wound_to_match_its_own_normals` is the test `CLAUDE.md` requires of any new mesh
+/// producer, and it exists because normals and winding are independent and getting one right does
+/// not check the other.
+///
+/// # The shape, in three numbers a person can picture
+///
+/// `width` at the floor, `height` to the crown, `length` along -Z. The roof is a circular arc
+/// through the two floor edges and the crown, which is a *segmental* arch — the radius follows from
+/// the other two rather than being authored, so there is no way to specify an arc that does not meet
+/// its own walls. A `height` of half the `width` is a true half-round bore; more than that and the
+/// walls rise vertically before the curve begins.
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+pub struct ArchMesh {
+    /// Width at floor level, in world units.
+    #[reflect(min = 0.01, max = 10000.0, unit = "world units")]
+    pub width: f32,
+    /// Height from the floor to the highest point of the roof.
+    #[reflect(min = 0.01, max = 10000.0, unit = "world units")]
+    pub height: f32,
+    /// How far the section runs along -Z, which is forward (ADR 0018).
+    #[reflect(min = 0.01, max = 10000.0, unit = "world units")]
+    pub length: f32,
+    /// How many flat facets the curve is built from.
+    ///
+    /// **The one number that is a cost rather than a shape.** Twelve is smooth enough that a lamp
+    /// sweeping across it does not show the facets; three makes a hut. Above about twenty-four
+    /// nothing visible changes and the triangle count keeps climbing.
+    #[reflect(min = 2.0, max = 128.0)]
+    pub segments: u32,
+    /// Whether to lay a floor across the bottom.
+    ///
+    /// Off is useful: a section that sits over an existing slab, or an arch used as a doorway
+    /// surround, does not want one — and a coincident floor is z-fighting rather than a spare
+    /// triangle.
+    pub floor: bool,
+}
+
+impl Default for ArchMesh {
+    fn default() -> Self {
+        Self {
+            width: 4.0,
+            height: 3.0,
+            length: 8.0,
+            segments: 12,
+            floor: true,
+        }
+    }
+}
+
+impl Component for ArchMesh {}
+
+impl ArchMesh {
+    /// Turns the parameters into geometry, with the origin at the middle of the floor.
+    ///
+    /// # Two shapes, chosen by proportion, and the reason there are two
+    ///
+    /// The obvious construction — a single circular arc through the two floor edges and the crown —
+    /// is right only while the rise is at most half the width. Taller than that and the arc's centre
+    /// rises above the floor, so the curve **bulges outward past its own walls** before coming back
+    /// in: a section 5 m wide measures 5.3 m at shoulder height. It looks like a barrel and it is not
+    /// what anybody authoring "5 wide, 3.5 tall" is asking for. A test caught it; the eye would have
+    /// caught it later and less clearly.
+    ///
+    /// So:
+    ///
+    /// - **rise ≥ half width** — vertical walls up to the springing line, then a *semicircular*
+    ///   crown of radius half the width. This is what a bored tunnel, a subway and a shelter
+    ///   actually are, and the wall meets the arc tangentially, so the shading runs smoothly through
+    ///   the join with no crease to author.
+    /// - **rise < half width** — a shallow segmental arch, radius derived from the chord and the
+    ///   rise as `(w²/4 + h²) / 2h`. Here the centre sits *below* the floor, so the curve only ever
+    ///   narrows and the bulge cannot happen.
+    ///
+    /// # The one transcendental, and where it is not
+    ///
+    /// The segmental case needs `atan2` once, to find where the arc meets the floor. That is
+    /// tessellation-time work on presentation geometry — the allowance `amadeo_image::mip_chain`
+    /// takes for `powf`. *Walking* the arc uses [`amadeo_core::sin_cos_degrees`] rather than the
+    /// standard library's, because ADR 0053 wrote the engine's own precisely so that repeated
+    /// geometry is specified rather than "whatever this platform's libm did".
+    #[must_use]
+    pub fn tessellate(&self) -> MeshData {
+        let half = self.width.max(0.01) / 2.0;
+        let rise = self.height.max(0.01);
+        let long = self.length.max(0.01);
+        let steps = self.segments.clamp(2, 128);
+
+        // The ring: a cross-section walked from the right springing point, up and over the crown, to
+        // the left. Each entry is a point and the inward normal there.
+        let mut ring: Vec<([f32; 2], [f32; 2])> = Vec::new();
+
+        if rise >= half {
+            // Vertical wall, semicircular crown. The wall's base is a ring point of its own so that
+            // the strip has somewhere to start; the arc's first point lands exactly on top of it.
+            let springing = rise - half;
+            ring.push(([half, 0.0], [-1.0, 0.0]));
+            for step in 0..=steps {
+                // From +90° to -90°, measured from straight up, so the walk runs right to left.
+                let degrees = 90.0 - 180.0 * (step as f32 / steps as f32);
+                let (sine, cosine) = amadeo_core::sin_cos_degrees(degrees);
+                ring.push(([half * sine, springing + half * cosine], [-sine, -cosine]));
+            }
+            ring.push(([-half, 0.0], [1.0, 0.0]));
+        } else {
+            let radius = (half * half + rise * rise) / (2.0 * rise);
+            let centre_y = rise - radius;
+            // Where the arc meets the floor, as an angle from straight up. `centre_y` is negative
+            // here by construction, so this is the one place the shape needs an inverse trig call.
+            let half_angle = half.atan2(-centre_y).to_degrees();
+            for step in 0..=steps {
+                let degrees = half_angle - 2.0 * half_angle * (step as f32 / steps as f32);
+                let (sine, cosine) = amadeo_core::sin_cos_degrees(degrees);
+                ring.push((
+                    [radius * sine, centre_y + radius * cosine],
+                    [-sine, -cosine],
+                ));
+            }
+        }
+
+        // Texture coordinates run along the *perimeter* rather than by index, so a facet twice as
+        // long gets twice the image. Indexing would stretch the wall and squash the crown, which on
+        // a tiling material reads as the tunnel changing material half way up.
+        let mut travelled = vec![0.0f32];
+        for pair in ring.windows(2) {
+            let (a, _) = pair[0];
+            let (b, _) = pair[1];
+            let step = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt();
+            travelled.push(travelled.last().copied().unwrap_or(0.0) + step);
+        }
+        let perimeter = travelled.last().copied().unwrap_or(1.0).max(0.0001);
+
+        let mut data = MeshData::default();
+        let (near_z, far_z) = (long / 2.0, -long / 2.0);
+
+        for (index, pair) in ring.windows(2).enumerate() {
+            let (a, a_normal) = pair[0];
+            let (b, b_normal) = pair[1];
+            let (a_u, b_u) = (
+                travelled[index] / perimeter,
+                travelled[index + 1] / perimeter,
+            );
+            let first = data.vertices.len() as u32;
+
+            for (position, normal, uv) in [
+                ([a[0], a[1], near_z], a_normal, [a_u, 1.0]),
+                ([b[0], b[1], near_z], b_normal, [b_u, 1.0]),
+                ([b[0], b[1], far_z], b_normal, [b_u, 0.0]),
+                ([a[0], a[1], far_z], a_normal, [a_u, 0.0]),
+            ] {
+                data.vertices.push(Vertex {
+                    position,
+                    normal: [normal[0], normal[1], 0.0],
+                    uv,
+                    ..Vertex::default()
+                });
+            }
+            data.indices
+                .extend([first, first + 1, first + 2, first, first + 2, first + 3]);
+        }
+
+        if self.floor {
+            let first = data.vertices.len() as u32;
+            let up = [0.0, 1.0, 0.0];
+            for (position, uv) in [
+                ([-half, 0.0, near_z], [0.0, 1.0]),
+                ([half, 0.0, near_z], [1.0, 1.0]),
+                ([half, 0.0, far_z], [1.0, 0.0]),
+                ([-half, 0.0, far_z], [0.0, 0.0]),
+            ] {
+                data.vertices.push(Vertex {
+                    position,
+                    normal: up,
+                    uv,
+                    ..Vertex::default()
+                });
+            }
+            data.indices
+                .extend([first, first + 1, first + 2, first, first + 2, first + 3]);
+        }
+
+        // Approximate rather than exact, unlike the box and the plane: the surface is curved, so
+        // there is no single tangent frame a baking tool would agree with everywhere. It is the
+        // right frame at each vertex, which is what a normal map needs.
+        data.generate_tangents();
+        data
+    }
+}
+
 /// What a surface is made of — ADR 0033.
 ///
 /// **An asset named by an id**, because a material is shared by construction: the Vault's forty-four
@@ -1151,6 +1362,153 @@ fn perpendicular_to(normal: [f32; 3]) -> [f32; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every triangle of an arch, as (its three corners, the averaged vertex normal).
+    fn arch_triangles(data: &MeshData) -> Vec<([[f32; 3]; 3], [f32; 3])> {
+        data.indices
+            .chunks_exact(3)
+            .map(|face| {
+                let corners: Vec<&Vertex> =
+                    face.iter().map(|i| &data.vertices[*i as usize]).collect();
+                let positions = [
+                    corners[0].position,
+                    corners[1].position,
+                    corners[2].position,
+                ];
+                let average = [
+                    (corners[0].normal[0] + corners[1].normal[0] + corners[2].normal[0]) / 3.0,
+                    (corners[0].normal[1] + corners[1].normal[1] + corners[2].normal[1]) / 3.0,
+                    (corners[0].normal[2] + corners[1].normal[2] + corners[2].normal[2]) / 3.0,
+                ];
+                (positions, average)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn an_arch_is_wound_to_match_its_own_normals() {
+        // **The test `CLAUDE.md` requires of every new mesh producer**, and it exists because a
+        // mesh's normals and its winding are independent: getting one right does not check the
+        // other. `amadeo-voxel` shipped every quad wound against its own normal for two sessions
+        // because its tests checked normals only and nothing had ever drawn one.
+        //
+        // Here the stakes are subtler than "inside out". ADR 0052 turned backface culling off, so a
+        // reversed winding would still *draw* — it would simply light every surface from behind and
+        // read as a vault that is inexplicably black, which looks like a missing light rather than a
+        // wrong sign. That is exactly the kind of fault that survives a review.
+        let data = ArchMesh::default().tessellate();
+        for (corners, normal) in arch_triangles(&data) {
+            let edge_a = [
+                corners[1][0] - corners[0][0],
+                corners[1][1] - corners[0][1],
+                corners[1][2] - corners[0][2],
+            ];
+            let edge_b = [
+                corners[2][0] - corners[0][0],
+                corners[2][1] - corners[0][1],
+                corners[2][2] - corners[0][2],
+            ];
+            let geometric = [
+                edge_a[1] * edge_b[2] - edge_a[2] * edge_b[1],
+                edge_a[2] * edge_b[0] - edge_a[0] * edge_b[2],
+                edge_a[0] * edge_b[1] - edge_a[1] * edge_b[0],
+            ];
+            let agreement =
+                geometric[0] * normal[0] + geometric[1] * normal[1] + geometric[2] * normal[2];
+            assert!(
+                agreement > 0.0,
+                "a triangle at {corners:?} is wound against its own normal {normal:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_arch_faces_inward() {
+        // The other half, and the one the winding test cannot say: that the normals point *at* the
+        // space rather than away from it. Every point on the curved surface should have a normal
+        // whose horizontal part aims back towards the vertical centre line, because that is where
+        // the player is standing.
+        let data = ArchMesh::default().tessellate();
+        for vertex in &data.vertices {
+            // Skip the floor, whose normal is straight up and has no horizontal part to test.
+            if vertex.normal[1] > 0.99 {
+                continue;
+            }
+            assert!(
+                vertex.position[0] * vertex.normal[0] <= 0.001,
+                "a point at {:?} has normal {:?}, which points away from the middle",
+                vertex.position,
+                vertex.normal
+            );
+        }
+    }
+
+    #[test]
+    fn an_arch_reaches_its_authored_width_and_height() {
+        // The three numbers a person authors have to be the three numbers they get. A segmental arch
+        // derives its radius from the width and the rise, so an error there is invisible in the code
+        // and obvious in the room.
+        let arch = ArchMesh {
+            width: 5.0,
+            height: 3.5,
+            length: 10.0,
+            segments: 24,
+            floor: true,
+        };
+        let data = arch.tessellate();
+
+        let widest = data
+            .vertices
+            .iter()
+            .fold(0.0f32, |wide, v| wide.max(v.position[0].abs()));
+        let tallest = data
+            .vertices
+            .iter()
+            .fold(0.0f32, |high, v| high.max(v.position[1]));
+        let deepest = data
+            .vertices
+            .iter()
+            .fold(0.0f32, |deep, v| deep.max(v.position[2].abs()));
+
+        assert!((widest - 2.5).abs() < 0.001, "half width came out {widest}");
+        assert!((tallest - 3.5).abs() < 0.001, "crown came out {tallest}");
+        assert!(
+            (deepest - 5.0).abs() < 0.001,
+            "half length came out {deepest}"
+        );
+
+        // And the floor is at zero, so a section placed at a room's floor level sits on it rather
+        // than half a metre into it.
+        let lowest = data
+            .vertices
+            .iter()
+            .fold(f32::MAX, |low, v| low.min(v.position[1]));
+        assert!(lowest.abs() < 0.001, "the floor came out at {lowest}");
+    }
+
+    #[test]
+    fn a_half_round_arch_is_a_half_circle() {
+        // The degenerate case worth pinning, because it is the one a reader can check by hand: when
+        // the rise is half the width, the radius equals the rise and the centre sits exactly on the
+        // floor. Every point on the curve is then the same distance from the origin.
+        let arch = ArchMesh {
+            width: 4.0,
+            height: 2.0,
+            length: 1.0,
+            segments: 16,
+            floor: false,
+        };
+        for vertex in &arch.tessellate().vertices {
+            let radius = (vertex.position[0] * vertex.position[0]
+                + vertex.position[1] * vertex.position[1])
+                .sqrt();
+            assert!(
+                (radius - 2.0).abs() < 0.001,
+                "a point at {:?} is {radius} from the middle, not 2",
+                vertex.position
+            );
+        }
+    }
 
     /// A triangle's geometric normal, from the winding of its three corners.
     ///

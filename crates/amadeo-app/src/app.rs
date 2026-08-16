@@ -10,8 +10,8 @@ use amadeo_reflect::{
     FieldInfo, Reflect, ReflectError, RegistryError, Replication, TypeInfo, TypeKind, Value,
 };
 use amadeo_render::{
-    BoxMesh, Camera, Environment, EnvironmentCache, GltfPart, Material, MaterialCache, Mesh,
-    MeshCache, MeshData, PlaneMesh, Vertex,
+    ArchMesh, BoxMesh, Camera, Environment, EnvironmentCache, GltfPart, Material, MaterialCache,
+    Mesh, MeshCache, MeshData, PlaneMesh, Vertex,
 };
 use amadeo_scene::PrefabLibrary;
 use std::collections::{BTreeMap, BTreeSet};
@@ -697,6 +697,11 @@ impl App {
             built.push((id, shape.tessellate()));
         }
         for (id, shape) in self.read_component_assets::<PlaneMesh>(&wanted) {
+            built.push((id, shape.tessellate()));
+        }
+        // The curved one (session 20). Added because a review measured that every mesh in every game
+        // here was an axis-aligned box, which is most of why the result read as a test scene.
+        for (id, shape) in self.read_component_assets::<ArchMesh>(&wanted) {
             built.push((id, shape.tessellate()));
         }
         // The third producer, and the one ADR 0035 predicted: geometry read out of a glTF file
