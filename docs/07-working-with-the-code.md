@@ -2539,6 +2539,27 @@ Two things follow. When adding text to a game, declare the font in the same edit
 most easily forgotten because it is nowhere near the `Text`. And when a HUD is invisible, check the
 `assets` block before anything else: `FontCache::failures` names the id, and is the whole diagnosis.
 
+### `amadeo check` does not reach prefab override rules
+
+`check` validates a scene against the game's **real component schema**: names resolve, fields exist,
+values fit. That is a lot, and it is why ADR 0071 makes it the test of the level generator.
+
+**It is not a load.** Session 18 generated a scene that `check` reported `ok` and that then failed
+at load with:
+
+```text
+entity `room_0_n1` declares `Transform`, but its prefab already puts that component on the root.
+Write `override Transform` to replace it
+```
+
+Every piece puts a `Transform` on its own root, and ADR 0029 refuses to replace one silently — an
+override has to be spelled out so it is visible in the file (I1). The generator emitted the bare
+form. Schema-valid, and wrong.
+
+Two things to take from it. **When you write a scene by machine, load it as well as checking it** —
+`amadeo capture --ticks 1` is the cheapest load there is. And when instancing a prefab, assume the
+piece already has `Transform` on its root, because every piece worth instancing does.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

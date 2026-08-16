@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-15 (session 18)
+**Last updated:** 2026-08-16 (session 18)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE — all four exit gates met.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
@@ -44,17 +44,22 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > that "lit nothing" was simply dim enough that the ACES toe crushed it to exactly 0/255, and
 > *exactly* zero read as a switch rather than as a small number.
 
-**Everything is pushed through `1e9bc35`.** Runs through `cadfeff` are green **5/5**; the last two
-were still in flight when the session ended. Check with `gh run list` rather than assuming — `gh`
-is not on PATH, so prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
+**Everything is pushed through `14006e9`, and every run is green 5/5 — including HEAD.** Check with
+`gh run list` rather than assuming — `gh` is not on PATH, so prefix with
+`$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
 
 ### Session 18 in one paragraph
 
-**Both decisions that were waiting on Justin are decided and built.** Q37 (save versioning) closed
-with **ADR 0069**, and the `mod-inventory` fork closed with **ADR 0070**. `modules/amadeo-inventory`
-exists, and `games/atrium` has a brass key you walk up to, pick up, carry through a save, and drop —
-which gives **both** of the modules session 17 left without a user their first one. The review earned
-its keep: it found a real defect in `amadeo-interaction` on the first try.
+**Three decisions decided and built, and one filed then withdrawn.** Q37 (save versioning) closed
+with **ADR 0069**; the `mod-inventory` fork closed with **ADR 0070**; Q40 (procedural interiors)
+closed with **ADR 0071**. `modules/amadeo-inventory` exists and `games/warren` — a new game — has a
+first-person loop you can win and lose, a HUD, and a working level generator.
+
+Every module session 17 left without a user now has one, and each review earned its keep:
+`amadeo-interaction` had a real defect, and `FirstPersonCamera` had never been driven by anything.
+
+**Q39 was mine and was wrong** — a P0 filed against two renderer faults that do not exist. It is
+withdrawn rather than deleted, because how the diagnosis went wrong is the useful part.
 
 ### The three things worth not rediscovering
 
@@ -130,10 +135,13 @@ milestone is mostly the exit gate itself.
    you escape through and a warden that catches you. That is **gate items 1** (a playable loop with
    a win and a lose state) and **3** (a pursuer with distinct AI states, driven by `mod-behaviour`).
    Still to come, and it is most of what remains in the milestone:
-   - **Bounded procedural interiors from handcrafted pieces** (gate item 2) — **researched and
-     written up as Q40, and it wants a decision.** The usual question is which algorithm; here the
-     first question is what the generator *produces*, because I1 makes a seed-only level
-     unauthorable. Three algorithm families are costed there, with a recommendation.
+   - **Bounded procedural interiors** (gate item 2) — **ADR 0071, and the generator works.**
+     `cargo run -p warren --bin layout` writes a scene: a seeded room graph over three prefab
+     pieces, always connected, always looped. `amadeo check` passes it, and it loads and draws.
+     **What is missing is everything that makes it a level rather than a shape** — a generated
+     interior has no player start, no lights, no key and no door, so the game still boots into its
+     handcrafted room. The next step is a `player_start` piece placed in the first room and an
+     `exit` in the last.
    - **A title screen** and the rest of item 1's shell. `games/atrium` proves save and resume; the
      Warren has not wired it up.
    - **Audio** (item 6). Horror lives there and this game is silent.
@@ -274,10 +282,13 @@ test and passes regardless, so a green Ubuntu job says nothing about a shader.
 
 ---
 
-## Session 18 — a save survives a patch, and a key goes in a pocket
+## Session 18 — a save survives a patch, a key goes in a pocket, and a level generates itself
 
-**Both decisions that were waiting on Justin, decided and built.** Five commits, two ADRs
-(0069–0070), one new module.
+**Both decisions that were waiting on Justin, decided and built — and then a third.** Sixteen
+commits, three ADRs (0069–0071), one new module, one new game.
+
+Three questions resolved (**Q37**, **Q40**), one withdrawn as a misdiagnosis (**Q39**), and one
+opened (**Q38**).
 
 ### What landed
 
@@ -320,9 +331,16 @@ test and passes regardless, so a green Ubuntu job says nothing about a shader.
   rather than a switch. Only a *runtime-driven* pitch is missing. **When a component composes out of
   `Transform` and `Parent`, check whether the thing you are calling unbuilt is already authorable.**
 
-5. **`games/warren`**, M3's exit gate's spine, and the third module-with-no-user retired:
-   `FirstPersonCamera` had existed since session 17 with no game behind it. Capturing it found
-   **Q39**.
+5. **`games/warren`** — M3's exit gate, and the third module-with-no-user retired:
+   `FirstPersonCamera` had existed since session 17 with no game behind it. It now has a **playable
+   loop** (torch → key → door, with a warden that catches you — gate items 1 and 3) and a **HUD**
+   saying what is in reach and how the run ended.
+6. **ADR 0071 and a working level generator.** Q40's real question was not which algorithm but what
+   the generator *produces*: I1 makes a seed-only level unauthorable, so it writes a **scene file**.
+   Justin chose the room graph. Built in three layers, each tested on its own — `Socket` (authored,
+   facing is the mechanism), `lay_out` (bounded, connected, always looped, 64 seeds), and `to_scene`
+   (every entity a prefab instance, every piece declared). `cargo run -p warren --bin layout` writes
+   one, `amadeo check` passes it, and it loads and draws.
 
 ### Three habits that paid, again
 
@@ -333,12 +351,22 @@ test and passes regardless, so a green Ubuntu job says nothing about a shader.
   come back empty; it does not, and should not.
 - **Read the code rather than estimating the cost.** ADR 0070's whole shape came from three query
   signatures, and the estimate they replaced was much worse than the truth.
-- **Look at the output.** Q39 was found by rendering a PNG and opening it, against a fully green
-  suite — the third time in this project that a green suite has hidden something plainly visible,
-  after the inside-out mesher and the FXC-only shader failure. The corollary is the one worth
-  keeping: **a test that asserts on numbers cannot see a black screen**, so anything whose whole
-  purpose is visual needs a capture, and the capture needs a scene that differs from the ones that
-  already work.
+- **Look at the output — and be careful what you conclude from it.** This one paid three times in
+  one session, and cost once.
+  - **Q39**: a black screen found by capturing and looking, against a fully green suite. But the
+    *diagnosis* was wrong twice over and got filed as a P0 against two renderer faults that do not
+    exist. Both errors had one shape — an observation promoted to a claim about the engine with no
+    isolating test. The isolating test took ten minutes and disproved both. **A capture tells you
+    something is wrong, never what.**
+  - **The HUD**: three green tests asserted what its lines *said*, and the screen had no words on
+    it — the font was never declared in the scene's `assets` block, so every line shaped to nothing,
+    silently and by design. **Whatever a test asserts is not the thing the player sees.**
+  - **The generator**: `amadeo check` reported `ok` on a scene that then refused to load, because a
+    prefab instance needs `override Transform` rather than a bare one (ADR 0029). Schema-valid and
+    wrong. **`check` is not a load** — `amadeo capture --ticks 1` is the cheapest one there is.
+  - And the standing corollary: a capture needs a scene that **differs** from the ones that already
+    work. Every scene this renderer had ever drawn had a sun in it, which is why nothing caught the
+    one configuration the exit gate actually needs.
 
 ---
 

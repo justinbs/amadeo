@@ -398,10 +398,17 @@ test of the renderer. Reasoning in `00-vision.md` § The first game to actually 
 
 1. **Complete, not a demo.** Title screen → playable loop → lose state (caught) and win state (escape)
    → pause → save → quit → resume from save. With sound design and music.
-2. **Bounded procedural interiors** — assembled from handcrafted room pieces, not one static level.
-   Tests the scene composition and prefab-instancing design under real use.
-3. **At least one pursuing entity** with distinct AI states (idle, search, pursue, lose interest),
-   driven by `mod-behaviour`.
+2. 🟡 **Bounded procedural interiors** — assembled from handcrafted room pieces, not one static
+   level. Tests the scene composition and prefab-instancing design under real use.
+   **ADR 0071, and the generator works**: `games/warren`'s `layout` binary writes a scene from a
+   seeded room graph over three prefab pieces, always connected and always looped, and `amadeo
+   check` passes it. It emits a **file** rather than a seed, so the formatter, the validator, prefab
+   instancing and the editor all work on the result and a person can move a door by hand.
+   **Still geometry only** — no player start, no lights, no key, no door — so the game does not boot
+   into one yet.
+3. ✅ **At least one pursuing entity** with distinct AI states (idle, search, pursue, lose interest),
+   driven by `mod-behaviour`. `games/warren`'s warden: four states over one named fact, authored in
+   the scene, slower than the player so a chase can be won.
 4. **Inventory and interaction** — pick up and use at least a flashlight and a key-type item.
 5. **Atmosphere holds up.** A dark corridor with a moving flashlight that reads as genuinely
    atmospheric. This is the renderer's real exam: dynamic lighting, shadow quality, fog, and a

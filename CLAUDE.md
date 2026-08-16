@@ -899,9 +899,14 @@ games/               actual games built with the engine
   warren           M3's exit gate, in progress: one handcrafted room, first person, and a loop you
                    can win and lose (`cargo run -p warren`). Find the torch, find the key, reach the
                    door -- and a warden hunts you, its mind authored in the scene as four states over
-                   one named fact (ADR 0068, second game). Still missing and still most of the gate:
-                   procedural interiors, a title screen, audio, and a HUD (`warren::prompt` returns
-                   the text and nothing draws it).
+                   one named fact (ADR 0068, second game). A HUD says what is in reach and how the
+                   run ended.
+                   **It generates its own interiors** (ADR 0071): `cargo run -p warren --bin layout`
+                   writes a scene from a seeded room graph over three prefab pieces -- a shell, a
+                   wall and a doorway -- always connected and always looped. `amadeo check` passes
+                   it and it loads. **A generated level is geometry only**: no player start, no
+                   lights, no key, no door, so the game still boots into its handcrafted room.
+                   Still missing and still most of the gate: a title screen and audio.
                    Built before the level design because **`FirstPersonCamera` had no game using
                    it** -- the Scarp and the Atrium are both third person. The `Interactor` is on
                    the **camera**, so the mouse drives the sweep's pitch: where an interactor is
