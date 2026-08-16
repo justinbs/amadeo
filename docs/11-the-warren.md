@@ -68,6 +68,32 @@ single walk.
 atmosphere, or be there because it looks right — and that a prop implies "a character, an event, a
 habit". A crate implies nothing. A made-up bunk implies someone slept in it.
 
+### The prior art this document originally failed to name
+
+**Amnesia: The Bunker (2023)** is this premise, already shipped. A First World War bunker; a
+semi-open hub rather than a corridor; **a generator you must keep fuelled to keep the lights on**; a
+creature that comes out of the walls and **responds to loud sound**; and a **hand-cranked flashlight
+whose winding is itself noisy**. The first draft of this document researched *The Dark Descent* and
+*SOMA* and missed the one game that had already built the mechanic it was proposing. That is a
+research failure and it is recorded here rather than quietly corrected.
+
+It is not fatal — "hunted by sound in a wartime shelter" is a form, not a property, in the way that
+"a haunted house" is. But two things follow and both are load-bearing:
+
+**The Bunker chose the opposite polarity, and it was right to.** There, **light makes you safer** —
+the Beast avoids lit rooms — and the scarce thing is **fuel, which is to say time**. The first draft
+of §4 made light make you *less* safe and attached scarcity to nothing at all. The prior art solved
+the same problem and reached the opposite answer, so this document has to say why it deviates. §4 now
+does, and the honest summary is that it deviates *less* than it used to: light is still not a
+punishment, and there is now a clock.
+
+**What this is that The Bunker is not.** Not "smaller with a clerk instead of a soldier", which was
+the only available answer before. The difference is the **warden**: The Bunker's Beast is an animal
+in the walls, and this is an institution still performing its function. It is not hunting you. It is
+*counting*, and you are not on the list. That difference has to show up in behaviour rather than in
+prose — see §3a, where it does: the warden patrols a route, stops at fixed points, and only pursues
+when something is where nothing should be.
+
 ---
 
 ## 2. The premise
@@ -138,6 +164,73 @@ disturbed since you passed, and a tally that has gone up by one.
 
 ---
 
+## 3a. The warden, as a specification
+
+The first draft of this document described the warden in adjectives and left every number and every
+rule to be invented during implementation, which is how a threat ends up as `distance <= 9 → pursue`.
+This section is the contract.
+
+### What it senses
+
+**Sound, and nothing else.** It has no sight model at all — not a cone, not a raycast. This is
+absolute, because the moment sight exists the light-versus-dark trade in §4 becomes a second,
+competing system and neither reads clearly.
+
+| The player is | Heard at |
+|---|---|
+| standing still | never |
+| walking | 8 m |
+| running | 22 m |
+| throwing an isolator | the whole section |
+| starting the generator | everywhere |
+
+Surfaces modify it: standing water and steel plate carry further than dust and carpet, by roughly
+half again. That is one number per floor material and it is what makes the flooded section in §4 a
+real cost rather than a description.
+
+### How it moves
+
+- **Patrolling**: 1.5 m/s along a fixed route between fixed stopping points. Slower than a walk, so
+  you can follow it and it cannot catch you by accident.
+- **Investigating**: it goes to *where the noise was*, not to where you are — the distinction that
+  makes moving after making a noise the correct play, and the thing a player has to learn once.
+- **Pursuing**: 2.9 m/s, faster than the player's 2.6. **A chase is not survivable by running in a
+  straight line**, which is deliberate and is the inverse of what ships today: the current warden is
+  slower than the player, in an empty corridor, so a chase resolves to walking away. You survive by
+  breaking the sound trail — going still, or getting to a section whose noise floor covers you.
+
+### Its tells, which are the whole of its legibility
+
+**A sound-based threat with no tells reads as random**, and a player who cannot tell "it heard me"
+from "it is wandering" learns nothing and blames the game. Each state has one unmistakable audible
+signature, and they are distinguishable at a distance:
+
+| State | What you hear |
+|---|---|
+| Patrolling | an even, unhurried tread, and a pause at each stop |
+| Investigating | the tread stops mid-stride — **the silence is the tell** — then resumes towards you |
+| Pursuing | the tread breaks into something faster and the breath changes |
+| Losing you | it slows, stops, waits far longer than feels comfortable, then resumes patrolling |
+
+The stop-mid-stride is the most important sound in the game. It is the moment the player learns the
+rule, and it costs nothing to build: it is a clip change on a state transition, which
+`modules/amadeo-behaviour` already drives through `BehaviourChanged`.
+
+### When it catches you
+
+**The run ends and the level does not reset.** The isolators you threw stay thrown, the sections you
+lit stay lit, and what you were carrying stays where you were carrying it. You restart at the lift.
+
+This is the single most load-bearing decision in the section and the first draft did not make it. A
+horror game that takes progress away on death teaches the player to stop taking risks, which is the
+opposite of what §4 wants; a game that takes nothing away has no stake. The stake here is **time and
+noise**: you have to walk back through a level whose lights are on and whose warden is somewhere new,
+and the lamp does not recharge on death.
+
+---
+
+---
+
 ## 4. The loop, and why it is not a key and a door
 
 The current loop is: find torch → find key → open door. Three fetches in a line, no decisions, and
@@ -145,50 +238,127 @@ the only interaction between them is ordering.
 
 The replacement is built from **one mechanic with a real cost**:
 
-> **Your lamp is safe. Your footsteps are not. It hunts by sound.**
+> **Light is orientation. Darkness is warning. You cannot have both.**
 
-That single rule turns *every second of movement* into a decision — walk or run, cross the open
-tunnel or go the long way, wait or move — which is what the current game has none of. It also uses
-the two systems the engine is genuinely good at (spatial audio, dynamic light) as the *core*, rather
-than as decoration.
+### The contradiction this replaces, because it is instructive
+
+The first draft said *"your lamp is safe, your footsteps are not"* and, four paragraphs later, that a
+lit section is *"one in which you can no longer stand still in the dark and let something walk
+past"*. **Those cannot both be true.** If the warden cannot see, standing still in a lit room is
+exactly as safe as standing still in a dark one — so throwing an isolator costs nothing, and the
+trade the document called "the decision that makes the game a game" did not exist. The whole of beat
+3 rested on it.
+
+The repair keeps the sense model absolute and moves the cost to the player's *own* senses:
+
+**Emergency fittings hum.** A lit section has a noise floor, and that noise floor **masks the
+warden**. In the dark you cannot see it coming and you can hear it perfectly; in the light you can
+see where you are going and the first you know of it is when it is in the room.
+
+That is symmetrical, it never contradicts "it hunts by sound", and it costs one looping spatial
+source per fitting and a reduction in how far the warden's own sound carries — both of which the
+engine does today. It also makes darkness genuinely *desirable* rather than merely tolerable, which
+the first draft never achieved.
+
+### What the player is spending
+
+The second thing the first draft got wrong: **nothing was scarce**, so there was a dominant strategy
+and it was "hold walk for twenty minutes". A resource with no scarcity is not a resource, and a
+stealth system whose safe option is permanently affordable is a slow walk rather than a decision.
+
+So the lamp is a **shelter-issue accumulator lamp with a charge**, and it dims as it drains. There
+are charging points, and they are at the isolators.
+
+That single object ties the whole loop together: light, route and time become one budget. It is also
+how The Bunker solves the same problem — the scarcity is on the light, not on the darkness — with the
+difference that a charge cannot be hoarded or spent early, so there is no inventory management and no
+counting of jerrycans.
+
+**Design targets, provisional and to be tuned by play**: a full charge lasts about a third of a
+first run, so the route is planned around three visits to a charging point, and a lamp run flat still
+gives a faint usable glow rather than a black screen — Frictional's rule that a pitch-black image is
+not exciting, applied to the failure case.
+
+### How the three sections differ
+
+The first draft claimed agency and then made the three spurs interchangeable, so the choice of where
+to go first was cosmetic. Each has one concrete, mechanical difference:
+
+| Section | What it costs you |
+|---|---|
+| **The flooded one** (lower cross-passages) | Standing water. **You cannot move quietly at all** — every step carries half again as far. The only safe state is standing still |
+| **The half-lit one** (nearest the substation) | Some fittings still have residual power, so it arrives *already* partly humming. You can see, and you were never able to hear |
+| **The warden's own** (intact, re-racked as archive) | Undamaged, quiet, well ordered — and it is where the warden spends most of its patrol. The easiest section to move through and the likeliest place to meet it |
+
+There is no correct order. There is an order that suits how much charge you have left, which is the
+decision the loop exists to produce.
 
 ### The three beats
 
-**1. Descent.** The lift takes you down and dies. You have a hand lamp and a docket with a box
-number on it. You learn the alphabetical sections from the signs, because you have to find one.
+**1. Descent.** The lift takes you down and dies. You have a lamp and a docket with a letter on it.
+You learn the alphabetical sections from the signs, because you have to find one.
 
 **2. The Warren.** The lift needs power. The standby set needs **three isolators** thrown, in three
-different sections — and *in any order you like*. That is Lesson 9: agency, and the choice of where
-to go first is a real one because the sections differ in what they cost you.
-
-**Throwing an isolator brings that section's emergency lighting up, permanently.** This is the
-decision that makes the game a game:
-
-> **Light is orientation, and darkness is concealment. You cannot have both, and you choose which
-> to spend.**
-
-A lit section is navigable and memorable — you can find your way back through it. It is also a
-section in which you can no longer stand still in the dark and let something walk past. You are
-spending safety to buy a map.
+different sections, *in any order you like*. Throwing one brings that section's emergency lighting
+up permanently — and permanently deafens you in it.
 
 **3. The run.** Starting the generator is the loudest thing that has happened down here in forty
-years. The way back to the lift is the level you have already lit — which is exactly why you lit it,
-and exactly why it can see you coming.
+years, and it draws the warden to the plant room. The way back is through sections that are lit,
+humming, and no longer able to warn you — which is exactly what you did to them.
+
+### Teaching it
+
+The rule is inferred, under threat, with no tutorial and no HUD. That does not work unless the first
+section demonstrates it **at no cost**:
+
+- The lift landing is lit and humming when you arrive. You cannot hear anything. That is the baseline.
+- The first cross-passage is dark, and the warden passes through it on patrol while you are watching
+  from the landing. **You hear it before you see it**, and it does not come towards you.
+- The first isolator is in sight of the landing, so the change from "I could hear that" to "I cannot"
+  happens in a place where nothing is hunting yet.
+
+The player is never told the rule. They are shown it three times in ninety seconds.
+
+### How loud am I
+
+§8 forbids a UI element for this, so it has to be diegetic and unmistakable:
+
+- **Footfall by surface** — dust, carpet, standing water, steel plate — audibly different, and the
+  loud ones sound loud.
+- **The lamp rattles at a run** and does not when you walk. This is the primary feedback and it is
+  attached to the object the player is already looking at.
+- **Breath**, which returns to normal only after several seconds of standing still.
 
 ### What this fixes, point by point
 
 | The complaint | What answers it |
 |---|---|
-| "a locked door and a key" | Three objectives, any order, each with a cost |
-| "no plan for how interactions affect the rest" | Every isolator permanently changes the level's lighting *and* its danger |
-| levels too linear | A hub with three spurs, entered in the player's chosen order |
-| no life or creativity | A place with a history, a job the player is doing, and a threat with a reason |
+| "a locked door and a key" | Three objectives, any order, each with a stated mechanical cost, on a charge clock |
+| "no plan for how interactions affect the rest" | Every isolator permanently lights a section **and** permanently deafens you in it |
+| levels too linear | A spine with three spurs, entered in the player's chosen order |
+| no life or creativity | A place with a history, a job, a palette (§5a) and a threat that is doing something other than hunting |
 
-### The box
+### The story, and why the register is gone
 
-The docket in your pocket has a box number on it. Finding it is optional and it is the whole story:
-it is a shelter register, and the last page is a list of names with a mark beside each. Yours is on
-it. Nothing says so out loud.
+The first draft's ending was: the box holds a shelter register, your name is on the list, nothing says
+so out loud. That is the stock twist of short horror — *you were counted all along* — and it was
+**optional**, which in a twenty-minute game means most players would never see the story at all.
+
+It is replaced by the idea this document already had and undersold: **the warden is still doing its
+job.** It is not hunting; it is counting, and the count is wrong.
+
+That is carried on three surfaces a player cannot miss rather than one they can:
+
+1. **The tally.** Each section has a board with a chalked number on it — the count of people bedded
+   down that night. The numbers are still being kept up to date. They go up.
+2. **The state of the sections.** One is still made up, bunks and all, as though the occupants are
+   expected back. One has been stripped and re-racked as an archive. One is flooded and abandoned.
+   Three eras of the same building, readable at a glance, told with no words.
+3. **The docket.** Your own paperwork, which is the only thing in the game that says who you are and
+   why you came, and which you are carrying before the game starts.
+
+The box still exists and still holds the register. Finding it is still optional. It is now the
+*detail* rather than the whole story — which is what optional content should be.
 
 That is Lesson 7 and Lesson 5 in one prop, and it costs a mesh, a piece of text and an interaction
 the engine already has.
@@ -205,30 +375,113 @@ architecture".
 Generate the mission graph — descend, three isolators reachable independently, generator, return —
 then realise it. Today's `lay_out` does the opposite and it is why the level is a chain.
 
-### 5.2 The architecture is two tubes and cross-passages, not a grid
+### 5.2 The architecture is two tubes and cross-passages — which is still a grid, so that is not the rule
 
-- **Tunnels**: long (60–120 m), 5 m wide, curved ceiling, running parallel.
-- **Cross-passages**: short, low, blind — you cannot see what is in the other tunnel until you are
-  in the passage. This is the sightline break the research asks for, and it comes free with the
-  architecture.
+- **Tunnels**: long (60–120 m), 5 m wide, arched, running parallel. `ArchMesh` exists for exactly
+  this and is the engine's first curved primitive.
+- **Cross-passages**: short, low, blind — you cannot see what is in the other tunnel until you are in
+  the passage. The sightline break comes free with the architecture.
 - **Chambers**: the plant room, the lift landing, the medical bay. Different height, different
   material, different sound.
-- **The shaft**: vertical. The engine has never drawn a vertical space and a shelter is defined by
-  being deep.
 
-**No two spaces the same size.** The single strongest tell that a level is generated is uniform
-dimensions, and today every room is exactly 12×12×3.
+**A 2×N ladder is the most regular graph there is**, and built naively it would read *more*
+machine-made than the fourteen-cell maze it replaces, because every junction would look like every
+other junction. Saying "it is not a grid" does not make it one. What actually breaks it, as generator
+rules rather than as prose:
+
+- cross-passages at **irregular** intervals, never a fixed stride;
+- **one tunnel blocked** by a collapse partway along, so the ladder becomes a one-way for that stretch
+  and the loop has a direction;
+- chambers punched off the spine at **different sizes**, so the spine is not the whole level;
+- bulkhead doors that **close a run** you could otherwise see down.
+
+**"No two spaces the same size" was wrong and is withdrawn.** It contradicts the fiction this document
+spends a page establishing: a shelter is sixteen *identical* sub-shelters, and institutional
+architecture is repetitive by nature. Spelunky's rooms are all one size and nobody calls its levels
+machine-made. What reads as generated is uniform **topology** and undifferentiated **state**.
+
+> **Rooms may repeat. No two may be in the same condition.**
+
+The conditions the generator draws from — and this is a generator rule, not an intention:
+**flooded**, **collapsed**, **stripped**, **still made up**, **re-racked as archive**, **burnt out**,
+**still lit**. It is also far cheaper than varying dimensions, because a condition is dressing and a
+material swap rather than a new mesh.
 
 ### 5.3 Sightlines are the unit of pacing
 
 Alternate tight and open, and never let a straight run be visible end to end. In a tunnel that means
 racking, collapses and bulkheads breaking the length — which are props that also carry story.
 
-### 5.4 Wayfinding without a map
+### 5.4 Wayfinding without a map, and what makes it actually work
 
 Every section carries its name on the wall, in the game's own typeface, at eye height at every
-junction: **NELSON**, **KEPPEL**, **DRAKE**. Alphabetical order tells you which way you are going.
-The player builds a mental map out of the fiction rather than out of a UI element.
+junction. But **a player who sees KEPPEL learns nothing**: naval surnames are not self-evidently
+ordered, and the first draft's wayfinding argument quietly assumed they were. Three things are
+required and all three are constraints rather than decoration:
+
+1. **Signs carry the letter and the name**: `K · KEPPEL`, `N · NELSON`, `D · DRAKE`.
+2. **The docket names a letter**, not a room.
+3. **The generator places sections in alphabetical order along the spine.** Without this the letters
+   convey no direction and the whole scheme is set dressing.
+
+### 5.5 The descent is a lift interior, not a shaft
+
+The first draft wanted a vertical shaft on the grounds that "the engine has never drawn a vertical
+space". That is a reason for caution, not for enthusiasm. A shaft means either a spiral stair — box
+colliders against a character controller with a step height, which is one of the most reliable ways
+to break first-person movement — or a moving platform, which is a physics problem nothing else in the
+game needs.
+
+**None of it is necessary.** A lift interior sells the descent completely: the doors close, a shudder,
+a long sound, and the doors open somewhere else. Zero vertical travel, all of the effect, and it is
+also the strongest possible framing for the moment the lift dies.
+
+If a shaft is ever wanted, it is a spike with its own gate, not a bullet on a piece list.
+
+---
+
+## 5a. Palette and materials
+
+The complaint included the word **colour**, and the first draft of this document did not contain it.
+That was the largest gap in it: §6 was entirely about light *levels*, and a game with no palette is
+grey whatever you do to its exposure.
+
+**This is the cheapest section here to deliver.** Every material in the game is generated by a small
+Rust binary, so a palette is a table of numbers rather than an art commission.
+
+### The lining
+
+**Cast-iron segmental rings, painted lead-white over rust.** This is what a bored tunnel is actually
+made of, and it does three things at once: it reads instantly as *tunnel* rather than as *corridor*;
+the ring joints and bolt holes give a normal map something to be, which is the engine's most
+under-used feature; and white paint over rust gives a warm-brown bleed through a cold surface, so
+even an unlit wall has two colours in it.
+
+| Surface | Base colour | Rough | Notes |
+|---|---|---|---|
+| Ring lining | bone white, `0.62 0.60 0.55` | 0.9 | rust bleeding through at the joints |
+| Floor, dry | dark grey-brown | 0.95 | dust over concrete |
+| Floor, flooded | near-black | 0.25 | the one reflective surface in the game |
+| Bunk / racking steel | cold grey-green | 0.7 | the institution's own colour |
+| Doors and bulkheads | lead grey | 0.8 | |
+| Signage enamel | bone, with the section letter in black | 0.4 | matches the interface exactly (§8) |
+
+### The two lights, and the contrast that is the whole look
+
+- **The hand lamp is warm**, around 3000 K — a tungsten filament in a shelter-issue lamp.
+- **The emergency circuits are cold**, a green-tinged fluorescent, around 5000 K.
+
+**Warm against cold is what makes both read.** Your light is the only warm thing in the Warren, and
+walking into a lit section replaces it — the picture goes from amber to green as you cross the
+threshold, which is a mood change the player feels without being told. It also means the lamp's pool
+is legible *inside* a lit section rather than washing out.
+
+### The one accent
+
+**Safety orange**, and nothing else in the world is allowed it. It marks the isolators, the lift call
+plate, and the interface's focus highlight — which is the same orange, because §8 says the interface
+is signage. So the only orange things in the Warren are the things you can act on. That is a
+wayfinding system and a UI convention in one colour, for free.
 
 ---
 
@@ -283,16 +536,54 @@ volumetric look real. It is already on the M3 build list and unbuilt.
 The rule: **the interface is signage.** Same typeface, same palette, same right angles as the walls,
 because in the fiction they are made by the same institution.
 
-- **Title screen**: not a panel floating over the level. A shelter **sign** — the name, a number, a
-  line of small institutional type. The camera is somewhere deliberate and static, and the world
-  behind it is doing something (a light flickering, the lift cage). What is there now is three
-  rectangles centred over whatever the player happens to be looking at, and the camera turns while
-  you read it.
+### The title screen, specified
+
+The first draft said "a shelter sign, not a panel", which is a direction rather than a screen.
+
+- **The camera is fixed and does not turn.** It sits in the lift car, looking out through the open
+  cage door at the landing wall opposite. It never moves and there is no player input to it. (Today
+  it turns with the mouse while the menu is up, which was a bug and is fixed.)
+- **What it is looking at** is the landing's enamel sign, lit by the one working fitting: the letter,
+  the section name, and beneath it in small institutional type `DEEP SHELTER No. 4 · SUB-SURFACE
+  ARCHIVE · NO ADMITTANCE WITHOUT AUTHORITY`.
+- **What is moving**: the fitting flickers, on an irregular cycle. Nothing else. One moving thing in
+  a still frame is enough and two is a screensaver.
+- **The options sit bottom-left**, flush, left-aligned, small, in the same bone-on-black as the sign
+  — not centred, not in a panel, not over the middle of the frame. The sign is the title; the options
+  are a caption to it.
+- **The world behind is dimmed** — a full-screen scrim at about 65% under the interface. This applies
+  to every menu, and it is the single fastest improvement available to the first thing a player sees.
+
+### The pause menu is a form, not a clipboard
+
+"A clipboard" was a trap and is withdrawn. With no artist and no decal system, a skeuomorphic
+clipboard is either a texture nobody here can make or a flat orange rectangle that a document calls a
+clipboard and a screen shows as a flat orange rectangle. That is precisely the failure mode
+`CLAUDE.md` warns about.
+
+The institutional answer is better and free: **a form.** A stamped header, rule lines between rows,
+left-aligned dense text, a reference number in the corner, no centring anywhere. It is made of the
+primitives that already exist, it looks like the world it is in, and it cannot be mistaken for a
+default dialog.
+
+### The rest
+
 - **In-world prompts**: as few words as possible, and never explanatory. Not "Take the brass key" —
   the object's own name, if anything at all.
+- **A reticle**, which the game currently lacks entirely. Interaction is a sphere swept along the
+  camera's forward and **nothing on screen says where that points**, so a player who cannot pick
+  something up has no way to tell whether they are too far away or aimed five degrees off. That is a
+  usability failure at the core verb, not a polish item. It should be the smallest mark that reads —
+  a single dim pixel cluster, opening slightly when something is in reach.
 - **No health bar, no objective marker, no compass.** The docket is the objective; the signs are the
   compass; being caught is the health bar.
-- **The pause menu is a clipboard**, not a dialog box.
+- **Winning and losing must not share a treatment.** They currently get an identical box, colour,
+  size and position, so the payoff for a successful run is typographically indistinguishable from
+  being killed. Different colour at minimum, and the line holds alone for a beat before any buttons
+  appear, so an ending is a moment rather than a dialog.
+- **A brightness setting exists and lives on the title screen**, under the options. A game whose
+  entire medium is darkness ships one; Frictional's own post is mostly about players and reviewers
+  seeing the wrong picture because nothing calibrated it.
 
 ---
 
@@ -312,24 +603,94 @@ Already built: spatial sources, one-shots, buses, a room tone. What the design n
 
 ---
 
-## 10. Plan
+## 10. Scope, budget and plan
 
-Ordered so that each step produces something judgeable, and nothing is left half-built.
+### How long a run is
+
+**Twenty minutes, unhurried, first time through.** Every dimension in §5 and the whole dressing
+budget follows from this one number, and the first draft did not state it.
+
+Roughly: three minutes of descent and orientation, twelve of the three sections, five for the
+generator and the run back. Three sections at four minutes each is what sets the tunnel lengths.
+
+### The asset budget
+
+With no artist and every asset generated by a Rust binary, a count is the real feasibility check on
+this whole document.
+
+| | Count | Notes |
+|---|---|---|
+| Meshes | ~16 | arch section, cross-passage, bulkhead, door, racking, bunk frame, lamp fitting, isolator, generator, lift cage, sign plate, crate, trolley, mattress, debris, the warden |
+| Materials | ~10 | §5a's table |
+| Sound clips | ~14 | footfall × 4 surfaces, lamp hum, lamp rattle, breath, warden tread × 3 states, isolator, generator, lift, sting |
+| Sections | 3 + landing + plant room | |
+| Signs | one per junction | text, not textures |
+
+Anything that pushes those materially past these numbers is out of scope for the slice.
+
+### The plan
+
+**Reordered.** The first draft built the piece kit, then rewrote the generator, then signage, and
+reached lighting at item 4 — three items of work before anything was judgeable as *atmosphere*, and
+it multiplied a look by a generator before the look existed. `CLAUDE.md`'s own rule is the opposite:
+prefer a working vertical slice over a complete horizontal layer. The generator rewrite is also the
+only item here that is expensive to undo, so it should follow the slice rather than precede it.
 
 | # | Work | Why here |
 |---|---|---|
-| 1 | **Architecture pieces**: tunnel segment, cross-passage, chamber, bulkhead, racking, the shaft | Nothing else can be judged until the level stops being boxes |
-| 2 | **Mission-then-space generator** — hub with three spurs, no two spaces alike | The linearity complaint, at its root |
-| 3 | **Section names and signage** on walls | Wayfinding, and it makes the world legible |
-| 4 | **Lighting pass**: fittings, pools, contrast, the switchable emergency circuits | The medium |
-| 5 | **The loop**: isolators, the generator, the lit-versus-hidden trade | Replaces key-and-door |
-| 6 | **The warden hunts by sound**; audio occlusion | Makes the mechanic honest |
-| 7 | **Title screen and prompts** as signage | The menu complaint |
-| 8 | **The docket and the register** — the story, told in two props | Lesson 5, cheaply |
+| **1** | **One tunnel and one cross-passage, hand-placed** — dressed, lit, materials from §5a, walked with the lamp. **Judged before anything else is built.** | The look must be settled before a generator multiplies it. This is the vertical slice |
+| 2 | **The piece kit**, dimensions taken from the slice rather than guessed | Now the numbers are known |
+| 3 | **Mission-then-space generator** — spine with three spurs, irregular cross-passages, conditions per §5.2 | The linearity complaint, at its root, and the one hard thing to undo |
+| 4 | **Signage and the alphabet**, with the ordering constraint from §5.4 | Wayfinding stops being decoration |
+| 5 | **The loop**: isolators, the charge, the generator, light-deafens-you | Replaces key-and-door |
+| 6 | **The warden** to §3a's specification: senses, speeds, states, tells | The threat stops being `distance <= 9` |
+| 6a | **Audio occlusion** — `amadeo-audio` + a physics query, in a *lower crate* | See below. Own line, because it can slip for reasons the game cannot control |
+| 7 | **Interface**: title screen, scrim, reticle, form-styled pause, separated endings, brightness | The menu complaint |
+| 8 | **The story surfaces**: tallies, section conditions, the docket | Carried by three things rather than one optional prop |
+| 9 | **Tuning pass**, and **music/ambience**, which `docs/05` records as open and this document had not mentioned | |
 
-**Every one of these goes to the critic agent before it is called done** (`.claude/agents/critic.md`),
-and none is left until the verdict is POLISHED. That is Justin's instruction from session 20 and it
-is now project process, not a one-off.
+**Item 6a is the risk on this plan.** §9 promotes occlusion from polish to a gameplay requirement,
+and it is not game work: it is a feature in `amadeo-audio` plus a physics query, and
+`amadeo-physics` has **no raycast** today. The mechanic is a lie without it — a warden exactly as
+loud through a wall as through a doorway makes the whole sound model meaningless.
+
+**Its fallback, if it slips**: reduce a source's effective range when the direct path to the listener
+is blocked, resolved with `cast_shape`, which does exist. Cruder than real occlusion and enough to
+make the mechanic honest.
+
+### Migration
+
+This document implies a near-total rewrite and the first draft said nothing about what happens to
+what exists. It is a slice, not a fresh repository:
+
+| What exists | What happens to it |
+|---|---|
+| `assets/pieces/` — 11 prefabs | `player_start`, `hud`, `ambience`, `spill` survive. `room_shell`, `wall`, `doorway` are replaced by the arch kit. `lost_key`, `way_out` are replaced by the isolators and the lift |
+| `scenes/warren.scene` — the handcrafted room | **Becomes the slice** (plan item 1). It is already the place where things are tuned by eye, and it is where the rule tests live |
+| The six generated `.wav`s | `warren_tone` and `footstep` survive; `warden_breath` is replaced by §3a's three tread states; `taken`, `escaped`, `caught` survive |
+| The key and the door | Removed. `WayOut` becomes the lift; `Item`/`Inventory` stay, because the lamp and the docket are items |
+| `the_run_can_end.rs`, `you_find_the_torch.rs` | **These assert a game that is being deleted.** They are rewritten against the new loop as it lands, not kept limping |
+| `the_level_is_a_level.rs`, `it_lays_out_an_interior.rs` | Survive; `Layout::shortcomings` grows the new rules |
+| `it_makes_a_noise.rs`, `the_shell_holds_together.rs` | Survive nearly unchanged |
+
+### Process
+
+**Every item goes to the critic agent before it is called done** (`.claude/agents/critic.md`), and
+none is left until the verdict is POLISHED. That is Justin's instruction from session 20 and it is
+project process, not a one-off. **This document was itself judged and returned NOT POLISHED**; §1's
+missing prior art, §4's self-contradicting sense model, the absent palette and this plan's ordering
+were all found that way.
+
+### Two names to settle
+
+**"The Warren" and "the warden" are one letter apart** and will be confused in every conversation,
+commit message and test name for the rest of the project. One of them should change, and the warden
+is the cheaper one — *the registrar*, *the marshal*, or simply what the boards call it. Left open
+deliberately: it is Justin's call and it is one rename.
+
+And the title says THE WARREN while the fiction says SHELTER No. 4. If "the Warren" is what the staff
+called it, **something in the world has to say so** — a chalked note, a sign someone amended. A title
+that the world never uses is a title that belongs to the box art rather than to the game.
 
 ---
 
@@ -344,3 +705,5 @@ is now project process, not a one-off.
 - [Clapham South Deep Shelter — Subterranea Britannica](https://www.subbrit.org.uk/sites/clapham-south-deep-shelter/)
 - [A Hybrid Approach to Procedural Generation of Roguelike Video Game Levels — ACM](https://dl.acm.org/doi/fullHtml/10.1145/3402942.3402945)
 - [Environmental Storytelling in Video Games — Game Design Skills](https://gamedesignskills.com/game-design/environmental-storytelling/)
+- [How the "Beast" Works in Amnesia: The Bunker — AI and Games](https://www.aiandgames.com/p/how-the-beast-works-in-amnesia-the)
+- [Amnesia: The Bunker — the generator system — Gameranx](https://gameranx.com/features/id/467193/article/amnesia-the-bunker-generator-system-explained/)
