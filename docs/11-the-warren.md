@@ -183,7 +183,7 @@ clearly.
 | standing still | never |
 | walking | 8 m |
 | running | 22 m |
-| throwing an isolator | the whole section |
+| pulling an isolator | the whole section |
 | starting the generator | everywhere |
 
 Surfaces modify it: standing water and steel plate carry further than dust and carpet, by roughly
@@ -202,20 +202,40 @@ document already fixed once.
 The fix is in the fiction rather than bolted on. **It is counting.** An institution counting bodies
 does not scan a room from the doorway; it walks the route and puts its hand on each bunk.
 
-> **The warden checks fixed points on its route — bunks, racking bays, the tally boards — and a
-> player at or beside one is found, silent or not.**
+> **The warden checks fixed points on its route, and a player within arm's length of one is found,
+> silent or not.**
+
+**What is checked is a visible class of thing, not a list of authored coordinates:**
+
+> **Every made-up bunk, every tally board, every live charging panel, and every isolator.**
+
+That wording is load-bearing and the first version of it was wrong. "Authored points on the piece"
+made the checked area about **6% of a section's floor** — six circles of 1.2 m in a 450 m² tunnel —
+sitting on props a player has no reason to stand beside. So walk-and-freeze survived almost intact,
+and the only spatial knowledge on offer was "do not stand in the 6%", whose answer is "stand
+anywhere". Worse, the **flooded** section has no bunks, no racking and no boards, so the one section
+whose entire question is *sound* would have had no checks at all and freezing there would have been
+unconditionally free.
+
+Putting the checks on **the places the player must occupy** fixes all of that at once, and it makes
+stillness something you *purchase* rather than something you get.
 
 | | |
 |---|---|
 | Check radius | 1.2 m — arm's length, not a room |
-| Pause at a check | ~2 s, and it is audible: the tread stops and something else happens |
-| Checks per section | 4–6, at authored points on the piece, so they are learnable |
+| Pause at a check | ~2 s |
+| What it does | **Starts a pursuit. It does not end the run** — see below |
 
-Ranged detection stays "sound and nothing else", so §4's trade is untouched. What changes is that
-standing still is now a choice about **where** rather than a free action: the safe spots are the ones
-the warden does not check, and learning which those are is the game's spatial knowledge. It also
-means a check point is a *place with a history* — a bunk that is still made up is a bunk it still
-checks.
+**"Found" starts a chase, and that is not softness.** An instant catch at an invisible 1.2 m boundary
+would be a fail state learnable only by dying, and this engine cannot show the thing that makes it
+fair elsewhere — Alien: Isolation opens the locker, The Bunker comes out of a hole you can watch.
+With no skeletal animation there is nothing to show, so the compensation is a **reaction window**:
+the check has a sound, you get the moment it takes, and then you are being chased. A chase is the
+game working. An instant death at a boundary you cannot see is the game cheating.
+
+Ranged detection stays "sound and nothing else", so §4's trade is untouched. And a check point is
+still a *place with a history*: a bunk that is still made up is a bunk it still checks, which is why
+the stripped section and the made-up section are dangerous in different places.
 
 ### How it moves
 
@@ -236,14 +256,24 @@ signature, and they are distinguishable at a distance:
 
 | State | What you hear |
 |---|---|
-| Patrolling | an even, unhurried tread, and a pause at each stop |
-| Investigating | the tread stops mid-stride — **the silence is the tell** — then resumes towards you |
+| Patrolling | an even, unhurried tread |
+| **Checking** | the tread **slows over a step or two**, then a named sound — a hand on a frame, chalk on a board — then it moves on |
+| Investigating | the tread stops **abruptly, mid-stride, and nothing follows it** — the silence is the tell |
 | Pursuing | the tread breaks into something faster and the breath changes |
 | Losing you | it slows, stops, waits far longer than feels comfortable, then resumes patrolling |
 
-The stop-mid-stride is the most important sound in the game. It is the moment the player learns the
-rule, and it costs nothing to build: it is a clip change on a state transition, which
-`modules/amadeo-behaviour` already drives through `BehaviourChanged`.
+**The abrupt stop is the most important sound in the game** — it is the moment the player learns the
+rule — and adding check points nearly destroyed it. A warden that stops four to six times a section
+to check a bunk fires the "it heard me" tell constantly, and a tell that fires falsely teaches
+nothing.
+
+So the two stops are built to be **opposites**, which is one extra clip and a deceleration:
+
+- a **check** decelerates and is *followed by a sound*;
+- an **investigate** is instant and is *followed by silence*.
+
+The distinguishing feature is not the stop. It is what happens in the second after it, and the
+frightening one is the one where nothing does.
 
 ### When it catches you
 
@@ -255,6 +285,18 @@ horror game that takes progress away on death teaches the player to stop taking 
 opposite of what §4 wants; a game that takes nothing away has no stake. The stake here is **time and
 noise**: you have to walk back through a level whose lights are on and whose warden is somewhere new,
 and the lamp does not recharge on death.
+
+**And the walk back must not be through solved, empty corridor.** As stated, the punishment for
+failing routes the player through the least interesting space in the game — lit, known, cleared —
+immediately after the most tense moment they have had. That is a punishment made of boredom, which
+is the one kind that makes people stop playing.
+
+> **The warden relocates onto your return route.** It heard where you were; that is where it now
+> patrols.
+
+So the way back is the one stretch of level whose danger has *increased*, it costs nothing to build
+(a patrol route is data, and moving it is a write), and it is the honest behaviour of a thing that
+investigates where the noise was.
 
 ---
 
@@ -274,7 +316,7 @@ The replacement is built from **one mechanic with a real cost**:
 The first draft said *"your lamp is safe, your footsteps are not"* and, four paragraphs later, that a
 lit section is *"one in which you can no longer stand still in the dark and let something walk
 past"*. **Those cannot both be true.** If the warden cannot see, standing still in a lit room is
-exactly as safe as standing still in a dark one — so throwing an isolator costs nothing, and the
+exactly as safe as standing still in a dark one — so pulling an isolator costs nothing, and the
 trade the document called "the decision that makes the game a game" did not exist. The whole of beat
 3 rested on it.
 
@@ -310,9 +352,12 @@ Both are repaired by being precise about one word:
 > **"Lit" means a handful of pooled fittings with real dark between them — never an evenly lit
 > space. The warden stays in the dark between the pools.**
 
-- The player is **never in a lit pool at the same time as the warden**, so §3's promise holds. What
-  you see is a shape crossing the edge of a pool, which is the silhouette §3 wants and the only thing
-  the engine can render convincingly.
+- **The warden crosses a pool but never lingers in one.** The first version of this said the player
+  is *never* in a lit pool at the same time as the warden — which, once charging moved to the wall
+  circuits, guaranteed that nothing could happen during the 25 seconds §4 calls its best moment. The
+  prose promised dread and the rules forbade it, on the same page. Crossing is the repair and it is
+  also the better picture: **the silhouette appears at the pool's edge, passes through, and is gone**,
+  which is exactly the shot §3 wants and the only one the engine can render convincingly.
 - It is what §6 asks for anyway — contrast, not uniform gloom — so this costs nothing it was not
   already buying.
 - And the hum is **per fitting, spatial, and narrow-band**: a buzz sitting on the tread's own
@@ -320,9 +365,30 @@ Both are repaired by being precise about one word:
   is not filled. So a lit section is *quiet with deaf spots*, rather than a drone, and §9's rule
   survives.
 
-The fiction carries it: the warden avoids the pools because a warden with a lamp of its own has no
-reason to stand under one, and because the boards say the circuits were only ever meant for the
-gangways.
+### The warden carries a lamp, and that is a feature rather than a loose end
+
+The justification above — *it does not linger under a fitting because it has a lamp of its own* —
+quietly introduced a **moving light** into a budget §6 has already spent, and quietly opened a
+*visual* channel on a threat §3 says is known only by sound. It has to be either claimed or dropped.
+
+**Claim it.** A moving pool of light, seen before its owner, with a shape occasionally in front of
+it, is the strongest thing this engine can do with a threat it cannot animate. It turns "no skeletal
+animation" from a constraint being worked around into the actual aesthetic — you never see the
+warden, you see *its lamp*, and you track it through a level by the light crossing a doorway two
+rooms away.
+
+It also gives the player a second channel that agrees with the first: the lamp says where, the tread
+says what it is doing, and losing one still leaves the other. In a deafened section, its lamp is the
+only warning left — which is precisely the trade §4 is built on, seen from the other side.
+
+**Budget** (§6): the warden's lamp is one of the eight punctual slots and is **not** a shadow caster
+— the two casting slots stay with the player's lamp and one chamber practical. A cold, narrow,
+downward beam, deliberately unlike the player's warm one, so a light seen at a distance is
+immediately identifiable as *not yours*.
+
+**And §3's promise survives**, because it was always about the *creature* rather than about visual
+information: you see a light, a shape at a pool's edge, a silhouette crossing a doorway. You never
+get a clear look at the thing, which is the promise, and now there is something to not-quite-see.
 
 ### What the player is spending
 
@@ -362,14 +428,30 @@ Standing in a deaf, humming, lit room, for a stretch of time you cannot shorten,
 nothing, is the best moment this design has. One of the three is deliberately *off* the isolator
 route, so a full run cannot be done without leaving the path once.
 
-**The four numbers, provisional and to be tuned by play:**
+**And the panels are live before they are lit.** A wall circuit that only charged after you threw its
+isolator would put every charging point *behind* the objectives, so the early game — when nothing is
+hunting you — would be the tightest and the climax the loosest. That is the same backwards pressure
+curve this section already rejected once for the lamp-off case, arriving through a different door.
+The panels are on the standby ring and have always been live; the *lights* are what the isolator
+brings up.
+
+**The numbers, and the arithmetic that has to accompany them.** §10 derives its run length honestly
+and the first version of this table did not, which is how it ended up describing an errand:
 
 | | |
 |---|---|
-| A full charge | 6 minutes of moving-or-lit, against a 20-minute run |
-| A full top-up | 25 seconds, standing at the point |
-| Interruptible | yes, and it keeps what it took — so a partial charge is a real choice |
-| Reusable | yes, unlimited. The scarcity is *time and exposure*, not a consumable |
+| Full charge | 6 minutes of moving-or-lit |
+| **A 25-second top-up buys** | **90 seconds** — a *rate*, not a refill |
+| Interruptible | yes, and it keeps what it took, so a partial charge is a real choice |
+| Reusable | yes, unlimited. The scarcity is *time and exposure*, never a consumable |
+
+Working it through against §10's twenty minutes: about 8 minutes of movement across three sections, a
+descent and the return, plus 3–4 minutes of lamp-on searching in the dark — call it **10–12 minutes
+of drain**. Against a 6-minute charge at 90 seconds per stop, that is **four to five stops**, each
+25 seconds long, each spent standing at a checked point in a deaf pool.
+
+The rate is what makes this bind. The first version gave a *full* refill for the same 25 seconds and
+made the whole run need one stop, at 2% of its length, risk-free. One free errand is not a resource.
 
 A lamp run flat still gives a faint usable glow rather than a black screen — Frictional's rule that a
 pitch-black image is not exciting, applied to the failure case.
@@ -398,7 +480,7 @@ last heard the tread, which is the decision the loop exists to produce.
 You learn the alphabetical sections from the signs, because you have to find one.
 
 **2. The Warren.** The lift needs power. The standby set needs **three isolators** thrown, in three
-different sections, *in any order you like*. Throwing one brings that section's emergency lighting
+different sections, *in any order you like*. Pulling one brings that section's emergency lighting
 up permanently — and permanently deafens you in it.
 
 **3. The run.** Starting the generator is the loudest thing that has happened down here in forty
@@ -716,6 +798,10 @@ default dialog.
 - **A brightness setting exists and lives on the title screen**, under the options. A game whose
   entire medium is darkness ships one; Frictional's own post is mostly about players and reviewers
   seeing the wrong picture because nothing calibrated it.
+  *Where it lives mechanically*: it adjusts the camera's `Environment` exposure, and an `Environment`
+  is a Service — outside the state hash (ADR 0009) — so two players on different brightnesses still
+  simulate identically and a replay is unaffected. **Where the file lives is Q38's question**, the
+  same one the save file has, and it should be answered once for both rather than twice differently.
 
 ---
 
@@ -834,6 +920,20 @@ Bunker gives you bricks and bottles; Amnesia gives you objects to throw.
 **One throwable** is enough: a bolt out of the racking, with a fixed audible radius where it lands.
 It turns "where is it" into "where can I send it", which is the difference between hiding and
 playing.
+
+**It has a count, and the count is the whole design.** Unlimited bolts defeat the warden outright,
+because it investigates *where the noise was* — so an infinite supply of noise is an infinite supply
+of misdirection, and The Bunker gates its bricks and bottles through inventory for exactly this
+reason.
+
+| | |
+|---|---|
+| Carried | 3 |
+| Recovered | yes, by picking them up where they landed — which means going *to* the place you just sent it |
+| Loudness | at least a footstep, and it draws from where it lands rather than from you |
+
+The recovery rule is what makes it a decision rather than a cooldown: spending a bolt buys you a
+window and costs you either the bolt or a walk into the space you just made dangerous.
 
 *Its dependency, and the fallback so it cannot block*: a real impact sound needs **collision events**,
 which `amadeo-physics` does not have (its own docs list joints, raycasts and collision events as
