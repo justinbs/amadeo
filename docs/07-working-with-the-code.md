@@ -1859,33 +1859,63 @@ apply to any future blur, bloom downsample, or texture blend.
 > differing in its last bit between two machines changes a shade of green, not where the ground is.
 > `games/scarp`'s `turf` generator carries the same note for the same reason.
 
-### Moving a physics body by writing its `Transform` does not work
+### Moving a physics body by writing its `Transform` — mostly fixed, and the history is the lesson
 
-**A sharp edge, not yet a decision.** `step_physics` reads `GlobalTransform` in preference to
-`Transform`, and `propagate_transforms` runs in `PostSimulation` — at the *end* of the tick. So a
-`Transform` written from outside the tick is read back stale on the next one: physics steps from the
-old position and writes it straight back over the new one.
+**Since ADR 0072 this works for a root**, which is nearly everything you would want to move: a
+character, a crate, a camera rig. `step_physics` now reads a root's own `Transform` rather than the
+composed one, because for a root the two are equal whenever propagation is current and the local one
+is a tick fresher.
 
-It is **silent**. The entity does not move, nothing errors, and the only sign is that whatever you
-expected to happen at the new position did not. A test that teleported a character to check terrain
-streaming spent a debug cycle on exactly this.
+**It is still one tick stale for a *child*.** A child's world pose exists only in the composed
+matrix, and that matrix is written in `PostSimulation`, so physics necessarily reads last tick's.
+Nothing needs this yet; if a *moving* parent with a physics child ever appears, the answer is to run
+propagation before physics inside the tick, and ADR 0072 records that as the rejected-for-now option.
 
-What to do today: move a character by *driving* it — input, or its `CharacterMotion` — rather than by
-assignment. There is no supported teleport, which is a real gap for respawns and fast travel and is
-recorded as **Q30**.
+**The history is worth keeping**, because it is a good example of a fallback hiding a fault. It used
+to read `GlobalTransform` in preference to `Transform` always, so a write between ticks was silently
+undone on the next step: the entity did not move, nothing errored, and the only sign was that
+whatever you expected at the new position did not happen. Session 17 spent a debug cycle on it in a
+terrain-streaming test, and session 19 spent another when a test stood the player in front of a door
+and found nothing there.
 
-**Where the boundary actually is**, because "you cannot write a `Transform`" is too broad and session
-17 cost a second debug cycle reading it that way:
+And the table that made it confusing is instructive on its own:
 
-| Where the write happens | Result |
-|---|---|
-| A system in `PreSimulation` or `Simulation` | **Works** — propagation happens later in the same tick |
-| A system after `propagate_transforms`, or in `Render` | Stale by one tick |
-| **Between ticks** — a test, an editor, a load | **Silently ignored** |
+| Where the write happens | Then | Now |
+|---|---|---|
+| A system in `PreSimulation` or `Simulation` | Works | Works |
+| A system after `propagate_transforms`, or in `Render` | Stale by one tick | Works |
+| **Between ticks** — a test, an editor, a load | **Silently ignored** | Works |
 
-`games/atrium`'s "return to start" button writes a `Transform` and works, because `choose_from_menu`
-is a `Simulation` system. A test doing the visually identical thing between `run_ticks` calls does
-not. **The first row working is exactly what makes somebody believe the third one will.**
+**The first row working is exactly what made somebody believe the third one would.** A rule with an
+exception that fires only in the case you are not currently looking at is worse than no rule.
+
+**Q30 is narrower now**: a teleport works, and what is still missing is everything *around* one —
+resetting velocity, clearing the solver's contacts, and deciding what happens to whatever the body
+lands inside.
+
+### A child's world pose lives in the matrix, and its `Transform` does not
+
+The rule ADR 0072 settled, stated once so nothing else has to rediscover it:
+
+- **Reading** a world pose: a **child** must come from the composed `GlobalTransform` — its own
+  `Transform` is relative to its parent, so a door authored square inside a piece turned a quarter
+  turn has a local rotation of zero and a world rotation of ninety degrees. A **root** should come
+  from its own `Transform`, which is the same value one tick fresher.
+- **Writing** a world pose back: it has to go through the parent's inverse
+  (`Mat4::inverse_rigid`) first, or it is stored as if it were local and propagation applies the
+  parent a *second* time. That compounds every tick.
+
+The second half is what made every generated interior in `games/warren` wrong for a whole session,
+and it was unreachable before ADR 0071's room pieces: a prefab has exactly one root, so a piece with
+two colliders has to put them on children, and until then nothing had a reason to.
+
+Two things about how it hid:
+
+- **It looked fine at tick 1.** Nothing had propagated yet, so the fallback to the local transform
+  was still in play and the first step was correct. The capture that recorded "it loads and draws"
+  was taken at exactly that tick.
+- **`amadeo check` could not see it**, and neither could a green test suite. Both are about text and
+  rules. The cheapest check that would have caught it is a test that stands the player on the floor.
 
 ### A mesh now has three independent properties, not two
 
@@ -2559,6 +2589,35 @@ form. Schema-valid, and wrong.
 Two things to take from it. **When you write a scene by machine, load it as well as checking it** —
 `amadeo capture --ticks 1` is the cheapest load there is. And when instancing a prefab, assume the
 piece already has `Transform` on its root, because every piece worth instancing does.
+
+**Session 19 found the next rung down: a load is not a game.** The generated level loaded, drew, and
+captured cleanly at tick 1 while every collider in it was walking away from its own geometry. What
+found that was a test that stood the player on the floor and another that walked them out of the
+door. The ladder, cheapest first, and each rung sees something the one below cannot:
+
+| | Catches |
+|---|---|
+| `amadeo fmt --check` | The writer's own output being non-canonical — three real faults, session 19 |
+| `amadeo check` | A component or field the schema does not have |
+| `amadeo capture --ticks 1` | Anything that stops the scene loading at all |
+| `amadeo capture --ticks 5` | Children placed at their local transforms, and most lighting mistakes |
+| A test that stands on the floor | Geometry that is not where the file says |
+| A test that plays the loop | Everything else |
+
+### The formatter is a regression test, if something runs it
+
+ADR 0071 said `amadeo fmt --check` on generator output was "a free regression test". Free only if
+something runs it — and until `what_the_generator_writes_is_already_canonical` existed, nothing did.
+It immediately found three faults in the writer nothing else could see: quoted prefab ids where
+canonical form is bare, an `assets` block sorted by the *constant names* rather than by the asset ids
+they hold, and a spare blank line at the end.
+
+None of those breaks anything on its own. Together they mean the first person to run `amadeo fmt` on
+a generated level gets a diff that is entirely noise, and the next regeneration produces the reverse —
+so the two tools fight and neither result is reviewable, which is I2 gone for generated content.
+
+**If you write a file format by hand, assert that the canonical writer would write the same bytes.**
+It is two lines: parse your output, re-emit it, compare.
 
 *(More entries land as the engine takes shape: asset handles.)*
 

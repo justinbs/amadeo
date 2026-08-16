@@ -579,60 +579,80 @@ without it.
 
 ---
 
-## Q30 · P2 · There is no way to move a physics body from outside the simulation
+## Q30 · P3 · A teleport moves a body, and nothing tidies up after it
 
-**New in session 13, found by a test that teleported a character and silently did nothing.**
+**Raised in session 13, and mostly answered in session 19 by ADR 0072 — but from an unexpected
+direction, and the part that is left is a different question from the one originally asked.**
 
-`step_physics` reads `GlobalTransform` in preference to `Transform`, and `propagate_transforms` runs
-in `PostSimulation` — at the end of the tick. So writing a `Transform` from outside the tick is read
-back **stale** on the next one: physics steps from the old position and writes it straight back over
-the new one. The entity does not move, nothing errors, and the only symptom is that whatever you
-expected at the new position did not happen.
+### What was wrong, and what fixed it
 
-Preferring `GlobalTransform` is *correct* — a body parented to something needs its world position —
-so this is not simply a bug to invert. What is missing is any supported way to say "this body is now
-somewhere else", which respawns, fast travel, level transitions and editor drag-and-drop all need,
-and four of the eight target games have at least one of those.
+`step_physics` read `GlobalTransform` in preference to `Transform`, and `propagate_transforms` runs
+in `PostSimulation` — at the end of the tick. So writing a `Transform` from outside the tick was read
+back **stale** on the next one: physics stepped from the old position and wrote it straight back over
+the new one. The entity did not move, nothing errored, and the only symptom was that whatever you
+expected at the new position did not happen. It cost three debug cycles across three sessions.
 
-### The options
+The reasoning that kept it open was: *"preferring `GlobalTransform` is correct — a body parented to
+something needs its world position — so this is not simply a bug to invert."* **The first clause is
+true and the conclusion does not follow.** A body parented to something needs its world position; a
+body parented to *nothing* does not, because for a root the two are the same value and the local one
+is a tick fresher. The rule is per-entity, not global, and reading it as global is what made this look
+like a design gap rather than a two-line fix.
 
-- **A `Teleport` component the physics step consumes**, clearing it after applying. Explicit, hashed,
-  replays for free, and it reads as an intent rather than as a mutation. Costs a component whose
-  whole life is one tick.
-- **Run `propagate_transforms` before physics as well as after.** Makes a written `Transform` take
-  effect next tick with no new API. Doubles the propagation cost and makes "when is `GlobalTransform`
-  current" a subtler question than it is now.
-- **A method on `Physics` that moves a body by entity**, alongside `insert_static_mesh`. Matches the
-  precedent for things that genuinely cannot travel through components — but a position *can*, which
-  is the argument against.
+So `step_physics` now takes a child's pose from the composed matrix and a root's from its own
+`Transform`, and all three rows of the table below work.
 
-**Not blocking.** `games/scarp` walks its character rather than teleporting it, which is what its
-exit gate asked for anyway. It becomes blocking the first time a game needs a respawn point.
+| Where the write happens | Then | Now |
+|---|---|---|
+| A system in `PreSimulation` or `Simulation` | Works | Works |
+| A system after `propagate_transforms`, or `Render` | Stale by one tick | Works |
+| **Between ticks** — a test, an editor, a load | **Silently ignored** | Works |
 
-### It has now cost two debug cycles rather than one, which is a nudge on the priority
+**The lesson worth keeping is the shape of the mistake, not the fix.** A correct statement about one
+case ("a child needs its world position") was generalised into a rule about all cases, written down
+as a design constraint, and then defended for six sessions. Three of the debug cycles were spent
+inside a trap that a *narrower* reading of the original observation would have avoided entirely.
 
-**Session 17 hit it again**, writing tests for the watcher: the obvious way to change what an AI can
-see is to move the player in and out of range, and the first teleport appeared to work while the
-second silently did not. `docs/07` already described the trap and it was read *after* the debugging
+### What is actually left
+
+Moving a body works. What is missing is everything *around* a teleport, and none of it has an owner:
+
+- **Velocity is not reset**, so a character teleported mid-fall arrives falling.
+- **The solver's contacts are not cleared** for that body. ADR 0036's contract means this is probably
+  harmless — a backend may keep nothing that cannot be rebuilt from the bodies it is given, and
+  session 17 measured a warm solver matching a cold one exactly — but nobody has checked it for a
+  body that moved a hundred metres in one tick.
+- **Nothing decides what happens if the destination is occupied.** A respawn point inside a wall is
+  the classic version of this.
+
+A `Teleport` component the physics step consumes would answer all three in one place, be hashed, and
+replay for free. It is worth building the first time a game needs a respawn point, and no target game
+has asked yet — which is why this drops to P3 rather than closing.
+
+### Still one real gap for a child
+
+A body that is a **child** still reads its pose from the composed matrix, which is a tick old. Nothing
+needs it: children with colliders are level geometry, which does not move. If a *moving* parent with a
+physics child ever appears, the answer is to run propagation before physics inside the tick, and
+ADR 0072 records that as the option rejected for now.
+
+### The three debug cycles, kept because the pattern is the point
+
+**Session 13** found it: a test teleported a character to check terrain streaming and silently did
+nothing.
+
+**Session 17** hit it again writing tests for the Atrium's watcher — the obvious way to change what an
+AI can see is to move the player in and out of range, and the first teleport appeared to work while
+the second silently did not. `docs/07` already described the trap and was read *after* the debugging
 rather than before.
 
-What it sharpened is **where the boundary actually is**, which the title says and is easy to read past.
-`games/atrium`'s "return to start" menu button writes a `Transform` directly and works perfectly —
-because `choose_from_menu` runs in `Simulation`, so `propagate_transforms` refreshes
-`GlobalTransform` in the same tick's `PostSimulation` and physics reads the new value next tick.
+**Session 19** hit it a third time, and this time it was in disguise: a test stood the player in front
+of the generated door and found nothing in reach. It presented as an interaction bug, then as a
+geometry bug, and was neither.
 
-So the rule is not "you cannot write a `Transform`". It is:
-
-| Where the write happens | Result |
-|---|---|
-| A system in `PreSimulation` or `Simulation` | **Works.** Propagation happens later in the same tick. |
-| A system in `PostSimulation` after `propagate_transforms`, or `Render` | Stale by one tick. |
-| **Between ticks** — a test, an editor, a load — | **Silently ignored.** This is the gap. |
-
-That third row is the whole of Q30, and it is worth stating as a table because the first row working
-is exactly what makes somebody believe the third one will.
-
-Still P2 by the letter, since nothing is blocked. Worth promoting the next time anything needs it.
+What each of those had in common is that `games/atrium`'s "return to start" menu button writes a
+`Transform` directly and works perfectly — because `choose_from_menu` runs in `Simulation`. **A rule
+whose exception fires only in the case you are not currently looking at is worse than no rule.**
 
 ---
 

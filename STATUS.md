@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-16 (session 18)
+**Last updated:** 2026-08-16 (session 19)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE — all four exit gates met.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
@@ -26,27 +26,65 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 ## 📬 For the next session — read this box, then the two below it
 
-> ### A capture at tick 0 is not a picture of your game
+> ### The tick-0 hazard is closed at the source, and there was a worse one under it
 >
-> `propagate_transforms` runs in `PostSimulation`, so **before any tick has run no child has a
-> composed `GlobalTransform`** — and every renderer path falls back to the *local* transform when one
-> is missing. A tick-0 capture therefore draws every parented camera, light and mesh at its local
-> coordinates, and **every game here parents its camera.**
+> **ADR 0072.** `amadeo_scene::instantiate_with` now composes the hierarchy before it returns, so a
+> loaded world has a correct `GlobalTransform` on everything with no tick required. Session 18's
+> warning — "a capture at tick 0 is not a picture of your game" — no longer applies. `amadeo capture`
+> still defaults to one tick and should stay that way, but the hazard behind that default is gone.
 >
-> **Closed where it bit: `amadeo capture` now simulates one tick by default**, and `--ticks 0` still
-> does exactly what it says. Keep the hazard in mind anyway — it is a property of the *world before
-> its first tick*, not of the CLI, so anything else that reads a fresh world has it too.
+> **Underneath it was a real defect that had scattered every generated interior across a hundred
+> metres.** A backend returns *world* poses; a `Transform` on a child is relative to its parent;
+> `step_physics` wrote one into the other, and propagation then applied the parent a second time. So
+> a parented collider walked away from its piece by the piece's own offset, once per tick.
 >
-> It cost most of a session first. **Q39 was filed at P0 against a renderer bug that does not exist**:
-> the Warren's torch beam is a grandchild of the player at local `y = -0.1`, which put it inside the
-> floor slab, where it correctly shadowed the whole room with the floor it was buried in. Q39 is
-> withdrawn and `docs/06` has the full account, including the second wrong claim — a `PointLight`
-> that "lit nothing" was simply dim enough that the ACES toe crushed it to exactly 0/255, and
-> *exactly* zero read as a switch rather than as a small number.
+> Two things about how it hid are worth carrying forward:
+>
+> - **It was invisible at tick 1**, because nothing had propagated yet and the fallback to the local
+>   transform was still in play. Session 18's capture of the generated level was taken at exactly the
+>   one tick that looks right, and STATUS recorded "it loads and draws".
+> - **It was unreachable before ADR 0071.** A prefab has one root, so a piece with two colliders must
+>   put them on children — and nothing before room pieces had a reason to put a collider anywhere but
+>   a root. A whole class of defect can sit in an engine until one design decision makes it reachable.
+>
+> And fixing the first exposed a third: composing at load gives a *root* a `GlobalTransform` it did
+> not have, and `step_physics` preferred it to the entity's own transform — which is always a tick
+> fresher — so anything written between ticks was silently undone. **The fallback was hiding all
+> three.**
 
-**Everything is pushed through `14006e9`, and every run is green 5/5 — including HEAD.** Check with
-`gh run list` rather than assuming — `gh` is not on PATH, so prefix with
+**Everything is pushed through `1b256a1`, and every run is green 5/5.** Check with `gh run list`
+rather than assuming — `gh` is not on PATH, so prefix with
 `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
+
+### Session 19 in one paragraph
+
+**M3 exit gate item 2 is done rather than demonstrated.** The generator now chooses five
+**landmarks** out of the room graph — start, exit, key, torch, warden — places them as instances of
+eight new content **pieces**, and `games/warren` boots into the generated level. Along the way it
+found the engine defect described in the box above (**ADR 0072**), which had made every generated
+interior wrong since the day the generator was written and was invisible to `amadeo check`, to a
+green test suite, and to a capture taken at tick 1.
+
+`scenes/warren.scene` survives as the handcrafted room and now instances the same eight pieces, so
+each of them has two users. The tests split the same way: the loop tests play the handcrafted room
+because they are about *rules*, and `the_level_is_a_level.rs` plays the generated one and ends by
+walking out of it.
+
+### The three things worth not rediscovering, session 19
+
+- **A green suite, a passing validator and a picture can all be wrong together, and the reason is
+  usually a fallback.** `GlobalTransform` falls back to the local transform when absent — right for
+  a root, wrong for a child — and that one line hid three separate defects at once. When something
+  is wrong only *sometimes*, look for the code that quietly substitutes a plausible value.
+- **The formatter is a test, and ADR 0071 said so before anything ran it.** `amadeo fmt --check` on
+  generator output caught three real faults in the writer — quoted prefab ids, an `assets` block
+  sorted by constant name rather than by asset id, and a spare trailing blank line — none of which
+  any other test could see. `what_the_generator_writes_is_already_canonical` runs it now.
+- **Isolating beat reasoning, twice, and reasoning nearly won.** A wild-looking capture produced two
+  confident wrong theories about the geometry. Capturing the *handcrafted* room — known good, and
+  now sharing the same pieces — located the fault in ten minutes. The second time, `render.describe`
+  and a printed position settled in one run what three paragraphs of arithmetic had not. This is
+  session 18's lesson 4 applied rather than restated.
 
 ### Session 18 in one paragraph
 
@@ -131,17 +169,17 @@ crates.
 **Every named M3 subsystem and all five named genre modules now exist.** What is left in the
 milestone is mostly the exit gate itself.
 
-1. **M3's exit gate** — `games/warren` has one handcrafted room, first person, a torch, a key, a door
-   you escape through and a warden that catches you. That is **gate items 1** (a playable loop with
-   a win and a lose state) and **3** (a pursuer with distinct AI states, driven by `mod-behaviour`).
-   Still to come, and it is most of what remains in the milestone:
-   - **Bounded procedural interiors** (gate item 2) — **ADR 0071, and the generator works.**
-     `cargo run -p warren --bin layout` writes a scene: a seeded room graph over three prefab
-     pieces, always connected, always looped. `amadeo check` passes it, and it loads and draws.
-     **What is missing is everything that makes it a level rather than a shape** — a generated
-     interior has no player start, no lights, no key and no door, so the game still boots into its
-     handcrafted room. The next step is a `player_start` piece placed in the first room and an
-     `exit` in the last.
+1. **M3's exit gate** — `games/warren` is first person, generated, and has a loop you can win and
+   lose. That is **gate items 1** (a playable loop with a win and a lose state), **2** (bounded
+   procedural interiors) and **3** (a pursuer with distinct AI states, driven by `mod-behaviour`).
+   Still to come:
+   - ~~Bounded procedural interiors~~ — **done.** `cargo run -p warren --bin layout` writes a level:
+     a seeded room graph over eleven prefab pieces, always connected, always looped, with a place to
+     wake up, a torch one door away, a key off the shortest route, a door set into an outer wall and
+     a warden half way along. The game boots into it and `you_can_walk_out_of_the_generated_level`
+     plays it through. **What is left here is content, not mechanism**: one room shell, one wall, one
+     doorway, and a level that reads as a grid because it is one. Rotation of pieces is the obvious
+     next step and ADR 0071 deliberately left it out.
    - **A title screen** and the rest of item 1's shell. `games/atrium` proves save and resume; the
      Warren has not wired it up.
    - **Audio** (item 6). Horror lives there and this game is silent.
@@ -167,21 +205,42 @@ milestone is mostly the exit gate itself.
 
 ### The Warren's eyeball numbers, all waiting on Justin
 
-All in `games/warren/scenes/warren.scene` unless noted, all one line each, and **all only roughly
-tuned** — judge them with `--ticks 5`, because a tick-0 capture of this game is not a picture of it.
+The lighting and prop numbers now live in `games/warren/assets/pieces/`, which is the point of them
+being pieces: changing `room_lamp.scene` changes every room of every level ever generated. The rest
+are constants in `src/lib.rs`. All one line each, all only roughly tuned, and judged with
+`amadeo capture -p warren --ticks 5`.
 
-- **`spill`, a `DirectionalLight` at 0.06.** Stands in for light leaking from elsewhere, so the room
-  is navigable before you find the torch. It is doing an ambient's job and there is a real question
-  under it: this game names an environment with `sky ""`, so **nothing lights an upward-facing floor
-  at all**. A dim sky would be the honest fix.
-- **`ceiling_lamp` at intensity 14, range 8**, which is what the room is actually lit by.
+Four are new this session and are the ones most worth a look:
+
+- **`LAMPS_WORKING`, 0.45** — the chance a room other than the start has a working lamp, and the
+  single number that decides how dark the Warren is. Too high and the torch is pointless; too low
+  and the level is a black maze before you have found it. Rooms are lit or not, rather than
+  everywhere being dimly lit, because a dark room next to a working one reads as lighting that has
+  failed in patches, which is a place — uniform gloom reads as a renderer setting.
+- **`GENERATED_ROOMS`, 14, and `CELL`, 12 m** — so the shipped level is about 170 m across at its
+  widest. It reads as large. Fewer rooms would make it tighter and more claustrophobic, which is
+  probably the horror answer, and it is one constant plus a re-run of `--bin layout`.
+- **`PROP_OFFSET`, 3.2 m** — how far from a room's centre a crate stands.
+- **The seed itself, `GENERATED_SEED` = 20250815.** Generating twenty and keeping the good one is
+  exactly what ADR 0071 §1 says a file-based generator buys, and nobody has done it yet.
+
+The older ones, unchanged:
+
+- **`spill`, a `DirectionalLight` at 0.06** (`pieces/spill.scene`). Stands in for light leaking from
+  elsewhere, so the level is navigable before you find the torch. It is doing an ambient's job and
+  there is a real question under it: this game names an environment with `sky ""`, so **nothing
+  lights an upward-facing floor at all**. A dim sky would be the honest fix. It also has
+  `shadows Off`, which is what stops it giving away every wall it passes through.
+- **The lamp at intensity 14, range 8** (`pieces/room_lamp.scene`), which is what a lit room is
+  actually lit by. Range 8 in a 12 m room means the corners fall off, which is doing real work.
 - **The torch beam**: `BEAM_INTENSITY` 30 in `lib.rs`, 11°/26° cone, 18 m range, **and it casts** —
   the shadows work, and a flashlight that casts is most of the atmosphere in a game like this.
 - **Movement**: 2.6 m/s and no jump, which is a horror-pace guess rather than a measured one.
 - **The warden**: sight 9 m, speed 1.9 m/s, reach 0.9 m, and five seconds of searching before it
   gives up. Speed is the one that matters — it must stay under the player's, and a test reads the
   player's authored speed out of the scene rather than repeating it.
-- **The room**: 12 × 16 × 3 m, one lamp, two crates.
+- **The handcrafted room**: 12 × 16 × 3 m, one lamp, two crates. No longer what the game boots into,
+  but still what the rule tests play and still where the pieces were cut from.
 
 ### One caution that stands, and one that is retired
 

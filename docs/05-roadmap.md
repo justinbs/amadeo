@@ -396,16 +396,25 @@ in documents nobody is allowed to correct.
 scale. Chosen in session 2 as the smallest genuinely finishable complete game that is also the hardest
 test of the renderer. Reasoning in `00-vision.md` § The first game to actually finish.
 
-1. **Complete, not a demo.** Title screen → playable loop → lose state (caught) and win state (escape)
-   → pause → save → quit → resume from save. With sound design and music.
-2. 🟡 **Bounded procedural interiors** — assembled from handcrafted room pieces, not one static
-   level. Tests the scene composition and prefab-instancing design under real use.
-   **ADR 0071, and the generator works**: `games/warren`'s `layout` binary writes a scene from a
-   seeded room graph over three prefab pieces, always connected and always looped, and `amadeo
-   check` passes it. It emits a **file** rather than a seed, so the formatter, the validator, prefab
-   instancing and the editor all work on the result and a person can move a door by hand.
-   **Still geometry only** — no player start, no lights, no key, no door — so the game does not boot
-   into one yet.
+1. 🟡 **Complete, not a demo.** Title screen → playable loop → lose state (caught) and win state
+   (escape) → pause → save → quit → resume from save. With sound design and music.
+   `games/warren` has the loop, both endings and a HUD. **Missing: the title screen, pause, save and
+   resume, and all of the audio.** `games/atrium` proves every one of those mechanisms, so what is
+   left is wiring rather than building.
+2. ✅ **Bounded procedural interiors** — assembled from handcrafted room pieces, not one static
+   level. **ADR 0071 for the artefact, ADR 0072 for what building it found.** `games/warren`'s
+   `layout` binary writes a scene from a seeded room graph over **eleven** prefab pieces, always
+   connected and always looped; it emits a **file** rather than a seed, so the formatter, the
+   validator, prefab instancing and the editor all work on the result and a person can move a door
+   by hand.
+   A layout also chooses five **landmarks** out of the graph — where you wake up, the way out (the
+   furthest room), the key (the largest detour, so provably off the shortest route), the torch (one
+   door away) and the warden (half way along) — and the game boots into the result.
+   **It tested the prefab-instancing design under real use, which is what this gate item is for, and
+   the design failed.** A prefab has exactly one root, so a piece with two colliders must put them on
+   children — and `step_physics` was storing world poses into child transforms, so every generated
+   interior had been scattered across a hundred metres since the day the generator was written. It
+   was invisible to `amadeo check`, to a green suite, and to a capture taken at tick 1. ADR 0072.
 3. ✅ **At least one pursuing entity** with distinct AI states (idle, search, pursue, lose interest),
    driven by `mod-behaviour`. `games/warren`'s warden: four states over one named fact, authored in
    the scene, slower than the player so a chase can be won.

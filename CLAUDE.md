@@ -435,6 +435,18 @@ crates/
                      **rapier 0.34 uses glam, not nalgebra** -- `Rotation` is a `glam::Quat`, and
                      rapier's own `vector![]` macro still builds an *nalgebra* vector its API will
                      not accept. Use `Vector::new`.
+                     **A body's pose is stored in the space its `Transform` is written in (ADR
+                     0072)**, which for a child is its parent's. A backend returns *world* poses;
+                     writing one straight into a child stores it as if it were local and
+                     `propagate_transforms` then applies the parent a second time, so a parented
+                     collider walks away from its piece by the piece's own offset once per tick.
+                     That made every level ADR 0071 generated wrong from the day it was written, and
+                     it was **unreachable before room pieces** -- a prefab has one root, so a piece
+                     with two colliders must put them on children, and nothing before that had a
+                     reason to. A **static** body is not written back at all: its pose is authored,
+                     not simulated. Reading is asymmetric on purpose -- a child from the composed
+                     matrix, a **root from its own `Transform`, which is a tick fresher** and is what
+                     makes a teleport between ticks work at all (Q30, now P3).
                      **`PhysicsBackend::move_shape` is the second operation (ADR 0037)**: move a
                      shape and slide along what it hits, returning where it ended up and whether it
                      landed on something. It is what a character controller is built on, and it
@@ -690,6 +702,15 @@ crates/
                      22.0` is a scalar, and layer 1 has no schema), so `Vec<T>::from_value` accepts a
                      single value as a one-element list -- the type resolving an ambiguity the text
                      really has, exactly as `f32::from_value` accepting an integer already did.
+                     **Instantiating a scene composes the hierarchy before it returns (ADR 0072)**,
+                     so a loaded world has a correct `GlobalTransform` on everything with no tick
+                     required. Without it, every consumer's fallback-to-the-local-transform is in
+                     play until the first `PostSimulation` -- which drew session 18's torch beam a
+                     tenth of a metre underground and produced a P0 against renderer faults that do
+                     not exist. Safe because `GlobalTransform` is DERIVED (ADR 0019), so computing it
+                     earlier cannot move a state hash. It lives here rather than in `App` because
+                     this is the crate that *creates* the hierarchy, and it already depends on
+                     amadeo-transform, so it adds no edge to the graph.
                      **An EMPTY list is written `[]`**, the way `Unit` is written `()` and for the
                      same reason: joining nothing gives the empty string, so an empty `Vec` used to
                      write as a field with no value -- which this format does not have, and which
@@ -896,28 +917,38 @@ games/               actual games built with the engine
                      verified_without_eyes.rs checks the screen through render.describe.
                      NOTE it has two binaries, so it sets `default-run` — without that
                      `cargo run -p vault` is ambiguous and every CLI command against it fails.
-  warren           M3's exit gate, in progress: one handcrafted room, first person, and a loop you
-                   can win and lose (`cargo run -p warren`). Find the torch, find the key, reach the
-                   door -- and a warden hunts you, its mind authored in the scene as four states over
-                   one named fact (ADR 0068, second game). A HUD says what is in reach and how the
-                   run ended.
-                   **It generates its own interiors** (ADR 0071): `cargo run -p warren --bin layout`
-                   writes a scene from a seeded room graph over three prefab pieces -- a shell, a
-                   wall and a doorway -- always connected and always looped. `amadeo check` passes
-                   it and it loads. **A generated level is geometry only**: no player start, no
-                   lights, no key, no door, so the game still boots into its handcrafted room.
-                   Still missing and still most of the gate: a title screen and audio.
+  warren           M3's exit gate, in progress: first person, **generated**, and a loop you can win
+                   and lose (`cargo run -p warren`). Find the torch, find the key, reach the door --
+                   and a warden hunts you, its mind authored in the scene as four states over one
+                   named fact (ADR 0068, second game). A HUD says what is in reach and how the run
+                   ended. Gate items 1, 2 and 3 are done; a title screen, save/resume and audio are
+                   what is left.
+                   **The level is generated and committed as text** (ADR 0071).
+                   `cargo run -p warren --bin layout` rewrites `scenes/generated.scene`, which the
+                   binary `include_str!`s. A layout is a **room graph plus five `Landmarks`** chosen
+                   out of it: the way out goes in the furthest room, the key in the room with the
+                   largest *detour* (greatest total distance from start and exit at once, so it is
+                   provably off the shortest route), the torch one door from the start, the warden
+                   half way along. Every rule is a shortest path with ties broken by cell order --
+                   no dice, because a die roll cannot tell a detour from a dead end. Lamps are the
+                   one thing left to chance, except the start room's.
+                   **Everything it emits is an instance of a piece in `assets/pieces/`**, so moving
+                   a lamp is an edit to `room_lamp.scene` and reaches every level ever generated.
+                   Most pieces put their root on the floor and author their heights in children; the
+                   **player and the warden cannot**, because systems compare their plain
+                   `Transform`s against each other, so both must be unparented roots.
+                   `scenes/warren.scene` survives as the handcrafted room and instances the same
+                   pieces, giving each of them a second user. The tests split the same way: the loop
+                   tests play the handcrafted room because they are about *rules*, and
+                   `the_level_is_a_level.rs` plays the generated one and ends by walking out of it.
+                   **Building it found the defect ADR 0072 fixes**, which had scattered every
+                   generated interior across a hundred metres and was invisible to `amadeo check`,
+                   to a green suite, and to a capture at tick 1.
                    Built before the level design because **`FirstPersonCamera` had no game using
                    it** -- the Scarp and the Atrium are both third person. The `Interactor` is on
                    the **camera**, so the mouse drives the sweep's pitch: where an interactor is
                    parented *is* its aim.
-                   **Capture it with `--ticks 5`, never at tick 0.** `propagate_transforms` runs in
-                   `PostSimulation`, so a tick-0 capture places every child at its **local**
-                   transform -- which puts this game's beam at `y = -0.1`, inside the floor slab,
-                   where it shadows the whole room with the floor it is buried in. That cost most of
-                   session 18 and a withdrawn P0 (**Q39**). Every game here parents its camera, so
-                   it applies to all of them.
-                   It also names an environment with `sky ""`, so **nothing lights an upward-facing
+                   It names an environment with `sky ""`, so **nothing lights an upward-facing
                    floor**; the dim `spill` directional is standing in for an ambient and a real sky
                    is the honest fix.
   scarp            M2.5's exit gate: a generated world you walk on and dig into
