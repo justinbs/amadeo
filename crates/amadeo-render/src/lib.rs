@@ -61,7 +61,7 @@ pub use components::{Camera, Projection, Quad, SortOrder, Sprite};
 pub use describe::{
     DrawnEntity, DrawnKind, FrameDescription, describe_frame, describe_frame_through,
 };
-pub use environment::{Bloom, Environment, EnvironmentCache, Grade, Tonemap, Vignette};
+pub use environment::{Bloom, Environment, EnvironmentCache, Fog, Grade, Tonemap, Vignette};
 pub use frustum::{Frustum, transformed_bounds};
 #[cfg(feature = "gpu")]
 pub use gpu::{AdapterDescription, WgpuBackend};

@@ -23,7 +23,7 @@
 
 use amadeo_ecs::World;
 use amadeo_render::{
-    BoxMesh, Camera, DirectionalLight, Environment, EnvironmentCache, Material, MaterialCache,
+    BoxMesh, Camera, DirectionalLight, Environment, EnvironmentCache, Fog, Material, MaterialCache,
     Mesh, MeshCache, NullBackend, PointLight, Quad, RenderBackend, Renderer, ShadowMode, SpotLight,
     TextureData, Vignette, WgpuBackend, render_quads,
 };
@@ -1720,5 +1720,105 @@ fn a_shadow_casting_spot_lights_a_scene_that_has_no_sun() {
         "a spot light with nothing between it and the floor should light that floor whether or not \
          it casts. With shadows it reads {shadowed:?}; with the same light and shadows off it reads \
          {plain_pixel:?}"
+    );
+}
+
+/// A lit red box with a named environment on the camera, so a look can be varied.
+fn a_lit_box_under(look: Environment) -> World {
+    let mut world = a_lit_box([1.0, 0.0, 0.0, 1.0], [2.0, 2.0, 2.0]);
+    let mut looks = EnvironmentCache::new();
+    looks.insert("look", look);
+    world.insert_service(looks);
+
+    let eye = world
+        .query::<(&Camera,)>()
+        .map(|(entity, _)| entity)
+        .next()
+        .expect("a_lit_box makes one");
+    if let Some(camera) = world.get_mut::<Camera>(eye) {
+        camera.environment = "look".to_string();
+    }
+    world
+}
+
+#[test]
+fn fog_off_is_byte_identical() {
+    // **ADR 0073's central claim, and the one that decides whether adding fog was safe.** Every
+    // `.environment` in the repository defaults to `density 0.0`, so every existing picture — the
+    // Vault's captured pixels, the Atrium's, the Scarp's — has to come out exactly as it did.
+    //
+    // The shader returns early at zero density rather than computing `mix(colour, fog, 0.0)`, which
+    // would also be exact but would depend on that being true of every driver's `mix`.
+    let mut plain = a_lit_box([1.0, 0.0, 0.0, 1.0], [2.0, 2.0, 2.0]);
+    let Some(before) = capture(&mut plain, 64, 64) else {
+        return;
+    };
+
+    let mut with_the_field = a_lit_box_under(Environment::default());
+    let after = capture(&mut with_the_field, 64, 64).expect("the device worked a moment ago");
+
+    assert_eq!(
+        before.pixels, after.pixels,
+        "a scene that authors no fog must render exactly as it did before fog existed"
+    );
+}
+
+#[test]
+fn fog_actually_reaches_the_pixels() {
+    // The control for the test above: a renderer that ignored the field entirely would pass that
+    // one perfectly. The box is five units away and the fog is dense enough to have closed most of
+    // the way by then, so its lit red face should read as the fog's blue instead.
+    let mut world = a_lit_box_under(Environment {
+        fog: Fog {
+            colour: [0.0, 0.0, 1.0],
+            density: 0.4,
+            start: 0.0,
+        },
+        ..Environment::default()
+    });
+    let Some(image) = capture(&mut world, 64, 64) else {
+        return;
+    };
+
+    let centre = pixel_at(&image, 32, 32);
+    assert!(
+        centre[2] > centre[0],
+        "four units of dense blue fog should have taken a red face blue, got {centre:?}"
+    );
+}
+
+#[test]
+fn fog_thickens_with_distance() {
+    // **The property that makes it fog rather than a tint**, and the one a wrong sign or a missing
+    // `distance` would break while still passing the test above. The same box twice, at two
+    // distances, under the same fog: the far one has to be further along towards the fog colour.
+    let redness_at = |depth: f32| -> Option<u8> {
+        let mut world = a_lit_box_under(Environment {
+            fog: Fog {
+                colour: [0.0, 0.0, 1.0],
+                density: 0.12,
+                start: 0.0,
+            },
+            ..Environment::default()
+        });
+        // Push the box away from the camera, which sits at +5 looking down −Z.
+        let thing = world
+            .query::<(&Mesh,)>()
+            .map(|(entity, _)| entity)
+            .next()
+            .expect("a_lit_box makes one");
+        if let Some(transform) = world.get_mut::<Transform>(thing) {
+            transform.translation = [0.0, 0.0, -depth];
+        }
+        capture(&mut world, 64, 64).map(|image| pixel_at(&image, 32, 32)[0])
+    };
+
+    let Some(near) = redness_at(0.0) else {
+        return;
+    };
+    let far = redness_at(12.0).expect("the device worked a moment ago");
+    assert!(
+        far < near,
+        "the further box should be more fogged: near {near}, far {far}"
     );
 }

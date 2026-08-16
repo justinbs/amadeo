@@ -56,6 +56,11 @@ struct MeshView {
     // cascade, because a near cascade's depth range is a fraction of the far one's, so the same
     // authored world-unit offset is a much larger share of it.
     cascade_bias: vec4<f32>,
+    // rgb = the fog colour, in linear light. a = its density (ADR 0073). Zero density is off, and is
+    // off exactly: the shader returns early, so a scene with no fog is byte-identical.
+    fog_colour: vec4<f32>,
+    // x = how far from the eye fog starts, in world units. yzw unused.
+    fog_params: vec4<f32>,
     // xyz = the camera's world position. Needed only since PBR: diffuse light looks the same from
     // everywhere, but a specular highlight is a reflection and moves with the viewer.
     eye: vec4<f32>,

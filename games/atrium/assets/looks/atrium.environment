@@ -7,6 +7,10 @@ entity look "Atrium"
       intensity 0.0
       threshold 1.0
     exposure 1.0
+    fog
+      colour 0.0 0.0 0.0
+      density 0.0
+      start 0.0
     grade
       contrast 1.0
       saturation 1.0

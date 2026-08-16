@@ -269,7 +269,19 @@ crates/
                      widening it is a **downsample chain**, not more taps. `games/scarp` deliberately
                      leaves it off -- daylight has nothing above the threshold, so it either does
                      nothing or washes the picture out, and both were captured.
-                     Fog waits for a depth buffer. Still to come: render targets on a camera, and
+                     **Fog is drawn (ADR 0073)**, and it is the one part of an `Environment` that is NOT a
+                     post-process: it is a forward term in `mesh.wgsl` applied per SURFACE, because
+                     how much air a fragment is behind depends on how far away it is. ADR 0034 said
+                     it was waiting for a depth buffer; that was true of a *post-process* shape and
+                     quietly kept it unbuilt for four milestones after the depth buffer arrived -- a
+                     fragment shader already knows its own world position and the camera's, so the
+                     distance is a subtraction. Exponential-squared, so it has no edges anywhere;
+                     `start` is SUBTRACTED rather than remapping a range, so two numbers each mean
+                     one thing. **Off is off exactly** (an early return at zero density), which is
+                     what let it land without changing a single existing capture. The sky is not
+                     fogged, only surfaces -- correct outdoors, invisible indoors. Volumetric light
+                     shafts are the next step and raymarch through exactly this.
+                     Still to come: render targets on a camera, and
                      per-camera post (**Q23** -- one look per frame today, from the camera that draws
                      first).
                      **`PointLight` and `SpotLight` (ADR 0057)** -- lights at a *place*, which the

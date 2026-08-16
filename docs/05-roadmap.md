@@ -420,9 +420,16 @@ test of the renderer. Reasoning in `00-vision.md` § The first game to actually 
    driven by `mod-behaviour`. `games/warren`'s warden: four states over one named fact, authored in
    the scene, slower than the player so a chase can be won.
 4. **Inventory and interaction** — pick up and use at least a flashlight and a key-type item.
-5. **Atmosphere holds up.** A dark corridor with a moving flashlight that reads as genuinely
+5. 🟡 **Atmosphere holds up.** A dark corridor with a moving flashlight that reads as genuinely
    atmospheric. This is the renderer's real exam: dynamic lighting, shadow quality, fog, and a
    post-process stack. If this works, the other two art directions are easier.
+   **Fog landed with ADR 0073** — a forward term on the surface shader rather than a post-process,
+   which is why it did not need the depth buffer ADR 0034 said it was waiting for. Off by default
+   and byte-identical when off. `games/warren` also has a real environment map now (`--bin gloom`),
+   so an indirect surface is lit rather than exactly black.
+   **Still open, and it is the biggest remaining visual step: volumetric light shafts** — the torch
+   beam is not visible in the air, which is most of what a horror flashlight *is*. ADR 0073 records
+   why it was not paid for now and that it raymarches through exactly the fog this added.
 6. 🟡 **Audio carries weight.** Spatialised sound, occlusion or at least attenuation, reactive music
    or stingers. Horror lives or dies here, which makes it a good forcing function for the audio
    system.

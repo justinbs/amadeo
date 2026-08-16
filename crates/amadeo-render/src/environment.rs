@@ -21,22 +21,23 @@
 //! The order, which is also the order the fields are declared in:
 //!
 //! 1. [`Environment::exposure`] — scale the light
-//! 2. [`Environment::bloom`] — bleed the bright parts *(not yet drawn; see below)*
+//! 2. [`Environment::bloom`] — bleed the bright parts
 //! 3. [`Environment::tonemap`] — bring it into a range a monitor can show
 //! 4. [`Environment::grade`] — contrast, saturation, tint
 //! 5. [`Environment::vignette`] — darken the edges
 //!
-//! # What is deliberately missing
+//! # One field here is not a post-process at all
 //!
-//! **Fog**, which ADR 0034 names, needs to know how far away each pixel is — and there is no depth
-//! buffer until the mesh pass lands. Adding it then is a new block plus a new branch in
-//! `present.wgsl`, which is exactly the cheap change a reflected type exists for.
+//! [`Environment::fog`] is atmosphere rather than finishing, and it happens in `mesh.wgsl` to each
+//! *surface* rather than to the finished picture — because how much air a fragment is behind depends
+//! on how far away that fragment is (ADR 0073). It is authored here because it is unarguably part of
+//! a camera's look; it travels to the shader in the per-camera view uniform rather than the post
+//! one.
 //!
-//! **Bloom is declared and not yet drawn.** Its fields are here because they are part of the same
-//! decision and belong in one round of the schema rather than two; the multi-pass blur that
-//! implements it is the next thing to build. [`Bloom::intensity`] defaults to zero, so nothing
-//! renders differently in the meantime, and `Environment::wants_bloom` is what will switch the
-//! passes on.
+//! **This module used to say fog was waiting for a depth buffer.** That was true of a *post-process*
+//! implementation and quietly became the reason it stayed unbuilt for four milestones after the
+//! depth buffer arrived. A fragment shader already knows its own world position and the camera's, so
+//! the distance is a subtraction and no depth buffer is involved.
 
 use amadeo_core::StableHash;
 use amadeo_ecs::{Component, Service};
@@ -144,6 +145,54 @@ impl Default for Vignette {
     }
 }
 
+/// Air between the eye and everything else (ADR 0073).
+///
+/// **The one part of an `Environment` that is not a post-process.** Everything else here happens to
+/// the finished picture; fog happens to each *surface*, in `mesh.wgsl`, because how much air a
+/// fragment is behind depends on how far away that fragment is. It travels to the shader in the
+/// per-camera view uniform rather than the post uniform for the same reason.
+///
+/// # It is what a dark corridor is made of
+///
+/// M3's exit gate item 5 asks for "a dark corridor with a moving flashlight that reads as genuinely
+/// atmospheric", and fog is most of the first half. Without it a corridor is fully lit or fully
+/// black at its far end; with it the end recedes, which is the difference between a room with the
+/// lights off and somewhere you cannot see into.
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+pub struct Fog {
+    /// What the air itself looks like, in **linear** light — the same convention every light in a
+    /// scene file uses, not the sRGB one a `.theme` uses.
+    ///
+    /// Worth choosing against the scene rather than by taste: fog that is lighter than the darkest
+    /// surface makes distance glow, which reads as mist, and fog that is darker makes distance
+    /// swallow things, which reads as depth. A horror interior wants the second.
+    #[reflect(min = 0.0, max = 4.0)]
+    pub colour: [f32; 3],
+    /// How quickly it closes in, per world unit. **Zero is off**, and is the default.
+    ///
+    /// Roughly: at `1 / density` metres past [`Fog::start`] a surface is about 63% fogged, and at
+    /// twice that it is nearly gone. So `0.05` is a haze that reaches about forty metres and `0.2`
+    /// is a corridor you cannot see the end of.
+    #[reflect(min = 0.0, max = 1.0)]
+    pub density: f32,
+    /// How far from the eye the air begins, in world units.
+    ///
+    /// Subtracted before the curve rather than dividing the range, so it means exactly "nothing
+    /// closer than this is fogged" and moving it does not also change how thick the distance is.
+    #[reflect(min = 0.0, max = 200.0, unit = "world units")]
+    pub start: f32,
+}
+
+impl Default for Fog {
+    fn default() -> Self {
+        Self {
+            colour: [0.0, 0.0, 0.0],
+            density: 0.0,
+            start: 0.0,
+        }
+    }
+}
+
 /// Everything about how a camera's picture is finished.
 ///
 /// **An asset, named by an id** (ADR 0034). A [`Camera`](crate::Camera) holds
@@ -195,6 +244,11 @@ pub struct Environment {
     pub grade: Grade,
     /// Edge darkening, applied last because it is about *where* a pixel is rather than its colour.
     pub vignette: Vignette,
+    /// Air between the eye and everything else (ADR 0073).
+    ///
+    /// **The only field here that is not a post-process**, and the only one the mesh shader reads.
+    /// Off by default, so a scene that authors none is byte-identical.
+    pub fog: Fog,
     /// Declared asset id of the `.hdr` environment map this look lights surfaces with (ADR 0049).
     /// **Empty means none**, and falls back to a plain neutral sky.
     ///
@@ -229,6 +283,7 @@ impl Default for Environment {
             tonemap: Tonemap::default(),
             grade: Grade::default(),
             vignette: Vignette::default(),
+            fog: Fog::default(),
             sky: String::new(),
         }
     }
@@ -383,6 +438,11 @@ mod tests {
             vignette: Vignette {
                 intensity: 0.35,
                 ..Vignette::default()
+            },
+            fog: Fog {
+                colour: [0.04, 0.05, 0.06],
+                density: 0.08,
+                start: 2.5,
             },
             sky: "overcast_afternoon".to_string(),
         };

@@ -202,9 +202,16 @@ milestone is mostly the exit gate itself.
    - ~~Audio~~ (item 6) — **done.** Six sounds from `cargo run -p warren --bin sounds`, a spatial
      breath on the warden, footsteps, a chime and two stings. **Placeholders**: drop a real `.wav`
      in with the same id and nothing else changes.
-   - **Atmosphere** (item 5) is now the whole of what is left, and it is the renderer's real exam:
-     "a dark corridor with a moving flashlight that reads as genuinely atmospheric". The torch
-     casts and the shadows work; what is missing is fog, and a sky (see the `spill` note below).
+   - **Atmosphere** (item 5) — **most of the way there.** Fog landed with **ADR 0073**: a forward
+     term on the surface shader rather than a post-process, which is why it never needed the depth
+     buffer ADR 0034 said it was waiting for. Off by default and byte-identical when off, pinned
+     three ways. And the Warren has a real environment map (`cargo run -p warren --bin gloom`), so
+     an indirect surface is lit rather than exactly black — the `sky ""` gap this box has recorded
+     twice is closed.
+     **What is left is volumetric light shafts**, which is the biggest remaining visual step for
+     this game: the torch beam is not visible in the air, and that is most of what a horror
+     flashlight *is*. ADR 0073 records why it was not paid for now, and that it raymarches through
+     exactly the fog this added.
    - ~~A HUD~~ — **done**: two lines authored in the scene, saying what is in reach and how the run
      ended. **Its pixels are unverified in this game**, and that is worth knowing: the content is
      tested headlessly and `amadeo-ui` has its own draw tests, but nothing has captured this HUD on
@@ -248,11 +255,21 @@ Four are new this session and are the ones most worth a look:
 
 The older ones, unchanged:
 
-- **`spill`, a `DirectionalLight` at 0.06** (`pieces/spill.scene`). Stands in for light leaking from
-  elsewhere, so the level is navigable before you find the torch. It is doing an ambient's job and
-  there is a real question under it: this game names an environment with `sky ""`, so **nothing
-  lights an upward-facing floor at all**. A dim sky would be the honest fix. It also has
-  `shadows Off`, which is what stops it giving away every wall it passes through.
+- **`LEVEL` = 5.0 in `src/bin/gloom.rs`** — how bright the Warren's environment map is, and
+  therefore how much you can see with the torch off. **The single most important atmosphere number
+  in the game**: too high and the torch is pointless, too low and the level is a black maze before
+  you have found it. Tuned by eye across three captures; 1.0 was nearly unnavigable and 5.0 lets
+  walls read while doorways stay black. `ABOVE` and `BELOW` beside it are the *ratio* — cool from
+  the ceiling, a warm carpet bounce from below — and are what stop untextured geometry reading as
+  cardboard.
+- **The fog: `density 0.055`, `start 1.5`, colour `0.006 0.008 0.011`** in `warren.environment`.
+  Roughly a corridor that has closed in by about twenty metres. Density is the knob; the colour is
+  deliberately *darker* than the darkest surface, so distance swallows things rather than glowing,
+  which is the horror read rather than the mist one.
+- **`spill`, a `DirectionalLight` at 0.06** (`pieces/spill.scene`). **Now redundant-ish and left
+  in deliberately**: the environment map does the ambient's job properly, and this is left only for
+  the bit of directional shape it gives. Turning it to zero is a one-line experiment worth doing.
+  It has `shadows Off`, which is what stops it giving away every wall it passes through.
 - **The lamp at intensity 14, range 8** (`pieces/room_lamp.scene`), which is what a lit room is
   actually lit by. Range 8 in a 12 m room means the corners fall off, which is doing real work.
 - **The torch beam**: `BEAM_INTENSITY` 30 in `lib.rs`, 11°/26° cone, 18 m range, **and it casts** —

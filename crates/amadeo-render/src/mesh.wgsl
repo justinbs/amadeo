@@ -643,5 +643,39 @@ fn fs_main(
 
     // Emissive is added rather than multiplied, and is not affected by the light -- that is what
     // makes it emissive. Above 1.0 it pushes into the HDR range the post pass tonemaps (ADR 0034).
-    return vec4<f32>(direct + ambient_light + in.emissive, albedo.a);
+    let lit = direct + ambient_light + in.emissive;
+
+    // **Fog last, after everything else** (ADR 0073). Air between the eye and a surface adds its own
+    // light and hides what is behind it, so it has to be applied to the finished colour -- fogging
+    // the albedo instead would let a light brighten the haze, which is not how air works.
+    return vec4<f32>(fogged(lit, in.world_position), albedo.a);
+}
+
+/// Blends a lit colour towards the fog colour by how far away it is.
+///
+/// # Exponential-squared, and why not linear
+///
+/// `1 - exp(-(d * density)^2)` rather than a start-to-end ramp. A linear ramp has a visible edge
+/// where it begins and another where it ends, and both read as a band across the picture; this one
+/// has no edges anywhere and it is the curve nearly every engine uses for atmosphere. The **squared**
+/// part is what keeps near objects almost untouched while distance closes in quickly -- plain
+/// exponential fog is already noticeable at arm's length.
+///
+/// `start` is subtracted before the curve rather than dividing the range, so it means exactly "no
+/// fog closer than this" and changing it does not also change how dense the far distance is.
+///
+/// # Off is exactly off
+///
+/// At `density = 0` the exponent is zero, `exp(0)` is exactly `1`, the factor is exactly `0`, and
+/// `mix(colour, fog, 0.0)` returns `colour` bit for bit. That is what lets a scene which authored no
+/// fog produce a byte-identical capture, which `fog_off_changes_nothing` pins.
+fn fogged(colour: vec3<f32>, world_position: vec3<f32>) -> vec3<f32> {
+    let density = view.fog_colour.w;
+    if density <= 0.0 {
+        return colour;
+    }
+    let travelled = max(distance(view.eye.xyz, world_position) - view.fog_params.x, 0.0);
+    let scaled = travelled * density;
+    let factor = 1.0 - exp(-scaled * scaled);
+    return mix(colour, view.fog_colour.rgb, clamp(factor, 0.0, 1.0));
 }

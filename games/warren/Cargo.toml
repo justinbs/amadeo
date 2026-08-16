@@ -23,6 +23,7 @@ amadeo-camera.workspace = true
 amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 amadeo-events.workspace = true
+amadeo-image.workspace = true
 amadeo-input.workspace = true
 # Looking at things and using them, with the interactor on the **camera** -- which is what gives the
 # sweep a runtime-driven pitch for free, the one thing an authored one cannot do.

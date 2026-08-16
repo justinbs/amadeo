@@ -7,11 +7,15 @@ entity look "The Warren"
       intensity 0.5
       threshold 1.1
     exposure 1.15
+    fog
+      colour 0.006 0.008 0.011
+      density 0.055
+      start 1.5
     grade
       contrast 1.12
       saturation 0.72
       tint 0.92 0.96 1.0
-    sky ""
+    sky "warren_gloom"
     tonemap AcesFilmic
     vignette
       intensity 0.55

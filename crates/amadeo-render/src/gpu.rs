@@ -183,6 +183,14 @@ struct GpuMeshView {
     /// little bias is shadow acne — a surface stippling itself dark. The conversion in `fit_cascade`
     /// produces this for free by dividing through each cascade's own depth range.
     cascade_bias: [f32; 4],
+    /// The fog colour in linear light, xyz, with its density in w (ADR 0073).
+    ///
+    /// **Density in the alpha slot rather than in a field of its own**, because WGSL pads a lone
+    /// `f32` in a uniform to sixteen bytes: a separate one would cost exactly as much as this whole
+    /// vector and would leave the colour looking like it might be used without it.
+    fog_colour: [f32; 4],
+    /// x = how far from the eye fog starts, in world units. yzw unused.
+    fog_params: [f32; 4],
     /// The camera's world position, xyz. w unused.
     ///
     /// New with PBR (ADR 0048) and not needed before it: diffuse lighting looks the same from every
@@ -3516,6 +3524,15 @@ impl RenderBackend for WgpuBackend {
                 ],
                 cascade_far,
                 cascade_bias,
+                // Straight off the camera's resolved look. Density zero is off, and the shader
+                // returns early on it, so a scene with no fog renders byte-identically.
+                fog_colour: [
+                    view.environment.fog.colour[0],
+                    view.environment.fog.colour[1],
+                    view.environment.fog.colour[2],
+                    view.environment.fog.density,
+                ],
+                fog_params: [view.environment.fog.start, 0.0, 0.0, 0.0],
                 // The camera's world position is the translation column of its world transform —
                 // column 3. Taken from `eye_matrix` rather than from `View::eye`, which is the 2D
                 // path's two numbers and has no height in it.
