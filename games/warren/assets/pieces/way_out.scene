@@ -1,0 +1,37 @@
+scene way_out
+version 1
+
+assets
+  door
+  timber
+
+entity way_out "The way out"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+  entity door "Door"
+    Collider
+      friction 0.6
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 1.6 2.4 0.16
+    Interactable
+      enabled true
+      prompt "The door is locked"
+    Mesh
+      material "timber"
+      mesh "door"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.2 0.0
+    WayOut

@@ -1,0 +1,75 @@
+scene hud
+version 1
+
+assets
+  BebasNeue-Regular
+
+entity hud "HUD"
+  UiNode
+    align_children Centre
+    anchor
+      horizontal Stretch
+      vertical Stretch
+    flow None
+    gap None
+    grow 0.0
+    margin
+      bottom 0.0
+      left 0.0
+      right 0.0
+      top 0.0
+    padding None
+    size 0.0 0.0
+    visible true
+
+  entity prompt_line "Prompt"
+    PromptLine
+    Text
+      content ""
+      font "BebasNeue-Regular"
+      order 10
+      paint Ink
+      scale Body
+      wrap false
+    UiNode
+      align_children Centre
+      anchor
+        horizontal Centre
+        vertical End
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 96.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 520.0 34.0
+      visible true
+
+  entity ending_line "Ending"
+    EndingLine
+    Text
+      content ""
+      font "BebasNeue-Regular"
+      order 10
+      paint Accent
+      scale Title
+      wrap false
+    UiNode
+      align_children Centre
+      anchor
+        horizontal Centre
+        vertical Centre
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 720.0 80.0
+      visible true

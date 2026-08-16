@@ -1,0 +1,46 @@
+scene warden_post
+version 1
+
+assets
+  rust
+  warden
+
+entity warden "The warden"
+  Behaviour
+    elapsed 0.0
+    state ""
+  BehaviourMachine
+    initial "idle"
+    states
+      - name "idle"
+        transitions
+          - after 0.0
+            to "pursue"
+            unless ""
+            when "sees_you"
+      - name "pursue"
+        transitions
+          - after 0.0
+            to "search"
+            unless "sees_you"
+            when ""
+      - name "search"
+        transitions
+          - after 0.0
+            to "pursue"
+            unless ""
+            when "sees_you"
+          - after 5.0
+            to "idle"
+            unless ""
+            when ""
+  Facts
+    known {}
+  Mesh
+    material "rust"
+    mesh "warden"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.93 0.0
+  Warden

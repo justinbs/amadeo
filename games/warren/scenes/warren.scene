@@ -2,23 +2,20 @@ scene warren
 version 1
 
 assets
-  BebasNeue-Regular
-  brass
   carpet
   ceiling
-  crate_box
-  door
+  dropped_torch
   floor
-  key
+  hud
+  lost_key
   plaster
-  rust
-  steel
-  timber
-  torch
+  player_start
+  room_lamp
+  spill
   wall_end
   wall_long
-  warden
-  warren_look
+  warden_post
+  way_out
 
 entity floor "Floor"
   Collider
@@ -146,330 +143,42 @@ entity wall_south "South wall"
     scale 1.0 1.0 1.0
     translation 0.0 1.5 8.0
 
-entity crate_near "Crate"
-  Collider
-    friction 0.9
-    restitution 0.0
-    sensor false
-    shape Cuboid
-      size 0.9 0.9 0.9
-  Mesh
-    material "timber"
-    mesh "crate_box"
-  RigidBody
-    angular_damping 0.0
-    gravity false
-    kind Static
-    linear_damping 0.0
-    mass 1.0
-  Transform
+entity torch "Torch on a crate" from dropped_torch
+  override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation -3.4 0.45 -2.0
+    translation -3.4 0.0 -2.0
 
-entity crate_far "Crate"
-  Collider
-    friction 0.9
-    restitution 0.0
-    sensor false
-    shape Cuboid
-      size 0.9 0.9 0.9
-  Mesh
-    material "timber"
-    mesh "crate_box"
-  RigidBody
-    angular_damping 0.0
-    gravity false
-    kind Static
-    linear_damping 0.0
-    mass 1.0
-  Transform
+entity key "Key on a crate" from lost_key
+  override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 3.9 0.45 -5.2
+    translation 3.9 0.0 -5.2
 
-entity torch "Torch"
-  Collider
-    friction 0.6
-    restitution 0.0
-    sensor false
-    shape Cuboid
-      size 0.07 0.07 0.24
-  Interactable
-    enabled true
-    prompt "Take the torch"
-  Item
-    count 1
-    kind "torch"
-    max_stack 1
-  Mesh
-    material "steel"
-    mesh "torch"
-  RigidBody
-    angular_damping 0.0
-    gravity false
-    kind Static
-    linear_damping 0.0
-    mass 1.0
-  Transform
+entity spill "Spill from somewhere" from spill
+
+entity ceiling_lamp "The one working lamp" from room_lamp
+  override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation -3.4 1.02 -2.0
+    translation 0.0 0.0 2.0
 
-entity spill "Spill from somewhere"
-  DirectionalLight
-    colour 0.72 0.76 0.85
-    intensity 0.06
-    shadow_bias 0.03
-    shadow_distance 22.0
-    shadow_resolution 1024
-    shadows Off
-  Transform
-    rotation -52.0 28.0 0.0
-    scale 1.0 1.0 1.0
-    translation 0.0 0.0 0.0
-
-entity ceiling_lamp "The one working lamp"
-  PointLight
-    colour 0.85 0.86 0.78
-    intensity 14.0
-    range 8.0
-  Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
-    translation 0.0 2.6 2.0
-
-entity player "You"
-  CharacterController
-    acceleration 40.0
-    jump_speed 0.0
-    max_slope_degrees 45.0
-    skin 0.02
-    snap_distance 0.2
-    speed 2.6
-    step_height 0.0
-    turn_speed 140.0
-  CharacterMotion
-    grounded false
-    velocity 0.0 0.0 0.0
-  Collider
-    friction 0.5
-    restitution 0.0
-    sensor false
-    shape Capsule
-      height 1.2
-      radius 0.35
-  Inventory
-    slots 4
-  RigidBody
-    angular_damping 0.0
-    gravity true
-    kind Kinematic
-    linear_damping 0.0
-    mass 80.0
-  Transform
+entity you "You" from player_start
+  override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 0.0 1.0 6.0
 
-  entity eye "Eyes"
-    Camera
-      active true
-      environment "warren_look"
-      order 0
-      projection Perspective
-        far 120.0
-        fov 70.0
-        near 0.05
-      target ""
-      viewport 0.0 0.0 1.0 1.0
-    FirstPersonCamera
-      degrees_per_pixel 0.16
-      height 0.62
-      max_pitch 85.0
-      min_pitch -85.0
-    Interactor
-      radius 0.22
-      reach 2.2
-    Transform
-      rotation 0.0 0.0 0.0
-      scale 1.0 1.0 1.0
-      translation 0.0 0.62 0.0
-
-    entity beam "Torch beam"
-      SpotLight
-        colour 1.0 0.95 0.86
-        inner_angle 11.0
-        intensity 0.0
-        outer_angle 26.0
-        range 18.0
-        shadow_bias 0.03
-        shadow_resolution 1024
-        shadows true
-      Transform
-        rotation 0.0 0.0 0.0
-        scale 1.0 1.0 1.0
-        translation 0.12 -0.1 0.0
-
-entity key "Brass key"
-  Collider
-    friction 0.6
-    restitution 0.0
-    sensor false
-    shape Cuboid
-      size 0.16 0.34 0.05
-  Interactable
-    enabled true
-    prompt "Take the brass key"
-  Item
-    count 1
-    kind "key"
-    max_stack 1
-  Mesh
-    material "brass"
-    mesh "key"
-  RigidBody
-    angular_damping 0.0
-    gravity false
-    kind Static
-    linear_damping 0.0
-    mass 1.0
-  Transform
-    rotation 0.0 0.0 0.0
+entity way_out "The way out" from way_out
+  override Transform
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 3.9 1.07 -5.2
+    translation -4.0 0.0 -7.85
 
-entity door "The way out"
-  Collider
-    friction 0.6
-    restitution 0.0
-    sensor false
-    shape Cuboid
-      size 1.6 2.4 0.16
-  Interactable
-    enabled true
-    prompt "The door is locked"
-  Mesh
-    material "timber"
-    mesh "door"
-  RigidBody
-    angular_damping 0.0
-    gravity false
-    kind Static
-    linear_damping 0.0
-    mass 1.0
-  Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
-    translation -4.0 1.2 -7.85
-  WayOut
-
-entity warden "The warden"
-  Behaviour
-    elapsed 0.0
-    state ""
-  BehaviourMachine
-    initial "idle"
-    states
-      - name "idle"
-        transitions
-          - after 0.0
-            to "pursue"
-            unless ""
-            when "sees_you"
-      - name "pursue"
-        transitions
-          - after 0.0
-            to "search"
-            unless "sees_you"
-            when ""
-      - name "search"
-        transitions
-          - after 0.0
-            to "pursue"
-            unless ""
-            when "sees_you"
-          - after 5.0
-            to "idle"
-            unless ""
-            when ""
-  Facts
-    known {}
-  Mesh
-    material "rust"
-    mesh "warden"
-  Transform
+entity warden "The warden" from warden_post
+  override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 4.6 0.93 -7.0
-  Warden
 
-entity hud "HUD"
-  UiNode
-    align_children Centre
-    anchor
-      horizontal Stretch
-      vertical Stretch
-    flow None
-    gap None
-    grow 0.0
-    margin
-      bottom 0.0
-      left 0.0
-      right 0.0
-      top 0.0
-    padding None
-    size 0.0 0.0
-    visible true
-
-  entity prompt_line "Prompt"
-    PromptLine
-    Text
-      content ""
-      font "BebasNeue-Regular"
-      order 10
-      paint Ink
-      scale Body
-      wrap false
-    UiNode
-      align_children Centre
-      anchor
-        horizontal Centre
-        vertical End
-      flow None
-      gap None
-      grow 0.0
-      margin
-        bottom 96.0
-        left 0.0
-        right 0.0
-        top 0.0
-      padding None
-      size 520.0 34.0
-      visible true
-
-  entity ending_line "Ending"
-    EndingLine
-    Text
-      content ""
-      font "BebasNeue-Regular"
-      order 10
-      paint Accent
-      scale Title
-      wrap false
-    UiNode
-      align_children Centre
-      anchor
-        horizontal Centre
-        vertical Centre
-      flow None
-      gap None
-      grow 0.0
-      margin
-        bottom 0.0
-        left 0.0
-        right 0.0
-        top 0.0
-      padding None
-      size 720.0 80.0
-      visible true
+entity hud "HUD" from hud

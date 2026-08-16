@@ -1,0 +1,63 @@
+scene lost_key
+version 1
+
+assets
+  brass
+  crate_box
+  key
+  timber
+
+entity lost_key "A key left on a crate"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+  entity plinth "Crate"
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 0.9 0.9 0.9
+    Mesh
+      material "timber"
+      mesh "crate_box"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.45 0.0
+
+  entity key "Brass key"
+    Collider
+      friction 0.6
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 0.16 0.34 0.05
+    Interactable
+      enabled true
+      prompt "Take the brass key"
+    Item
+      count 1
+      kind "key"
+      max_stack 1
+    Mesh
+      material "brass"
+      mesh "key"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.07 0.0
