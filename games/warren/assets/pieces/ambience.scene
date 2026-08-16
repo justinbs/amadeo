@@ -1,0 +1,19 @@
+scene ambience
+version 1
+
+assets
+  warren_tone
+
+entity ambience "The Warren itself"
+  AudioSource
+    bus Music
+    gain 1.0
+    looping true
+    pitch 1.0
+    playing true
+    sound "warren_tone"
+    spatial false
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0

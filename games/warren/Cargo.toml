@@ -17,6 +17,7 @@ amadeo-app = { workspace = true, features = ["gpu"] }
 amadeo-character.workspace = true
 # **First person**, which is what this game is for as much as the horror is: the rig existed from
 # session 17 and no game had ever used it.
+amadeo-audio = { workspace = true, features = ["kira"] }
 amadeo-behaviour.workspace = true
 amadeo-camera.workspace = true
 amadeo-core.workspace = true

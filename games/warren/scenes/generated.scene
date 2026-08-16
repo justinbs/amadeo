@@ -2,6 +2,7 @@ scene warren_generated_20250815
 version 1
 
 assets
+  ambience
   doorway
   dropped_torch
   hud
@@ -433,5 +434,7 @@ entity warden "The warden" from warden_post
     translation 51.2 0.93 -15.2
 
 entity spill "Spill from somewhere" from spill
+
+entity ambience "The Warren itself" from ambience
 
 entity hud "HUD" from hud

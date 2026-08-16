@@ -56,6 +56,9 @@
 //! whether the floor is under the player, which is why `the_level_is_a_level.rs` stands on it.
 
 use amadeo_app::{App, Paused, Stage, system};
+use amadeo_audio::{
+    Audio, AudioListener, AudioSource, COLLECT_AUDIO, SoundCache, SoundPlayed, collect_audio,
+};
 use amadeo_behaviour::{Behaviour, Facts};
 use amadeo_character::{CharacterController, CharacterMotion};
 use amadeo_core::StableHash;
@@ -301,6 +304,22 @@ pub fn build_from_scene(scene: &str) -> anyhow::Result<App> {
     app.insert_service(FontCache::new());
     app.insert_service(amadeo_render::Overlay::default());
 
+    // Sound (ADR 0059). **The ears go on the camera**, which in a first-person game is also your
+    // head — so the argument the Atrium had to make (third person, and the viewer should hear what
+    // they can see) does not even arise here. `AudioListener` is authored on the same entity as the
+    // `Camera` in `player_start.scene`.
+    app.register_component::<AudioSource>()?;
+    app.register_component::<AudioListener>()?;
+    app.register_event::<SoundPlayed>();
+    app.insert_service(SoundCache::new());
+    app.insert_resource(Stride::default());
+    app.insert_resource(Sounded::default());
+
+    // **`NullAudio` here and kira in the windowed build**, the same split the renderer has: a
+    // headless run, a test and the agent all get a backend that remembers frames instead of making
+    // a noise, and `main.rs` swaps in the one with a speaker behind it.
+    app.insert_service(Audio::headless());
+
     // Input is sampled before anything reads it, which is what `PreSimulation` is for. Both the
     // character and the camera read *named actions*, so this is the only place in the game that
     // knows a keyboard or a mouse exists.
@@ -411,6 +430,30 @@ pub fn build_from_scene(scene: &str) -> anyhow::Result<App> {
         Stage::Simulation,
         system(CHOOSE_FROM_MENU, choose_from_menu).while_paused(),
     );
+
+    // **After `propagate_transforms`**, so a footstep is placed where the character ended up this
+    // tick rather than where it was last tick — and so `play_the_run` can read the composed
+    // transform of a thing on a plinth, which is a prefab child and has no world position of its
+    // own.
+    app.add_system(
+        Stage::PostSimulation,
+        system(PLAY_FOOTSTEPS, play_footsteps).after(PROPAGATE_TRANSFORMS),
+    );
+    // After the run is settled, so the ending sounds on the tick it happens. **Not
+    // `.while_paused()`**, unlike the HUD: a sting is a one-shot and is emitted on the tick the
+    // outcome changes, which is the last tick this stage runs — and a system that kept running
+    // would keep re-reading an `Interacted` event queue nothing is filling.
+    app.add_system(
+        Stage::PostSimulation,
+        system(PLAY_THE_RUN, play_the_run)
+            .after(SETTLE_THE_RUN)
+            .after(TAKE_WHAT_YOU_USED),
+    );
+
+    // Collected in `Render`, where nothing it does can reach the state hash — `Audio` is a Service,
+    // and ADR 0009 puts those outside it. What the game decided to *play* was decided above, in the
+    // deterministic zone.
+    app.add_system(Stage::Render, system(COLLECT_AUDIO, collect_audio));
 
     // Drawn in `Render`, where nothing it does can reach the state hash. What the lines *say* was
     // decided above, in the deterministic zone.
@@ -1254,13 +1297,17 @@ pub const SPILL_PIECE: &str = "spill";
 /// The prefab the two HUD lines come from.
 pub const HUD_PIECE: &str = "hud";
 
+/// The prefab the room tone comes from.
+pub const AMBIENCE_PIECE: &str = "ambience";
+
 /// Every piece a generated level instances — which is also, once sorted, its `assets` block.
 ///
 /// Listed by constant rather than by id on purpose, and **sorted at the point of use** rather than
 /// here: the two orders are not the same, and hand-maintaining a sorted list of ids whose names are
 /// spelled differently from their constants is exactly the sort of thing that goes quietly wrong.
 /// `amadeo fmt --check` on the output is what would have caught it, and did.
-pub const PIECES: [&str; 9] = [
+pub const PIECES: [&str; 10] = [
+    AMBIENCE_PIECE,
     DOORWAY_PIECE,
     HUD_PIECE,
     KEY_PIECE,
@@ -1486,11 +1533,19 @@ fn write_contents(out: &mut String, layout: &Layout) {
         0.0,
     ));
 
-    // Neither of these is placed anywhere, so neither takes an override — and an override naming a
-    // component its prefab does not carry is refused at load, which is what would happen if the HUD
-    // were handed a `Transform` (ADR 0029). A blank line after each keeps the file's shape uniform.
+    // **None of these three is placed anywhere**, so none takes an override — and an override naming
+    // a component its prefab does not carry is refused at load, which is what would happen if the
+    // HUD were handed a `Transform` (ADR 0029). A blank line after each keeps the file's shape
+    // uniform.
+    //
+    // The room tone is here rather than per room on purpose: it is not *from* anywhere. A
+    // non-spatial source plays on its bus directly, so where its entity sits never matters, and one
+    // per room would be fourteen copies of one drone beating against itself.
     out.push_str(&format!(
         "entity spill \"Spill from somewhere\" from {SPILL_PIECE}\n\n"
+    ));
+    out.push_str(&format!(
+        "entity ambience \"The Warren itself\" from {AMBIENCE_PIECE}\n\n"
     ));
     out.push_str(&format!("entity hud \"HUD\" from {HUD_PIECE}\n\n"));
 }
@@ -2025,3 +2080,146 @@ fn restore_from(app: &mut App, text: &str) -> Result<Vec<String>, String> {
     }
     Ok(report.lines())
 }
+
+// --- Sound (ADR 0059) ---------------------------------------------------------------------------
+
+/// How far the player walks between footsteps, in metres.
+///
+/// An eyeball number, and the one that decides whether the gait reads as walking or as jogging. Set
+/// by arithmetic against the authored 2.6 m/s rather than by ear, which is the honest description of
+/// it. Shorter than the Atrium's 1.9 because this character moves at half the speed.
+pub const STRIDE: f32 = 0.95;
+
+/// How far the player has walked since the last footstep.
+///
+/// # A hashed resource rather than a service, and that matters
+///
+/// Where you are in your gait decides *when the next step happens*, so a save that did not restore
+/// it would resume mid-stride and take its next step at the wrong moment. `games/atrium` reached
+/// the same conclusion; it is worth restating because "sound state" is exactly the sort of thing
+/// that looks like it belongs outside the simulation, and this half of it does not.
+#[derive(Debug, Clone, Copy, PartialEq, Default, StableHash, Reflect)]
+pub struct Stride {
+    /// Metres walked since the last footstep.
+    #[reflect(unit = "m")]
+    pub since_last: f32,
+}
+
+impl Resource for Stride {}
+
+/// The label [`play_footsteps`] is registered under.
+pub const PLAY_FOOTSTEPS: &str = "play_footsteps";
+
+/// The label [`play_the_run`] is registered under.
+pub const PLAY_THE_RUN: &str = "play_the_run";
+
+/// Emits a [`SoundPlayed`] every [`STRIDE`] metres the character walks on the ground.
+///
+/// # Why this lives in the game rather than in `modules/amadeo-character`
+///
+/// **A footstep is content.** How often one happens, what it sounds like, and whether a character
+/// makes one at all are questions about *this* game — invariant I4's rule one level up: the module
+/// knows how to move, and the game knows what moving sounds like.
+///
+/// # Horizontal distance only, and only on the ground
+///
+/// Falling is not walking, so `grounded` gates it; and vertical speed must not count towards a
+/// stride, or a character dropping down a step would tap one out in mid-air.
+pub fn play_footsteps(world: &mut World) {
+    let walked: Vec<(f32, [f32; 3])> = world
+        .query::<(&CharacterMotion, &Transform)>()
+        .filter(|(_, (motion, _))| motion.grounded)
+        .map(|(_, (motion, transform))| {
+            let speed = (motion.velocity[0] * motion.velocity[0]
+                + motion.velocity[2] * motion.velocity[2])
+                .sqrt();
+            (speed * amadeo_core::FIXED_DT, transform.translation)
+        })
+        .collect();
+
+    let mut steps: Vec<[f32; 3]> = Vec::new();
+    if let Some(stride) = world.resource_mut::<Stride>() {
+        for (distance, position) in walked {
+            stride.since_last += distance;
+            // `while` rather than `if`, so a tick covering more than one stride emits more than one
+            // footstep. It cannot happen at this speed; it can the moment somebody adds a sprint,
+            // and a silent cap is the kind of thing nobody thinks to look for.
+            while stride.since_last >= STRIDE {
+                stride.since_last -= STRIDE;
+                steps.push(position);
+            }
+        }
+    }
+
+    for position in steps {
+        world.send_event(SoundPlayed::at("footstep", position));
+    }
+}
+
+/// Sounds the three moments of a run: picking something up, getting out, and being caught.
+///
+/// # Why one system rather than three lines in three places
+///
+/// Each of these could be a `send_event` inside the system that causes it, and `take_what_you_used`
+/// nearly got one. Keeping them together means **"what does this game make a noise about" is one
+/// list in one place** — the same argument `settle_the_run` makes for endings, and the reason a
+/// silent game is diagnosable at all.
+///
+/// It reads the same events and resources those systems write, so it has to run after them.
+///
+/// # An ending sounds once, and that is what the comparison is for
+///
+/// [`Outcome`] does not change back, so a system that played a sting whenever the run was over would
+/// play one every tick for the rest of the game. What is compared is the *previous* value, kept in
+/// [`Sounded`] — hashed, like everything else a save has to put back.
+pub fn play_the_run(world: &mut World) {
+    // Picked up: the same `Interacted` events `take_what_you_used` reads, filtered to the ones that
+    // turned out to be items. Placed where the thing was, so it pans from the plinth.
+    let taken: Vec<[f32; 3]> = world
+        .read_events::<Interacted>()
+        .iter()
+        .map(|record| record.event)
+        .filter(|event| world.get::<Item>(event.target).is_some())
+        .filter_map(|event| {
+            world
+                .get::<GlobalTransform>(event.target)
+                .map(|global| global.to_mat4().translation())
+        })
+        .collect();
+    for at in taken {
+        world.send_event(SoundPlayed::at("taken", at));
+    }
+
+    let now = outcome(world);
+    let before = world
+        .resource::<Sounded>()
+        .copied()
+        .unwrap_or_default()
+        .outcome;
+    if now != before {
+        if let Some(slot) = world.resource_mut::<Sounded>() {
+            slot.outcome = now;
+        }
+        // **From where the player is**, not from nowhere. An ending is about you, and a sting that
+        // arrives centred while everything else in the mix is positioned reads as a different game.
+        let at = player_at(world).unwrap_or([0.0; 3]);
+        match now {
+            Outcome::Playing => {}
+            Outcome::Escaped => {
+                world.send_event(SoundPlayed::at("escaped", at));
+            }
+            Outcome::Caught => {
+                world.send_event(SoundPlayed::at("caught", at));
+            }
+        }
+    }
+}
+
+/// What has already been sounded, so a one-shot happens once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub struct Sounded {
+    /// The outcome the last sting was played for.
+    pub outcome: Outcome,
+}
+
+impl Resource for Sounded {}

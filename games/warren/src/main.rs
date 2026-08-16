@@ -15,6 +15,7 @@ use std::time::Instant;
 
 use amadeo_app::App;
 use amadeo_app::{Stage, system};
+use amadeo_audio::{Audio, KiraAudio};
 use amadeo_camera::{LOOK, LOOK_X, LOOK_Y};
 use amadeo_character::{MOVE_FORWARD, MOVE_RIGHT};
 use amadeo_input::{InputDriver, LiveSource};
@@ -36,6 +37,18 @@ fn build_app(backend: WgpuBackend) -> anyhow::Result<App> {
         &mut app.world,
         InputDriver::new(Box::new(LiveSource::new())),
     );
+
+    // Sound, replacing the `NullAudio` that `build_simulation` installed for the headless path.
+    //
+    // **A missing device is not a reason to refuse to start.** A machine with no sound card, or one
+    // whose device is held exclusively by something else, gets the null backend and a line on
+    // stderr — a game with no audio is a game, where a game that will not open is not.
+    match KiraAudio::new() {
+        Ok(kira) => {
+            app.insert_service(Audio::new(Box::new(kira)));
+        }
+        Err(error) => eprintln!("continuing without sound: {error}"),
+    }
 
     let mut renderer = Renderer::new(Box::new(backend));
     // Near black. There is a ceiling, so this is only ever seen through a gap — but a bright clear

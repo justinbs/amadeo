@@ -2,6 +2,7 @@ scene warren
 version 1
 
 assets
+  ambience
   carpet
   ceiling
   dropped_torch
@@ -180,5 +181,7 @@ entity warden "The warden" from warden_post
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 4.6 0.93 -7.0
+
+entity ambience "The Warren itself" from ambience
 
 entity hud "HUD" from hud

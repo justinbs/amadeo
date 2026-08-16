@@ -2,6 +2,10 @@ scene player_start
 version 1
 
 assets
+  caught
+  escaped
+  footstep
+  taken
   warren_look
 
 entity you "You"
@@ -38,6 +42,7 @@ entity you "You"
     translation 0.0 1.0 0.0
 
   entity eye "Eyes"
+    AudioListener
     Camera
       active true
       environment "warren_look"

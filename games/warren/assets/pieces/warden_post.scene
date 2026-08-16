@@ -4,8 +4,17 @@ version 1
 assets
   rust
   warden
+  warden_breath
 
 entity warden "The warden"
+  AudioSource
+    bus Effects
+    gain 1.0
+    looping true
+    pitch 1.0
+    playing true
+    sound "warden_breath"
+    spatial true
   Behaviour
     elapsed 0.0
     state ""
