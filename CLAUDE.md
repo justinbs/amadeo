@@ -227,6 +227,16 @@ crates/
                      it owns instead of a window, and RenderBackend::capture reads it back -- which
                      is what `render.capture` uses and what gave the GPU path its first tests
                      (tests/capture.rs).
+                     **⚠ EVERY TEXTURED PATH BELOW IS EXERCISED BY ZERO CONTENT.** Session 20's
+                     engine review checked: **12 of 12 `.material` files in this repository have
+                     `base_colour_texture ""`, `normal_texture ""` and `metallic_roughness_texture
+                     ""`.** `games/scarp` generates `turf_grass.png`, declares it in its scene so it
+                     is loaded, and then no material samples it -- it is decoded into `TextureCache`
+                     and thrown away. So mipmaps, 16x aniso, normal mapping and metallic-roughness
+                     are all *written and tested* and have never drawn a textured pixel in a game.
+                     Read the rest of this entry as a description of the code, not of any picture
+                     anybody has seen. Same for meshes: **23 of 23 `.mesh` assets are `BoxMesh`**;
+                     `PlaneMesh`, `ArchMesh` and `GltfPart` are used by no game.
                      **Textures on materials landed in session 13**: `Material::base_colour_texture`
                      had existed since ADR 0033 and was read by *nothing*. Surfaces get their own
                      **repeating, filtered, 16x-anisotropic** sampler and a second bind group per

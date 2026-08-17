@@ -331,9 +331,13 @@ in documents nobody is allowed to correct.
   1. ✅ **Mipmaps and anisotropic filtering.** `amadeo_image::mip_chain` builds the levels on the
      CPU — averaging in **linear light**, not in sRGB, which is the classic mipmap bug and shows as
      textures that dim as they recede. Surfaces sample with `mipmap_filter: Linear` and 16× aniso;
-     sprites are pinned to level 0 so hand-authored pixel art stays crisp. The payoff was immediate
-     and measurable elsewhere: `games/scarp`'s texture tile was **8 m only because there were no
-     mipmaps**, and is 4 m now.
+     sprites are pinned to level 0 so hand-authored pixel art stays crisp.
+     **⚠ Corrected in session 20.** This entry used to claim the payoff was "immediate and
+     measurable elsewhere: `games/scarp`'s texture tile was 8 m only because there were no mipmaps,
+     and is 4 m now". **The Scarp's ground is not textured.** `turf.material` has
+     `base_colour_texture ""`, and `TEXTURE_TILE` scales UVs that nothing samples. The engine review
+     found the same thing across the whole repository: **every texture slot of every material is
+     empty**, so items 1–3 here are written, tested, and exercised by no content at all.
   2. **Normal mapping** — the largest perceived-detail gain per unit of cost in real-time graphics.
   3. **Metallic-roughness PBR** — `Material` has carried the fields since ADR 0033 and the shader
      reads neither, so every surface reads as coloured paint rather than as a material.

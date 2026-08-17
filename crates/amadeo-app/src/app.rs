@@ -678,9 +678,16 @@ impl App {
     /// Turns every mesh id a [`Mesh`] names into geometry — ADR 0035.
     ///
     /// A mesh asset carries **either** a procedural shape or vertex data, and both end up as one
-    /// [`MeshData`]. Only the procedural kinds exist so far; the glTF importer is a third producer
-    /// that changes nothing here except adding a branch, which is the property ADR 0035 was written
-    /// to buy.
+    /// [`MeshData`]. The glTF importer is a third producer that changes nothing here except adding a
+    /// branch, which is the property ADR 0035 was written to buy.
+    ///
+    /// **The vertex-data half has never been built, and that is the engine's largest gap.** ADR 0035
+    /// promised it; five sessions of renderer work sit on top of an authoring surface whose only
+    /// expressible object is an axis-aligned box. Session 20's engine review measured the
+    /// consequence: **23 of 23 `.mesh` assets in this repository are `BoxMesh`**, `PlaneMesh` and
+    /// `ArchMesh` are used by no game, and every material's texture slots are empty. A renderer with
+    /// cascaded shadows, PBR and IBL whose content language has one noun is why the games look the
+    /// way they do — see `docs/12-the-bar.md` §3.
     ///
     /// Tessellation happens **here, once**, rather than per frame — the same place ADR 0026 puts
     /// image decoding, and for the same reason.
