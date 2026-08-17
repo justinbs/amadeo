@@ -40,7 +40,31 @@ demands something different, and together they define the gaps.
 | **Palworld** | Creatures, skeletal animation, taming and combat systems, open world |
 | **Schedule I** | First-person simulation, economy, interiors, systemic NPCs |
 
-Three things fall out of that list immediately:
+### The three that are first-class, chosen in session 20
+
+The first engine review made the case that **the nine are effectively nine different engines** — no
+commercial engine is good at all of them, and Unity has a thousand engineers and is bad at
+grand-strategy UI and bad at voxels. Holding Amadeo to all nine at once is holding it to a standard
+nothing meets. Justin chose:
+
+| Tier | Games | What they demand together |
+|---|---|---|
+| **First-class now** | **Project Zomboid · No Man's Sky · Schedule I** | Tilemaps and isometric sorting; pathfinding; entity throughput in the thousands; procedural worlds at planet scale; transparency and vegetation; skeletal animation for populated worlds; first-person interiors |
+| **Next, and not precluded** | **RimWorld · Stellaris** | A real UI framework — dense, scrollable, sortable, tabbed — and simulation throughput at 10k+ entities |
+| Reachable, not driving | Minecraft, Terraria, Kenshi, Palworld | Each shares most of its needs with a first-class target |
+
+**This is not the pick the review recommended, and the difference matters.** It proposed the
+Minecraft/No Man's Sky/Terraria family, on the grounds that voxels and determinism are where the
+engine is already unusual. Justin's pick keeps No Man's Sky and swaps in **Project Zomboid** and
+**Schedule I** — which pulls `mod-tilemap`, isometric y-sorting, pathfinding and entity throughput
+*up* the plan rather than deferring them, and makes populated worlds a requirement rather than a
+later nicety.
+
+The union of the three is a wider engine than the review's pick, and it is coherent: Zomboid and
+Schedule I both need many simulated NPCs, so throughput and pathfinding serve both; No Man's Sky
+needs the world scale and the vegetation, which nothing else does.
+
+Three things fall out of the full list:
 
 - **2D and isometric are not optional.** Three of the nine are 2D or isometric, which matches trap 9
   in `CLAUDE.md` and the target list in `00-vision.md`. `mod-tilemap` currently sits in M7.

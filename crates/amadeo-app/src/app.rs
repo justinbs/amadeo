@@ -10,8 +10,8 @@ use amadeo_reflect::{
     FieldInfo, Reflect, ReflectError, RegistryError, Replication, TypeInfo, TypeKind, Value,
 };
 use amadeo_render::{
-    ArchMesh, BoxMesh, Camera, Environment, EnvironmentCache, GltfPart, Material, MaterialCache,
-    Mesh, MeshCache, MeshData, PlaneMesh, Vertex,
+    ArchMesh, BoxMesh, Camera, CylinderMesh, Environment, EnvironmentCache, GltfPart, Material,
+    MaterialCache, Mesh, MeshCache, MeshData, PlaneMesh, SphereMesh, StairMesh, Vertex, WedgeMesh,
 };
 use amadeo_scene::PrefabLibrary;
 use std::collections::{BTreeMap, BTreeSet};
@@ -709,6 +709,20 @@ impl App {
         // The curved one (session 20). Added because a review measured that every mesh in every game
         // here was an axis-aligned box, which is most of why the result read as a test scene.
         for (id, shape) in self.read_component_assets::<ArchMesh>(&wanted) {
+            built.push((id, shape.tessellate()));
+        }
+        // ADR 0074's parametric set. Each is one more branch here, which is exactly the property
+        // ADR 0035 was written to buy and the first time it has been cashed for anything but a box.
+        for (id, shape) in self.read_component_assets::<CylinderMesh>(&wanted) {
+            built.push((id, shape.tessellate()));
+        }
+        for (id, shape) in self.read_component_assets::<SphereMesh>(&wanted) {
+            built.push((id, shape.tessellate()));
+        }
+        for (id, shape) in self.read_component_assets::<WedgeMesh>(&wanted) {
+            built.push((id, shape.tessellate()));
+        }
+        for (id, shape) in self.read_component_assets::<StairMesh>(&wanted) {
             built.push((id, shape.tessellate()));
         }
         // The third producer, and the one ADR 0035 predicted: geometry read out of a glTF file
