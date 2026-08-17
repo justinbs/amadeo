@@ -121,6 +121,35 @@ fn field_unwritable(value: &Value) -> Option<String> {
     }
 }
 
+/// The value one field gets in an example, best available information first.
+///
+/// Three sources, in order:
+///
+/// 1. **A declared default** (`#[reflect(default = ...)]`, ADR 0075), because it is the author's own
+///    statement of what the field should be when nobody says otherwise. That makes it the only one of
+///    the three guaranteed to be a *sensible* value rather than merely a legal one.
+/// 2. **A range's minimum**, which is a promise about what is acceptable — `speed` with `min = 1.0`
+///    gets 1.0, not a zero the schema calls invalid.
+/// 3. **The type's zero**, when the schema says nothing.
+///
+/// The ordering matters more than it looks. Before defaults existed, `describe CylinderMesh --example`
+/// answered with `radius 0.0`, `height 0.0`, `sides 3` — a legal instance of a cylinder that draws
+/// nothing, offered as advice on how to author one. An example an agent cannot use is worse than no
+/// example, because it looks like an answer.
+fn field_example(
+    field: &amadeo_reflect::FieldInfo,
+    types: &TypeRegistry,
+    stack: &mut Vec<String>,
+) -> Result<Value, String> {
+    if let Some(default) = &field.default {
+        return Ok(default.clone());
+    }
+    match &field.range {
+        Some(range) => bounded_example(&field.type_name, range.min, types, stack),
+        None => example_for_named(&field.type_name, types, stack),
+    }
+}
+
 /// The minimal valid value for one type.
 ///
 /// `stack` holds the type names currently being built, so a type that reaches itself terminates
@@ -136,12 +165,7 @@ fn example_value(
         TypeKind::Struct { fields } => {
             let mut members = BTreeMap::new();
             for field in fields {
-                // A declared range is a promise about what is acceptable, so an example has to
-                // respect it. `speed` with `min = 1.0` gets 1.0, not a zero the schema calls invalid.
-                let value = match &field.range {
-                    Some(range) => bounded_example(&field.type_name, range.min, types, stack)?,
-                    None => example_for_named(&field.type_name, types, stack)?,
-                };
+                let value = field_example(field, types, stack)?;
                 members.insert(field.name.clone(), value);
             }
             Ok(Value::Struct(members))
@@ -162,13 +186,10 @@ fn example_value(
             } else {
                 let mut members = BTreeMap::new();
                 for field in &variant.fields {
-                    // Ranges are honoured here exactly as in a struct. Worth stating because they
-                    // were silently *dropped* by the derive on variant fields until session 8, so
-                    // this path looked correct while producing out-of-range advice.
-                    let value = match &field.range {
-                        Some(range) => bounded_example(&field.type_name, range.min, types, stack)?,
-                        None => example_for_named(&field.type_name, types, stack)?,
-                    };
+                    // Defaults and ranges are honoured here exactly as in a struct. Worth stating
+                    // because ranges were silently *dropped* by the derive on variant fields until
+                    // session 8, so this path looked correct while producing out-of-range advice.
+                    let value = field_example(field, types, stack)?;
                     members.insert(field.name.clone(), value);
                 }
                 Value::Struct(members)

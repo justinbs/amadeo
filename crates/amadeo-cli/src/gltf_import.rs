@@ -224,7 +224,10 @@ fn number(value: f32) -> String {
     // unrotated node — `asin(-0.0)` is `-0.0` — and while `rotation -0.0 0.0 0.0` parses and round
     // trips perfectly well, it is a strange thing to hand someone as the rotation of a thing that is
     // not rotated. In IEEE arithmetic `-0.0 + 0.0` is `+0.0`, and nothing else is affected.
-    amadeo_scene::format_float(f64::from(value + 0.0))
+    //
+    // The `_32` form, because this value *is* an `f32` and widening it first spells `0.18` as
+    // `0.18000000715255737` — which is the whole of an imported model's numbers made unreadable.
+    amadeo_scene::format_float_32(value + 0.0)
 }
 
 /// Runs generated text through the canonical writer, so this tool cannot disagree with `amadeo fmt`.

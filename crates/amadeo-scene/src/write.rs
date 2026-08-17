@@ -42,20 +42,46 @@ pub fn format_float(value: f64) -> String {
         .to_string();
     }
 
-    let plain = format!("{value}");
-    let text = if plain.len() > MAX_PLAIN_DIGITS {
-        let exponential = format!("{value:e}");
-        if exponential.len() < plain.len() {
-            exponential
-        } else {
-            plain
-        }
+    tidy(&format!("{value}"), &format!("{value:e}"))
+}
+
+/// Formats an `f32` at **`f32`'s own** shortest round-trip, not its `f64` widening.
+///
+/// # Why this is a separate function and not `format_float(f64::from(value))`
+///
+/// It used to be that, and the difference is glaring in a file. `0.18_f32` widens to the `f64`
+/// `0.18000000715255737`, and the shortest text that round-trips *that* `f64` is all seventeen digits
+/// of it — so a field an author wrote as `0.18` came back as `0.18000000715255737`. Asking `f32` to
+/// print itself gives `0.18`, and reading that back produces the same bits, so nothing is lost.
+///
+/// **`amadeo fmt` never showed this**, which is why it survived: the parser has no schema, so it reads
+/// every number as an `f64` and writes the same `f64` back, and a hand-written `0.18` round-trips
+/// untouched. Only a value built from *typed* data goes through the widening — `describe --example`,
+/// a `world.entity` dump, and a snapshot. The first of those is advice an agent is meant to paste into
+/// a file, which is where it was noticed.
+#[must_use]
+pub fn format_float_32(value: f32) -> String {
+    if !value.is_finite() {
+        // nan and both infinities widen exactly, so there is nothing `f32`-specific to do with them.
+        return format_float(f64::from(value));
+    }
+    tidy(&format!("{value}"), &format!("{value:e}"))
+}
+
+/// The half of float formatting that does not depend on the width: pick the shorter spelling, and
+/// make sure the result still reads as a float.
+///
+/// Both inputs are already round-trip shortest for their own type, which is what `{}` and `{:e}`
+/// guarantee. This only chooses between them and appends `.0` where needed.
+fn tidy(plain: &str, exponential: &str) -> String {
+    let text = if plain.len() > MAX_PLAIN_DIGITS && exponential.len() < plain.len() {
+        exponential
     } else {
         plain
     };
 
     if text.contains(['.', 'e', 'E']) {
-        text
+        text.to_string()
     } else {
         format!("{text}.0")
     }
@@ -79,7 +105,7 @@ pub fn inline_value(value: &Value) -> Option<String> {
         Value::Bool(inner) => Some(inner.to_string()),
         Value::I64(inner) => Some(inner.to_string()),
         Value::U64(inner) => Some(inner.to_string()),
-        Value::F32(inner) => Some(format_float(f64::from(*inner))),
+        Value::F32(inner) => Some(format_float_32(*inner)),
         Value::F64(inner) => Some(format_float(*inner)),
         Value::String(inner) => Some(format!("\"{}\"", escape(inner))),
         // A bare identifier. A fieldless enum variant writes as just its name, which is what makes
@@ -359,6 +385,52 @@ mod tests {
         for value in [0.1f64, 1.0 / 3.0, f64::MAX, f64::MIN_POSITIVE, -0.0] {
             let text = format_float(value);
             let parsed: f64 = text.parse().expect("formats as a parseable float");
+            assert_eq!(
+                parsed.to_bits(),
+                value.to_bits(),
+                "{value} formatted as {text} and came back different"
+            );
+        }
+    }
+
+    #[test]
+    fn an_f32_prints_at_f32_precision_rather_than_its_f64_widening() {
+        // The defect: `format_float(f64::from(0.18_f32))` is "0.18000000715255737", because the
+        // shortest text that round-trips the *widened* value really is all seventeen digits. Every
+        // number in a generated `.scene`, a `world.entity` dump and a `describe --example` came out
+        // like that, and `describe --example` is advice an agent is meant to paste into a file.
+        assert_eq!(format_float_32(0.18), "0.18");
+        assert_eq!(format_float_32(0.28), "0.28");
+        assert_eq!(format_float_32(1.2), "1.2");
+        assert_eq!(format_float_32(0.86), "0.86");
+
+        // The `f64` path is untouched, and this is the pair that shows why both exist.
+        assert_eq!(format_float(f64::from(0.18_f32)), "0.18000000715255737");
+
+        // Everything `format_float` guarantees still holds for the narrower one.
+        assert_eq!(format_float_32(1.0), "1.0");
+        assert_eq!(format_float_32(0.0), "0.0");
+        assert_eq!(format_float_32(-2.5), "-2.5");
+        assert_eq!(format_float_32(f32::INFINITY), "inf");
+        assert_eq!(format_float_32(f32::NEG_INFINITY), "-inf");
+        assert_eq!(format_float_32(f32::NAN), "nan");
+    }
+
+    #[test]
+    fn an_f32_round_trips_exactly_through_its_own_spelling() {
+        // The property that makes the shorter spelling safe rather than merely nicer: nothing is lost.
+        for value in [
+            0.18_f32,
+            0.1,
+            1.0 / 3.0,
+            f32::MAX,
+            f32::MIN_POSITIVE,
+            -0.0,
+            1e30,
+            1e-30,
+        ] {
+            let text = format_float_32(value);
+            let parsed: f32 = text.parse().expect("formats as a parseable float");
             assert_eq!(
                 parsed.to_bits(),
                 value.to_bits(),

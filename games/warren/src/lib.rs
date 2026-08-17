@@ -69,9 +69,7 @@ use amadeo_interaction::{Interactable, Interacted, Interactor, Looking};
 use amadeo_inventory::{Inventory, Item, StoredIn};
 use amadeo_physics::{Collider, Gravity, Physics, RapierPhysics, RigidBody, Velocity};
 use amadeo_reflect::Reflect;
-use amadeo_render::{
-    BoxMesh, Camera, Environment, Material, Mesh, PlaneMesh, PointLight, SpotLight, TextureCache,
-};
+use amadeo_render::{Camera, Mesh, PointLight, SpotLight, TextureCache};
 use amadeo_transform::{
     GlobalTransform, PROPAGATE_TRANSFORMS, Parent, Transform, propagate_transforms,
 };
@@ -252,13 +250,10 @@ pub fn build_from_scene(scene: &str) -> anyhow::Result<App> {
     app.register_component::<RigidBody>()?;
     app.register_component::<Collider>()?;
     app.register_component::<Velocity>()?;
-    // Registered because this game *ships* the asset files holding them, even though no entity
-    // carries one directly — a game whose own assets fail the validator it ships with is worse than
-    // one with no validator.
-    app.register_component::<BoxMesh>()?;
-    app.register_component::<PlaneMesh>()?;
-    app.register_component::<Material>()?;
-    app.register_component::<Environment>()?;
+    // Every shape, material and look the engine can read out of an asset file, in one call — a game
+    // whose own assets fail the validator it ships with is worse than one with no validator. Naming
+    // them by hand is what left ADR 0074's parametric set unvalidatable in every game.
+    app.register_asset_components()?;
 
     app.scan_assets(ASSET_DIRECTORY)?;
     app.insert_service(TextureCache::new());

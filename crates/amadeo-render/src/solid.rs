@@ -65,22 +65,28 @@ const SIDE_LIMITS: (u32, u32) = (3, 128);
 #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct CylinderMesh {
     /// Radius at the bottom.
-    #[reflect(min = 0.0, max = 10000.0, unit = "world units")]
+    #[reflect(min = 0.0, max = 10000.0, unit = "world units", default = 0.5)]
     pub radius: f32,
     /// Radius at the top. **Zero makes a cone**, and anything else makes a frustum.
-    #[reflect(min = 0.0, max = 10000.0, unit = "world units")]
+    ///
+    /// **Defaults to 0.5 rather than to whatever `radius` is**, because the scene format has no way
+    /// to say "the same as that other field". So a file that sets `radius` and omits this one gets a
+    /// frustum — set both, or neither. The result is visibly a frustum rather than quietly wrong,
+    /// which is why this is a documented interaction and not a required field.
+    #[reflect(min = 0.0, max = 10000.0, unit = "world units", default = 0.5)]
     pub top_radius: f32,
     /// Height along Y.
-    #[reflect(min = 0.0, max = 10000.0, unit = "world units")]
+    #[reflect(min = 0.0, max = 10000.0, unit = "world units", default = 1.0)]
     pub height: f32,
     /// How many flat sides the curve is built from.
-    #[reflect(min = 3.0, max = 128.0)]
+    #[reflect(min = 3.0, max = 128.0, default = DEFAULT_SIDES)]
     pub sides: u32,
     /// Whether to close the ends.
     ///
     /// Open is not an oversight: a pipe seen from outside never shows its caps, and leaving them off
     /// halves the triangles. A closed cylinder is the default because an open one that should have
     /// been closed reads as a hole.
+    #[reflect(default = true)]
     pub capped: bool,
 }
 
@@ -219,13 +225,13 @@ fn cap(data: &mut MeshData, radius: f32, y: f32, sides: u32, upward: bool) {
 #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct SphereMesh {
     /// Radius.
-    #[reflect(min = 0.0, max = 10000.0, unit = "world units")]
+    #[reflect(min = 0.0, max = 10000.0, unit = "world units", default = 0.5)]
     pub radius: f32,
     /// Divisions around the equator.
-    #[reflect(min = 3.0, max = 128.0)]
+    #[reflect(min = 3.0, max = 128.0, default = DEFAULT_SIDES)]
     pub segments: u32,
     /// Divisions from pole to pole.
-    #[reflect(min = 2.0, max = 128.0)]
+    #[reflect(min = 2.0, max = 128.0, default = DEFAULT_SIDES / 2)]
     pub rings: u32,
 }
 
@@ -308,16 +314,20 @@ impl SphereMesh {
 #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct WedgeMesh {
     /// Width along X.
-    #[reflect(min = 0.0, max = 10000.0, unit = "world units")]
+    #[reflect(min = 0.0, max = 10000.0, unit = "world units", default = 1.0)]
     pub width: f32,
     /// Depth along Z.
-    #[reflect(min = 0.0, max = 10000.0, unit = "world units")]
+    #[reflect(min = 0.0, max = 10000.0, unit = "world units", default = 1.0)]
     pub depth: f32,
     /// Height at the +Z end.
-    #[reflect(min = 0.0, max = 10000.0, unit = "world units")]
+    #[reflect(min = 0.0, max = 10000.0, unit = "world units", default = 1.0)]
     pub height_front: f32,
     /// Height at the -Z end. Equal to the front makes an ordinary box.
-    #[reflect(min = 0.0, max = 10000.0, unit = "world units")]
+    ///
+    /// **Zero is a true ramp and is the default**, which means the -Z face and half of each side face
+    /// collapse. `tessellate` drops the collapsed triangles rather than emitting zero-area ones, so
+    /// the default wedge is a clean five-face solid rather than a six-face one with two dead faces.
+    #[reflect(min = 0.0, max = 10000.0, unit = "world units", default = 0.0)]
     pub height_back: f32,
 }
 
@@ -384,6 +394,29 @@ impl WedgeMesh {
         ];
 
         for (normal, corners) in faces {
+            // **A ramp has no back face, and this is where that is handled.** With `height_back` at
+            // zero — the commonest wedge there is — the -Z quad collapses onto a line and the two
+            // side quads collapse to triangles. Emitting them regardless cost four vertices and two
+            // zero-area triangles per collapsed face.
+            //
+            // Dropping them matters for more than the vertex count: a zero-area triangle has no
+            // meaningful winding and no meaningful normal, so it is the one thing
+            // `every_primitive_is_wound_to_match_its_own_normals` has to skip. The fewer of them
+            // exist, the more of the mesh that test actually checks.
+            let live: Vec<[usize; 3]> = [[0_usize, 1, 2], [0, 2, 3]]
+                .into_iter()
+                .filter(|triangle| {
+                    has_area(
+                        corners[triangle[0]],
+                        corners[triangle[1]],
+                        corners[triangle[2]],
+                    )
+                })
+                .collect();
+            if live.is_empty() {
+                continue;
+            }
+
             let first = data.vertices.len() as u32;
             for (corner, uv) in corners
                 .iter()
@@ -396,13 +429,35 @@ impl WedgeMesh {
                     ..Vertex::default()
                 });
             }
-            data.indices
-                .extend([first, first + 1, first + 2, first, first + 2, first + 3]);
+            for triangle in live {
+                data.indices.extend(
+                    triangle
+                        .iter()
+                        .map(|corner| first + u32::try_from(*corner).unwrap_or(0)),
+                );
+            }
         }
 
         data.generate_tangents();
         data
     }
+}
+
+/// Whether three points span a real triangle rather than a line or a point.
+///
+/// Twice the area is the length of the cross product of two edges, so this compares that against a
+/// small epsilon instead of taking a square root. The threshold is generous on purpose: a face that
+/// is *nearly* collapsed contributes nothing visible and has an unstable normal, which is worse than
+/// a face that is missing.
+fn has_area(a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> bool {
+    let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    let cross = [
+        u[1] * v[2] - u[2] * v[1],
+        u[2] * v[0] - u[0] * v[2],
+        u[0] * v[1] - u[1] * v[0],
+    ];
+    cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2] > 1e-12
 }
 
 /// A flight of steps, as one mesh rather than as a stack of boxes.
@@ -416,16 +471,19 @@ impl WedgeMesh {
 #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct StairMesh {
     /// Width across, along X.
-    #[reflect(min = 0.0, max = 10000.0, unit = "world units")]
+    #[reflect(min = 0.0, max = 10000.0, unit = "world units", default = 1.2)]
     pub width: f32,
     /// How many steps.
-    #[reflect(min = 1.0, max = 512.0)]
+    #[reflect(min = 1.0, max = 512.0, default = 8)]
     pub steps: u32,
     /// The height of one step.
-    #[reflect(min = 0.0, max = 100.0, unit = "world units")]
+    ///
+    /// The default is a shallow 0.18 m against a 0.28 m run, which is roughly a real building's
+    /// stair rather than the 1:1 blocks an engine demo usually has.
+    #[reflect(min = 0.0, max = 100.0, unit = "world units", default = 0.18)]
     pub rise: f32,
     /// The depth of one step.
-    #[reflect(min = 0.0, max = 100.0, unit = "world units")]
+    #[reflect(min = 0.0, max = 100.0, unit = "world units", default = 0.28)]
     pub run: f32,
 }
 
@@ -464,7 +522,6 @@ impl StairMesh {
     #[must_use]
     pub fn tessellate(&self) -> MeshData {
         let steps = self.steps.clamp(1, 512);
-        let half = self.width.max(0.0001) / 2.0;
         let mut data = MeshData::default();
 
         for step in 0..steps {
@@ -479,7 +536,6 @@ impl StairMesh {
             append_translated(&mut data, &block, [0.0, height / 2.0, (near + far) / 2.0]);
         }
 
-        let _ = half;
         data
     }
 }
@@ -755,6 +811,90 @@ mod tests {
         assert!(
             on_the_floor >= 8,
             "only {on_the_floor} vertices reach the floor, so the flight is hollow"
+        );
+    }
+
+    #[test]
+    fn every_shapes_declared_defaults_agree_with_its_default_impl() {
+        // ADR 0075's named hazard, once per type in this file: each default is written twice, in a
+        // `#[reflect(default = ...)]` attribute and in `impl Default`, and nothing but this stops the
+        // two drifting. It matters more here than for `Material`, because `describe --example` now
+        // *reports* the declared values — so a drift would publish authoring advice that does not
+        // match what the engine builds.
+        use amadeo_reflect::{Reflect, Value};
+        let nothing = Value::Struct(std::collections::BTreeMap::new());
+
+        assert_eq!(
+            CylinderMesh::from_value(&nothing).expect("all fields declare defaults"),
+            CylinderMesh::default()
+        );
+        assert_eq!(
+            SphereMesh::from_value(&nothing).expect("all fields declare defaults"),
+            SphereMesh::default()
+        );
+        assert_eq!(
+            WedgeMesh::from_value(&nothing).expect("all fields declare defaults"),
+            WedgeMesh::default()
+        );
+        assert_eq!(
+            StairMesh::from_value(&nothing).expect("all fields declare defaults"),
+            StairMesh::default()
+        );
+    }
+
+    #[test]
+    fn a_default_shape_is_worth_drawing() {
+        // What the defaults are actually *for*. `describe <Shape> --example` reports them, so an agent
+        // authoring its first cylinder gets these numbers — and before they existed it got the range
+        // minimums instead: `radius 0.0`, `height 0.0`, `sides 3`. That is a legal instance of a
+        // cylinder that draws nothing, offered as advice on how to write one.
+        for (name, data) in [
+            ("CylinderMesh", CylinderMesh::default().tessellate()),
+            ("SphereMesh", SphereMesh::default().tessellate()),
+            ("WedgeMesh", WedgeMesh::default().tessellate()),
+            ("StairMesh", StairMesh::default().tessellate()),
+        ] {
+            assert!(
+                !data.indices.is_empty(),
+                "a default `{name}` tessellates to nothing"
+            );
+            let widest = data
+                .vertices
+                .iter()
+                .flat_map(|v| v.position)
+                .fold(0.0_f32, |a, b| a.max(b.abs()));
+            assert!(
+                widest > 0.1,
+                "a default `{name}` is {widest} across, which is not a shape anybody can see"
+            );
+        }
+    }
+
+    #[test]
+    fn a_ramp_has_no_collapsed_faces() {
+        // `WedgeMesh::default` is a true ramp: `height_back` is zero, so the -Z quad collapses onto a
+        // line and half of each side quad collapses too. Those used to be emitted as zero-area
+        // triangles.
+        //
+        // They are worth dropping for a reason beyond the vertex count: a zero-area triangle has no
+        // meaningful winding, so it is the one thing `every_primitive_is_wound_to_match_its_own_
+        // normals` has to skip — and the fewer that exist, the more of the mesh that test checks.
+        let data = WedgeMesh::default().tessellate();
+
+        let collapsed = triangles(&data)
+            .iter()
+            .filter(|(corners, _)| !has_area(corners[0], corners[1], corners[2]))
+            .count();
+        assert_eq!(
+            collapsed, 0,
+            "a default ramp still emits {collapsed} zero-area triangles"
+        );
+
+        // And it is still a closed-looking solid: five faces rather than six, which is what a ramp is.
+        assert!(
+            data.indices.len() / 3 >= 8,
+            "a ramp should still have five faces' worth of triangles, got {}",
+            data.indices.len() / 3
         );
     }
 }

@@ -250,20 +250,27 @@ impl App {
         }
     }
 
-    /// Assets whose file names a component it then failed to build, and why. In id order.
+    /// Assets the engine can see something wrong with, and why. In id order.
     ///
     /// # Why this exists, and what it is not
     ///
     /// **Not** a list of missing assets — those are ADR 0021's business and are survivable by
     /// design: a texture that has not loaded draws a placeholder, a mesh that has not loaded draws
-    /// nothing, and neither is worth complaining about. This is the narrower and much more
-    /// actionable case: a file that **says** it holds a `Material` and does not hold a valid one.
+    /// nothing, and neither is worth complaining about. Everything here is **always** a fault.
     ///
-    /// That is nearly always one of two things — a typo'd field name, or a field the component has
-    /// grown since the file was written (**Q32**). Both are fixed in seconds once you know which
-    /// file, and were previously invisible: the asset was skipped in silence, and whatever depended
-    /// on it failed later somewhere unrelated. When `Environment` gained a `sky` field, every
-    /// `.environment` file stopped parsing and the symptom was a *missing service* three layers away.
+    /// Two of them, and both were silent before they were reported:
+    ///
+    /// - **A file that says it holds a `Material` and does not hold a valid one.** Nearly always a
+    ///   typo'd field name; it used to also be a field the component had grown since the file was
+    ///   written, which ADR 0075 fixed by letting a field declare a default. When `Environment`
+    ///   gained a `sky` field, every `.environment` file stopped parsing and the symptom was a
+    ///   *missing service* three layers away.
+    /// - **A shape that loads but whose type the game never registered**, so `amadeo check` cannot
+    ///   validate it and `amadeo describe` cannot see it. Found in session 21, when the whole of ADR
+    ///   0074's parametric set turned out to be in that state in every game.
+    ///   [`App::register_asset_components`] is the fix; this is the net under it.
+    ///
+    /// Both are fixed in seconds once you know which file, and neither is diagnosable without this.
     ///
     /// Empty is the normal state. A game that wants to be loud about it can print this at startup;
     /// `games/scarp` does.
@@ -293,7 +300,9 @@ impl App {
     ///
     /// Engine components are not registered automatically. A game names the ones it uses, including
     /// `Transform` and `Parent`, so the schema describes that game rather than everything the
-    /// engine could theoretically offer.
+    /// engine could theoretically offer. The one exception is
+    /// [`register_asset_components`](App::register_asset_components), which covers the types no
+    /// entity ever carries and a game would only be listing because it ships the files holding them.
     ///
     /// # Errors
     ///
@@ -302,6 +311,62 @@ impl App {
     /// than resolved arbitrarily.
     pub fn register_component<T: Component>(&mut self) -> Result<(), RegistryError> {
         self.registry.register::<T>()
+    }
+
+    /// Registers every component the engine's own asset loaders read out of an asset file.
+    ///
+    /// The ten of them: [`BoxMesh`], [`PlaneMesh`], [`ArchMesh`], [`CylinderMesh`], [`SphereMesh`],
+    /// [`WedgeMesh`], [`StairMesh`] and [`GltfPart`], which [`App::load_meshes`] reads, plus
+    /// [`Material`] and [`Environment`].
+    ///
+    /// # Why these ten and not every engine component
+    ///
+    /// The rule is narrow on purpose: **a component a game registers only because it ships the files
+    /// holding it.** No entity carries a `BoxMesh` — the shape lives in a `.mesh` asset and
+    /// `load_meshes` turns it into geometry — so listing it by hand is pure boilerplate, and a game
+    /// that forgets gets no runtime failure at all. `Transform`, `Camera` and the lights stay a
+    /// game's own business, because a game's schema should describe *that game* rather than
+    /// everything the engine could offer.
+    ///
+    /// # The defect this exists to fix
+    ///
+    /// Session 21's engine review found that **no game registered any shape but `BoxMesh` and
+    /// `PlaneMesh`** — so `ArchMesh`, and the whole of ADR 0074's parametric set, were invisible to
+    /// `amadeo check` and to `amadeo describe` in every game that shipped them. A hand-written
+    /// cylinder *loaded*, because [`App::load_meshes`] reads shapes with `from_value` directly and
+    /// never consults the registry, and then could not be validated or discovered. That is the worse
+    /// of the two failure modes: it works when tried and reports as broken when checked, and an agent
+    /// authoring content had to read Rust source to learn the noun existed. ADR 0030 exists to
+    /// prevent exactly that.
+    ///
+    /// # Calling it twice, or alongside a game's own lines, is fine
+    ///
+    /// Registration is idempotent for an *identical* type: `TypeRegistry::register` returns `Ok` when
+    /// the name is already present and the schema matches, and errors only when two genuinely
+    /// different types collide under one canonical name. So a game may adopt this without deleting
+    /// anything, and a game that registers `BoxMesh` itself because an entity carries one is not
+    /// punished for it. Pinned by `a_game_may_keep_its_own_registrations_alongside_this_one`.
+    ///
+    /// # Errors
+    ///
+    /// [`RegistryError::NameCollision`] if the game has a component of its *own* under one of these
+    /// names — a real ambiguity, since a scene file naming it could mean either. See
+    /// [`App::register_component`].
+    pub fn register_asset_components(&mut self) -> Result<(), RegistryError> {
+        // Every shape `load_meshes` knows how to tessellate. Adding a kind there without adding it
+        // here is the defect described above, so the two lists belong in one commit; the test
+        // `every_shape_the_loader_reads_is_registered` is what says so if they drift.
+        self.register_component::<BoxMesh>()?;
+        self.register_component::<PlaneMesh>()?;
+        self.register_component::<ArchMesh>()?;
+        self.register_component::<CylinderMesh>()?;
+        self.register_component::<SphereMesh>()?;
+        self.register_component::<WedgeMesh>()?;
+        self.register_component::<StairMesh>()?;
+        self.register_component::<GltfPart>()?;
+        self.register_component::<Material>()?;
+        self.register_component::<Environment>()?;
+        Ok(())
     }
 
     /// The registered component types.
@@ -673,6 +738,25 @@ impl App {
             // tried as a `BoxMesh` and then a `PlaneMesh`, and only the one that matches proves the
             // file is fine. Succeeding clears it.
             self.asset_problems.remove(id);
+
+            // The second fault this map reports, and the reason it is not silent: a shape that reads
+            // fine but whose type the game never registered *works* and cannot be checked. Reached
+            // only when the game both uses the shape and forgot it, which is why
+            // `register_asset_components` exists and why this is the net under it rather than the
+            // fix. Recorded after the `remove` above so a real read failure is never overwritten by
+            // the milder complaint.
+            if self.registry.info(T::STATIC_NAME).is_none() {
+                self.asset_problems.insert(
+                    id.clone(),
+                    format!(
+                        "`{id}` holds a `{}`, which loads but is not registered — so `amadeo check` \
+                         cannot validate it and `amadeo describe {}` cannot see it. Call \
+                         `App::register_asset_components`",
+                        T::STATIC_NAME,
+                        T::STATIC_NAME
+                    ),
+                );
+            }
             found.push((id.clone(), built));
         }
         found

@@ -69,4 +69,6 @@ pub use write::to_text;
 // byte-stability (I2) depends on these being exactly right, and two copies of `format_float` would
 // be two things to keep in step. The two *formats* stay separate crates; only the spelling of a
 // number and the escaping of a string are common.
-pub use write::{MAX_PLAIN_DIGITS, component_block, escape, format_float, inline_value};
+pub use write::{
+    MAX_PLAIN_DIGITS, component_block, escape, format_float, format_float_32, inline_value,
+};

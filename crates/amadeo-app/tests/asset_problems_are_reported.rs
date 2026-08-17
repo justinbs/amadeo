@@ -2,10 +2,15 @@
 //!
 //! # The failure this closes
 //!
-//! Adding a field to a reflected component invalidates every file that spells the component out,
-//! because reflection requires all fields to be present. That is deliberate: it is what catches a
-//! typo'd field name, and what makes a prefab that lost a component refuse to load rather than
-//! silently reverting (ADR 0029's chosen opposite of Unity).
+//! An asset file that spells out a component the engine then cannot build used to be skipped in
+//! silence.
+//!
+//! **Two sentences here were wrong and ADR 0075 corrected them.** They said reflection requires all
+//! fields to be present, that this is what catches a typo'd field name, and that it is what makes a
+//! prefab that lost a component refuse to load. A typo is caught by the **unknown**-field check,
+//! which runs before any field is read; the prefab guarantee is `ComponentRegistry`'s and is about a
+//! missing *component*. So a field may now declare a default and a file may omit it — which is why
+//! the first test below misspells a field rather than deleting one.
 //!
 //! The churn was never the problem. **The reporting was.** An unparseable asset was skipped in
 //! silence, so whatever depended on it failed later somewhere unrelated — when `Environment` gained

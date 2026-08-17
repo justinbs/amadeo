@@ -43,8 +43,7 @@ use amadeo_interaction::Interacted;
 use amadeo_physics::{Collider, Gravity, Physics, RapierPhysics, RigidBody, Velocity};
 use amadeo_reflect::Reflect;
 use amadeo_render::{
-    BoxMesh, Camera, DirectionalLight, Environment, Material, Mesh, PlaneMesh, PointLight,
-    SortOrder, SpotLight, TextureCache,
+    Camera, DirectionalLight, Mesh, PointLight, SortOrder, SpotLight, TextureCache,
 };
 use amadeo_snapshot::Redirects;
 use amadeo_transform::{
@@ -625,13 +624,12 @@ pub fn build_simulation() -> anyhow::Result<App> {
     app.register_component::<RigidBody>()?;
     app.register_component::<Collider>()?;
     app.register_component::<Velocity>()?;
-    // Registered because this game *ships* the asset files that hold them, even though no entity
-    // carries one directly. Session 9's lesson: a game whose own asset fails the validator it ships
-    // with is worse than one that has no validator.
-    app.register_component::<BoxMesh>()?;
-    app.register_component::<PlaneMesh>()?;
-    app.register_component::<Material>()?;
-    app.register_component::<Environment>()?;
+    // Every shape, material and look the engine can read out of an asset file, in one call. No entity
+    // carries one — they live in `.mesh`, `.material` and `.environment` files — and session 9's
+    // lesson is that a game whose own asset fails the validator it ships with is worse than one with
+    // no validator. This used to be four hand-written lines and named two shapes out of eight, which
+    // is how ADR 0074's whole parametric set ended up unvalidatable (see the method's docs).
+    app.register_asset_components()?;
 
     app.scan_assets(ASSET_DIRECTORY)?;
     app.insert_service(TextureCache::new());

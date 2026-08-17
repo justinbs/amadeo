@@ -38,10 +38,7 @@ use amadeo_ecs::World;
 use amadeo_input::{ActionId, InputDriver, InputState, NullSource};
 use amadeo_noise::Fbm;
 use amadeo_physics::{Collider, Gravity, Physics, RapierPhysics, RigidBody, Velocity};
-use amadeo_render::{
-    BoxMesh, Camera, DirectionalLight, Environment, Material, Mesh, PlaneMesh, SortOrder,
-    TextureCache,
-};
+use amadeo_render::{Camera, DirectionalLight, Mesh, SortOrder, TextureCache};
 use amadeo_terrain::{STREAM_TERRAIN, Terrain, TerrainEdits, TerrainSettings, TerrainViewer};
 use amadeo_transform::{
     GlobalTransform, PROPAGATE_TRANSFORMS, Parent, Transform, propagate_transforms,
@@ -238,13 +235,10 @@ pub fn build_with_workers(workers: usize) -> anyhow::Result<App> {
     app.register_component::<RigidBody>()?;
     app.register_component::<Collider>()?;
     app.register_component::<Velocity>()?;
-    // Registered because this game ships the asset files that hold them, even though no entity
-    // carries one directly. Session 9's lesson: a game whose own asset fails the validator it ships
+    // Every shape, material and look the engine can read out of an asset file, in one call. No entity
+    // carries one, and session 9's lesson is that a game whose own asset fails the validator it ships
     // with is worse than one that has no validator.
-    app.register_component::<BoxMesh>()?;
-    app.register_component::<PlaneMesh>()?;
-    app.register_component::<Material>()?;
-    app.register_component::<Environment>()?;
+    app.register_asset_components()?;
 
     app.scan_assets(ASSET_DIRECTORY)?;
     app.insert_service(TextureCache::new());

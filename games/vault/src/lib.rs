@@ -25,7 +25,7 @@ pub mod level;
 
 use amadeo_app::{App, Stage, system};
 use amadeo_input::{InputDriver, NullSource, SAMPLE_INPUT, sample_input};
-use amadeo_render::{BoxMesh, Camera, Environment, Quad, SortOrder, Sprite, TextureCache};
+use amadeo_render::{Camera, Quad, SortOrder, Sprite, TextureCache};
 use amadeo_transform::{GlobalTransform, PROPAGATE_TRANSFORMS, Transform, propagate_transforms};
 use game::{Floor, Patrol, Player, Run, ScoreDigit, Sigil, Trap, Wall, Warden, labels};
 
@@ -93,8 +93,7 @@ pub fn build_simulation() -> anyhow::Result<App> {
     // reads the type directly — but `amadeo check` refuses it, saying no component named
     // `Environment` is registered. A game whose own asset fails the validator it ships with is worse
     // than one that has no validator, so registration is part of shipping the asset.
-    app.register_component::<Environment>()?;
-    app.register_component::<BoxMesh>()?;
+    app.register_asset_components()?;
     app.insert_resource(Run::default());
 
     // Compiled in rather than read at runtime, so the binary carries its own level and a replay
