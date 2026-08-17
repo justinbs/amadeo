@@ -2006,12 +2006,18 @@ fn every_parametric_shape_draws_something_lit() {
     // The camera is per shape — see `world_showing`. A default stair is twice the extent of a default
     // sphere, and both of the framings tried before this one hid a shape that was drawing perfectly
     // well.
-    for (name, mesh, eye_at, pitch) in [
+    // **The yaw is written down rather than derived from the camera's position**, which it briefly
+    // was — `if eye[2] < 0.0 { 180.0 }` is right for a camera behind the subject and silently wrong
+    // for one beside it, and the wedge's off-axis camera then looked straight past the shape it was
+    // pointed at. Two lines of arithmetic that only work for the cases tried so far is how the
+    // framing kept being wrong.
+    for (name, mesh, eye_at, pitch, yaw) in [
         (
             "cylinder",
             CylinderMesh::default().tessellate(),
             [0.0, 0.35, 2.0],
             -8.0,
+            0.0,
         ),
         (
             "cone",
@@ -2022,27 +2028,33 @@ fn every_parametric_shape_draws_something_lit() {
             .tessellate(),
             [0.0, 0.35, 2.0],
             -8.0,
+            0.0,
         ),
         (
             "sphere",
             SphereMesh::default().tessellate(),
             [0.0, 0.3, 1.9],
             -6.0,
+            0.0,
         ),
+        // Off-axis and above, so the slope is in the picture — see
+        // `a_wedge_draws_as_a_slope_rather_than_as_a_box`.
         (
             "wedge",
             WedgeMesh::default().tessellate(),
-            [0.0, 0.9, 2.4],
-            -14.0,
+            [1.9, 1.5, 2.3],
+            -22.0,
+            39.0,
         ),
+        // From the flight's low end, looking up it — see `world_showing_from`.
         (
             "stair",
             StairMesh::default().tessellate(),
             [0.0, 2.6, -4.4],
             -26.0,
+            180.0,
         ),
     ] {
-        let yaw = if eye_at[2] < 0.0 { 180.0 } else { 0.0 };
         let mut world = world_showing_from(mesh, eye_at, pitch, yaw);
         let Some(image) = capture(&mut world, 96, 96) else {
             return;
@@ -2135,6 +2147,146 @@ fn a_stair_draws_as_a_flight_rather_than_as_a_box() {
     assert!(
         steps >= 3,
         "a six-step flight crossed only {steps} brightness bands, which is not a staircase"
+    );
+}
+
+/// How many pixels of column `x` are not the background: the drawn silhouette's height there.
+fn silhouette_height(image: &TextureData, x: u32, background: [u8; 4]) -> usize {
+    (0..image.height)
+        .filter(|y| pixel_at(image, x, *y) != background)
+        .count()
+}
+
+/// How many pixels of row `y` are not the background: the drawn silhouette's width there.
+fn silhouette_width(image: &TextureData, y: u32, background: [u8; 4]) -> usize {
+    (0..image.width)
+        .filter(|x| pixel_at(image, *x, y) != background)
+        .count()
+}
+
+#[test]
+fn a_wedge_draws_as_a_slope_rather_than_as_a_box() {
+    // `WedgeMesh` is documented as "a box with a sloped top", so the slope is the entire feature, and
+    // a capture that does not contain it is a capture of a box.
+    //
+    // **The previous framing showed the +Z front face square-on**: one flat trapezoid filling the
+    // frame, with the sloped top not on screen at all. It passed a coverage-and-brightness check
+    // happily. Seen from off-axis and above, the wedge is a solid whose silhouette *tapers to nothing*
+    // across the frame, and a box's does not — which is the assertion.
+    let eye = [1.9, 1.5, 2.3];
+    let (pitch, yaw) = (-22.0, 39.0);
+
+    let wedge = WedgeMesh {
+        width: 1.4,
+        depth: 1.8,
+        height_front: 1.1,
+        height_back: 0.0,
+    };
+    // The control, and the reason this test is not the coverage check it replaces: a `BoxMesh` of the
+    // wedge's own bounding volume, rendered from the same camera in the same test. Put the control
+    // *inside* the test and the assertion cannot silently stop discriminating — if a future change
+    // flattened the shading or the projection, both numbers move together and the comparison fails.
+    let slab = BoxMesh {
+        size: [wedge.width, wedge.height_front, wedge.depth],
+    };
+
+    let taper = |mesh: MeshData| -> Option<f32> {
+        let mut world = world_showing_from(mesh, eye, pitch, yaw);
+        let image = capture(&mut world, 96, 96)?;
+        let background = pixel_at(&image, 2, 2);
+
+        // Two columns, both inside either shape. The wedge is deep on the left and tapering to its
+        // point on the right; the box is much the same at both.
+        let left = silhouette_height(&image, 26, background);
+        let right = silhouette_height(&image, 62, background);
+        Some(right as f32 / left.max(1) as f32)
+    };
+
+    let (Some(sloped), Some(square)) = (taper(wedge.tessellate()), taper(slab.tessellate())) else {
+        return;
+    };
+
+    assert!(
+        sloped < square * 0.75,
+        "a wedge's silhouette should shrink far more across the frame than a box of the same bounds: \
+         wedge kept {sloped:.2} of its height, box kept {square:.2}"
+    );
+}
+
+#[test]
+fn a_cone_narrows_with_height_and_a_cylinder_shades_round() {
+    // The two remaining shapes, each against a `BoxMesh` control in the same test — the pattern from
+    // the stair and the wedge. They need *different* discriminators, which is the interesting part:
+    //
+    // - A **cone** is a silhouette question. It is wide at the base and a point at the top, where a
+    //   box is the same width all the way up.
+    // - A **cylinder** is not: its silhouette is a rectangle, exactly like a box's. What separates
+    //   them is the *shading* — a smooth cylinder's horizontal scanline is a continuous gradient
+    //   around the curve, while a box's front face is one flat value. Asserting a silhouette
+    //   difference here would have been asserting something untrue.
+    let eye = [0.0, 0.35, 2.0];
+    let pitch = -8.0;
+
+    let rendered = |mesh: MeshData| -> Option<(usize, usize, usize)> {
+        let mut world = world_showing_from(mesh, eye, pitch, 0.0);
+        let image = capture(&mut world, 96, 96)?;
+        let background = pixel_at(&image, 2, 2);
+
+        let near_the_top = silhouette_width(&image, 30, background);
+        let near_the_base = silhouette_width(&image, 62, background);
+
+        // Distinct brightness levels across the middle, counted the way the faceting test counts
+        // them: a flat face contributes one, a curve contributes many.
+        let mut steps = 0;
+        let mut previous = pixel_at(&image, 20, 46)[0];
+        for x in 21..76 {
+            let here = pixel_at(&image, x, 46)[0];
+            if here.abs_diff(previous) > 1 {
+                steps += 1;
+            }
+            previous = here;
+        }
+        Some((near_the_top, near_the_base, steps))
+    };
+
+    let box_of_the_same_size = BoxMesh {
+        size: [1.0, 1.0, 1.0],
+    };
+    let (Some(cone), Some(cylinder), Some(slab)) = (
+        rendered(
+            CylinderMesh {
+                top_radius: 0.0,
+                ..CylinderMesh::default()
+            }
+            .tessellate(),
+        ),
+        rendered(CylinderMesh::default().tessellate()),
+        rendered(box_of_the_same_size.tessellate()),
+    ) else {
+        return;
+    };
+
+    // A cone tapers; a box does not.
+    assert!(
+        cone.0 * 2 < cone.1,
+        "a cone should be far narrower near its tip than at its base, got {} and {}",
+        cone.0,
+        cone.1
+    );
+    assert!(
+        slab.0 * 2 >= slab.1,
+        "the control box tapered ({} then {}), so the camera rather than the shape is doing this",
+        slab.0,
+        slab.1
+    );
+
+    // A cylinder shades round; a box's front face is flat.
+    assert!(
+        cylinder.2 > slab.2 * 2,
+        "a smooth cylinder's scanline should step far more often than a flat-faced box's: cylinder \
+         {} steps, box {}",
+        cylinder.2,
+        slab.2
     );
 }
 

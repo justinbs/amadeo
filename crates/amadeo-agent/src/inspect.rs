@@ -140,6 +140,10 @@ pub fn query(world: &World, registry: &ComponentRegistry, filter: &[&str]) -> Js
 /// the shortest decimal that identifies this `f32` — which is what `{}` on an `f32` gives — and then
 /// for the `f64` nearest to that. Parsing cannot fail on a string Rust has just produced, and the
 /// fallback is the old behaviour rather than a panic.
+///
+/// **It allocates a `String` per float, so it belongs on a diagnostic path and nowhere else.** That
+/// is free here — `world.entity` and `describe` run once per request — and would not be in a
+/// collection pass that touches every drawable every frame.
 fn widen_for_json(value: f32) -> f64 {
     if !value.is_finite() {
         // Nothing `f32`-specific to gain, and an infinity has no decimal spelling to parse.

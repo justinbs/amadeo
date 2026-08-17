@@ -1176,6 +1176,14 @@ put it higher up the stack — pushing things down later is easy; pulling them o
   (`integrate_velocity`, `resolve_collisions`). Events are past tense (`EntitySpawned`, `DamageDealt`).
 - **Data layout:** structure-of-arrays over arrays-of-structs in ECS storage. Components are plain
   data — no methods with side effects, no `Rc`/`RefCell` in components.
+- **Defaults (ADR 0075, ADR 0076):** **if a type is authored in a text file and has a sensible
+  `Default`, every field declares that default** with `#[reflect(default = <expr>)]`, so a file may
+  name only what it cares about. **A required field is data that is *not* authored** — `SimRng`'s
+  generator words, an event queue's bookkeeping — where there is no file for a default to help and a
+  wrong one would silently restore different state. Judge every new component against that line.
+  A default is written twice, in the attribute and in the `Default` impl, so each such type needs one
+  test asserting a value built from an empty struct equals its `Default`; nothing else stops the two
+  drifting, and `describe --example` now *publishes* the declared value as authoring advice.
 - **Tests:** unit tests inline. Determinism and golden-replay tests in `tests/`. Every subsystem
   needs a headless test. No test may depend on frame timing or wall-clock.
 - **Docs:** every public item gets a doc comment. Doc comments are the agent's API surface — treat

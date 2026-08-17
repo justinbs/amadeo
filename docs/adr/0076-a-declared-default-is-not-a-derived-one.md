@@ -78,3 +78,12 @@ should almost always default.
   this ADR genuinely changes, and it is the trade being made deliberately: a file that meant to say a
   size and did not now draws a 1 m cube instead of refusing to load. A 1 m cube in the middle of a
   level is not a silent failure.
+
+  **It is much less obvious in a *generated* file, and that case is already covered by something
+  three documents away.** A person writing one `.mesh` by hand meets the cube immediately; `cargo run
+  -p warren --bin layout` emits a level's worth, where one unit cube among a hundred pieces reads as a
+  level-design mistake rather than an engine fault. The mitigation exists and is worth naming here
+  because nobody will connect the two otherwise: **ADR 0071 made `amadeo fmt --check` on generator
+  output a test** (`what_the_generator_writes_is_already_canonical`), and canonical form writes every
+  field — so a generator that omitted a size produces output that is not canonical, and the test says
+  so before anyone looks at a picture.
