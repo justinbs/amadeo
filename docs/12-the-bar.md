@@ -1,0 +1,149 @@
+# 12 — The bar the engine is held to
+
+> Set by Justin in session 20, in response to the Warren reading as a bland engine test.
+> **This is the standard every engine gate is judged against from here on.** It is written down
+> because the critic agent starts cold each time and because a bar that lives in one conversation is
+> a bar that quietly slips.
+
+---
+
+## 1. The standard, in Justin's terms
+
+> *"The engine is something that should be on that level before even making a game… it should be
+> polished not just passable… something you wouldn't be afraid to showcase in front of an audience of
+> a thousand people."*
+
+The reference point is **Hello Games** — the studio behind No Man's Sky — as the model of a small
+team shipping something of genuine scale and ambition. Not a AAA studio, not a hobby engine: the
+AA-indie tier, where a handful of people ship a product that stands next to commercial work.
+
+**"Passable" is explicitly not the bar.** The failure this document exists to prevent is the one that
+already happened once: a system that works, is tested, is documented, and would embarrass anyone who
+showed it.
+
+---
+
+## 2. What it must be capable of
+
+Named by Justin as the class of game the engine should be able to make. Each is here because it
+demands something different, and together they define the gaps.
+
+| Game | What it demands that the others do not |
+|---|---|
+| **Minecraft** | Voxel worlds, infinite streaming, player-modified terrain |
+| **Terraria** | 2D at scale — tilemaps, sprites, a world of tiles rather than meshes |
+| **Project Zomboid** | Isometric 2.5D, large simulated populations, systemic AI |
+| **RimWorld** | Isometric, deep simulation, emergent narrative, enormous UI |
+| **Stellaris** | Grand-strategy UI, thousands of entities, data-driven content, no character at all |
+| **Kenshi** | Huge open world, squad AI, no level loading |
+| **No Man's Sky** | Procedural generation of *everything* — terrain, flora, fauna, texture — at planet scale |
+| **Palworld** | Creatures, skeletal animation, taming and combat systems, open world |
+| **Schedule I** | First-person simulation, economy, interiors, systemic NPCs |
+
+Three things fall out of that list immediately:
+
+- **2D and isometric are not optional.** Three of the nine are 2D or isometric, which matches trap 9
+  in `CLAUDE.md` and the target list in `00-vision.md`. `mod-tilemap` currently sits in M7.
+- **Skeletal animation is required.** Palworld is creatures; Zomboid and Kenshi are people. The
+  engine has none, and `docs/06` records it as blocked on a rigged model.
+- **Procedural generation is the through-line.** Five of the nine are built on it, and it is the one
+  area where this engine is already genuinely strong.
+
+---
+
+## 3. The requirement that is new, and the hardest
+
+**Amadeo is an agent-native engine (`CLAUDE.md` I5). That has to extend to making the content, not
+just to editing it.**
+
+> *"As an agent centric engine, the engine should be capable of being utilized fully by Claude to
+> create games, from all parts, there shouldn't be a part where it asks me to 'create textures for
+> it', 'create sounds for it', 'create models for it', outside of choices, it shouldn't ask me to do
+> all the manual labor for it."*
+
+This is stronger than invariant I5 and it is the thing most likely to be quietly dodged. I5 says the
+agent can do anything the editor can. **This says the agent can produce the game's assets.** An
+engine where Claude can author a level but has to ask a human for a model is an engine that has
+offloaded the expensive half.
+
+**And it cuts both ways.** Justin must be able to work on the same game by hand, mixing his work with
+Claude's — which is what M4's editor is for, and is why this has to be settled *before* the editor
+rather than after.
+
+### Where that stands today, honestly
+
+| Asset | Can Claude author it? | How |
+|---|---|---|
+| Scenes, prefabs, levels | **Yes, fully** | Text, and this part is genuinely good |
+| Materials | **Yes, fully** | Text |
+| Environments, look, post | **Yes, fully** | Text |
+| Textures | **Partly** | `games/vault`'s `pix` writes PNG from hand-written text. Procedural and pixel-art only |
+| Sounds | **Partly** | `sounds.rs` synthesises `.wav`. No music, no recorded audio |
+| Environment maps | **Yes** | `gloom.rs`, `sky.rs` write `.hdr` |
+| **Meshes** | **Barely** | `BoxMesh`, `PlaneMesh`, `ArchMesh`. `amadeo-gltf` is a **reader with no writer**, and the scene format has **no raw-geometry path** — so a Rust binary cannot emit a model the way it emits a sound |
+| Fonts | **No** | Downloaded from the web |
+| Animation | **No** | No skeletal system at all |
+
+**The mesh row is the one that matters most**, and a review of `games/warren` measured its
+consequence directly: thirteen meshes, thirteen axis-aligned boxes, in a game the engine's own
+documentation described as complete.
+
+### What "Claude can author it" is allowed to mean
+
+Justin is explicit that the answer is not "Claude must sculpt a dragon":
+
+> *"I know that claude isn't at the pinnacle of creating high poly 3d models, so thats why low poly
+> should be usable, any use case should be accounted for… Utilize what its good/great at and make the
+> best possible product."*
+
+So:
+
+- **Low poly is a first-class art direction, not a fallback.** It is what an agent can genuinely
+  author well, it is a legitimate and commercially proven style, and the engine must make it look
+  *deliberate* rather than unfinished. Low, mid and high poly should all be supported paths.
+- **Procedural and parametric authoring is the agent's strength** — a mesh described by numbers and
+  rules, which is exactly what `ArchMesh` is and what a modular kit is.
+- **The web is available**: research, and freely-licensed fonts, textures and audio, used with their
+  licences carried beside them (as `games/atrium` already does for Bebas Neue).
+- **External tools are available**: an MCP tool such as Blender, if one gets the engine somewhere it
+  cannot otherwise go.
+
+The test is not "did Claude model it by hand". It is: **can a game be finished without asking Justin
+to do the manual labour?**
+
+---
+
+## 4. The gate order, and the rule
+
+Set by Justin, and it applies to every part:
+
+1. **Design the game** — `docs/11-the-warren.md`
+2. **Improve and change the engine** to the bar above
+3. **Add what the engine is missing**
+4. **Build the game**
+
+> **Nothing proceeds to the next part until the critic agent passes the current one.**
+
+The critic is `.claude/agents/critic.md`. Its verdict is binding: where it disagrees, its changes are
+followed. Where it is factually wrong about the repository, it is corrected with evidence — that has
+happened once, and it verified and withdrew.
+
+This is deliberately slow and it is the correct trade. The alternative was demonstrated: five
+sessions of systems that each passed their own tests and together produced something the owner
+called a bland engine test.
+
+---
+
+## 5. How to read this against the roadmap
+
+`docs/05-roadmap.md` is a plan for reaching M3–M7 in order. **This document raises the bar those
+milestones are measured at**, and it moves work forward rather than adding a new milestone:
+
+- **M4's editor** now depends on §3 being settled, because "Justin builds a level with only the
+  editor, Claude builds one with only text" is not a real test if Claude cannot make the assets.
+- **M7's 2D modules** are named in §2 as a capability the engine must have, not a deferred nicety.
+- **Skeletal animation** moves from "blocked on an asset" to a requirement, which means the asset
+  problem is the engine's to solve rather than to wait on.
+
+Nothing here contradicts `00-vision.md`. It sharpens what "done enough to make games" means, which
+that document deliberately left as a sentence.

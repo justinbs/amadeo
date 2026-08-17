@@ -1263,4 +1263,6 @@ Things that will quietly destroy the design if allowed:
 | `docs/08-assets.md` | You're adding an asset, or wondering why it isn't showing up. |
 | `docs/09-gate-4-describe-is-not-enough.md` | You are about to rely on `describe` telling you how to *write* something, rather than what data exists. Records what M1 exit gate 4 found, and how ADR 0030 closed it. |
 | `docs/10-frame-budget.md` | You want to know what a frame costs, or you are about to claim something is fast. M2 exit gate 4's numbers, measured and re-runnable. |
+| `docs/11-the-warren.md` | You are touching anything a player sees in `games/warren` — the premise, the world, the loop, and how the fiction drives every system. Written in session 20 because nothing did, which is why the game read as an engine test. |
+| `docs/12-the-bar.md` | **Before any engine work.** The standard the engine is held to (AA indie), the games it must be able to make, and the requirement that *Claude can author a game's assets rather than asking Justin for them*. Also the gate order: nothing proceeds until the critic passes. |
 | `docs/adr/` | You want to know why something is the way it is. |
