@@ -1,7 +1,8 @@
 # 11 — The Warren: premise, world, and how it drives every system
 
 > Read this before touching anything a player sees in `games/warren`.
-> `05-roadmap.md` says *what* the milestone requires. This says *what the game is*, which until
+> **PASSED the critic on its sixth review.** `05-roadmap.md` says *what* the milestone requires.
+> This says *what the game is*, which until
 > session 20 nothing did — and that absence is the whole reason the game read as an engine test.
 
 ---
@@ -292,7 +293,7 @@ the stripped section and the made-up section are dangerous in different places.
 
 ### How it moves
 
-- **Patrolling**: 1.5 m/s along a fixed route between fixed stopping points. Slower than a walk, so
+- **Patrolling**: 1.5 m/s along a route whose stops are re-drawn each circuit (see the check box below) and whose *length* shortens as the shift wears on (§4). Slower than a walk, so
   you can follow it and it cannot catch you by accident.
 - **Investigating**: it goes to *where the noise was*, not to where you are — the distinction that
   makes moving after making a noise the correct play, and the thing a player has to learn once.
@@ -944,10 +945,15 @@ default dialog.
 - **A brightness setting exists and lives on the title screen**, under the options. A game whose
   entire medium is darkness ships one; Frictional's own post is mostly about players and reviewers
   seeing the wrong picture because nothing calibrated it.
-  *Where it lives mechanically*: it adjusts the camera's `Environment` exposure, and an `Environment`
-  is a Service — outside the state hash (ADR 0009) — so two players on different brightnesses still
-  simulate identically and a replay is unaffected. **Where the file lives is Q38's question**, the
-  same one the save file has, and it should be answered once for both rather than twice differently.
+  *Where it lives mechanically*: it adjusts exposure on the loaded `Environment` **inside
+  `EnvironmentCache`, which is the Service** — outside the state hash (ADR 0009) — so two players on
+  different brightnesses still simulate identically and a replay is unaffected.
+  *(An earlier draft said `Environment` itself is a Service. It is not: `impl Component for
+  Environment` and it derives `StableHash`. The conclusion survives for a different reason — a
+  `Camera` carries only an environment **id**, so the cache's copy is the only thing render reads, and
+  nothing reads an `Environment` component at draw time.)*
+  **Where the file lives is Q38's question**, the same one the save file has, and it should be
+  answered once for both rather than twice differently.
 
 ---
 
@@ -1035,9 +1041,9 @@ is checked against that, and four entries from the first draft failed it:
 
 | | Count | Notes |
 |---|---|---|
-| Meshes | ~16 | All box/plane/arch assemblies. Arch section, cross-passage, bulkhead, door, racking, bunk frame, lamp fitting, isolator, lift cage, sign plate, crate, charging point, tally board, the warden |
+| Meshes | ~19 | All box/plane/arch assemblies. Arch section, cross-passage, bulkhead, door, racking, bunk frame, lamp fitting, isolator, lift cage, sign plate, crate, charging panel, tally board, the warden, the generator, a mattress, **pump housing, duckboard run, the renumbering ledger** (§3a's per-condition check members), **the bolt** (§5a) |
 | Materials | ~10 | §5a's table |
-| Sound clips | ~19 | footfall × 4 surfaces, fitting hum, **panel whine**, **the crew sealing above** (a long loop that changes across the run), lamp rattle, breath, warden tread × 3 states, warden check, isolator, bulkhead, generator, lift, **3 stings** (taken / escaped / caught — §8 requires the endings to differ, and all three already exist) |
+| Sound clips | ~24 | footfall × 4 surfaces, fitting hum, **panel whine**, **the crew sealing above × 4 phases** (§9 -- cutting, drilling, pouring, setting), lamp rattle, breath, warden tread × 3 states, warden check, isolator, bulkhead, generator, lift, **the bolt landing**, **3 stings** (taken / escaped / caught — §8 requires the endings to differ, and all three already exist) |
 | Sections | 3 + landing + plant room | |
 | Signs | one per junction | text, not textures |
 
@@ -1129,7 +1135,7 @@ what exists. It is a slice, not a fresh repository:
 | `assets/pieces/` — **12** prefabs | `player_start`, `hud`, `ambience`, `spill` survive. `room_shell`, `wall`, `doorway` are replaced by the arch kit. `lost_key`, `way_out` are replaced by the isolators and the lift |
 | `dropped_torch.scene` | **Deleted.** The lamp is carried from the start — it is shelter issue and the clerk signed for it |
 | `room_lamp.scene` | **Becomes the emergency fitting**, and is the one existing piece the new mechanic is built directly on: it grows a mesh (it currently has none), a hum, and an off state |
-| `warden_post.scene` | **Becomes a patrol node**, of which there are now several — the check points in §3a rather than one spawn position |
+| `warden_post.scene` | **Becomes a patrol waypoint**, of which there are now several -- the route's shape rather than one spawn position. Not a check point: what is checked is a *class* of prop drawn per circuit (§3a), which is a different thing |
 | `scenes/warren.scene` — the handcrafted room | **Becomes the slice** (plan item 1). It is already the place where things are tuned by eye, and it is where the rule tests live |
 | The six generated `.wav`s | `warren_tone` and `footstep` survive; `warden_breath` is replaced by §3a's three tread states; `taken`, `escaped`, `caught` survive |
 | The key and the door | Removed. `WayOut` becomes the lift; `Item`/`Inventory` stay, because the lamp and the docket are items |
@@ -1144,6 +1150,32 @@ none is left until the verdict is POLISHED. That is Justin's instruction from se
 project process, not a one-off. **This document was itself judged and returned NOT POLISHED**; §1's
 missing prior art, §4's self-contradicting sense model, the absent palette and this plan's ordering
 were all found that way.
+
+### What to watch while building — the critic's list at the passing review
+
+This document **passed on its sixth review**. These are the things the reviewer said to watch during
+the build rather than fix on paper, recorded so they are not lost between sessions:
+
+1. **How the player learns "three isolators, then the generator."** §8 removes the objective marker
+   and forbids explanatory prompts, and the docket names the *box*, which is optional. The orange
+   rule covers it implicitly and nothing states it. Cheapest answer: **a standby-set plate in the
+   plant room naming the three sections**, and the generator **refusing audibly** while a circuit is
+   still open. One sign, one sound.
+2. **`STRIDE = 0.95` was derived against 2.6 m/s.** At the new walk of 1.8 it gives 1.9 steps a
+   second, which reads as a scurry. Re-derive it when the walk/run split lands.
+3. **Charging is now the loudest thing the player does, six times, against three isolator pulls.** If
+   the run turns into a chase reel, the fader to reach for is the **whine's radius**, not the charge
+   rate.
+4. **The check radius is a point and three of the new class members are extended objects.** Decide
+   whether a duckboard run is one check or a line of them *before* building the flooded section — it
+   is the difference between that section's core question working and freezing five metres along
+   being free.
+5. **The reach penalty on a flat lamp binds outward and barely at all on the lit return**, so the
+   last one or two of the six stops are optional in practice. Watch that the endgame still has a
+   reason to stop.
+6. **The lamp draining while switched off and walking has no fiction**, and it is the one rule a
+   player will meet and be unable to explain. Cheapest fix is to reframe the meter as **the shift**
+   rather than the battery.
 
 ### Two names to settle
 
