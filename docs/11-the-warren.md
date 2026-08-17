@@ -224,7 +224,18 @@ stillness something you *purchase* rather than something you get.
 |---|---|
 | Check radius | 1.2 m — arm's length, not a room |
 | Pause at a check | ~2 s |
+| **Checked per pass** | **4–6 of the class, chosen from the seed and re-chosen every circuit** |
 | What it does | **Starts a pursuit. It does not end the run** — see below |
+
+**"Every made-up bunk" and "four to six per section" are the same rule stated two ways**, and which
+one binds decides whether the mechanic works. A made-up section has dozens of bunks and the warden
+does not stop at every one. A *fixed* subset would be learnable in one circuit and would collapse
+straight back to the six-percent-of-floor problem this rule was written to fix.
+
+So the class says **what may be checked** — a thing the player can read off the world at a glance —
+and the seed says **which of them this circuit**, redrawn each time round. You can see that a bunk is
+made up, and you cannot know whether it is on this pass. That is the whole of the tension in standing
+still, and it costs one `SimRng` draw per circuit.
 
 **"Found" starts a chase, and that is not softness.** An instant catch at an invisible 1.2 m boundary
 would be a fail state learnable only by dying, and this engine cannot show the thing that makes it
@@ -243,6 +254,12 @@ the stripped section and the made-up section are dangerous in different places.
   you can follow it and it cannot catch you by accident.
 - **Investigating**: it goes to *where the noise was*, not to where you are — the distinction that
   makes moving after making a noise the correct play, and the thing a player has to learn once.
+  **And an investigation ends in a check at the place it arrives**, wherever that is, prop or open
+  floor. Without that line the modal outcome of every pursuit in this game is an unanimated mesh
+  standing a metre from a motionless player, doing nothing, for ever — because freezing is the only
+  survival move against something faster than you, and the check class is on props while a chase ends
+  wherever you happened to stop. It also teaches the rule in one beat: **freezing after you have
+  moved works; freezing where the noise was does not.**
 - **Pursuing**: 2.9 m/s, faster than the player's 2.6. **A chase is not survivable by running in a
   straight line**, which is deliberate and is the inverse of what ships today: the current warden is
   slower than the player, in an empty corridor, so a chase resolves to walking away. You survive by
@@ -405,12 +422,39 @@ switch it off in every lit section — so the number of draining sections would 
 progressed, and the pressure curve would run **backwards**: tightest at the start when nothing is
 hunting, loosest during the climax.
 
-> **The charge drains whenever the lamp is on, or you are moving. Standing in the dark is the only
-> thing that is free.**
+> **The charge drains whenever the lamp is on, or you are moving. Standing in the dark costs you no
+> charge.**
 
-That is the same accumulator the shelter issued for a shift underground, and it makes the resource
-agree with the threat rather than fighting it: the safe action is also the cheap one, and both cost
-you the clock.
+That is the same accumulator the shelter issued for a shift underground.
+
+### But standing still cannot be free, and for two drafts it was
+
+The line above used to end *"…is the only thing that is free"*, followed by a claim that "both cost
+you the clock". **There was no clock.** The charge drains on movement-or-light, which makes it a
+*distance* budget rather than a time one, so a patient player paid nothing for waiting — and since
+§3a makes a motionless player undetectable off-prop, the optimal run was **creep, freeze, wait,
+creep**, indefinitely, at zero cost. This document correctly diagnosed "hold walk for twenty
+minutes" and twice replaced it with something strictly cheaper.
+
+Both cited references close exactly this hole: The Bunker's fuel burns in real time, and
+*Alien: Isolation*'s creature is drawn to a player who hides too long. **And the fix was already in
+the premise, unused**: *"before the site is sealed"*.
+
+**The sealing crew is working above you, and you can hear them.**
+
+- It is **diegetic and continuously audible** — pours, drills, the concrete going in — so there is no
+  timer on screen and the player always knows roughly how much shift is left. That is the same
+  channel the rest of the game speaks in.
+- It is **generous**: about 30 minutes against a 20-minute run. It does not punish an unhurried first
+  playthrough, and it does not permit an infinitely patient one.
+- When it finishes, the way out is gone. That is a real ending rather than a failure message, and it
+  is the one the fiction has been pointing at from the first line.
+
+**And the inner clock is the warden itself.** Its round shortens as the shift wears on — it is
+counting, the count is due, and it stops taking its time. So patience costs in the currency the game
+is actually about: not a number draining, but the thing in the tunnel coming round more often.
+
+That gives waiting a price at both scales, neither of which is a UI element.
 
 ### Where you can recharge, and why it is the best moment in the design
 
@@ -419,12 +463,32 @@ critical path tops you up for free and the resource never binds on the route —
 you leave it. That makes the charge **a tax on exploration**, which is precisely the voluntary risk
 §1 quotes Frictional as the source of the fear. Exactly backwards.
 
-Charging points are on the **wall circuits**, which means they are wherever the fittings are, which
-means:
+**A charging panel makes its own noise**, and that is what deafens you rather than the section being
+lit. A shelter accumulator panel whines while it charges — right beside your head, for twenty-five
+seconds, at exactly the volume that matters.
 
 > **The only places you can recharge are the places you cannot hear.**
 
-Standing in a deaf, humming, lit room, for a stretch of time you cannot shorten, listening to
+This is a correction of the previous draft, which put the panels "wherever the fittings are" so that
+the deafness came from the section's lighting. Two things went wrong with that and both are the same
+mistake:
+
+- **It was false on the whole outward leg.** Panels are live before their section is lit (below), so
+  an unlit section had a quiet, fully-hearing, zero-risk panel — and the dominant play became "top up
+  before pulling each isolator", which is the safest possible moment. The deaf-pool moment only
+  existed on the way back, by which point you were full.
+- **It put the warden under a light.** Panels are check points (§3a) and the fittings are the pools,
+  so a two-second check at a panel is the warden *lingering in a pool* — which §4 forbids three
+  subsections earlier, and which would stand an unanimated mesh in full light 1.2 m from the player
+  at the design's self-described best moment. Precisely the illusion collapse this section exists to
+  prevent.
+
+So **panels are on the wall, in the dark, away from the fittings.** The whine is the risk, it travels
+with the mechanic rather than with the lighting, and it is true from the first minute of the game to
+the last.
+
+Standing beside a whining panel, deaf, for a stretch of time whose **rate** you cannot hurry -- you
+may leave early and keep what it gave you, but you cannot make it come faster -- listening to
 nothing, is the best moment this design has. One of the three is deliberately *off* the isolator
 route, so a full run cannot be done without leaving the path once.
 
@@ -859,7 +923,7 @@ is checked against that, and four entries from the first draft failed it:
 |---|---|---|
 | Meshes | ~16 | All box/plane/arch assemblies. Arch section, cross-passage, bulkhead, door, racking, bunk frame, lamp fitting, isolator, lift cage, sign plate, crate, charging point, tally board, the warden |
 | Materials | ~10 | §5a's table |
-| Sound clips | ~16 | footfall × 4 surfaces, fitting hum, lamp rattle, breath, warden tread × 3 states, warden check, isolator, bulkhead, generator, lift, **3 stings** (taken / escaped / caught — §8 requires the endings to differ, and all three already exist) |
+| Sound clips | ~19 | footfall × 4 surfaces, fitting hum, **panel whine**, **the crew sealing above** (a long loop that changes across the run), lamp rattle, breath, warden tread × 3 states, warden check, isolator, bulkhead, generator, lift, **3 stings** (taken / escaped / caught — §8 requires the endings to differ, and all three already exist) |
 | Sections | 3 + landing + plant room | |
 | Signs | one per junction | text, not textures |
 
