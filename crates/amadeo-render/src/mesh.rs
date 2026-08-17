@@ -330,7 +330,11 @@ impl MeshData {
 #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct BoxMesh {
     /// Full width, height and depth in the mesh's own space.
-    #[reflect(min = 0.0, max = 10000.0, unit = "world units")]
+    /// **Defaults to a unit cube** — ADR 0076. ADR 0075 originally left this required, on the
+    /// grounds that "a zero-size box draws nothing while reporting no fault", which is an argument
+    /// against a *derived* default rather than against a declared one: `[1, 1, 1]` draws, and is
+    /// unmissable if it was not what the author meant.
+    #[reflect(min = 0.0, max = 10000.0, unit = "world units", default = [1.0, 1.0, 1.0])]
     pub size: [f32; 3],
 }
 
@@ -423,7 +427,7 @@ impl BoxMesh {
 #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct PlaneMesh {
     /// Full extent along X and Z.
-    #[reflect(min = 0.0, max = 10000.0, unit = "world units")]
+    #[reflect(min = 0.0, max = 10000.0, unit = "world units", default = [1.0, 1.0])]
     pub size: [f32; 2],
 }
 
@@ -502,26 +506,27 @@ impl PlaneMesh {
 #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct ArchMesh {
     /// Width at floor level, in world units.
-    #[reflect(min = 0.01, max = 10000.0, unit = "world units")]
+    #[reflect(min = 0.01, max = 10000.0, unit = "world units", default = 4.0)]
     pub width: f32,
     /// Height from the floor to the highest point of the roof.
-    #[reflect(min = 0.01, max = 10000.0, unit = "world units")]
+    #[reflect(min = 0.01, max = 10000.0, unit = "world units", default = 3.0)]
     pub height: f32,
     /// How far the section runs along -Z, which is forward (ADR 0018).
-    #[reflect(min = 0.01, max = 10000.0, unit = "world units")]
+    #[reflect(min = 0.01, max = 10000.0, unit = "world units", default = 8.0)]
     pub length: f32,
     /// How many flat facets the curve is built from.
     ///
     /// **The one number that is a cost rather than a shape.** Twelve is smooth enough that a lamp
     /// sweeping across it does not show the facets; three makes a hut. Above about twenty-four
     /// nothing visible changes and the triangle count keeps climbing.
-    #[reflect(min = 2.0, max = 128.0)]
+    #[reflect(min = 2.0, max = 128.0, default = 12)]
     pub segments: u32,
     /// Whether to lay a floor across the bottom.
     ///
     /// Off is useful: a section that sits over an existing slab, or an arch used as a doorway
     /// surround, does not want one — and a coincident floor is z-fighting rather than a spare
     /// triangle.
+    #[reflect(default = true)]
     pub floor: bool,
 }
 
@@ -972,15 +977,16 @@ impl ShadowMode {
 #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct DirectionalLight {
     /// Linear RGB. White is the neutral choice; warm and cool are what sell a time of day.
-    #[reflect(min = 0.0, max = 1.0)]
+    #[reflect(min = 0.0, max = 1.0, default = [1.0, 1.0, 1.0])]
     pub colour: [f32; 3],
     /// How bright, multiplied into the colour.
     ///
     /// Not capped at 1.0, because the scene target is high dynamic range since ADR 0034 — a value
     /// above it is what gives tonemapping something to compress.
-    #[reflect(min = 0.0, max = 100.0)]
+    #[reflect(min = 0.0, max = 100.0, default = 1.0)]
     pub intensity: f32,
     /// Whether and how this light casts shadows (ADR 0038).
+    #[reflect(default = ShadowMode::Off)]
     pub shadows: ShadowMode,
     /// How far from the camera shadows are drawn, in world units.
     ///
@@ -988,12 +994,12 @@ pub struct DirectionalLight {
     /// the shadow map is a fixed number of pixels stretched over a box this big, so doubling the
     /// distance halves the detail. Set it to roughly the distance a player can actually see
     /// shadows at, rather than to the size of the level.
-    #[reflect(min = 0.1, max = 10000.0, unit = "world units")]
+    #[reflect(min = 0.1, max = 10000.0, unit = "world units", default = 30.0)]
     pub shadow_distance: f32,
     /// How many pixels across the shadow map is.
     ///
     /// Powers of two, and the memory cost is the square of it — 4096 is four times 2048, not twice.
-    #[reflect(min = 16.0, max = 8192.0, unit = "px")]
+    #[reflect(min = 16.0, max = 8192.0, unit = "px", default = 2048)]
     pub shadow_resolution: u32,
     /// How much to push a shadow test away from the surface, in world units.
     ///
@@ -1001,7 +1007,7 @@ pub struct DirectionalLight {
     /// resolution means one stored depth stands for a small patch of a sloped surface and half that
     /// patch is behind it. Too little leaves the stripes; too much makes a shadow detach from
     /// whatever cast it, which is called peter-panning and looks exactly like it sounds.
-    #[reflect(min = 0.0, max = 10.0, unit = "world units")]
+    #[reflect(min = 0.0, max = 10.0, unit = "world units", default = 0.02)]
     pub shadow_bias: f32,
 }
 
@@ -1061,13 +1067,13 @@ pub const MAX_PUNCTUAL_LIGHTS: usize = 8;
 #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct PointLight {
     /// Linear RGB. White is neutral; warm and cool are what sell a light source.
-    #[reflect(min = 0.0, max = 1.0)]
+    #[reflect(min = 0.0, max = 1.0, default = [1.0, 1.0, 1.0])]
     pub colour: [f32; 3],
     /// How bright, multiplied into the colour.
     ///
     /// Not capped at 1.0: the scene target is high dynamic range (ADR 0034), and a value above it is
     /// what gives bloom something to find and tonemapping something to compress.
-    #[reflect(min = 0.0, max = 100.0)]
+    #[reflect(min = 0.0, max = 100.0, default = 1.0)]
     pub intensity: f32,
     /// How far the light reaches, in world units. Beyond this it contributes nothing.
     ///
@@ -1075,7 +1081,7 @@ pub struct PointLight {
     /// never quite stops. It is here because a light with no range would have to be evaluated by
     /// every pixel in the world, and because an artist placing a lamp wants to know what it touches.
     /// The falloff is smoothed to zero at the edge so the boundary is not a visible circle.
-    #[reflect(min = 0.0, max = 1000.0, unit = "world units")]
+    #[reflect(min = 0.0, max = 1000.0, unit = "world units", default = 10.0)]
     pub range: f32,
 }
 
@@ -1101,25 +1107,25 @@ impl Component for PointLight {}
 #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct SpotLight {
     /// Linear RGB.
-    #[reflect(min = 0.0, max = 1.0)]
+    #[reflect(min = 0.0, max = 1.0, default = [1.0, 1.0, 1.0])]
     pub colour: [f32; 3],
     /// How bright, multiplied into the colour.
-    #[reflect(min = 0.0, max = 100.0)]
+    #[reflect(min = 0.0, max = 100.0, default = 1.0)]
     pub intensity: f32,
     /// How far the cone reaches, in world units. See [`PointLight::range`].
-    #[reflect(min = 0.0, max = 1000.0, unit = "world units")]
+    #[reflect(min = 0.0, max = 1000.0, unit = "world units", default = 20.0)]
     pub range: f32,
     /// The half-angle of the cone's bright centre, in degrees.
     ///
     /// Everything within this of the axis gets the light's full strength.
-    #[reflect(min = 0.0, max = 89.0, unit = "degrees")]
+    #[reflect(min = 0.0, max = 89.0, unit = "degrees", default = 20.0)]
     pub inner_angle: f32,
     /// The half-angle where the cone stops, in degrees.
     ///
     /// Between [`SpotLight::inner_angle`] and this the light fades out, which is what gives the beam
     /// a soft edge instead of a hard circle. **Should exceed the inner angle**; if it does not, the
     /// falloff collapses to a hard edge rather than misbehaving.
-    #[reflect(min = 0.0, max = 89.0, unit = "degrees")]
+    #[reflect(min = 0.0, max = 89.0, unit = "degrees", default = 28.0)]
     pub outer_angle: f32,
     /// Whether this light casts a shadow — ADR 0058.
     ///
@@ -1131,16 +1137,17 @@ pub struct SpotLight {
     /// Off by default, so a light costs a pass and a shadow-map layer only when asked. At most
     /// [`MAX_SHADOW_SPOTS`] of them cast in one view; past that the nearest win, like the lights
     /// themselves.
+    #[reflect(default = false)]
     pub shadows: bool,
     /// How many pixels across this light's shadow map is.
     ///
     /// **Advisory rather than exact**, and that is a real limitation: every shadow map in a view
     /// lives in one texture array (ADR 0058), which has one size, so the largest request wins and the
     /// rest are drawn at that size. A 512-pixel spot in a scene whose sun asks for 2048 costs 2048.
-    #[reflect(min = 16.0, max = 8192.0, unit = "pixels")]
+    #[reflect(min = 16.0, max = 8192.0, unit = "pixels", default = 1024)]
     pub shadow_resolution: u32,
     /// How far to push a depth comparison away from the surface, in world units.
-    #[reflect(min = 0.0, max = 10.0, unit = "world units")]
+    #[reflect(min = 0.0, max = 10.0, unit = "world units", default = 0.02)]
     pub shadow_bias: f32,
 }
 

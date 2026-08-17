@@ -46,7 +46,7 @@ Cheap, and everything after it is worth more once these are done.
 | 1 | 1 | **This file.** The gate's plan lives in the repository | `docs/13` exists, is linked from `CLAUDE.md` §8 and `docs/05`, and carries every item with a falsifiable condition | ✅ **done** (s21) |
 | 2 | 4 | **Register every mesh shape the engine ships.** `amadeo check` rejected a cylinder and `describe CylinderMesh` said the type did not exist, in every game | `amadeo describe CylinderMesh --example` answers in all four games, and `amadeo check` accepts a `.mesh` holding each shape the engine ships. No game lists shapes by hand | ✅ **done** (s21) |
 | 3 | 19 | **Two small defects in `solid.rs`.** A dead `half` binding silenced with `let _ = half;`, and `WedgeMesh::height_back` defaulting to `0.0`, which emits degenerate faces on every default use | The dead binding is gone rather than silenced, and a default `WedgeMesh` has no zero-area triangle | ✅ **done** (s21) |
-| 3b | — | **Three things item 2 turned up on the way**, none of them in the review. A shape's fields had no defaults, so `describe CylinderMesh --example` answered `radius 0.0`, `height 0.0`, `sides 3` — a legal cylinder that draws nothing, offered as authoring advice. `--example` preferred a range's *minimum* over a declared default. And `Value::F32` was formatted by widening to `f64`, so `0.18` was written `0.18000000715255737` | Every shape declares defaults agreeing with its `Default` impl, `--example` prefers a declared default, and an `f32` prints at `f32` precision | ✅ **done** (s21) |
+| 3b | — | **Three things item 2 turned up on the way**, none of them in the review. Fields had no declared defaults, so `describe --example` answered `BoxMesh size 0.0 0.0 0.0` — the type 23 of 23 assets use — plus a dead `Camera`, a black `Environment` and three lights at zero intensity. `--example` preferred a range's *minimum* over a declared default. And `Value::F32` was widened to `f64` before formatting, so `0.18` was written `0.18000000715255737` | **Every type authored in a text file** declares defaults agreeing with its `Default` impl (ADR 0076), `--example` prefers a declared default, and an `f32` prints at `f32` precision **in both the scene and the JSON spellings** | ✅ **done** (s21) |
 | 4 | 5 | **Faceting.** Every ADR 0074 primitive was smooth-shaded, so a six-sided cylinder shaded as a smooth tube and a 12×6 sphere as a smooth ball with a polygonal outline. `docs/12` §3 makes low poly first-class and the set could not produce it | Each curved primitive takes a `flat` flag, and a smooth `SphereMesh` shares its vertex grid rather than paying the flat cost without the faceting | ✅ **done** (s21) |
 | 5 | 16 | **A committed capture test per primitive.** `ArchMesh` had `an_arch_draws_as_a_vault_rather_than_a_box`; the four new shapes had CPU geometry tests only, and the commit message's "looked at the picture" was not in the repository | Every shape the engine ships has a GPU capture assertion that would fail if it drew as a box | ✅ **done** (s21) |
 | 6 | 14 | **The skeletal-animation citation was false in three documents.** `docs/12:72`, `STATUS.md:293` and `docs/11:157` all cited `docs/06` as recording it blocked on a rigged model. `docs/06` had zero mentions of it; the claim is in `docs/04` §14 and ADR 0066 §5 | All three cite a source that contains the claim, and skeletal animation is a real numbered question in `docs/06` | ✅ **done** (s21) — now **Q41** |
@@ -60,9 +60,10 @@ The authoring surface, which both reviews identify as the actual cause of how th
 |---|---|---|---|---|
 | 8 | 6 | **ADR 0074 §2 and §3: `CompoundMesh` and the `array`/`mirror`/`taper` modifiers.** The ADR calls §3 *"where the leverage is"*; four more nouns without composition still cannot make a table, a lamp fitting or a run of racking. `StairMesh` composes parts in a private loop, which is the mechanism not existing | A table, a lamp fitting and a bolted assembly are each one `.mesh` file, authored as text, with no new Rust | ⬜ |
 | 9 | 6 | **ADR 0074 §4: raw `vertices`/`indices`.** The escape hatch, and where an imported model and a skinned mesh have to land | A `.mesh` may carry vertex data directly, and `amadeo fmt` round-trips it byte-stably | ⬜ |
-| 10 | 2 | **`uv_scale`, before any texture is attached to anything.** `mesh.wgsl:360` is `out.uv = vertex.uv;` — no density control exists. A 12 m wall and a 0.4 m crate would show one image at a 30× density difference, which reads as a bug rather than as art | A material controls its texel density, `games/scarp`'s `TEXTURE_TILE` workaround is gone, and two surfaces of very different sizes show the same texture at the same density | ⬜ |
+| 10 | 2 | **`uv_scale`, before any texture is attached to anything.** `mesh.wgsl:360` is `out.uv = vertex.uv;` — no density control exists. A 12 m wall and a 0.4 m crate would show one image at a 30× density difference, which reads as a bug rather than as art | A material controls its texel density, and a capture of two surfaces of very different sizes shows the same **checker** at the same density. *(Was "the same texture", which could not be satisfied inside Phase B: there is no texture to attach until item 13. A checker generated in the test is enough to measure density, and does not import the whole of item 13 into this item.)* `games/scarp`'s `TEXTURE_TILE` workaround goes when item 13 lands | ⬜ |
 | 11 | 7 | **Alpha cutout and a sorted transparent pass.** `gpu.rs:2084` is `blend: None` and `Material` has no alpha mode. No vegetation, glass, grating, cobweb or hanging cloth is expressible — three quarters of what No Man's Sky is made of, and the cheapest route to a non-box silhouette | A cutout material draws its shape rather than its quad, a blended material composites in the right order from any angle, and an opaque scene's capture is byte-identical | ⬜ |
-| 12 | 8 | **Particles.** Nothing in `crates/` or `modules/` mentions one. Dust in a torch beam is most of what makes an interior read as air rather than vacuum; it is also NMS's atmospheres, Zomboid's rain and Schedule I's smoke. ADR 0067's named-field list items are already the right format for an emitter's stages | An emitter is authored in a `.scene`, it is deterministic under the fixed tick, and a torch beam has motes in it | ⬜ |
+| 12 | 8 | **Particles.** Nothing in `crates/` or `modules/` mentions one. Dust in a torch beam is most of what makes an interior read as air rather than vacuum; it is also NMS's atmospheres, Zomboid's rain and Schedule I's smoke. ADR 0067's named-field list items are already the right format for an emitter's stages | An emitter is authored in a `.scene`, it is deterministic under the fixed tick, and a capture shows lit motes drifting in front of a dark surface. *(Was "a torch beam has motes in it", which needs the **beam** to be visible in air — that is volumetric light shafts, item 12b, not particles. Motes in an invisible beam are motes in the dark.)* | ⬜ |
+| 12b | — | **Volumetric light shafts.** Named by `STATUS.md` and by ADR 0073 as the next visual step and by neither plan as an item, which is how it went unscheduled. Raymarches through exactly the fog ADR 0073 added, and is what makes a torch beam visible in the air rather than only on the surfaces it lands on | A dark interior shows a cone of light in the air from a spot light, and off is byte-identical to before it existed | ⬜ |
 
 ### Phase C — content exists, and the pictures change
 
@@ -112,6 +113,32 @@ and whose materials sample textures. The second review did not lower it. Stated 
 **Review 1 (session 20)** — NOT POLISHED. Measured the three numbers in §1 for the first time and
 produced the fourteen-item plan this file replaces. Its plan is gone; the numbers survived, which is
 the argument for this file existing.
+
+**Review 3 (session 21, `751489a`)** — Phase A only: NOT POLISHED, five of seven items closed. It
+**conceded item 3**, which is worth recording because the concession is the mechanism working: it had
+asked for `WedgeMesh::height_back` to default to something non-zero, and agreed that dropping
+collapsed triangles at *any* authored value is strictly better, on a reason it had not made — a
+zero-area triangle is the one thing the winding test must skip, so fewer of them means more of the
+mesh is actually checked.
+
+What it found that a green suite did not:
+
+- **Item 3b was one type-family short.** Shapes and `Material` declared defaults; `Camera`,
+  `Environment` and the three lights declared none, so `describe --example` handed an author a dead
+  camera and a black screen. Closed by ADR 0076.
+- **The `f32` fix landed in one of two writers.** The scene spelling was right and the **JSON** one —
+  the half an agent parses — still read `0.18000000715255737`.
+- **Item 5's capture test could not tell a stair from a box**, which in this repository is the wrong
+  test to have. Fixing it needed the camera moved twice: once because the stair sat below the
+  crosshair, then again because a `StairMesh` climbs along +Z, so a camera on the +Z axis looks at the
+  *back* of the flight where the top step occludes every step behind it and the whole thing renders as
+  a slab. **Both framings passed their assertions.**
+- **Two clauses of my own reasoning were wrong.** A frustum's lateral facet *is* planar, so the stated
+  reason for not using `flat_shade` was wrong even though the decision was right; and the comment
+  illustrating the faceting scanline implied a signal ten times stronger than what the code measures.
+- **Two close conditions in this file could not be satisfied as written** — item 10 depended on a
+  Phase C item, and item 12 asked for motes in a beam that nothing makes visible. Both rewritten, and
+  item 12b exists because of it.
 
 **Review 2 (session 21, `dc78b6a`)** — NOT POLISHED, nineteen ranked defects. Took live captures from
 the game binaries rather than reading the code, which is what found that the Warren's environment seam

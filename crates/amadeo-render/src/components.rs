@@ -242,21 +242,25 @@ impl Projection {
 #[derive(Debug, Clone, PartialEq, StableHash, Reflect)]
 pub struct Camera {
     /// Which projection to use, and its parameters.
+    #[reflect(default = Projection::default())]
     pub projection: Projection,
     /// Where this camera draws. **Empty means the window**; anything else is a texture asset id.
     ///
     /// A plain string rather than an `Option`, because ADR 0032 deliberately left `Option::None`
     /// without a spelling — and because it matches [`Sprite::texture`], which is already an asset id
     /// in a string.
+    #[reflect(default = String::new())]
     pub target: String,
     /// The sub-rectangle of the target to draw into, as `[x, y, width, height]` in `0.0..=1.0`.
     ///
     /// `[0.0, 0.0, 1.0, 1.0]` is the whole target. A left half is `[0.0, 0.0, 0.5, 1.0]`.
-    #[reflect(min = 0.0, max = 1.0)]
+    #[reflect(min = 0.0, max = 1.0, default = [0.0, 0.0, 1.0, 1.0])]
     pub viewport: [f32; 4],
     /// Draw order between cameras, low to high. A HUD camera sits above a world camera.
+    #[reflect(default = 0)]
     pub order: i32,
     /// Whether this camera draws at all. A cheap way to keep one configured but idle.
+    #[reflect(default = true)]
     pub active: bool,
     /// What this camera's picture should look like — the asset id of an
     /// [`Environment`](crate::Environment). **Empty means no post-processing** (ADR 0034).
@@ -268,6 +272,7 @@ pub struct Camera {
     /// Nothing about whether it has loaded can reach the simulation (ADR 0021): an id that does not
     /// resolve renders with the default look, which is the picture a camera with no environment
     /// draws anyway.
+    #[reflect(default = String::new())]
     pub environment: String,
 }
 

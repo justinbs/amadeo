@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-17 (session 20)
+**Last updated:** 2026-08-18 (session 21)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE — all four exit gates met.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
@@ -26,6 +26,38 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 ## 📬 For the next session — read this box first, then `docs/12-the-bar.md`
 
+> ### The plan is a file now. Read `docs/13-the-engine-gate.md` and work from it.
+>
+> **The engine gate's plan used to live in a conversation, and that is exactly what `docs/12` was
+> written to prevent.** The first review's output was a fourteen-item ordered list; session 21's
+> reviewer could not read it and had to be handed four of the fourteen in a briefing. It is now
+> `docs/13-the-engine-gate.md` — nineteen items in execution order, each with a falsifiable close
+> condition and a status column, plus the three tracked measurements across reviews so drift is
+> visible rather than re-derived. **Update it in place as items land.** Do not let the next plan go
+> back into a transcript.
+>
+> **Phase A is done** (items 1–7): the geometry set is registered, discoverable, faceted, capture
+> tested, and the documents that disagreed with each other no longer do. **Phase B is next** and is
+> the one that matters — `CompoundMesh` and ADR 0074's modifiers, raw vertex data, `uv_scale`,
+> transparency, particles.
+>
+> **The three defining measurements have still not moved**: 23 of 23 `.mesh` assets are `BoxMesh`,
+> 36 of 36 material texture slots are `""`, 0 of 17 protocol methods mutate. Phase A was about making
+> it *possible* to move them. Nothing in Phase A moves them, and that is the honest summary of it.
+>
+> ### Two things waiting on Justin, neither blocking
+>
+> - **Crowd agents** (`docs/13` item 16). ADR 0036 puts `enhanced-determinism` on permanently, which
+>   forecloses rapier's `parallel` and `simd` features for ever, so the throughput ceiling is
+>   architectural. `docs/10` measures 811 bodies at 11.49% of a frame and concludes nothing needs more
+>   — written against the *old* nine-game list. Project Zomboid needs hundreds to low thousands of
+>   navigating agents and gets them by not making them rigid bodies. Hard to reverse, so it is
+>   Justin's by `CLAUDE.md` §5.
+> - **Whether "engine to AA before building a game" should be revisited.** Still open from session 20.
+>   Session 21 is evidence for both sides: Phase A found five real defects, and every one of them was
+>   found by *tooling and review* rather than by building a game — but equally, none of them would
+>   have mattered if a game were using the shapes.
+>
 > ### The project changed shape in session 20. Read this before planning anything.
 >
 > **Justin judged the Warren a bland engine test, and he was right.** The levels were "rooms
@@ -95,9 +127,66 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > fresher — so anything written between ticks was silently undone. **The fallback was hiding all
 > three.**
 
-**Everything is pushed through `1b256a1`, and every run is green 5/5.** Check with `gh run list`
-rather than assuming — `gh` is not on PATH, so prefix with
-`$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
+**Everything is pushed through `751489a`.** Check with `gh run list` rather than assuming — `gh` is
+not on PATH, so prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`. A run takes about
+29 minutes and `gh run view <id> --json jobs` shows five jobs separately, so check once at a plausible
+time and keep working. One historical red mark to ignore for ever: `6e56c0b`'s docs job, fixed by
+`f91229d`.
+
+### Session 21 in one paragraph
+
+**The engine gate's second review, and Phase A of what it ordered.** The reviewer returned NOT
+POLISHED with nineteen ranked defects, took live captures from the game binaries rather than reading
+the code, and was accurate on all five claims spot-checked against the repository before anything was
+acted on. Its first recommendation was that its own plan had to become a file, which it now is.
+
+- **Q32 fell to a re-reading rather than to a trade-off (ADR 0075).** It had blocked `Material` from
+  growing since session 14 on the grounds that `MissingField` is what catches a typo'd field name. It
+  is not — `from_value` checks for *unknown* fields before it reads any field, so a typo was already
+  caught by the check that exists for it. A field may now declare a default; canonical form still
+  writes every field, so `amadeo fmt` is the migration tool with no new flag.
+- **ADR 0074's shapes were registered by no game**, so `amadeo check` rejected a cylinder and
+  `describe CylinderMesh` said the type did not exist — while a hand-written one still *loaded*,
+  because the mesh loader never consults the registry. Works when tried, broken when checked.
+- **The set could not produce the art direction it was built for.** Everything curved was
+  smooth-shaded with no way to ask otherwise, which is ADR 0050's "shades like a blob" defect
+  reintroduced in the primitives added to serve low poly.
+- **Three documents cited a source that did not contain the claim** — including `docs/12-the-bar.md`,
+  the document that sets the standard. Now **Q41**.
+- **And the same defaults defect was one type-family over (ADR 0076).** Shapes and `Material`
+  declared defaults; `Camera`, `Environment` and the three lights declared none, so
+  `describe --example` — which `docs/12` §3 makes the primary way an agent learns to author an asset
+  — handed back a dead camera, a black environment and three lights at zero intensity.
+
+### The four things worth not rediscovering, session 21
+
+- **A stated tension can be wrong, and checking it is cheaper than resolving it.** Q32 sat at P2 for
+  six sessions and cost nothing to close once its own reasoning was read against the code. Before
+  weighing a documented trade-off, verify both of its arms still exist.
+- **`describe --example` was advice that did not work.** It answered `radius 0.0`, `height 0.0`,
+  `sides 3` for a cylinder — legal, and draws nothing. It came from preferring a range's *minimum*
+  over a default, and a range minimum is the lowest value the schema calls legal rather than a value
+  anyone wants. **An example an agent cannot use is worse than no example, because it looks like an
+  answer.**
+- **Two capture tests failed first, and neither for the reason I would have guessed.** A wedge
+  reported as missing because it sits *on* y = 0 while a sphere is centred on it, so the crosshair was
+  on its bottom edge. And a faceted sphere came out byte-identical to a smooth one because at
+  intensity 3.0 every lit pixel clipped to 255 — the entire shading being compared was above the top
+  of the range. **Printing the scanline found both in one run**, after reasoning had produced two
+  wrong theories. Session 19's lesson, third instalment.
+- **`Value::F32` was written by widening to `f64`**, so `0.18` came out `0.18000000715255737` in every
+  `describe --example`, `world.entity` dump, snapshot and glTF import. It survived because
+  **`amadeo fmt` has no schema**: it reads every number as an `f64` and writes the same `f64` back, so
+  a hand-written `0.18` round-trips untouched and the formatter looked correct. A round-trip test over
+  values the format itself produced would never have found it. **And fixing it in one writer felt like
+  fixing it** — the scene spelling was right and the JSON one, which is the half an agent parses, was
+  still wrong for another hour.
+- **A capture test can pass against a picture that shows nothing.** `every_parametric_shape_draws_*`
+  reported a wedge as *missing* (it sat below the crosshair) and then, framed better, could not tell a
+  stair from a box — because a `StairMesh` climbs along +Z, so a camera on the +Z axis is looking at
+  the back of the flight where the top step occludes every step behind it. It renders as a truncated
+  slab. **Both framings passed their assertions**, and both were found by writing the PNG and looking
+  at it. The rule from session 13 keeps earning: a green test is not a picture.
 
 ### Session 20 in one paragraph
 

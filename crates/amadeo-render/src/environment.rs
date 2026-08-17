@@ -79,10 +79,10 @@ pub enum Tonemap {
 #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct Bloom {
     /// How bright a pixel must be before it bleeds. Above 1.0 means "brighter than white".
-    #[reflect(min = 0.0, max = 100.0)]
+    #[reflect(min = 0.0, max = 100.0, default = 1.0)]
     pub threshold: f32,
     /// How much of the bleed is added back. **Zero is off**, and is the default.
-    #[reflect(min = 0.0, max = 4.0)]
+    #[reflect(min = 0.0, max = 4.0, default = 0.0)]
     pub intensity: f32,
 }
 
@@ -102,13 +102,13 @@ impl Default for Bloom {
 #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct Grade {
     /// Pushes values away from mid-grey. `1.0` leaves them alone.
-    #[reflect(min = 0.0, max = 4.0)]
+    #[reflect(min = 0.0, max = 4.0, default = 1.0)]
     pub contrast: f32,
     /// `0.0` is greyscale, `1.0` unchanged, above that oversaturated.
-    #[reflect(min = 0.0, max = 4.0)]
+    #[reflect(min = 0.0, max = 4.0, default = 1.0)]
     pub saturation: f32,
     /// Multiplied into the final colour. White leaves it unchanged.
-    #[reflect(min = 0.0, max = 4.0)]
+    #[reflect(min = 0.0, max = 4.0, default = [1.0, 1.0, 1.0])]
     pub tint: [f32; 3],
 }
 
@@ -129,10 +129,10 @@ impl Default for Grade {
 #[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
 pub struct Vignette {
     /// How dark the corners go. **Zero is off**, and is the default.
-    #[reflect(min = 0.0, max = 1.0)]
+    #[reflect(min = 0.0, max = 1.0, default = 0.0)]
     pub intensity: f32,
     /// How far out the darkening starts, as a fraction of the half-diagonal.
-    #[reflect(min = 0.0, max = 2.0)]
+    #[reflect(min = 0.0, max = 2.0, default = 0.75)]
     pub radius: f32,
 }
 
@@ -166,20 +166,20 @@ pub struct Fog {
     /// Worth choosing against the scene rather than by taste: fog that is lighter than the darkest
     /// surface makes distance glow, which reads as mist, and fog that is darker makes distance
     /// swallow things, which reads as depth. A horror interior wants the second.
-    #[reflect(min = 0.0, max = 4.0)]
+    #[reflect(min = 0.0, max = 4.0, default = [0.0, 0.0, 0.0])]
     pub colour: [f32; 3],
     /// How quickly it closes in, per world unit. **Zero is off**, and is the default.
     ///
     /// Roughly: at `1 / density` metres past [`Fog::start`] a surface is about 63% fogged, and at
     /// twice that it is nearly gone. So `0.05` is a haze that reaches about forty metres and `0.2`
     /// is a corridor you cannot see the end of.
-    #[reflect(min = 0.0, max = 1.0)]
+    #[reflect(min = 0.0, max = 1.0, default = 0.0)]
     pub density: f32,
     /// How far from the eye the air begins, in world units.
     ///
     /// Subtracted before the curve rather than dividing the range, so it means exactly "nothing
     /// closer than this is fogged" and moving it does not also change how thick the distance is.
-    #[reflect(min = 0.0, max = 200.0, unit = "world units")]
+    #[reflect(min = 0.0, max = 200.0, unit = "world units", default = 0.0)]
     pub start: f32,
 }
 
@@ -234,20 +234,25 @@ pub struct Environment {
     ///
     /// The photographic control: `2.0` is one stop brighter. Above 1.0 this is what pushes highlights
     /// past the display range, which is what gives bloom and tonemapping anything to work with.
-    #[reflect(min = 0.0, max = 100.0)]
+    #[reflect(min = 0.0, max = 100.0, default = 1.0)]
     pub exposure: f32,
     /// Light bleeding out of the brightest parts. Runs before tonemapping, on purpose.
+    #[reflect(default = Bloom::default())]
     pub bloom: Bloom,
     /// How the result is brought into displayable range.
+    #[reflect(default = Tonemap::default())]
     pub tonemap: Tonemap,
     /// Contrast, saturation and tint, applied after tonemapping.
+    #[reflect(default = Grade::default())]
     pub grade: Grade,
     /// Edge darkening, applied last because it is about *where* a pixel is rather than its colour.
+    #[reflect(default = Vignette::default())]
     pub vignette: Vignette,
     /// Air between the eye and everything else (ADR 0073).
     ///
     /// **The only field here that is not a post-process**, and the only one the mesh shader reads.
     /// Off by default, so a scene that authors none is byte-identical.
+    #[reflect(default = Fog::default())]
     pub fog: Fog,
     /// Declared asset id of the `.hdr` environment map this look lights surfaces with (ADR 0049).
     /// **Empty means none**, and falls back to a plain neutral sky.
@@ -266,6 +271,7 @@ pub struct Environment {
     ///
     /// Cheap to move if that turns out wrong: it is one field and the handful of `.environment`
     /// files that name it.
+    #[reflect(default = String::new())]
     pub sky: String,
 }
 

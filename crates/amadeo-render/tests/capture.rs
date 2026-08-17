@@ -1907,13 +1907,43 @@ fn an_arch_draws_as_a_vault_rather_than_a_box() {
 /// assert about the pixels. The light is deliberately **off to one side** rather than behind the
 /// camera: a head-on light flattens everything and would make a faceted and a smooth shape look
 /// nearly the same, which is the one thing these tests have to tell apart.
-fn world_showing(mesh: MeshData) -> World {
+fn world_showing(mesh: MeshData, eye_at: [f32; 3], pitch: f32) -> World {
+    world_showing_from(mesh, eye_at, pitch, 0.0)
+}
+
+/// As [`world_showing`], but the camera may also be yawed — which the stair needs.
+///
+/// A `StairMesh` climbs along **+Z**, so its tallest step is its **+Z end**. A camera on the +Z axis
+/// is therefore looking at the back of the flight, where the top step occludes every step behind it
+/// and the whole thing renders as a truncated slab. Seen from −Z, with the camera yawed round, each
+/// tread and riser is visible in turn. This was found by rendering it, and it is the second framing
+/// mistake in this file that an assertion happily passed.
+fn world_showing_from(mesh: MeshData, eye_at: [f32; 3], pitch: f32, yaw: f32) -> World {
     let mut world = World::new();
 
+    // **The caller places the camera, and that is not over-parameterisation.** These shapes share
+    // neither an origin nor a footprint: a cylinder and a sphere are centred on their origin; a wedge
+    // sits *on* y = 0 because it is a thing you put on a floor; and a default stair is 2.2 deep and
+    // 1.4 tall, climbing along +Z straight at a camera that sits on the +Z axis.
+    //
+    // Two framings were tried and both were found by rendering the shape and looking at it rather
+    // than by any assertion. At eye level on z = 3 the stair filled the top half of the frame with a
+    // single flat band, because the camera was nearly inside the top step — and the assertion passed.
+    // Then one formula for every shape put the camera high enough that a cone, which is widest at its
+    // base, had its base below the bottom of the frame.
+    //
+    // A stair also needs its own *angle*, not just its own distance: seen level-on, every riser faces
+    // the camera and shades identically, so a flight of steps looks exactly like a slab. It has to be
+    // looked down on before the treads and risers alternate.
     let eye = world.spawn();
-    let mut place = Transform::at(0.0, 0.0);
-    place.translation = [0.0, 0.0, 3.0];
-    world.insert(eye, place);
+    world.insert(
+        eye,
+        Transform {
+            translation: eye_at,
+            rotation: [pitch, yaw, 0.0],
+            ..Transform::default()
+        },
+    );
     world.insert(eye, Camera::perspective(45.0));
 
     let mut meshes = MeshCache::new();
@@ -1962,16 +1992,27 @@ fn world_showing(mesh: MeshData) -> World {
 }
 
 #[test]
-fn every_parametric_shape_draws_something() {
+fn every_parametric_shape_draws_something_lit() {
     // ADR 0074's set, on a screen. Its unit tests pin the geometry; this pins that the geometry
-    // becomes pixels — which is a separate claim, and the one the session that added these shapes
-    // made in a commit message rather than in the repository.
+    // becomes pixels — a separate claim, and the one the session that added these shapes made in a
+    // commit message rather than in the repository.
     //
-    // The bar is low on purpose: *something* other than the background, in the middle of the frame.
-    // A shape that tessellates correctly and draws nothing is the failure this catches, and it is a
-    // real one — an inverted normal renders black under ADR 0052 rather than disappearing.
-    for (name, mesh) in [
-        ("cylinder", CylinderMesh::default().tessellate()),
+    // Two failures, and the second is the one this originally missed. A shape can fail to draw at
+    // all; or it can draw **black**, which is what an inverted normal does under ADR 0052 since
+    // nothing is culled. The comment here used to name that second case while the assertion could not
+    // see it: the clear colour is deliberately *not* black (`backend.rs`), so a black shape differs
+    // from the background and counted as drawn. Hence a brightness floor as well as a difference.
+    //
+    // The camera is per shape — see `world_showing`. A default stair is twice the extent of a default
+    // sphere, and both of the framings tried before this one hid a shape that was drawing perfectly
+    // well.
+    for (name, mesh, eye_at, pitch) in [
+        (
+            "cylinder",
+            CylinderMesh::default().tessellate(),
+            [0.0, 0.35, 2.0],
+            -8.0,
+        ),
         (
             "cone",
             CylinderMesh {
@@ -1979,12 +2020,30 @@ fn every_parametric_shape_draws_something() {
                 ..CylinderMesh::default()
             }
             .tessellate(),
+            [0.0, 0.35, 2.0],
+            -8.0,
         ),
-        ("sphere", SphereMesh::default().tessellate()),
-        ("wedge", WedgeMesh::default().tessellate()),
-        ("stair", StairMesh::default().tessellate()),
+        (
+            "sphere",
+            SphereMesh::default().tessellate(),
+            [0.0, 0.3, 1.9],
+            -6.0,
+        ),
+        (
+            "wedge",
+            WedgeMesh::default().tessellate(),
+            [0.0, 0.9, 2.4],
+            -14.0,
+        ),
+        (
+            "stair",
+            StairMesh::default().tessellate(),
+            [0.0, 2.6, -4.4],
+            -26.0,
+        ),
     ] {
-        let mut world = world_showing(mesh);
+        let yaw = if eye_at[2] < 0.0 { 180.0 } else { 0.0 };
+        let mut world = world_showing_from(mesh, eye_at, pitch, yaw);
         let Some(image) = capture(&mut world, 96, 96) else {
             return;
         };
@@ -1995,18 +2054,88 @@ fn every_parametric_shape_draws_something() {
         // frame is the middle of a sphere and the bottom edge of a wedge, and sampling it alone
         // reported the wedge as missing when it was merely below the crosshair.
         let background = pixel_at(&image, 2, 2);
-        let drawn = (24..72)
+        let samples: Vec<[u8; 4]> = (24..72)
             .step_by(8)
             .flat_map(|x| (24..72).step_by(8).map(move |y| (x, y)))
-            .filter(|(x, y)| pixel_at(&image, *x, *y) != background)
-            .count();
+            .map(|(x, y)| pixel_at(&image, x, y))
+            .collect();
 
+        let drawn = samples.iter().filter(|p| **p != background).count();
         assert!(
             drawn >= 6,
-            "a `{name}` covered only {drawn} of 36 sample points in the middle of the frame, so it \
-             either did not draw or is the same colour as the background {background:?}"
+            "a `{name}` covered only {drawn} of {} sample points in the middle of the frame, so it \
+             either did not draw or is the same colour as the background {background:?}",
+            samples.len()
+        );
+
+        // And it is *lit*, not merely present. `background` is a deliberately non-black clear colour,
+        // so without this a shape rendering pure black — an inverted normal — would count as drawn.
+        let brightest = samples.iter().map(|p| p[0]).max().unwrap_or(0);
+        assert!(
+            brightest > 60,
+            "a `{name}` drew, but its brightest sample is {brightest}, which is dark enough to be a \
+             surface lit from behind rather than in front"
         );
     }
+}
+
+#[test]
+fn a_stair_draws_as_a_flight_rather_than_as_a_box() {
+    // **The assertion `docs/13` item 5 actually asks for: one that a `BoxMesh` would fail.** The
+    // previous version of this file asserted only that a stair covered the frame, which a box of the
+    // same bounds does equally well — a useless test in a repository whose founding measurement is
+    // "23 of 23 meshes are boxes".
+    //
+    // A flight of steps lit from one side is a *run of alternating brightnesses* down its climb: each
+    // tread faces up and each riser faces the camera, so they catch different amounts of light. A box
+    // has one front face and one top face, so a vertical line down it crosses at most one boundary.
+    // That is the difference, and it is a property of what a stair *is* rather than of where any
+    // particular step lands.
+    let bands_down_the_middle = |mesh: MeshData| -> Option<usize> {
+        // From the flight's **low** end, looking up it. See `world_showing_from`.
+        let mut world = world_showing_from(mesh, [0.0, 3.0, -4.2], -32.0, 180.0);
+        let image = capture(&mut world, 96, 96)?;
+
+        let mut bands = 0;
+        let mut previous = pixel_at(&image, 48, 6)[0];
+        for y in 7..64 {
+            let here = pixel_at(&image, 48, y)[0];
+            if here.abs_diff(previous) > 3 {
+                bands += 1;
+            }
+            previous = here;
+        }
+        Some(bands)
+    };
+
+    let stair = StairMesh {
+        width: 2.0,
+        steps: 6,
+        rise: 0.28,
+        run: 0.34,
+    };
+    // A box of the stair's own bounding volume — the control, and the thing the old assertion could
+    // not tell apart from the real mesh.
+    let box_of_the_same_size = BoxMesh {
+        size: [2.0, stair.total_rise(), stair.total_run()],
+    };
+
+    let (Some(steps), Some(slab)) = (
+        bands_down_the_middle(stair.tessellate()),
+        bands_down_the_middle(box_of_the_same_size.tessellate()),
+    ) else {
+        return;
+    };
+
+    assert!(
+        steps > slab,
+        "a flight of steps should cross more brightness bands down the frame than a box of the same \
+         bounds: stair {steps}, box {slab}"
+    );
+    assert!(
+        steps >= 3,
+        "a six-step flight crossed only {steps} brightness bands, which is not a staircase"
+    );
 }
 
 #[test]
@@ -2017,14 +2146,24 @@ fn a_faceted_sphere_reads_as_faceted_and_a_smooth_one_does_not() {
     // at the same triangle count has a polygonal outline and perfectly continuous shading, which is
     // what reads as unfinished.
     //
-    // Measured as **how many times the brightness steps** along a horizontal line across the ball.
-    // The two scanlines this produces are worth writing down, because they are the feature:
+    // Measured as **how many times the brightness steps by more than one level** along a horizontal
+    // line across the ball. The two scanlines this produces are worth writing down, because they are
+    // the feature:
     //
-    //   flat  [144 ×28, 183 ×28]                 — two facets, each one constant value
-    //   smooth[145, 147, 149, 150, 152, … , 194] — a continuous ramp, changing nearly every pixel
+    //   flat  [144 ×28, 183 ×28]                 — facets, each one constant value
+    //   smooth[145, 147, 149, 150, 152, … , 194] — a continuous ramp
     //
-    // It does not depend on any particular facet landing on any particular pixel, which is what makes
-    // it robust to a resolution or camera change.
+    // **Read the counts, not the appearance of those rows.** The smooth line changes at nearly every
+    // pixel, but by *one* level at a time, and `abs_diff > 1` deliberately does not count that — a
+    // one-level ramp is exactly what dithering or rounding noise looks like, and counting it would
+    // make a smooth surface's score depend on the exposure. So the measured numbers are far smaller
+    // than the rows suggest: **smooth 7, faceted 1**. An earlier version of this comment implied
+    // about fifty, which is the number a future session would have checked against when this went
+    // flaky.
+    //
+    // Both a ratio and a floor are asserted, because seven against one is a comfortable ratio built
+    // out of small absolute numbers, and a change that quietly drove both to zero — a blank frame, a
+    // clipped exposure — would satisfy a ratio test and nothing else.
     let levels = |flat: bool| -> Option<usize> {
         let mut world = world_showing(
             SphereMesh {
@@ -2034,6 +2173,8 @@ fn a_faceted_sphere_reads_as_faceted_and_a_smooth_one_does_not() {
                 flat,
             }
             .tessellate(),
+            [0.0, 0.3, 3.3],
+            -5.0,
         );
         let image = capture(&mut world, 96, 96)?;
 
@@ -2055,6 +2196,11 @@ fn a_faceted_sphere_reads_as_faceted_and_a_smooth_one_does_not() {
         return;
     };
 
+    assert!(
+        smooth >= 4,
+        "a smooth sphere's scanline stepped only {smooth} times, so there is no gradient to compare \
+         against — the frame is probably blank, or the exposure is clipping"
+    );
     assert!(
         smooth > faceted * 2,
         "a smooth sphere should change brightness far more often across a scanline than a faceted \

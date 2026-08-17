@@ -161,10 +161,15 @@ impl CylinderMesh {
             // **Where flat shading happens, and why it is one line rather than a second code path.**
             // The vertices are already unshared per facet -- they have to be, for the seam's UVs -- so
             // giving all four the *facet's* normal is the whole of it. The facet's normal is the ring
-            // normal half a step along, which is exact rather than approximate, and is why this does
-            // not use `MeshData::flat_shade`: that works per *triangle*, and on a cone the two
-            // triangles of one facet are not coplanar, so it would put a crease down the middle of
-            // every side.
+            // normal half a step along, which is exact rather than averaged.
+            //
+            // This does not use `MeshData::flat_shade`, and the reason is **not** that a cone's facet
+            // is non-planar: its two chords are parallel, so a lateral facet is a planar trapezoid and
+            // `flat_shade` would give both its triangles the same normal. (An earlier version of this
+            // comment claimed otherwise and was wrong.) The two real reasons are at the **tip**, where
+            // the facet collapses to a triangle so `flat_shade`'s cross product is zero-length and it
+            // falls back to whatever normal the vertex already had -- and on a *sphere*, where a quad
+            // genuinely is not planar, so per-triangle shading creases every facet down its diagonal.
             let (a_normal, b_normal) = if self.flat {
                 let (_, facet) = ring(bottom, -half, step as f32 + 0.5);
                 (facet, facet)
@@ -542,12 +547,22 @@ impl WedgeMesh {
     }
 }
 
+/// Below this length of cross product, a triangle is treated as collapsed.
+///
+/// The cross product of two edges has the length of **twice the triangle's area**, in square world
+/// units. `1e-9` therefore rejects a triangle smaller than about half a square micrometre, which no
+/// authored geometry has and which only an exactly-coincident pair of corners produces here — a cone's
+/// tip, a sphere's pole, a ramp's absent back face.
+///
+/// **One constant, used by `has_area` and by the winding test**, because they are asking the same
+/// question and had drifted three orders of magnitude apart: this rejected below `1e-6` while the test
+/// skipped below `1e-9`. At millimetre scale that gap puts a legitimate facet inside the reject band,
+/// so the looser of the two was the wrong one to keep.
+const DEGENERATE_CROSS: f32 = 1e-9;
+
 /// Whether three points span a real triangle rather than a line or a point.
 ///
-/// Twice the area is the length of the cross product of two edges, so this compares that against a
-/// small epsilon instead of taking a square root. The threshold is generous on purpose: a face that
-/// is *nearly* collapsed contributes nothing visible and has an unstable normal, which is worse than
-/// a face that is missing.
+/// Compares the *squared* length against [`DEGENERATE_CROSS`] squared, so no square root is taken.
 fn has_area(a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> bool {
     let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     let v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
@@ -556,7 +571,8 @@ fn has_area(a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> bool {
         u[2] * v[0] - u[0] * v[2],
         u[0] * v[1] - u[1] * v[0],
     ];
-    cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2] > 1e-12
+    let squared = cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2];
+    squared > DEGENERATE_CROSS * DEGENERATE_CROSS
 }
 
 /// A flight of steps, as one mesh rather than as a stack of boxes.
@@ -703,7 +719,9 @@ mod tests {
                 a[0] * b[1] - a[1] * b[0],
             ];
             let area = (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
-            if area < 1e-9 {
+            // The same threshold `has_area` uses, from the same constant — these two are asking the
+            // same question and used to disagree by three orders of magnitude.
+            if area < DEGENERATE_CROSS {
                 continue;
             }
             let agreement = cross[0] * normal[0] + cross[1] * normal[1] + cross[2] * normal[2];
@@ -945,6 +963,50 @@ mod tests {
         );
     }
 
+    /// Builds a type from a value naming no fields, so every field takes its declared default.
+    ///
+    /// The whole of ADR 0075's drift hazard in one helper: a default is written twice, in a
+    /// `#[reflect(default = ...)]` attribute and in `impl Default`, and nothing but an assertion stops
+    /// the two disagreeing. It matters more since ADR 0076, because `describe --example` now
+    /// *publishes* the declared value — so a drift is authoring advice that does not match what the
+    /// engine builds.
+    fn from_nothing<T: amadeo_reflect::Reflect>() -> T {
+        T::from_value(&amadeo_reflect::Value::Struct(
+            std::collections::BTreeMap::new(),
+        ))
+        .unwrap_or_else(|error| {
+            panic!(
+                "`{}` does not declare a default for every field: {error}",
+                T::STATIC_NAME
+            )
+        })
+    }
+
+    #[test]
+    fn every_authored_type_in_this_crate_declares_its_defaults() {
+        // ADR 0076: **if a type is authored in a text file and has a sensible `Default`, its fields
+        // declare that default.** Before it, `describe --example` handed an author `BoxMesh size
+        // 0.0 0.0 0.0` — the type 23 of 23 `.mesh` assets use, drawing nothing — plus a dead camera,
+        // a black environment and three lights at zero intensity. Every one of those types already
+        // held the right values in a hand-written `Default`; they were simply not in the schema.
+        use crate::{
+            ArchMesh, BoxMesh, Camera, DirectionalLight, Environment, Material, PlaneMesh,
+            PointLight, SpotLight,
+        };
+        assert_eq!(from_nothing::<BoxMesh>(), BoxMesh::default());
+        assert_eq!(from_nothing::<PlaneMesh>(), PlaneMesh::default());
+        assert_eq!(from_nothing::<ArchMesh>(), ArchMesh::default());
+        assert_eq!(from_nothing::<Material>(), Material::default());
+        assert_eq!(from_nothing::<Camera>(), Camera::default());
+        assert_eq!(from_nothing::<Environment>(), Environment::default());
+        assert_eq!(
+            from_nothing::<DirectionalLight>(),
+            DirectionalLight::default()
+        );
+        assert_eq!(from_nothing::<PointLight>(), PointLight::default());
+        assert_eq!(from_nothing::<SpotLight>(), SpotLight::default());
+    }
+
     #[test]
     fn every_shapes_declared_defaults_agree_with_its_default_impl() {
         // ADR 0075's named hazard, once per type in this file: each default is written twice, in a
@@ -952,25 +1014,10 @@ mod tests {
         // two drifting. It matters more here than for `Material`, because `describe --example` now
         // *reports* the declared values — so a drift would publish authoring advice that does not
         // match what the engine builds.
-        use amadeo_reflect::{Reflect, Value};
-        let nothing = Value::Struct(std::collections::BTreeMap::new());
-
-        assert_eq!(
-            CylinderMesh::from_value(&nothing).expect("all fields declare defaults"),
-            CylinderMesh::default()
-        );
-        assert_eq!(
-            SphereMesh::from_value(&nothing).expect("all fields declare defaults"),
-            SphereMesh::default()
-        );
-        assert_eq!(
-            WedgeMesh::from_value(&nothing).expect("all fields declare defaults"),
-            WedgeMesh::default()
-        );
-        assert_eq!(
-            StairMesh::from_value(&nothing).expect("all fields declare defaults"),
-            StairMesh::default()
-        );
+        assert_eq!(from_nothing::<CylinderMesh>(), CylinderMesh::default());
+        assert_eq!(from_nothing::<SphereMesh>(), SphereMesh::default());
+        assert_eq!(from_nothing::<WedgeMesh>(), WedgeMesh::default());
+        assert_eq!(from_nothing::<StairMesh>(), StairMesh::default());
     }
 
     #[test]
@@ -1043,6 +1090,33 @@ mod tests {
         assert!(
             varies_within_a_facet,
             "a smooth cylinder's facets each have one normal, which is flat shading by accident"
+        );
+
+        // **The sphere, which this test did not cover until the assertion was tried against a broken
+        // build.** Replacing the sphere's facet normal with its corners' normals — real flat shading
+        // switched off — left this test green, because everything above only looks at a cylinder. The
+        // capture test caught it and this did not; a unit test named for the whole feature should.
+        let faceted_ball = SphereMesh {
+            flat: true,
+            ..SphereMesh::default()
+        }
+        .tessellate();
+
+        let mut facet_normals = Vec::new();
+        for (index, facet) in faceted_ball.vertices.chunks_exact(4).enumerate() {
+            for vertex in facet {
+                assert_eq!(
+                    vertex.normal, facet[0].normal,
+                    "facet {index} of a faceted sphere has more than one normal"
+                );
+            }
+            facet_normals.push(facet[0].normal);
+        }
+        // And the facets do not all share *one* normal, which "one normal per facet" would also be
+        // satisfied by if the whole ball were flat.
+        assert!(
+            facet_normals.windows(2).any(|pair| pair[0] != pair[1]),
+            "every facet of the sphere has the same normal, so it is a disc rather than a ball"
         );
     }
 
