@@ -252,6 +252,13 @@ struct FieldOptions {
     max: Option<f64>,
     /// `#[reflect(unit = "...")]`.
     unit: Option<String>,
+    /// `#[reflect(default = <expr>)]` — ADR 0075. `None` means the field stays required.
+    ///
+    /// A whole Rust expression rather than a literal, because the defaults that are actually wanted
+    /// include arrays (`[1.0, 1.0, 1.0, 1.0]`) and enum variants (`AlphaMode::Opaque`) as well as
+    /// scalars. It is stored unparsed and pasted into the generated code twice — once to build the
+    /// field, once for the schema — so the compiler type-checks it against the field's own type.
+    default: Option<syn::Expr>,
     /// `#[reflect(sync = "...")]`, as a path into `SyncPolicy`.
     sync: TokenStream2,
     /// `#[reflect(interpolate = "...")]`, as a path into `Interpolation`.
@@ -357,6 +364,54 @@ fn unit_tokens(options: &FieldOptions) -> TokenStream2 {
     }
 }
 
+/// Two pieces for one field's `#[reflect(default = <expr>)]` — ADR 0075.
+///
+/// Returns the `default:` initialiser for the schema, and the expression `from_value` evaluates when
+/// the value it was handed does not mention this field. Both come from here so they cannot disagree:
+/// a schema that advertises one default while the reader applies another is worse than no default at
+/// all, because it would be reported and then not happen.
+///
+/// `required` is the token that names the whole field list in the `MissingField` error, which differs
+/// between a struct and an enum variant — hence a parameter rather than a constant.
+fn field_default(
+    canonical: &str,
+    name: &str,
+    ty: &syn::Type,
+    options: &FieldOptions,
+    required: &TokenStream2,
+) -> (TokenStream2, TokenStream2) {
+    match &options.default {
+        // The `let value: #ty` binding is what type-checks the author's expression against the
+        // field it belongs to, so `#[reflect(default = "no")]` on an `f32` is a build error rather
+        // than something that surfaces at load. It also lets an integer literal stand in for a
+        // float, matching what `f32::from_value` already accepts from a text file.
+        Some(expr) => (
+            quote! {
+                ::std::option::Option::Some({
+                    let value: #ty = #expr;
+                    <#ty as ::amadeo_reflect::Reflect>::to_value(&value)
+                })
+            },
+            quote! {{
+                let value: #ty = #expr;
+                value
+            }},
+        ),
+        None => (
+            quote! { ::std::option::Option::None },
+            quote! {{
+                return ::std::result::Result::Err(
+                    ::amadeo_reflect::ReflectError::MissingField {
+                        type_name: #canonical.to_string(),
+                        field: #name.to_string(),
+                        required: #required,
+                    },
+                );
+            }},
+        ),
+    }
+}
+
 /// Every type this one names in its schema, so `register_dependencies` can register them.
 ///
 /// Duplicates are fine and expected — three `f32` fields produce three calls, and the second and
@@ -439,6 +494,13 @@ fn expand_struct(
                 };
                 let sync = &options.sync;
                 let interpolate = &options.interpolate;
+                let (default_info, on_missing) = field_default(
+                    canonical,
+                    &name,
+                    ty,
+                    &options,
+                    &quote! { KNOWN_FIELDS.join(", ") },
+                );
 
                 field_infos.push(quote! {
                     ::amadeo_reflect::FieldInfo {
@@ -447,6 +509,7 @@ fn expand_struct(
                         docs: #docs.to_string(),
                         range: #range,
                         unit: #unit,
+                        default: #default_info,
                         replication: ::amadeo_reflect::Replication {
                             sync: #sync,
                             interpolate: #interpolate,
@@ -466,15 +529,7 @@ fn expand_struct(
                         ::std::option::Option::Some(found) => {
                             <#ty as ::amadeo_reflect::Reflect>::from_value(found)?
                         }
-                        ::std::option::Option::None => {
-                            return ::std::result::Result::Err(
-                                ::amadeo_reflect::ReflectError::MissingField {
-                                    type_name: #canonical.to_string(),
-                                    field: #name.to_string(),
-                                    required: KNOWN_FIELDS.join(", "),
-                                },
-                            );
-                        }
+                        ::std::option::Option::None => #on_missing,
                     }
                 });
             }
@@ -621,6 +676,13 @@ fn expand_enum(
                     let field_unit = unit_tokens(&options);
                     let field_sync = &options.sync;
                     let field_interpolate = &options.interpolate;
+                    let (field_default_info, field_on_missing) = field_default(
+                        canonical,
+                        &field_name,
+                        ty,
+                        &options,
+                        &quote! { [#(#known),*].join(", ") },
+                    );
 
                     field_infos.push(quote! {
                         ::amadeo_reflect::FieldInfo {
@@ -629,6 +691,7 @@ fn expand_enum(
                             docs: #field_docs.to_string(),
                             range: #field_range,
                             unit: #field_unit,
+                            default: #field_default_info,
                             replication: ::amadeo_reflect::Replication {
                                 sync: #field_sync,
                                 interpolate: #field_interpolate,
@@ -648,15 +711,7 @@ fn expand_enum(
                             ::std::option::Option::Some(found) => {
                                 <#ty as ::amadeo_reflect::Reflect>::from_value(found)?
                             }
-                            ::std::option::Option::None => {
-                                return ::std::result::Result::Err(
-                                    ::amadeo_reflect::ReflectError::MissingField {
-                                        type_name: #canonical.to_string(),
-                                        field: #field_name.to_string(),
-                                        required: [#(#known),*].join(", "),
-                                    },
-                                );
-                            }
+                            ::std::option::Option::None => #field_on_missing,
                         }
                     });
 
@@ -808,6 +863,13 @@ fn parse_field_options(attrs: &[Attribute]) -> syn::Result<FieldOptions> {
                 options.unit = Some(meta.value()?.parse::<LitStr>()?.value());
                 return Ok(());
             }
+            if meta.path.is_ident("default") {
+                // `syn::Expr` stops at the next top-level comma, and a bracketed or parenthesised
+                // group is one token tree — so `default = [1.0, 1.0]` parses as one expression and
+                // the commas inside it are not mistaken for the next attribute option.
+                options.default = Some(meta.value()?.parse::<syn::Expr>()?);
+                return Ok(());
+            }
             if meta.path.is_ident("sync") {
                 let literal: LitStr = meta.value()?.parse()?;
                 options.sync = match literal.value().as_str() {
@@ -845,7 +907,8 @@ fn parse_field_options(attrs: &[Attribute]) -> syn::Result<FieldOptions> {
                 return Ok(());
             }
             Err(meta.error(
-                "unknown option; a field accepts skip, min, max, unit, sync, and interpolate",
+                "unknown option; a field accepts skip, min, max, unit, default, sync, and \
+                 interpolate",
             ))
         })?;
     }

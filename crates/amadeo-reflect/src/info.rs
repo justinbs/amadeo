@@ -127,6 +127,19 @@ pub struct FieldInfo {
     /// Prevents a whole class of "plausible but wrong": an agent that can see a field is in radians
     /// does not pass it degrees.
     pub unit: Option<String>,
+    /// What this field becomes when a file does not mention it — ADR 0075. `None` means required.
+    ///
+    /// Declared per field with `#[reflect(default = <expr>)]`, and **opt-in**: a field without one
+    /// still fails with [`ReflectError::MissingField`](crate::ReflectError::MissingField), which is
+    /// right for anything whose absence is a mistake rather than a shrug (`BoxMesh::size` has no
+    /// sensible default, and a zero-size box draws nothing while reporting no fault).
+    ///
+    /// Reported in the schema rather than kept in the attribute so that an agent authoring an asset
+    /// can *see* which fields it may leave out and what leaving them out means — `docs/12-the-bar.md`
+    /// §3, which is a stronger requirement than I5. It is deliberately outside ADR 0069's layout
+    /// fingerprint, alongside docs and ranges: a default cannot move a state hash, so fingerprinting
+    /// it would reject good saves over a change that provably does not matter.
+    pub default: Option<crate::Value>,
     /// Multiplayer annotations (ADR 0006).
     pub replication: Replication,
 }
@@ -260,6 +273,7 @@ mod tests {
             docs: String::new(),
             range: None,
             unit: None,
+            default: None,
             replication,
         }
     }

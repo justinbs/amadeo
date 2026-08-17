@@ -66,11 +66,17 @@ const GOOD: &str = "scene paint\nversion 1\n\nentity material \"Paint\"\n  Mater
                     normal_texture \"\"\n    roughness 0.5\n";
 
 #[test]
-fn a_material_missing_a_field_is_reported_rather_than_skipped_in_silence() {
-    // Exactly what adding a field to a component does to every file that predates it: `roughness`
-    // is gone, so the `Material` is present and cannot be built.
-    let broken = GOOD.replace("    roughness 0.5\n", "");
-    let directory = directory_with("asset_problem_missing_field", &broken);
+fn a_material_with_a_misspelled_field_is_reported_rather_than_skipped_in_silence() {
+    // This used to delete `roughness` outright, on the grounds that omitting a field is exactly what
+    // adding one does to every file that predates it. **ADR 0075 made that case legal** — every
+    // `Material` field declares a default now, so a file may leave any of them out.
+    //
+    // The mechanism under test is unaffected and still worth testing, so the vehicle changed to the
+    // case that is still a fault and always was one: a typo. `roughnes` is not a field, so the
+    // `Material` is present and cannot be built. That is a better vehicle anyway — a misspelling is
+    // what actually happens to a hand-authored file, where a deliberately omitted field is not.
+    let broken = GOOD.replace("    roughness 0.5\n", "    roughnes 0.5\n");
+    let directory = directory_with("asset_problem_misspelled_field", &broken);
 
     let mut app = app_wanting_the_material(&directory);
     app.load_materials();
@@ -99,8 +105,29 @@ fn a_material_missing_a_field_is_reported_rather_than_skipped_in_silence() {
         "and the component it holds, got: {reason}"
     );
     assert!(
-        reason.contains("roughness"),
-        "and the field that is missing, got: {reason}"
+        reason.contains("roughnes"),
+        "and the field that is wrong, got: {reason}"
+    );
+}
+
+#[test]
+fn a_material_that_omits_a_field_loads_at_its_default() {
+    // ADR 0075, at the level a game meets it: the file a session-14 author wrote is still valid after
+    // two fields were added, and the reverse is what matters here — a file may name only what it
+    // cares about. Q32 sat at P2 for six sessions because this was not possible.
+    let terse = "scene paint\nversion 1\n\nentity material \"Paint\"\n  Material\n    \
+                 base_colour 0.2 0.4 0.8 1.0\n";
+    let directory = directory_with("asset_problem_terse_material", terse);
+
+    let mut app = app_wanting_the_material(&directory);
+    app.load_materials();
+
+    assert!(
+        !app.has_asset_problems(),
+        "omitting a defaulted field is not a fault, got: {:?}",
+        app.asset_problems()
+            .map(|(id, reason)| format!("{id}: {reason}"))
+            .collect::<Vec<_>>()
     );
 }
 

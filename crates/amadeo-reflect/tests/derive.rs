@@ -285,6 +285,171 @@ fn enum_schema_lists_variants_and_their_docs() {
     );
 }
 
+// --- Declared defaults, ADR 0075 ---
+
+/// What a surface is made of, in miniature — the shape ADR 0075 exists for.
+///
+/// Modelled on the real `Material`, including the part that decided the design: a derived default
+/// would make this transparent black, so the defaults are *declared* rather than inferred.
+#[derive(Debug, Clone, PartialEq, Reflect)]
+struct Surface {
+    /// Linear RGBA. White, because white is the identity of the multiply a texture does.
+    #[reflect(default = [1.0, 1.0, 1.0, 1.0])]
+    tint: [f32; 4],
+    /// How strongly a normal map is applied. One is the map as authored.
+    #[reflect(min = 0.0, max = 4.0, default = 1.0)]
+    normal_strength: f32,
+    /// Declared asset id of the base colour texture. Empty means none.
+    #[reflect(default = String::new())]
+    texture: String,
+    /// How this surface deals with transparency.
+    #[reflect(default = Blending::Opaque)]
+    blending: Blending,
+    /// How rough it is. **No default**: a surface that does not say is a surface nobody decided on.
+    #[reflect(min = 0.0, max = 1.0)]
+    roughness: f32,
+}
+
+/// Deliberately an enum, because an enum is the case `default_value` refuses to guess.
+#[derive(Debug, Clone, Copy, PartialEq, Reflect)]
+enum Blending {
+    /// Fully opaque.
+    Opaque,
+    /// Cut out where the alpha falls below a threshold.
+    Mask,
+}
+
+impl Default for Surface {
+    /// Hand-written for `Material`'s reason: every field derived would be zero, and a fully
+    /// transparent black surface is an absence of one rather than a plain one.
+    fn default() -> Self {
+        Self {
+            tint: [1.0, 1.0, 1.0, 1.0],
+            normal_strength: 1.0,
+            texture: String::new(),
+            blending: Blending::Opaque,
+            roughness: 0.5,
+        }
+    }
+}
+
+#[test]
+fn a_field_with_a_declared_default_may_be_omitted() {
+    // The whole point of ADR 0075: adding a field to a component no longer invalidates every text
+    // file that spells that component out. Only `roughness` is required.
+    let terse = Value::structure([("roughness", Value::F32(0.6))]);
+    let surface = Surface::from_value(&terse).expect("the other four have declared defaults");
+
+    assert_eq!(
+        surface,
+        Surface {
+            roughness: 0.6,
+            ..Surface::default()
+        }
+    );
+}
+
+#[test]
+fn a_field_without_a_default_is_still_required() {
+    // The half of ADR 0075 that is not convenience: opting in per field is what keeps this error
+    // available for anything whose absence is a mistake rather than a shrug.
+    let missing_the_required_one = Value::structure([("normal_strength", Value::F32(1.0))]);
+    let error = Surface::from_value(&missing_the_required_one).expect_err("roughness is required");
+
+    assert_eq!(
+        error,
+        ReflectError::MissingField {
+            type_name: "Surface".to_string(),
+            field: "roughness".to_string(),
+            required: "tint, normal_strength, texture, blending, roughness".to_string(),
+        }
+    );
+}
+
+#[test]
+fn a_declared_default_is_reported_in_the_schema() {
+    // `docs/12-the-bar.md` §3: a rule that lives only in a Rust attribute is one an agent authoring
+    // an asset by hand cannot discover. So the schema carries the value, not just the fact.
+    let info = Surface::type_info();
+
+    assert_eq!(
+        info.field("normal_strength").expect("reflected").default,
+        Some(Value::F32(1.0))
+    );
+    assert_eq!(
+        info.field("texture").expect("reflected").default,
+        Some(Value::String(String::new()))
+    );
+    assert_eq!(
+        info.field("tint").expect("reflected").default,
+        Some(Value::List(vec![
+            Value::F32(1.0),
+            Value::F32(1.0),
+            Value::F32(1.0),
+            Value::F32(1.0),
+        ]))
+    );
+
+    // A required field is distinguishable from one that defaults to a zero-ish value, which is the
+    // distinction `default_value` alone cannot express.
+    assert_eq!(info.field("roughness").expect("reflected").default, None);
+}
+
+#[test]
+fn the_declared_defaults_agree_with_the_hand_written_default_impl() {
+    // ADR 0075's named hazard: the default is written twice, once in an attribute and once in
+    // `impl Default`, and nothing but this test stops the two drifting. A schema that advertises one
+    // value while the reader applies another is worse than no default at all, because it would be
+    // reported and then not happen.
+    let from_nothing =
+        Surface::from_value(&Value::structure([("roughness", Value::F32(0.5))])).expect("builds");
+
+    assert_eq!(from_nothing, Surface::default());
+}
+
+#[test]
+fn omitting_a_defaulted_field_builds_the_same_value_as_spelling_it_out() {
+    // Why this change cannot move a state hash, and therefore why it was safe to apply to existing
+    // components: the default is applied while building the value, so the two paths converge before
+    // anything downstream can tell them apart.
+    let terse = Surface::from_value(&Value::structure([("roughness", Value::F32(0.25))]))
+        .expect("defaults fill in");
+    let spelled_out = Surface::from_value(&Value::structure([
+        ("tint", Value::List(vec![Value::F32(1.0); 4])),
+        ("normal_strength", Value::F32(1.0)),
+        ("texture", Value::String(String::new())),
+        (
+            "blending",
+            Value::Enum(amadeo_reflect::EnumValue {
+                variant: "Opaque".to_string(),
+                payload: Box::new(Value::Unit),
+            }),
+        ),
+        ("roughness", Value::F32(0.25)),
+    ]))
+    .expect("nothing to fill in");
+
+    assert_eq!(terse, spelled_out);
+    assert_eq!(terse.to_value(), spelled_out.to_value());
+}
+
+#[test]
+fn a_misspelled_field_is_still_caught_when_the_real_one_has_a_default() {
+    // This is the check ADR 0075 leans on, and correcting Q32 turned on: a typo produces a *wrong
+    // field name*, and the unknown-field check catches that independently of whether the field it
+    // was meant to be has a default. Without this, defaults really would trade a guarantee away.
+    let typo = Value::structure([
+        ("normal_strenth", Value::F32(2.0)),
+        ("roughness", Value::F32(0.5)),
+    ]);
+    let error = Surface::from_value(&typo).expect_err("`normal_strenth` is not a field");
+
+    assert!(
+        matches!(&error, ReflectError::UnknownField { field, .. } if field == "normal_strenth"),
+        "expected an unknown-field error naming the typo, got {error}"
+    );
+}
+
 // --- Error quality. These are an agent's only feedback channel (Pillar 5). ---
 
 #[test]

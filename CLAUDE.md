@@ -191,7 +191,22 @@ crates/
                      `Value::Unit` for an absent Option, structs by recursion, and a **fixed-length
                      array at its real length**, since an empty list for `[f32; 2]` is rejected for
                      the wrong length and reads as a corrupt file rather than a missing default.
-                     **Refuses an enum**, deliberately and by name. Its tests live in `tests/`
+                     **Refuses an enum**, deliberately and by name.
+                     **A field may declare a default (ADR 0075, closing Q32)** —
+                     `#[reflect(default = <expr>)]`, a bare Rust expression type-checked against the
+                     field, so a file may omit it. **Opt-in per field**: one without a default still
+                     fails with `MissingField`, because `BoxMesh::size` has no sensible default and a
+                     zero-size box draws nothing while reporting no fault. **Not** ADR 0069's
+                     `default_value`, which would make a `.material` omitting `base_colour` load
+                     transparent black. Q32 blocked this for six sessions on a tension that did not
+                     survive checking: **`UnknownField` is what catches a typo**, not `MissingField`,
+                     and it is checked BEFORE any field is read. **Canonical form still writes every
+                     field**, so `amadeo fmt` is the migration tool with no new flag and no file's
+                     meaning depends on the engine's defaults. The default rides in the schema so
+                     `describe` reports it — a rule living only in an attribute is one an agent
+                     authoring an asset cannot discover (docs/12 §3). A default is written twice, in
+                     the attribute and in a hand-written `Default` impl; one test per such type
+                     asserts they agree. Its tests live in `tests/`
                      rather than inline because the derive emits `amadeo_reflect::` paths that do not
                      resolve inside the crate — `tests/derive.rs` is there for the same reason.
 ✅ amadeo-ecs         archetype SoA storage, resources, services, deferred commands,

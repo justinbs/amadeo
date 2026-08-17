@@ -159,6 +159,9 @@ fn field(name: &str, type_name: &str, docs: &str) -> FieldInfo {
         docs: docs.to_string(),
         range: None,
         unit: None,
+        // Required. These two are an event queue's own bookkeeping rather than authored data, so
+        // there is no file for a default to help (ADR 0075).
+        default: None,
         replication: Replication::default(),
     }
 }

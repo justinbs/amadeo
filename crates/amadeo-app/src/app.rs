@@ -49,6 +49,9 @@ fn raw_state_field(name: &str, docs: &str) -> FieldInfo {
         docs: docs.to_string(),
         range: None,
         unit: None,
+        // Required: a generator word is the whole of the RNG's state, and defaulting one to zero
+        // would silently restore a different stream (ADR 0075).
+        default: None,
         replication: Replication::default(),
     }
 }

@@ -797,7 +797,43 @@ authored art does, which is M3's exit gate.
 
 ---
 
-## Q32 · P2 · Every field added to `Material` rewrites every `.material` file
+## ~~Q32~~ · **Resolved — ADR 0075.** A field may declare a default, and canonical form still writes it
+
+**Resolved in session 21, and what unblocked it was checking the tension rather than weighing it.**
+Q32 argued that `MissingField` was load-bearing for two reasons and both turned out to be wrong:
+
+- **`UnknownField` is what catches a typo**, not `MissingField`. `from_value` checks for unknown fields
+  *before* it reads any field, so `roughnes 0.5` already fails naming the typo and listing the real
+  fields. A typo produces a wrong field *name*, and there is a check for exactly that.
+- **The prefab guarantee is about a missing component**, resolved by `ComponentRegistry`, and field
+  defaults do not touch it.
+
+What `MissingField` genuinely protects is a field actually absent from a file — which for a
+hand-authored asset is the case worth *allowing*. So the answer is Q32's own first option, made
+**opt-in per field**: `#[reflect(default = <expr>)]`, a bare Rust expression, type-checked against the
+field it decorates. A field without one stays required, because `BoxMesh::size` has no sensible
+default and a zero-size box draws nothing while reporting no fault.
+
+Justin chose it over blanket schema defaults and over `fmt --migrate`. The trap that decided it: ADR
+0069's `default_value` already exists and reusing it would have been the smallest change and
+**silently wrong** — a `.material` omitting `base_colour` would load transparent black, which
+`Material::default`'s own doc comment already calls "not a material so much as an absence of one".
+
+Two consequences worth carrying: **canonical form still writes every field**, so `amadeo fmt` is the
+migration tool with no new flag and no file's meaning depends on the engine version's defaults; and
+**the default is in the schema**, so `describe` reports which fields may be omitted — a rule living
+only in a Rust attribute is one an agent authoring an asset cannot discover (`docs/12` §3).
+
+Every field of `Material` now declares one, so a `.material` may be two lines where it was eight, and
+**no existing file changed** — all 65 asset files in the repository are byte-identical under
+`fmt --check`, because the default is applied while *building* a value and nothing downstream can tell
+the two paths apart. That is also why no replay, golden or pinned state hash moved.
+
+The original entry follows, because its statement of *why it mattered* is still the best one.
+
+---
+
+## Q32 (original) · Every field added to `Material` rewrites every `.material` file
 
 **Noticed in session 14 while adding two fields, and it is about the scene format rather than about
 materials.**
@@ -1625,3 +1661,4 @@ which has so far been argued rather than measured.
 | **Q2** — scene file syntax | **A custom, indentation-based, line-oriented format.** Chosen by Justin from four hand-written candidates; TOML is the fallback, *not* KDL | `adr/0014` |
 | Where hierarchy components live | `amadeo-transform`, below `amadeo-scene` — render, physics, and anim all need transforms | `adr/0015` |
 | **Q14** — where `describe` runs | **The game binary hosts the agent; `amadeo-cli` launches it and speaks JSON-RPC over stdio.** First transport is one-shot batch, not a live session; `App` owns the `ComponentRegistry`; the JSON parser is hand-written | `adr/0016` |
+| **Q32** — schema churn in text assets | **A field may declare a default** (`#[reflect(default = <expr>)]`), opt-in per field so anything whose absence is a mistake stays required. **Canonical form still writes every field**, which makes `amadeo fmt` the migration tool and keeps a file's meaning independent of the engine's defaults. The default is in the schema so `describe` reports it | `adr/0075` |

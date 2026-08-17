@@ -684,26 +684,35 @@ impl ArchMesh {
 /// The field list is the **metallic-roughness** model, which is what glTF 2.0 defines — chosen so
 /// that the importer ADR 0035 anticipates maps onto it directly rather than through a translation
 /// nobody can predict the losses of.
+/// # Every field declares a default — ADR 0075
+///
+/// So a `.material` may name only what it cares about, and the required set is empty. This type is
+/// the one Q32 was written about: it gained two fields in session 14 and five files had to change,
+/// and the two items behind it in the engine plan both wanted more.
+///
+/// The defaults are the same values [`Material::default`] gives, and a test asserts that — they are
+/// written twice, in an attribute and in the impl, and nothing else would stop the two drifting.
 #[derive(Debug, Clone, PartialEq, StableHash, Reflect)]
 pub struct Material {
     /// The surface colour, linear RGBA. Multiplied with [`Material::base_colour_texture`].
-    #[reflect(min = 0.0, max = 1.0)]
+    #[reflect(min = 0.0, max = 1.0, default = [1.0, 1.0, 1.0, 1.0])]
     pub base_colour: [f32; 4],
     /// `0.0` is a dielectric — wood, plastic, stone. `1.0` is bare metal. In-between is rare and
     /// usually means a blend mask rather than a real surface.
-    #[reflect(min = 0.0, max = 1.0)]
+    #[reflect(min = 0.0, max = 1.0, default = 0.0)]
     pub metallic: f32,
     /// `0.0` is a mirror, `1.0` is completely diffuse.
-    #[reflect(min = 0.0, max = 1.0)]
+    #[reflect(min = 0.0, max = 1.0, default = 0.5)]
     pub roughness: f32,
     /// Light this surface emits on its own, linear RGB. Black means none.
     ///
     /// Not clamped to 1.0: a value above it is what makes something register as a *source* once
     /// bloom is drawing, which is the point of the HDR target ADR 0034 introduced.
-    #[reflect(min = 0.0, max = 100.0)]
+    #[reflect(min = 0.0, max = 100.0, default = [0.0, 0.0, 0.0])]
     pub emissive: [f32; 3],
     /// Declared asset id of the base colour texture. **Empty means none**, matching
     /// [`Camera::environment`](crate::Camera) and `Sprite::texture`.
+    #[reflect(default = String::new())]
     pub base_colour_texture: String,
     /// Declared asset id of the normal map. **Empty means none.**
     ///
@@ -725,6 +734,7 @@ pub struct Material {
     /// It must also be a **tangent-space** map — the mostly-blue kind. Object-space maps exist and
     /// are a different thing entirely; nothing here would report the difference, and the surface
     /// would simply light wrong.
+    #[reflect(default = String::new())]
     pub normal_texture: String,
     /// How strongly [`Material::normal_texture`] is applied. `1.0` is the map as authored.
     ///
@@ -734,7 +744,7 @@ pub struct Material {
     ///
     /// Scales the sideways lean only, leaving the map's own direction alone, so `0.0` is exactly the
     /// flat surface and there is no value at which the frame degenerates.
-    #[reflect(min = 0.0, max = 4.0)]
+    #[reflect(min = 0.0, max = 4.0, default = 1.0)]
     pub normal_strength: f32,
     /// Declared asset id of the metallic-roughness map. **Empty means none.**
     ///
@@ -750,6 +760,7 @@ pub struct Material {
     ///
     /// Like a normal map, this is **data rather than colour**, so its sidecar wants
     /// `color_space = "linear"` (**Q31**).
+    #[reflect(default = String::new())]
     pub metallic_roughness_texture: String,
 }
 
@@ -1979,6 +1990,42 @@ mod tests {
         };
         let back = Material::from_value(&material.to_value()).expect("round trips");
         assert_eq!(back, material);
+    }
+
+    #[test]
+    fn a_material_that_names_nothing_is_the_default_material() {
+        // ADR 0075's named hazard, on the type the ADR was written for: every default is written
+        // twice, once in a `#[reflect(default = ...)]` attribute and once in `impl Default`, and
+        // nothing but this test stops the two drifting. A schema that advertises white while the
+        // reader applies transparent black is worse than no default at all.
+        use amadeo_reflect::{Reflect, Value};
+        let nothing = Value::Struct(std::collections::BTreeMap::new());
+
+        assert_eq!(
+            Material::from_value(&nothing).expect("every field declares a default"),
+            Material::default()
+        );
+    }
+
+    #[test]
+    fn a_material_may_name_only_what_it_cares_about() {
+        // The authoring win, and the reason ADR 0075 exists rather than `fmt --migrate`: this is what
+        // a person or an agent writing a `.material` by hand can now get away with, against eight
+        // lines before. `docs/12-the-bar.md` §3.
+        use amadeo_reflect::{Reflect, Value};
+        let terse = Value::structure([
+            ("base_colour", Value::List(vec![Value::F32(0.5); 4])),
+            ("roughness", Value::F32(0.2)),
+        ]);
+
+        assert_eq!(
+            Material::from_value(&terse).expect("the rest default"),
+            Material {
+                base_colour: [0.5, 0.5, 0.5, 0.5],
+                roughness: 0.2,
+                ..Material::default()
+            }
+        );
     }
 
     #[test]
