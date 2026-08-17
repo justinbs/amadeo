@@ -1917,6 +1917,26 @@ Two things about how it hid:
 - **`amadeo check` could not see it**, and neither could a green test suite. Both are about text and
   rules. The cheapest check that would have caught it is a test that stands the player on the floor.
 
+### Its general form: a rule inferred from the cases tried so far
+
+Session 21 found the same shape a third time, so it is a pattern rather than three coincidences.
+**A plausible value substituted where nobody made a decision**, which is right for every case anyone
+has looked at and silently wrong for the next one:
+
+| Where | The substitute | Where it stopped being true |
+|---|---|---|
+| `GlobalTransform` | falls back to the local transform when absent | right for a root, wrong for a child — and it hid three defects at once |
+| `Layout`'s key placement | `max_by_key` returns the **last** maximum | fine until every room tied, when the tie-break silently *became* the rule |
+| A capture test's camera | `if eye[2] < 0.0 { 180.0 } else { 0.0 }` | right for a camera behind the subject, wrong for one beside it — the shape left frame entirely |
+
+The tell in all three is a **derivation standing in for a decision**: two lines of arithmetic that
+happen to produce the right answer for the two or three inputs anyone has passed. The fix is the same
+each time — **write the value down per case** — and it is worth more than it looks, because in each
+instance the wrong answer was *plausible* rather than absurd, so nothing downstream complained.
+
+When you find yourself computing something that a caller could simply state, ask which cases you have
+actually tried. If the answer is "the ones in front of me", state it instead.
+
 ### A mesh now has three independent properties, not two
 
 The entry above pairs **normals** and **winding** and says getting one right does not check the other.
