@@ -154,7 +154,8 @@ That is what is still down there, and it is still doing that job. It is counting
 
 **It is never clearly seen.** This is Frictional's Lesson 7 — silhouettes frighten more than
 close-ups — and it is also the honest truth about the engine, which has no skeletal animation
-(`06-open-questions.md`, blocked on a rigged model). A design that required a convincing walk cycle
+(`docs/04` §14 and ADR 0066 §5, blocked on a rigged model; **Q41**). A design that required a
+convincing walk cycle
 would be a design that shipped badly. A design built on *not showing it* is better horror **and**
 better engineering, and those agreeing is the sign the design fits.
 

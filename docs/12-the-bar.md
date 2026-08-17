@@ -69,7 +69,9 @@ Three things fall out of the full list:
 - **2D and isometric are not optional.** Three of the nine are 2D or isometric, which matches trap 9
   in `CLAUDE.md` and the target list in `00-vision.md`. `mod-tilemap` currently sits in M7.
 - **Skeletal animation is required.** Palworld is creatures; Zomboid and Kenshi are people. The
-  engine has none, and `docs/06` records it as blocked on a rigged model.
+  engine has none, and `docs/04` §14 and ADR 0066 §5 both record it as blocked on a rigged model the
+  repository does not have. **Now `Q41`**, because a thing this document raises to a requirement is
+  no longer a note in a subsystem list.
 - **Procedural generation is the through-line.** Five of the nine are built on it, and it is the one
   area where this engine is already genuinely strong.
 

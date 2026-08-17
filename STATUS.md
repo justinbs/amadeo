@@ -290,9 +290,9 @@ the bar's own audit:
   raw-geometry line, so a Rust binary can emit a texture, a sound and an environment map but **not a
   model**. That is the single largest gap between this engine and the requirement that Claude can
   author a game's assets.
-- **Skeletal animation**, which `docs/06` records as blocked on a rigged model and which
-  `docs/12-the-bar.md` reclassifies as the engine's problem to solve — three of the nine target games
-  are impossible without it.
+- **Skeletal animation**, which `docs/04` §14 and ADR 0066 §5 record as blocked on a rigged model and
+  which `docs/12-the-bar.md` reclassifies as the engine's problem to solve — three of the nine target
+  games are impossible without it. Open as **Q41** since session 21.
 
 **Every named M3 subsystem and all five named genre modules now exist.** What is left in the
 milestone is mostly the exit gate itself.

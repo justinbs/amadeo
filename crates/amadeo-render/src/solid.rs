@@ -88,6 +88,18 @@ pub struct CylinderMesh {
     /// been closed reads as a hole.
     #[reflect(default = true)]
     pub capped: bool,
+    /// Shade each facet as a flat plane instead of blending across the curve.
+    ///
+    /// **This is the difference between a low-poly prop and a smooth one at the same triangle count.**
+    /// Smooth normals blend across a facet edge, which is right for a drum meant to read as round and
+    /// wrong for a six-sided post meant to read as six-sided: the silhouette stays hexagonal while the
+    /// shading pretends it is a tube, and the result looks unfinished rather than stylised.
+    /// `docs/12-the-bar.md` §3 makes low poly a first-class art direction, so this is not an
+    /// afterthought.
+    ///
+    /// Defaults to **smooth**, which is what every existing asset already gets.
+    #[reflect(default = false)]
+    pub flat: bool,
 }
 
 impl Default for CylinderMesh {
@@ -98,6 +110,7 @@ impl Default for CylinderMesh {
             height: 1.0,
             sides: DEFAULT_SIDES,
             capped: true,
+            flat: false,
         }
     }
 }
@@ -126,8 +139,10 @@ impl CylinderMesh {
         let scale = (1.0 + lean * lean).sqrt();
 
         let mut data = MeshData::default();
-        let ring = |radius: f32, y: f32, step: u32| -> ([f32; 3], [f32; 3]) {
-            let (sine, cosine) = sin_cos_degrees(360.0 * step as f32 / sides as f32);
+        // `step` is a float so a facet's **midpoint** can be sampled as well as its edges, which is
+        // what a flat normal needs -- see below.
+        let ring = |radius: f32, y: f32, step: f32| -> ([f32; 3], [f32; 3]) {
+            let (sine, cosine) = sin_cos_degrees(360.0 * step / sides as f32);
             (
                 [radius * sine, y, radius * cosine],
                 [sine / scale, lean / scale, cosine / scale],
@@ -137,11 +152,25 @@ impl CylinderMesh {
         // The side, as a quad strip. `sides + 1` positions so the seam has its own pair of vertices
         // with u = 0 and u = 1 -- sharing them would wrap the texture backwards across one facet.
         for step in 0..sides {
-            let (a_low, a_normal) = ring(bottom, -half, step);
-            let (a_high, _) = ring(top, half, step);
-            let (b_low, b_normal) = ring(bottom, -half, step + 1);
-            let (b_high, _) = ring(top, half, step + 1);
+            let (a_low, a_edge_normal) = ring(bottom, -half, step as f32);
+            let (a_high, _) = ring(top, half, step as f32);
+            let (b_low, b_edge_normal) = ring(bottom, -half, (step + 1) as f32);
+            let (b_high, _) = ring(top, half, (step + 1) as f32);
             let (u0, u1) = (step as f32 / sides as f32, (step + 1) as f32 / sides as f32);
+
+            // **Where flat shading happens, and why it is one line rather than a second code path.**
+            // The vertices are already unshared per facet -- they have to be, for the seam's UVs -- so
+            // giving all four the *facet's* normal is the whole of it. The facet's normal is the ring
+            // normal half a step along, which is exact rather than approximate, and is why this does
+            // not use `MeshData::flat_shade`: that works per *triangle*, and on a cone the two
+            // triangles of one facet are not coplanar, so it would put a crease down the middle of
+            // every side.
+            let (a_normal, b_normal) = if self.flat {
+                let (_, facet) = ring(bottom, -half, step as f32 + 0.5);
+                (facet, facet)
+            } else {
+                (a_edge_normal, b_edge_normal)
+            };
 
             let first = data.vertices.len() as u32;
             for (position, normal, uv) in [
@@ -233,6 +262,16 @@ pub struct SphereMesh {
     /// Divisions from pole to pole.
     #[reflect(min = 2.0, max = 128.0, default = DEFAULT_SIDES / 2)]
     pub rings: u32,
+    /// Shade each facet as a flat plane instead of blending across the curve.
+    ///
+    /// See [`CylinderMesh::flat`]. It matters more on a sphere than anywhere else: a smooth 12×6 ball
+    /// has a visibly polygonal *outline* and perfectly round *shading*, so it reads as a low-poly
+    /// model somebody forgot to finish. Faceted, the same 144 triangles read as deliberate.
+    ///
+    /// Defaults to **smooth**, which is also the cheaper of the two here — see
+    /// [`SphereMesh::tessellate`].
+    #[reflect(default = false)]
+    pub flat: bool,
 }
 
 impl Default for SphereMesh {
@@ -241,6 +280,7 @@ impl Default for SphereMesh {
             radius: 0.5,
             segments: DEFAULT_SIDES,
             rings: DEFAULT_SIDES / 2,
+            flat: false,
         }
     }
 }
@@ -249,28 +289,61 @@ impl Component for SphereMesh {}
 
 impl SphereMesh {
     /// Turns the parameters into geometry.
+    ///
+    /// # Smooth shares its vertices; flat cannot
+    ///
+    /// A smooth sphere's normal at a grid point is the same for all four quads meeting there, so one
+    /// vertex serves all four and a 12×6 ball is 91 vertices. This used to emit four **unshared**
+    /// vertices per quad regardless — 288 for the same 144 triangles, paying flat shading's cost
+    /// without getting any faceting for it.
+    ///
+    /// Flat needs the unsharing, because a facet's corners carry that facet's normal and a shared
+    /// corner cannot carry four different ones. So the two paths differ in exactly that, and the
+    /// branch below is the whole difference.
     #[must_use]
     pub fn tessellate(&self) -> MeshData {
         let segments = self.segments.clamp(SIDE_LIMITS.0, SIDE_LIMITS.1);
         let rings = self.rings.clamp(2, SIDE_LIMITS.1);
         let radius = self.radius.max(0.0001);
 
+        // A point on the unit sphere from fractional ring and segment counts. Fractional so a facet's
+        // **midpoint** can be sampled for its flat normal, exactly as the cylinder's `ring` does.
+        let unit_at = |ring: f32, segment: f32| -> [f32; 3] {
+            // 0 at the north pole, 180 at the south.
+            let (sin_lat, cos_lat) = sin_cos_degrees(180.0 * ring / rings as f32);
+            let (sin_lon, cos_lon) = sin_cos_degrees(360.0 * segment / segments as f32);
+            [sin_lat * sin_lon, cos_lat, sin_lat * cos_lon]
+        };
+
         // The whole grid first, then the quads over it. Sampling each vertex from its own angles
         // rather than accumulating means a rounding error cannot walk the sphere open at the seam.
         let mut grid: Vec<([f32; 3], [f32; 2])> = Vec::new();
         for ring in 0..=rings {
-            // 0 at the north pole, 180 at the south.
-            let (sin_lat, cos_lat) = sin_cos_degrees(180.0 * ring as f32 / rings as f32);
             for segment in 0..=segments {
-                let (sin_lon, cos_lon) = sin_cos_degrees(360.0 * segment as f32 / segments as f32);
                 grid.push((
-                    [sin_lat * sin_lon, cos_lat, sin_lat * cos_lon],
+                    unit_at(ring as f32, segment as f32),
                     [segment as f32 / segments as f32, ring as f32 / rings as f32],
                 ));
             }
         }
 
         let mut data = MeshData::default();
+        let scaled = |unit: [f32; 3]| [unit[0] * radius, unit[1] * radius, unit[2] * radius];
+
+        if !self.flat {
+            // One vertex per grid point, shared by every quad that meets there.
+            for (unit, uv) in &grid {
+                data.vertices.push(Vertex {
+                    // On a sphere centred at the origin the unit position *is* the normal, which is
+                    // the one place in this module where that shortcut is honest.
+                    position: scaled(*unit),
+                    normal: *unit,
+                    uv: *uv,
+                    ..Vertex::default()
+                });
+            }
+        }
+
         let stride = segments + 1;
         for ring in 0..rings {
             for segment in 0..segments {
@@ -280,24 +353,50 @@ impl SphereMesh {
                     ((ring + 1) * stride + segment + 1) as usize,
                     ((ring + 1) * stride + segment) as usize,
                 ];
-                let first = data.vertices.len() as u32;
-                for index in corners {
-                    let (unit, uv) = grid[index];
-                    data.vertices.push(Vertex {
-                        // On a sphere centred at the origin the unit position *is* the normal, which
-                        // is the one place in this module where that shortcut is honest.
-                        position: [unit[0] * radius, unit[1] * radius, unit[2] * radius],
-                        normal: unit,
-                        uv,
-                        ..Vertex::default()
-                    });
-                }
+
+                let base = if self.flat {
+                    // This facet's own normal, sampled at its centre. Exact rather than averaged, and
+                    // the reason this does not use `MeshData::flat_shade`: that is per *triangle*, and
+                    // a sphere's quad is not planar, so it would crease every facet down its diagonal.
+                    let facet = unit_at(ring as f32 + 0.5, segment as f32 + 0.5);
+                    let first = data.vertices.len() as u32;
+                    for index in corners {
+                        let (unit, uv) = grid[index];
+                        data.vertices.push(Vertex {
+                            position: scaled(unit),
+                            normal: facet,
+                            uv,
+                            ..Vertex::default()
+                        });
+                    }
+                    first
+                } else {
+                    0
+                };
+
                 // **Reversed from the usual order**, for the same reason the caps are: longitude is
                 // walked as `[sin, ·, cos]`, which runs clockwise seen from +Y, while latitude runs
                 // downward — so the corners as listed are clockwise from outside and the quad has to
                 // be wound the other way to face out.
-                data.indices
-                    .extend([first, first + 2, first + 1, first, first + 3, first + 2]);
+                //
+                // Indices are into the shared grid when smooth, and into this facet's own four
+                // vertices when flat — which is what `base` and `local` reconcile.
+                for triangle in [[0_usize, 2, 1], [0, 3, 2]] {
+                    let positions = triangle.map(|corner| scaled(grid[corners[corner]].0));
+                    // Every quad touching a pole has one degenerate triangle, because both of its
+                    // top (or bottom) corners *are* the pole. Emitting them costs indices and gives
+                    // `every_primitive_is_wound_to_match_its_own_normals` something it has to skip.
+                    if !has_area(positions[0], positions[1], positions[2]) {
+                        continue;
+                    }
+                    data.indices.extend(triangle.map(|corner| {
+                        if self.flat {
+                            base + u32::try_from(corner).unwrap_or(0)
+                        } else {
+                            u32::try_from(corners[corner]).unwrap_or(0)
+                        }
+                    }));
+                }
             }
         }
 
@@ -649,6 +748,35 @@ mod tests {
                 .tessellate(),
             ),
             ("sphere", SphereMesh::default().tessellate()),
+            // The faceted variants, because `flat` changes the *normals* and this test compares
+            // winding against them — so a flat shape is a genuinely new case here rather than the
+            // same geometry twice. The cone is the one that matters: its facet normal is sampled at a
+            // different angle from its corners, which is exactly where a sign could go wrong.
+            (
+                "faceted cylinder",
+                CylinderMesh {
+                    flat: true,
+                    ..CylinderMesh::default()
+                }
+                .tessellate(),
+            ),
+            (
+                "faceted cone",
+                CylinderMesh {
+                    top_radius: 0.0,
+                    flat: true,
+                    ..CylinderMesh::default()
+                }
+                .tessellate(),
+            ),
+            (
+                "faceted sphere",
+                SphereMesh {
+                    flat: true,
+                    ..SphereMesh::default()
+                }
+                .tessellate(),
+            ),
             ("wedge", WedgeMesh::default().tessellate()),
             (
                 "flat wedge",
@@ -676,6 +804,7 @@ mod tests {
             height: 5.0,
             sides: 32,
             capped: true,
+            flat: false,
         };
         let data = solid.tessellate();
         let widest = data.vertices.iter().fold(0.0f32, |wide, v| {
@@ -704,6 +833,7 @@ mod tests {
             height: 2.0,
             sides: 16,
             capped: false,
+            flat: false,
         }
         .tessellate();
 
@@ -727,6 +857,7 @@ mod tests {
             radius: 3.0,
             segments: 24,
             rings: 12,
+            flat: false,
         }
         .tessellate();
         for vertex in &data.vertices {
@@ -868,6 +999,81 @@ mod tests {
                 "a default `{name}` is {widest} across, which is not a shape anybody can see"
             );
         }
+    }
+
+    #[test]
+    fn faceting_gives_each_facet_one_normal_and_smoothing_does_not() {
+        // The whole of what `flat` is for, stated as the thing you could see on a screen: on a faceted
+        // shape every vertex of one facet shares a normal and the next facet's differs, so the edge
+        // between them catches light. On a smooth one the normals vary continuously, so it does not.
+        //
+        // Counting *distinct* normals is what separates the two without depending on any particular
+        // facet's direction. A 12-sided cylinder has 12 side facets, so faceted it has 12 side
+        // normals; smooth it has one per ring position, which is 13 — the seam is doubled so its UVs
+        // can run 0 to 1. Those numbers being close is fine: the test is that the flat one is
+        // *constant within a facet*, which is checked directly below.
+        let faceted = CylinderMesh {
+            capped: false,
+            flat: true,
+            ..CylinderMesh::default()
+        }
+        .tessellate();
+
+        // Four vertices per facet, in facet order, so a chunk is exactly one facet.
+        for (index, facet) in faceted.vertices.chunks_exact(4).enumerate() {
+            let first = facet[0].normal;
+            for vertex in facet {
+                assert_eq!(
+                    vertex.normal, first,
+                    "facet {index} of a faceted cylinder has more than one normal, so it will \
+                     still shade as a curve"
+                );
+            }
+        }
+
+        let smooth = CylinderMesh {
+            capped: false,
+            ..CylinderMesh::default()
+        }
+        .tessellate();
+        let varies_within_a_facet = smooth
+            .vertices
+            .chunks_exact(4)
+            .any(|facet| facet.iter().any(|v| v.normal != facet[0].normal));
+        assert!(
+            varies_within_a_facet,
+            "a smooth cylinder's facets each have one normal, which is flat shading by accident"
+        );
+    }
+
+    #[test]
+    fn a_smooth_sphere_shares_its_vertices_and_a_faceted_one_cannot() {
+        // A smooth sphere's normal at a grid point is the same for all four quads meeting there, so
+        // one vertex serves all four. This used to emit four unshared vertices per quad regardless —
+        // paying flat shading's vertex cost without getting any faceting for it, which is three times
+        // the vertices for the same picture.
+        let smooth = SphereMesh::default().tessellate();
+        let faceted = SphereMesh {
+            flat: true,
+            ..SphereMesh::default()
+        }
+        .tessellate();
+
+        // 12 segments and 6 rings: a shared grid is 13 × 7 = 91.
+        assert_eq!(smooth.vertices.len(), 91);
+        // Faceted has to unshare, because a corner cannot carry four facets' normals at once.
+        assert!(
+            faceted.vertices.len() > smooth.vertices.len() * 2,
+            "faceted came out at {} vertices, which is too few to be unshared",
+            faceted.vertices.len()
+        );
+
+        // Both describe the same surface, and the pole triangles are dropped from both.
+        assert_eq!(smooth.indices.len(), faceted.indices.len());
+        assert!(
+            smooth.indices.iter().all(|i| (*i as usize) < 91),
+            "an index points outside the shared grid"
+        );
     }
 
     #[test]

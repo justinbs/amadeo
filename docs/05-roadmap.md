@@ -2,6 +2,20 @@
 
 Read the current milestone at the start of every session. Check `STATUS.md` for actual progress.
 
+> ## ⚠ Two documents supersede this one, and reading only this one gets you the old plan
+>
+> - **`docs/12-the-bar.md`** raises the standard every milestone below is measured at, and changes
+>   what is in them. Where this file and that one disagree, **that one wins** — the disagreements are
+>   marked ⬆ **RAISED BY THE BAR** where they occur. It also sets a four-part gate order (design the
+>   game → improve the engine → add what is missing → build the game) and makes the critic agent's
+>   verdict binding, neither of which this file describes.
+> - **`docs/13-the-engine-gate.md`** is the current work. The project is inside gate 2 of that order,
+>   which is not a milestone in this file and does not appear below.
+>
+> Session 21's engine review found this file and the bar giving **opposite instructions about the
+> same work** — 2D modules and pathfinding — with neither citing the other. That is what this box is
+> for.
+
 ## How milestones work here
 
 Every milestone ends in something **runnable**, and every milestone has an **exit gate** — a
@@ -393,6 +407,11 @@ in documents nobody is allowed to correct.
     read rather than reasoned about. `games/atrium` has a brass key you walk up to, pick up, carry
     through a save, and drop. Still to come: equipment, weight, a grid layout.
   2D modules (`mod-tilemap`, `mod-platformer2d`) drop to M7 unless a specific need arises.
+  ⬆ **RAISED BY THE BAR.** `docs/12` §2 names "tilemaps and isometric sorting" as the first thing
+  the three first-class targets demand together, and §5 says in as many words that M7's 2D modules
+  are "a capability the engine must have, not a deferred nicety". Project Zomboid is isometric 2.5D.
+  So `mod-tilemap` and isometric y-sorting are **not** deferred; they are engine-gate work, tracked
+  in `docs/13`.
 
 **Exit gate**
 
@@ -446,6 +465,26 @@ test of the renderer. Reasoning in `00-vision.md` § The first game to actually 
 7. Built collaboratively: Justin does some of it, Claude does some of it, in the same repo, with clean
    git history and no merge disasters.
 8. Runs at a stable 60fps on this machine, verified against declared budgets.
+   ⚠ **Cannot be closed by what exists.** The only GPU measurement in the repository is **640×360
+   with 20 untextured meshes** (`docs/10-frame-budget.md`), which that document is honest about
+   calling "a measurement of draw submission rather than of shading". Widening the evidence base is
+   item 19 of `docs/13-the-engine-gate.md`.
+
+> ### ⚠ M3 is paused, and the gate order is why
+>
+> `docs/12-the-bar.md` §4 set a four-part order — design the game, improve the engine, add what is
+> missing, then build the game — after Justin judged `games/warren` a bland engine test. The project
+> is in **part 2**, which is `docs/13-the-engine-gate.md` and is not a milestone in this file.
+>
+> Items 4, 7 and 8 above were never marked, and item 4 now **disagrees with the design**:
+> `docs/11-the-warren.md` removes the key and the locked door that item 4 names, on the grounds that
+> "a locked door and there's a key for it" is a simpleton's idea of a game. The gate item is the
+> thing that is out of date, not the design.
+>
+> Two ADRs landed against this milestone after it paused and belong in its record: **ADR 0074**
+> (geometry becomes parametric — the content language had one noun, which is most of why the games
+> look the way they do) and **ADR 0075** (a field may declare a default, closing Q32 and unblocking
+> every future `Material` field).
 
 ---
 
@@ -454,6 +493,14 @@ test of the renderer. Reasoning in `00-vision.md` § The first game to actually 
 *Goal: full human authoring, with parity preserved.*
 
 **Build**
+- **The write half of the agent protocol, first.** ⬆ **RAISED BY THE BAR**, and moved *here* by
+  session 21's engine review rather than being done earlier. The protocol is 100% read-only — 17
+  methods, none mutating — and `docs/protocol/v1.md` §594 already says the mutating ones need a
+  persistent session. That session's only real client is this milestone's undo/redo and live-tweak
+  loop, so building it sooner means designing a transport against **no client**, which is how this
+  engine acquired cascaded shadows, PBR, normal mapping and 16× anisotropy that had never drawn a
+  textured pixel in a game. Needs an ADR before code: spawn semantics, transactionality and undo are
+  all expensive to change.
 - `amadeo-editor` as a separate-process RPC client (see `04-subsystems.md` §16).
 - Scene tree panel, generated inspector, asset browser, viewport with camera controls.
 - Transform gizmos, multi-select, snapping.
@@ -463,6 +510,12 @@ test of the renderer. Reasoning in `00-vision.md` § The first game to actually 
 - Live tweaking of a running game, with the option to persist changes back to text.
 
 **Exit gate**
+
+⬆ **RAISED BY THE BAR: gate 2 now depends on `docs/12` §3 being settled.** "Claude builds an
+equivalent level using only text and RPC" is not a real test of parity if Claude cannot author the
+level's *assets* — its meshes, textures and sounds — which is why the bar puts that requirement
+before this milestone rather than inside it.
+
 1. Justin builds a complete level using **only** the editor, never opening a text file.
 2. Claude builds an equivalent level using **only** text and RPC, never opening the editor.
 3. Both scenes load identically, round-trip byte-stably, and produce reviewable diffs when the other
@@ -523,7 +576,14 @@ much novel code a new game needs.
 
 Toward the target games: `mod-worldclock` (day/night, NPC schedules — Schedule I and Palworld both need
 it), `mod-crafting`, `mod-building` (base/property placement), `mod-creature` (companion AI, taming),
-`mod-pathfinding`, `mod-dialogue`, `mod-vfx`. 2D modules (`mod-tilemap`, `mod-topdown`) land here.
+`mod-dialogue`, `mod-vfx`.
+
+⬆ **RAISED BY THE BAR: `mod-pathfinding` and the 2D modules (`mod-tilemap`, `mod-topdown`) are no
+longer here.** Two of the three first-class targets are defined by navigation — Zomboid's zombies
+route through a dense tile world, Schedule I's NPCs walk interiors — and `modules/amadeo-behaviour`
+gives an agent a mind while `modules/amadeo-character` gives it legs, with nothing in between:
+`games/atrium`'s watcher walks through pillars and says so in its own code. Both are engine-gate work
+now, tracked in `docs/13-the-engine-gate.md`.
 
 Remaining deferred items become live options: terrain and world streaming (needed for a Palworld-scale
 open world), localization, mobile, visual scripting.

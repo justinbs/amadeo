@@ -23,9 +23,10 @@
 
 use amadeo_ecs::World;
 use amadeo_render::{
-    ArchMesh, BoxMesh, Camera, DirectionalLight, Environment, EnvironmentCache, Fog, Material,
-    MaterialCache, Mesh, MeshCache, NullBackend, PointLight, Quad, RenderBackend, Renderer,
-    ShadowMode, SpotLight, TextureData, Vignette, WgpuBackend, render_quads,
+    ArchMesh, BoxMesh, Camera, CylinderMesh, DirectionalLight, Environment, EnvironmentCache, Fog,
+    Material, MaterialCache, Mesh, MeshCache, MeshData, NullBackend, PointLight, Quad,
+    RenderBackend, Renderer, ShadowMode, SphereMesh, SpotLight, StairMesh, TextureData, Vignette,
+    WedgeMesh, WgpuBackend, render_quads,
 };
 use amadeo_transform::Transform;
 
@@ -1897,5 +1898,166 @@ fn an_arch_draws_as_a_vault_rather_than_a_box() {
     assert!(
         crown[0] > corner[0] + 20,
         "a vault falls off from crown to springing; crown {crown:?} corner {corner:?}"
+    );
+}
+
+/// A world holding one shape at the origin, lit from one side, with the camera looking at it.
+///
+/// Shared by the ADR 0074 capture tests below so they differ only in the shape and in what they
+/// assert about the pixels. The light is deliberately **off to one side** rather than behind the
+/// camera: a head-on light flattens everything and would make a faceted and a smooth shape look
+/// nearly the same, which is the one thing these tests have to tell apart.
+fn world_showing(mesh: MeshData) -> World {
+    let mut world = World::new();
+
+    let eye = world.spawn();
+    let mut place = Transform::at(0.0, 0.0);
+    place.translation = [0.0, 0.0, 3.0];
+    world.insert(eye, place);
+    world.insert(eye, Camera::perspective(45.0));
+
+    let mut meshes = MeshCache::new();
+    meshes.insert("subject", mesh);
+    world.insert_service(meshes);
+
+    let mut materials = MaterialCache::new();
+    materials.insert(
+        "chalk",
+        Material {
+            base_colour: [0.55, 0.53, 0.5, 1.0],
+            roughness: 0.9,
+            ..Material::default()
+        },
+    );
+    world.insert_service(materials);
+
+    let subject = world.spawn();
+    world.insert(subject, Transform::at(0.0, 0.0));
+    world.insert(subject, Mesh::new("subject", "chalk"));
+
+    // A light aims like a camera — along its own negative Z — so its direction is a rotation rather
+    // than a vector, which is the vocabulary a scene file has. Pitched down and yawed round to the
+    // left, so the subject is lit from off to one side.
+    let sun = world.spawn();
+    world.insert(
+        sun,
+        Transform {
+            rotation: [-25.0, 40.0, 0.0],
+            ..Transform::default()
+        },
+    );
+    world.insert(
+        sun,
+        DirectionalLight {
+            colour: [1.0, 0.97, 0.92],
+            // Deliberately modest. At 3.0 against a bright material every lit pixel clipped to 255,
+            // so a smooth sphere and a faceted one produced byte-identical flat white — the shading
+            // these tests exist to compare was entirely above the top of the range.
+            intensity: 1.0,
+            ..DirectionalLight::default()
+        },
+    );
+
+    world
+}
+
+#[test]
+fn every_parametric_shape_draws_something() {
+    // ADR 0074's set, on a screen. Its unit tests pin the geometry; this pins that the geometry
+    // becomes pixels — which is a separate claim, and the one the session that added these shapes
+    // made in a commit message rather than in the repository.
+    //
+    // The bar is low on purpose: *something* other than the background, in the middle of the frame.
+    // A shape that tessellates correctly and draws nothing is the failure this catches, and it is a
+    // real one — an inverted normal renders black under ADR 0052 rather than disappearing.
+    for (name, mesh) in [
+        ("cylinder", CylinderMesh::default().tessellate()),
+        (
+            "cone",
+            CylinderMesh {
+                top_radius: 0.0,
+                ..CylinderMesh::default()
+            }
+            .tessellate(),
+        ),
+        ("sphere", SphereMesh::default().tessellate()),
+        ("wedge", WedgeMesh::default().tessellate()),
+        ("stair", StairMesh::default().tessellate()),
+    ] {
+        let mut world = world_showing(mesh);
+        let Some(image) = capture(&mut world, 96, 96) else {
+            return;
+        };
+
+        // A grid over the middle of the frame rather than one centre pixel, because these shapes do
+        // not share an origin: a cylinder and a sphere are centred on theirs, while a wedge and a
+        // stair sit *on* y = 0 because they are things you put on a floor. So the exact centre of the
+        // frame is the middle of a sphere and the bottom edge of a wedge, and sampling it alone
+        // reported the wedge as missing when it was merely below the crosshair.
+        let background = pixel_at(&image, 2, 2);
+        let drawn = (24..72)
+            .step_by(8)
+            .flat_map(|x| (24..72).step_by(8).map(move |y| (x, y)))
+            .filter(|(x, y)| pixel_at(&image, *x, *y) != background)
+            .count();
+
+        assert!(
+            drawn >= 6,
+            "a `{name}` covered only {drawn} of 36 sample points in the middle of the frame, so it \
+             either did not draw or is the same colour as the background {background:?}"
+        );
+    }
+}
+
+#[test]
+fn a_faceted_sphere_reads_as_faceted_and_a_smooth_one_does_not() {
+    // **The art-direction claim, checked as pixels rather than as normals.** `docs/12-the-bar.md` §3
+    // makes low poly first-class, and the whole of what makes a low-poly shape read as deliberate is
+    // that its facets catch light in flat steps while its silhouette stays angular. A smooth sphere
+    // at the same triangle count has a polygonal outline and perfectly continuous shading, which is
+    // what reads as unfinished.
+    //
+    // Measured as **how many times the brightness steps** along a horizontal line across the ball.
+    // The two scanlines this produces are worth writing down, because they are the feature:
+    //
+    //   flat  [144 ×28, 183 ×28]                 — two facets, each one constant value
+    //   smooth[145, 147, 149, 150, 152, … , 194] — a continuous ramp, changing nearly every pixel
+    //
+    // It does not depend on any particular facet landing on any particular pixel, which is what makes
+    // it robust to a resolution or camera change.
+    let levels = |flat: bool| -> Option<usize> {
+        let mut world = world_showing(
+            SphereMesh {
+                radius: 1.2,
+                segments: 10,
+                rings: 8,
+                flat,
+            }
+            .tessellate(),
+        );
+        let image = capture(&mut world, 96, 96)?;
+
+        let mut steps = 0;
+        let mut previous = pixel_at(&image, 20, 48)[0];
+        for x in 21..76 {
+            let here = pixel_at(&image, x, 48)[0];
+            // A step of more than one level, so sampling noise in a smooth gradient is not counted
+            // as a facet edge while a real facet boundary is.
+            if here.abs_diff(previous) > 1 {
+                steps += 1;
+            }
+            previous = here;
+        }
+        Some(steps)
+    };
+
+    let (Some(faceted), Some(smooth)) = (levels(true), levels(false)) else {
+        return;
+    };
+
+    assert!(
+        smooth > faceted * 2,
+        "a smooth sphere should change brightness far more often across a scanline than a faceted \
+         one: smooth {smooth} steps, faceted {faceted}"
     );
 }

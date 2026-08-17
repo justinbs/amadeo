@@ -7,6 +7,54 @@ Priority: **P0** blocks work now · **P1** needed for the current milestone · *
 
 ---
 
+## Q41 · P1 · Skeletal animation, and where the rigged model comes from
+
+**Opened in session 21 by the engine review, which found that three documents cited this file as
+recording it — and this file did not mention it at all.** `docs/12-the-bar.md` §2, `STATUS.md` and
+`docs/11-the-warren.md` all said "`docs/06` records it as blocked on a rigged model". The claim is
+real and lives in `docs/04` §14 and ADR 0066 §5; the citation was not. All three now point at the
+sources that contain it, and the question exists here because `docs/12` **raised it to a
+requirement**, and a requirement is not a note in a subsystem list.
+
+### What is actually blocked
+
+`modules/amadeo-anim` animates a **reflected field** by name (ADR 0066), which reaches a light's
+intensity, a material's colour and a transform. It cannot reach a skeleton: ADR 0066 §1 says a
+read-patch-write per bone per tick is hopeless at a few hundred bones, so skinning needs a **typed**
+path — glTF skins, joint palettes, inverse bind matrices, and a vertex shader.
+
+Three of the nine target games in `docs/12` §2 are populated worlds and **two of the three
+first-class ones are** (Project Zomboid is people, Schedule I is systemic NPCs). So this is no longer
+deferrable on the grounds that no target needs it.
+
+### And it is shaping content, which is the part that makes it urgent
+
+`docs/11-the-warren.md` justifies never clearly showing the warden partly on the engine having no
+skeletal animation. That is good horror *and* honest engineering and the design says so — but it is
+still a design decision taken because of an engine gap, and the next one may not have a Frictional
+lesson to hide behind.
+
+### The real question is the asset, not the code
+
+The code is well understood and largely a matter of doing it. What is genuinely undecided is where a
+rigged model comes from, given `docs/12` §3's requirement that **Claude can author a game's assets
+rather than asking Justin for them**:
+
+- **A freely-licensed rigged model from the web**, licence carried beside it as `games/atrium` does
+  for Bebas Neue. Unblocks the *engine* work immediately and does not answer the authoring question
+  at all — the next creature still needs a human or a download.
+- **A rig authored as text**, the way ADR 0074 made geometry parametric. A skeleton is a named tree
+  of transforms and weights are per vertex, so a parametric humanoid rig is not obviously harder than
+  a parametric mesh, and it would be the same answer as every other generator in this repository.
+  Unproven, and vertex weights are the part that does not obviously reduce to a formula.
+- **Blender through an MCP tool**, which `docs/12` §3 explicitly allows. Gets a rig immediately and
+  puts a large external dependency in the authoring path.
+
+**Not blocking today** — nothing in the engine gate's Phase A or B needs it — and P1 rather than P2
+because `docs/12` names it, and because the answer decides whether `amadeo-gltf` needs a *writer*.
+
+---
+
 ## ~~Q40~~ · **Resolved — ADR 0071.** A generated interior is a scene file, stitched from socketed pieces
 
 **Decided by Justin in session 18**, on the analysis below: a **room graph**, and the output is a
