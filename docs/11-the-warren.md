@@ -178,13 +178,34 @@ clearly.
 
 **At range, sound and nothing else:**
 
-| The player is | Heard at |
-|---|---|
-| standing still | never |
-| walking | 8 m |
-| running | 22 m |
-| pulling an isolator | the whole section |
-| starting the generator | everywhere |
+| The player is | Speed | Heard at |
+|---|---|---|
+| standing still | — | never |
+| walking | **1.8 m/s** | 8 m |
+| running | **2.6 m/s** | 22 m |
+| **charging at a panel** | — | **the section, continuously, for as long as it runs** |
+| pulling an isolator | — | the whole section |
+| starting the generator | — | everywhere |
+
+**The panel draws, and that is what makes the charge a decision rather than a wait.** It was
+introduced as a noise loud enough to deafen the *player* and then left out of this table — so a sound
+beside your head, loud enough to mask a footfall, was inaudible to a thing that hunts by nothing but
+sound. That is not a small inconsistency: it is the difference between the design's self-described
+best moment being a gamble and being a pause.
+
+It also lands this document on the same side as the prior art it already cites. **The Bunker's crank
+is noisy because winding it calls the Beast**, not because it inconveniences you. Half of that
+mechanic was written here and the half that bites was not.
+
+So "you may leave early and keep what it gave you" binds every single time: you are choosing how much
+charge is worth how much attention, while deaf, listening to nothing.
+
+**The speeds, all four, because two of them were doing one number's work.** Patrol 1.5 < **walk
+1.8** < **run 2.6** < pursue 2.9. The player's authored `speed` today is 2.6, which the rest of this
+document had been using as the *travel* speed while §4 was distinguishing walking from running — so
+the pacing and the charge economy were both computed at the speed you are not supposed to move at.
+Travel is a walk. Running is the loud, expensive thing you do when it has already gone wrong, and it
+does not save you: pursuit is faster.
 
 Surfaces modify it: standing water and steel plate carry further than dust and carpet, by roughly
 half again. That is one number per floor material and it is what makes the flooded section in §4 a
@@ -207,7 +228,28 @@ does not scan a room from the doorway; it walks the route and puts its hand on e
 
 **What is checked is a visible class of thing, not a list of authored coordinates:**
 
-> **Every made-up bunk, every tally board, every live charging panel, and every isolator.**
+> **Every made-up bunk, every tally board, every live charging panel, every isolator — and, per
+> condition, whatever that section's own equipment is: pump housings and duckboards where it is
+> flooded, numbered racking bays and the renumbering ledger where it has been stripped.**
+
+**The per-condition members are not decoration, and leaving them out nearly voided the rule.** The
+class as first written was populated only in the section that is *still made up*: a stripped section
+has no bunks by definition and a flooded one has neither bunks nor racking, so "4–6 drawn per
+circuit" had to take everything that existed — two or three points, every round, for ever. A fixed
+set is learnable in one pass, which is exactly the six-percent-of-floor collapse this rule was
+written to prevent, and it landed hardest on the **flooded** section, whose entire question is sound.
+
+The added members are props §5.3 wants anyway for breaking sightlines, so they cost nothing new.
+
+| Section | Bunks | Boards | Panels | Isolators | Per-condition | Candidates |
+|---|---|---|---|---|---|---|
+| Still made up | dozens | 1 | ≤1 | 1 | — | plenty |
+| Stripped / re-racked | none | 1 | ≤1 | 1 | racking bays × 8–12, the ledger | ~12 |
+| Flooded / abandoned | none | 1 | ≤1 | 1 | pump housings × 3–4, duckboard runs × 4–6 | ~10 |
+
+And the draw degrades honestly rather than silently: **half the class, minimum three, maximum six.**
+So a thin section is still unpredictable rather than exhaustive, and the rule cannot quietly become a
+fixed set again if a later condition turns out to be sparse.
 
 That wording is load-bearing and the first version of it was wrong. "Authored points on the piece"
 made the checked area about **6% of a section's floor** — six circles of 1.2 m in a 450 m² tunnel —
@@ -450,9 +492,20 @@ the premise, unused**: *"before the site is sealed"*.
 - When it finishes, the way out is gone. That is a real ending rather than a failure message, and it
   is the one the fiction has been pointing at from the first line.
 
-**And the inner clock is the warden itself.** Its round shortens as the shift wears on — it is
-counting, the count is due, and it stops taking its time. So patience costs in the currency the game
-is actually about: not a number draining, but the thing in the tunnel coming round more often.
+**And the inner clock is the warden itself.** As the shift wears on it **walks a shorter route** —
+dropping the far end of its circuit, then the next — so it comes past more often. It is counting, the
+count is due, and it stops covering ground it has already covered.
+
+**Specifically a shorter route, and not the other two readings.** "Its round shortens" could mean a
+faster patrol, which would contradict §3a's guarantee that patrol is *slower than a walk so you can
+follow it and it cannot catch you by accident* — a guarantee several other things lean on. Or it
+could mean fewer stops, which would make the late game *less* dangerous and invert the pressure curve
+this document has already rejected twice by name. Only a shorter circuit gives the stated effect
+without breaking either. Patrol stays 1.5 m/s and the check count per pass is unchanged; what shrinks
+is the loop.
+
+So patience costs in the currency the game is actually about: not a number draining, but the thing in
+the tunnel coming round more often.
 
 That gives waiting a price at both scales, neither of which is a UI element.
 
@@ -509,16 +562,34 @@ and the first version of this table did not, which is how it ended up describing
 | Interruptible | yes, and it keeps what it took, so a partial charge is a real choice |
 | Reusable | yes, unlimited. The scarcity is *time and exposure*, never a consumable |
 
-Working it through against §10's twenty minutes: about 8 minutes of movement across three sections, a
-descent and the return, plus 3–4 minutes of lamp-on searching in the dark — call it **10–12 minutes
-of drain**. Against a 6-minute charge at 90 seconds per stop, that is **four to five stops**, each
-25 seconds long, each spent standing at a checked point in a deaf pool.
+Working it through against §10's twenty minutes, **at the walk of 1.8 m/s and not at the run** — the
+error the first version of this sum made: about 11 minutes of movement across three sections, a
+descent and the return, plus 3–4 minutes of lamp-on searching while standing — call it **14–15
+minutes of drain**. Against a 6-minute charge at 90 seconds a stop, that is **six stops**, each 25
+seconds long, each spent beside a whining panel that the warden can hear.
 
 The rate is what makes this bind. The first version gave a *full* refill for the same 25 seconds and
 made the whole run need one stop, at 2% of its length, risk-free. One free errand is not a resource.
 
+### What a flat lamp costs, because "usable" made never charging optimal
+
 A lamp run flat still gives a faint usable glow rather than a black screen — Frictional's rule that a
 pitch-black image is not exciting, applied to the failure case.
+
+**But "usable" alone made the whole economy skippable.** Charge drains on movement whether the lamp
+is lit or not, so switching it off saves nothing, and if the dim state is merely dimmer then the
+optimal run is **never to charge at all**: skip six stops, skip six seeded check points, skip six
+stretches of deafness, and buy back several minutes of the seal clock.
+
+So what a flat lamp costs is **reach**, not brightness:
+
+- **Signage and boards stop resolving at distance.** You can walk; you cannot read. Which means the
+  stripped section — whose whole question is *search* — becomes nearly impossible on a flat lamp, and
+  the alphabet you navigate by stops working.
+- **A silhouette at a pool's edge stops resolving.** The warden's lamp is still visible, because that
+  is its own light; what you lose is the ability to tell what is in front of it.
+
+Enough to keep walking. Not enough to keep playing well. That is what makes six stops worth making.
 
 ### How the three sections differ
 
@@ -723,10 +794,17 @@ is legible *inside* a lit section rather than washing out.
 
 ### The one accent
 
-**Safety orange**, and nothing else in the world is allowed it. It marks the isolators, the lift call
-plate, and the interface's focus highlight — which is the same orange, because §8 says the interface
-is signage. So the only orange things in the Warren are the things you can act on. That is a
-wayfinding system and a UI convention in one colour, for free.
+**Safety orange**, and nothing else in the world is allowed it. It marks the isolators, **the
+charging panels**, the lift call plate, and the interface's focus highlight — which is the same
+orange, because §8 says the interface is signage. So the only orange things in the Warren are the
+things you can act on. That is a wayfinding system and a UI convention in one colour, for free.
+
+**The panels were missing from that list and it mattered.** They did not need marking while they
+lived under the fittings; they now sit on a dark wall (§4) and are the most frequently used
+interactive object in the game. Without the orange there is a small, nasty spiral — low charge, need
+a panel, sweep a dark wall with the lamp to find one, spend charge finding it. The principle above
+already covered them; only the enumeration was stale, which is the same section-goes-out-of-date
+failure this document has now recorded four times.
 
 ---
 
@@ -758,8 +836,12 @@ Walk down a 100 m tunnel with a fitting every 10 m and you will watch lights **p
 budget boundary** — which is the most machine-made artefact available, in the one system this
 document calls the medium. So:
 
-- **No more than six fittings within a tunnel's visible run.** That leaves the hand lamp and one
-  chamber practical always under the cap, whatever else is on screen.
+- **No more than five fittings within a tunnel's visible run.** Five, not six, and the difference is
+  the whole cap: five fittings plus the hand lamp plus one chamber practical plus **the warden's
+  lamp** is eight exactly. Six would be nine, and the ninth is dropped silently by distance — so the
+  light that vanished would be the far fitting, at the far end of the tunnel, *at the moment the
+  warden entered a lit section*. The machine-made artefact this section names, triggered by the one
+  shot the design exists for.
 - **The fittings do not cast shadows.** The two casting slots are the hand lamp and one practical per
   chamber, and that is the whole budget. This is also correct artistically: a pooled fitting overhead
   wants to read as a wash, and the shadows that matter are the ones your own lamp throws.
@@ -883,6 +965,38 @@ Already built: spatial sources, one-shots, buses, a room tone. What the design n
 - **Near-silence is the default.** The stings that exist are placeholders; the room tone should be
   almost nothing, so that a single sound is an event.
 
+### The two continuous sounds, and why near-silence survives both
+
+§4 introduced a permanent per-fitting hum and §4's seal clock introduced a continuous industrial bed,
+and **this section was not amended for either** — which matters more here than anywhere, because
+§3a's most important tell is *an absence of sound*, and a continuous bed is precisely what makes an
+absence hard to hear. Both are specified to the same standard the hum already got:
+
+**The fitting hum** — per fitting, spatial, narrow-band, sitting on the tread's own frequency. Loud
+enough to mask that specific sound inside a pool, quiet enough that a lit section is *quiet with deaf
+spots* rather than a drone.
+
+**The sealing crew** — the clock, and it must not fill the room:
+
+- **Structure-borne, not airborne.** It arrives through the concrete rather than down the tunnel: low,
+  dull, no high end at all. It sits **well below the tread's band**, so the two never compete and
+  silence is still audible.
+- **Directional, from above and towards the lift.** So it doubles as a wayfinding cue — when you are
+  lost, the work tells you which way the way out is. A clock and a compass in one sound.
+- **Staged, not continuous.** Distinct phases across the run — cutting, then drilling, then the pours,
+  then the long quiet of it setting — so the player reads *how much shift is left* from what it is
+  doing rather than from a bar. The final stage is the quietest, which is the correct and most
+  frightening shape.
+- **Attenuated by depth**: loudest at the lift landing and at the top of the spurs, nearly gone at the
+  far ends. Going deep is going out of earshot of the only friendly sound in the game.
+
+- **An investigation travels in silence, deliberately.** The tells table gives investigating an abrupt
+  stop *followed by nothing*, and the honest consequence is that the warden then crosses the section
+  without a tread — so the next thing you hear is the check at arm's length. That is the most
+  frightening reading and it is chosen rather than fallen into: during that interval **its lamp is the
+  only channel**, which is exactly what the lamp was claimed for, and it is the one stretch of the
+  game where looking matters more than listening.
+
 ---
 
 ## 10. Scope, budget and plan
@@ -893,9 +1007,9 @@ Already built: spatial sources, one-shots, buses, a room tone. What the design n
 orientation, twelve across the three sections, five for the generator and the run back.
 
 **And that does not set the tunnel lengths**, which the first draft claimed it did without doing the
-arithmetic. At 2.6 m/s a 120 m tunnel is **46 seconds** one way, so four minutes in a section is not
-four minutes of walking — it is about ninety seconds of movement and two and a half minutes of
-**standing still, listening, searching and waiting**.
+arithmetic. At the walk of **1.8 m/s** (§3a) a 120 m tunnel is **67 seconds** one way, so four minutes in a
+section is not four minutes of walking — it is about two minutes of movement and two of **standing
+still, listening, searching and waiting**.
 
 That is the correct answer and it is worth stating rather than hiding, because it says what the
 sections are actually made of: the pacing comes from the §4 costs — reading boards in the dark,
