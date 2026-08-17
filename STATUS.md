@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-16 (session 19)
+**Last updated:** 2026-08-17 (session 20)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE — all four exit gates met.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
@@ -24,7 +24,50 @@ always on), **0041** (parallelism is deterministic by construction or absent —
    8.3 µs per simulation tick, 125 µs of CPU-side frame preparation, and 2.7% of a frame at gate 3's
    200-body complexity.
 
-## 📬 For the next session — read this box, then the two below it
+## 📬 For the next session — read this box first, then `docs/12-the-bar.md`
+
+> ### The project changed shape in session 20. Read this before planning anything.
+>
+> **Justin judged the Warren a bland engine test, and he was right.** The levels were "rooms
+> literally straightly connected", there was no life or colour, the menu was three rectangles, and
+> the objective was "a locked door and there's a key for it — a simpleton's idea of a game". Every
+> one of those traces to the same cause: **there was no fiction, so every decision was made on
+> engineering grounds.**
+>
+> Three things follow, and they are now project process rather than this session's activity:
+>
+> **1. There is a critic agent, and its verdict is binding.** `.claude/agents/critic.md`. Every piece
+> of player-facing work goes to it and **nothing is left until it returns POLISHED**. Where it
+> disagrees, its changes are followed; where it is factually wrong about the repository it is
+> corrected with evidence, which has happened once and it verified and withdrew.
+>
+> **2. There is a design document**, `docs/11-the-warren.md`, and a **bar**, `docs/12-the-bar.md`.
+> The bar is the important one: AA indie, Hello Games as the reference, and the requirement that
+> **Claude can author a game's assets rather than asking Justin for them**. That is stronger than
+> invariant I5 and it is the thing most likely to be quietly dodged.
+>
+> **3. The gate order is fixed**: design the game → change and improve the engine → add what the
+> engine is missing → build the game. **Nothing proceeds to the next part until the critic passes the
+> current one.**
+>
+> Where it stands: the design has been through **five** rounds of critique, each one finding
+> something real. It is not yet passed. The engine gate has not started.
+
+> ### The failure mode that recurred five times, and is worth watching for
+>
+> **Repairing one section while contradicting a neighbouring one.** Every round of design critique
+> found at least one, and twice the contradiction was introduced by the *previous* round's repair:
+>
+> - "your lamp is safe" against "you can no longer stand still in a lit section" — if it cannot see,
+>   light costs nothing, so the central trade did not exist;
+> - three sections made compulsorily lit, against "the warden is never clearly seen" (which is
+>   justified on the engine having no skeletal animation) and against "near-silence is the default";
+> - charging moved into the lit pools, against "the warden never lingers in a pool";
+> - the panels moved back into the dark, against an accent-colour list that still did not include
+>   them.
+>
+> The same shape appears in the code: the pause bug (the Atrium's systems copied without its `Paused`
+> insertion) and the vacuous test that hid it. **When you fix something, re-read what depends on it.**
 
 > ### The tick-0 hazard is closed at the source, and there was a worse one under it
 >
@@ -55,6 +98,50 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 **Everything is pushed through `1b256a1`, and every run is green 5/5.** Check with `gh run list`
 rather than assuming — `gh` is not on PATH, so prefix with
 `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
+
+### Session 20 in one paragraph
+
+**The direction changed and almost nothing was built, deliberately.** Justin's audit landed, the
+critic agent was set up, and the session went into research, design and judgement instead of code.
+What did land: two bugs the critic and Justin found between them, one engine primitive, and two
+documents.
+
+- **The pause never paused.** `apply_screen` writes the engine's `Paused` with `resource_mut`, which
+  is silent when the resource was never inserted — and `games/warren` never inserted it. Every pause
+  had been a no-op; the world simulated behind the title screen and the mouse turned the view. Found
+  by *playing the game*, and the test that should have caught it was vacuous because it compared the
+  player's translation and a player with no input does not move.
+- **The key-placement rule did the opposite of its own documentation.** It scores the largest detour,
+  which ties on every room in a branchless layout — so the tie-break *was* the rule, and
+  `max_by_key` returns the **last** maximum, which with a cell-sorted table is the highest
+  coordinate, reliably near the exit. The shipped seed put the key one door from the door it opens.
+- **`Layout::shortcomings` and a gate.** Nothing had an opinion about whether a layout was any
+  *good*, only whether it was valid — so `--bin layout` now **refuses** to write a level whose key is
+  too close to the exit or the start. The shipped seed moved from a straight eight-room line to a
+  fourteen-room layout over seven cells by five.
+- **`ArchMesh`**, the engine's first curved primitive. Every mesh in every game here was an
+  axis-aligned box, which is most of why the result read as a test scene.
+
+### The critic's baseline review, kept because it is the measurement to beat
+
+Its findings on the game as it stood, all verified: **thirteen meshes, thirteen boxes, and every
+material with all three texture slots empty** — the engine grew PBR, normal mapping and anisotropic
+sampling in session 14 and the game uses none of it. **Eight rooms in a dead-straight line with all
+seven doorways at exactly `z = −12.0`**, so a 72 m sightline to a grey dot. **The props at three
+hard-coded corner offsets in every level the generator will ever produce.** **Lamps with no mesh** —
+light from nowhere. **Zero shadows before the torch is picked up**, because point lights do not cast
+and the only caster starts at intensity 0. And the sharpest one:
+
+> *The worldbuilding exists, and it is in the source code.* The materials are named "Sour carpet" and
+> "Damp plaster"; the lights are "Spill from somewhere"; the ambience entity is "The Warren itself".
+> A player sees grey boxes. And *"a warren is cramped, dug, twisting, low. This is a square grid of
+> 144 m² halls"* — the name promises the opposite of the space.
+
+**One diagnosed and not yet fixed**: the horizontal seam across every wall in every frame. It is not
+`BoxMesh` — an isolated wall under one light is a smooth gradient — and not the tangents. It is
+`gloom.rs`'s two-tone environment map: at grazing angles the Fresnel term makes the ambient
+reflection dominate and the reflected ray sweeps through the map's horizon at eye level. A uniform
+map removes it completely. The fix is a gentler gradient and it belongs with the lighting pass.
 
 ### Session 19 in one paragraph
 
@@ -179,7 +266,33 @@ crates.
 | `amadeo-behaviour` | AI as a state machine over named facts (ADR 0068). `games/atrium` has a watcher |
 | `amadeo-inventory` | Items, stacks, containers (ADR 0070). An item is an **entity**; storing it removes its `Transform` |
 
-### What to do next — candidates, not an order
+### What to do next — and as of session 20 this IS an order
+
+**The gate order in `docs/12-the-bar.md` overrides the list below.** Nothing proceeds until the
+critic passes the current part:
+
+| | Part | State |
+|---|---|---|
+| 1 | **Design the game** — `docs/11-the-warren.md` | Five rounds of critique, each finding something real. **Not yet passed** |
+| 2 | **Change and improve the engine** to the AA-indie bar | Not started |
+| 3 | **Add what the engine is missing** | Not started |
+| 4 | **Build the game** | Not started |
+
+The list below is still accurate about *what exists*, and is now a description of the ground rather
+than a plan. Everything in it is subject to the design document, which supersedes several of its
+assumptions — the key and the door are being removed, and the level generator is being rewritten
+mission-first.
+
+**Two things are already known to be first in part 2**, from the critic's baseline review and from
+the bar's own audit:
+
+- **A mesh authoring path.** `amadeo-gltf` is a reader with no writer and the scene format has no
+  raw-geometry line, so a Rust binary can emit a texture, a sound and an environment map but **not a
+  model**. That is the single largest gap between this engine and the requirement that Claude can
+  author a game's assets.
+- **Skeletal animation**, which `docs/06` records as blocked on a rigged model and which
+  `docs/12-the-bar.md` reclassifies as the engine's problem to solve — three of the nine target games
+  are impossible without it.
 
 **Every named M3 subsystem and all five named genre modules now exist.** What is left in the
 milestone is mostly the exit gate itself.
