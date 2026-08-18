@@ -335,11 +335,26 @@ impl SphereMesh {
         // The whole grid first, then the quads over it. Sampling each vertex from its own angles
         // rather than accumulating means a rounding error cannot walk the sphere open at the seam.
         let mut grid: Vec<([f32; 3], [f32; 2])> = Vec::new();
+        // **Equatorial metres** (ADR 0078 §3): `u` is arc length round the equator and `v` is arc
+        // length pole to pole.
+        //
+        // This does **not** make the mapping distortion-free, and is not meant to. A sphere has no
+        // distortion-free parameterisation at all — that is a theorem rather than an effort problem —
+        // so the texture compresses towards the poles by `cos(latitude)`, exactly as every engine's
+        // UV sphere does. What it *does* fix is the thing `uv_scale` exists for: a 0.5 m ball and a
+        // 5 m ball now wear the same stone at the same size, where before they wore it at a tenfold
+        // difference.
+        let equator = std::f32::consts::TAU * radius;
+        let meridian = std::f32::consts::PI * radius;
+
         for ring in 0..=rings {
             for segment in 0..=segments {
                 grid.push((
                     unit_at(ring as f32, segment as f32),
-                    [segment as f32 / segments as f32, ring as f32 / rings as f32],
+                    [
+                        equator * segment as f32 / segments as f32,
+                        meridian * ring as f32 / rings as f32,
+                    ],
                 ));
             }
         }

@@ -100,11 +100,24 @@ at the same stone size, and a non-square face is right for free.
 - **A cylinder's side is developable** — you can unroll it — so arc length is a real distance rather
   than an analogy, which is why it joins the flat producers. It uses the mean radius, so a frustum
   gets one consistent circumference instead of a texture that slides as the radius changes.
-- **`ArchMesh` and `SphereMesh` are not converted.** An arch is developable and should follow; a
-  sphere is doubly curved and has no distortion-free mapping at all, which is a separate decision.
-  Neither is sampled by anything today.
-- **`GltfPart` is deliberately untouched.** An imported mesh carries the UVs its DCC authored, which is
-  the same split Unity and Unreal live with.
+- **`ArchMesh` and `SphereMesh` were converted in the same session**, after a review argued both
+  should be and was right. Leaving two producers on a different convention is the silent-divergence
+  family `docs/07` documents: the difference is invisible until a material moves between two shapes.
+  - **The arch is the one that mattered most**, because an arch is what a *tunnel* is made of and
+    `games/warren` is a game of corridors. A material correct on a box was roughly **thirty times**
+    wrong on a default 8 m section, silently, from the same `uv_scale`. It is also developable and the
+    change was two multiplications, `travelled` already being an arc length.
+  - **The sphere emits equatorial metres**, and the question that decided it was not "is it
+    undistorted" -- a sphere has no distortion-free parameterisation, which is a theorem rather than
+    an effort problem. It is "does a sphere respond to `uv_scale` the way everything else does". It
+    did not: a 0.5 m ball and a 5 m ball wore the same stone at a tenfold difference. The
+    `cos(latitude)` compression towards the poles is what every engine's UV sphere has, and it is
+    stated in the doc comment as a property rather than left as a surprise.
+- **`GltfPart` keeps a third convention, deliberately.** An imported mesh carries whatever UVs its DCC
+  authored -- which are already proportional to surface area, because that is what a texel-density
+  standard means in an art pipeline. Rescaling them would fight the artist. **This is the same split
+  Unity and Unreal live with**, and it is recorded here as a decision rather than left to read as the
+  producer nobody got to.
 
 **It was cheapest to change now and would never have been cheaper**: two materials in the repository
 sampled a texture. After a texture generator it is every material in every game, plus every capture

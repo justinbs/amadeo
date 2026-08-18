@@ -639,6 +639,11 @@ impl ArchMesh {
         // Texture coordinates run along the *perimeter* rather than by index, so a facet twice as
         // long gets twice the image. Indexing would stretch the wall and squash the crown, which on
         // a tiling material reads as the tunnel changing material half way up.
+        //
+        // The running total is used **raw** since ADR 0078 §3 — it is already an arc length in
+        // metres, which is exactly the convention every other developable producer now uses. It used
+        // to be divided through by the total perimeter to land in 0..1, and that division was the
+        // whole of what made a material correct on a box about thirty times wrong on an arch.
         let mut travelled = vec![0.0f32];
         for pair in ring.windows(2) {
             let (a, _) = pair[0];
@@ -646,7 +651,6 @@ impl ArchMesh {
             let step = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt();
             travelled.push(travelled.last().copied().unwrap_or(0.0) + step);
         }
-        let perimeter = travelled.last().copied().unwrap_or(1.0).max(0.0001);
 
         let mut data = MeshData::default();
         let (near_z, far_z) = (long / 2.0, -long / 2.0);
@@ -654,15 +658,19 @@ impl ArchMesh {
         for (index, pair) in ring.windows(2).enumerate() {
             let (a, a_normal) = pair[0];
             let (b, b_normal) = pair[1];
-            let (a_u, b_u) = (
-                travelled[index] / perimeter,
-                travelled[index + 1] / perimeter,
-            );
+            // **In metres, like every other developable producer** (ADR 0078 §3). `travelled` is
+            // already an arc length along the section, so this is the raw distance rather than the
+            // normalised one -- and `v` is the section's length.
+            //
+            // Converted in the same session as the boxes rather than left behind, because an arch is
+            // what a tunnel is made of: a material correct on a box was roughly thirty times wrong on
+            // a default 8 m section, silently, from the same `uv_scale`.
+            let (a_u, b_u) = (travelled[index], travelled[index + 1]);
             let first = data.vertices.len() as u32;
 
             for (position, normal, uv) in [
-                ([a[0], a[1], near_z], a_normal, [a_u, 1.0]),
-                ([b[0], b[1], near_z], b_normal, [b_u, 1.0]),
+                ([a[0], a[1], near_z], a_normal, [a_u, long]),
+                ([b[0], b[1], near_z], b_normal, [b_u, long]),
                 ([b[0], b[1], far_z], b_normal, [b_u, 0.0]),
                 ([a[0], a[1], far_z], a_normal, [a_u, 0.0]),
             ] {
@@ -2107,6 +2115,11 @@ mod tests {
             }
             geometry.sort_by(f32::total_cmp);
 
+            // **Both pairs are sorted, so this compares sets rather than order** -- a face whose u and
+            // v were swapped would pass. That rotates the texture ninety degrees on one face:
+            // invisible on a slab pattern and visible on anything directional. The trade is
+            // deliberate, because asserting an order would hard-code which corner each face's UVs
+            // start from and make the test fail on a harmless reordering of the face table.
             let mut uv = vec![span(0, face), span(1, face)];
             uv.sort_by(f32::total_cmp);
 

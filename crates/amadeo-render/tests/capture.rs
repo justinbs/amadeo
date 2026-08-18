@@ -2989,16 +2989,22 @@ fn uv_scale_repeats_a_texture_and_one_is_the_untouched_control() {
         return;
     };
 
-    // The control has to show *something*, or the comparison below is between two nothings — which is
-    // how a capture test goes quietly vacuous, and did on this test's first draft.
-    assert!(
-        plain >= 1,
-        "the control box shows {plain} edges, so the checker is not reaching the surface at all and \
-         nothing below this means anything"
+    // **Exactly one, not "at least one".** One copy of a 2×2 checker across a face crosses its
+    // midline exactly once, so this asserts the identity ADR 0078 §1 claims — that `uv_scale` is a
+    // repeats-per-metre figure, and 0.5 over a 2 m face is one copy — rather than merely that the
+    // texture arrived. The comment above already knew the number; for one review this assertion did
+    // not check it.
+    //
+    // It also still catches the two ways this test was vacuous while being written: a checker that
+    // never reached the surface, and one that bilinear magnification flattened to grey.
+    assert_eq!(
+        plain, 1,
+        "one copy of a 2×2 checker across a 2 m face should cross exactly one edge; {plain} means \
+         either the checker is not arriving, or `uv_scale 0.5` is not one repeat per two metres"
     );
     assert!(
         repeated > plain * 2,
-        "four repeats should show far more edges across the same face than one: uv_scale [1,1] gave \
-         {plain}, [4,4] gave {repeated}"
+        "four times the density should show far more edges across the same face: uv_scale \
+         [0.5, 0.5] gave {plain}, [2.0, 2.0] gave {repeated}"
     );
 }
