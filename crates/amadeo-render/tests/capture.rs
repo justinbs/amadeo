@@ -23,10 +23,10 @@
 
 use amadeo_ecs::World;
 use amadeo_render::{
-    ArchMesh, BoxMesh, Camera, CylinderMesh, DirectionalLight, Environment, EnvironmentCache, Fog,
-    Material, MaterialCache, Mesh, MeshCache, MeshData, NullBackend, PointLight, Quad,
-    RenderBackend, Renderer, ShadowMode, SphereMesh, SpotLight, StairMesh, TextureData, Vignette,
-    WedgeMesh, WgpuBackend, render_quads,
+    ArchMesh, BoxMesh, Camera, CompoundMesh, CylinderMesh, DirectionalLight, Environment,
+    EnvironmentCache, Fog, Material, MaterialCache, Mesh, MeshCache, MeshData, NullBackend, Part,
+    PointLight, Quad, RenderBackend, Renderer, ShadowMode, Solid, SphereMesh, SpotLight, StairMesh,
+    TextureData, Vignette, WedgeMesh, WgpuBackend, render_quads,
 };
 use amadeo_transform::Transform;
 
@@ -2287,6 +2287,88 @@ fn a_cone_narrows_with_height_and_a_cylinder_shades_round() {
          {} steps, box {}",
         cylinder.2,
         slab.2
+    );
+}
+
+#[test]
+fn a_compound_draws_as_an_assembly_rather_than_as_a_box() {
+    // **ADR 0074 §2's claim, on a screen.** A compound is what makes a *prop* rather than primitive
+    // soup, and the property that separates an assembly from the box that bounds it is that you can
+    // **see between its parts**. A table has gaps between its legs; a box of the same extent does
+    // not.
+    //
+    // Measured as how many separate runs of drawn pixels a horizontal scanline crosses below the
+    // tabletop. A table gives several; a solid slab gives exactly one. That does not depend on any
+    // leg landing on any particular pixel.
+    //
+    // The compound here is the same assembly as `games/atrium/assets/meshes/table.mesh` — one part
+    // for the top, and **one leg mirrored on two axes to make four**.
+    let table = CompoundMesh {
+        parts: vec![
+            Part {
+                solid: Solid::Box {
+                    shape: BoxMesh {
+                        size: [1.6, 0.06, 0.9],
+                    },
+                },
+                position: [0.0, 0.72, 0.0],
+                ..Part::default()
+            },
+            Part {
+                solid: Solid::Cylinder {
+                    shape: CylinderMesh {
+                        radius: 0.035,
+                        top_radius: 0.045,
+                        height: 0.72,
+                        ..CylinderMesh::default()
+                    },
+                },
+                position: [0.72, 0.36, 0.37],
+                mirror: [true, false, true],
+                ..Part::default()
+            },
+        ],
+    };
+    let slab = BoxMesh {
+        size: [1.6, 0.78, 0.9],
+    };
+
+    let eye = [0.0, 0.9, 2.6];
+    let runs_below_the_top = |mesh: MeshData| -> Option<usize> {
+        let mut world = world_showing_from(mesh, eye, -9.0, 0.0);
+        let image = capture(&mut world, 96, 96)?;
+        let background = pixel_at(&image, 2, 2);
+
+        // A row through the legs rather than through the top. Counting *starts* of drawn runs, so
+        // solid-gap-solid is two and one unbroken band is one.
+        let mut runs = 0;
+        let mut was_drawn = false;
+        for x in 0..96 {
+            let drawn = pixel_at(&image, x, 62) != background;
+            if drawn && !was_drawn {
+                runs += 1;
+            }
+            was_drawn = drawn;
+        }
+        Some(runs)
+    };
+
+    let (Some(assembly), Some(solid)) = (
+        runs_below_the_top(table.tessellate()),
+        runs_below_the_top(slab.tessellate()),
+    ) else {
+        return;
+    };
+
+    assert_eq!(
+        solid, 1,
+        "the control box should be one unbroken band below its top, got {solid} — if it is not, the \
+         scanline is missing the shape rather than measuring it"
+    );
+    assert!(
+        assembly > solid,
+        "a table should show gaps between its legs where a box of the same bounds does not: table \
+         {assembly} runs, box {solid}"
     );
 }
 

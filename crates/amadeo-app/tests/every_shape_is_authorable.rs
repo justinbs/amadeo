@@ -64,6 +64,19 @@ const SHAPES: &[(&str, &str)] = &[
         "StairMesh",
         "  StairMesh\n    rise 0.18\n    run 0.28\n    steps 6\n    width 1.2\n",
     ),
+    // ADR 0074 §2. A list whose items have named fields, which is ADR 0067's shape, and an enum with
+    // a payload, which is ADR 0032's — so this fixture is also the first file to use both at once.
+    (
+        "CompoundMesh",
+        "  CompoundMesh\n    parts\n      - position 0.0 0.4 0.0\n        solid Cylinder\n          \
+         shape\n            height 0.8\n            radius 0.1\n",
+    ),
+    // ADR 0074 §4. One triangle, which is the smallest thing this can hold, and no normals — so it
+    // also exercises the derive-them-from-the-triangles path.
+    (
+        "VertexMesh",
+        "  VertexMesh\n    indices 0 1 2\n    positions 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0 0.0\n",
+    ),
 ];
 
 /// Writes an asset root holding one `.mesh` file whose body is `shape`.

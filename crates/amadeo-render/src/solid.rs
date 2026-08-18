@@ -37,7 +37,7 @@
 //! ADR 0052 turned backface culling off, so a mistake here does not make a shape invisible — it makes
 //! it lit from behind, which reads as a missing light rather than as a wrong sign.
 
-use crate::mesh::{MeshData, Vertex};
+use crate::mesh::{ArchMesh, BoxMesh, MeshData, PlaneMesh, Vertex};
 use amadeo_core::{StableHash, sin_cos_degrees};
 use amadeo_ecs::Component;
 use amadeo_reflect::Reflect;
@@ -648,32 +648,507 @@ impl StairMesh {
             }
             .tessellate();
             // Placed so the box's base sits on y = 0 and its front face on this step's near edge.
-            append_translated(&mut data, &block, [0.0, height / 2.0, (near + far) / 2.0]);
+            append_transformed(
+                &mut data,
+                &block,
+                [0.0, height / 2.0, (near + far) / 2.0],
+                [0.0, 0.0, 0.0],
+            );
         }
 
         data
     }
 }
 
-/// Copies one mesh into another, moved.
+/// Copies one mesh into another, placed.
 ///
-/// The whole of what a compound needs, and it is deliberately not a general transform: a rotation
-/// would have to rotate the normals and the tangents too, and getting *that* wrong is a shape that
-/// shades correctly until a light moves. Rotation belongs on the part, where the scene format
-/// already has a `Transform` that is tested.
-fn append_translated(into: &mut MeshData, source: &MeshData, offset: [f32; 3]) {
+/// # This replaced a translate-only helper, and the reason is worth keeping
+///
+/// It used to be `append_translated`, whose doc comment said rotation was refused *deliberately*
+/// because "a rotation would have to rotate the normals and the tangents too, and getting that wrong
+/// is a shape that shades correctly until a light moves". That warning was right, and
+/// [`CompoundMesh`] needs the thing it refused, so the answer is to do it once and test it rather
+/// than to keep a second path.
+///
+/// Keeping both was considered and rejected: the general path has to exist and be correct anyway, so
+/// a translate-only twin would be a second thing to keep in sync for a saving measured in load-time
+/// microseconds (tessellation happens once, in `App::load_meshes`, per ADR 0026). Godot's
+/// `SurfaceTool::append_from`, Unity's `Mesh.CombineMeshes` and Blender's join all take a full
+/// transform and always apply it.
+///
+/// **The cheap path still exists — it is the branch below, not a second function.** A part with no
+/// rotation takes a plain copy, so the safety `append_translated` had by construction is still here
+/// and is now inside the thing that has tests.
+///
+/// # No scale, and that is not an omission
+///
+/// A part is a **parametric primitive**: it already carries its own dimensions, so a wider leg is
+/// `radius 0.08` rather than a scale factor. That removes the whole hazard class scaling brings —
+/// non-uniform scale needs the **inverse transpose** to transform a normal, which is a subtler rule
+/// than rotation and would be a second silent way to get shading wrong.
+fn append_transformed(
+    into: &mut MeshData,
+    source: &MeshData,
+    position: [f32; 3],
+    rotation: [f32; 3],
+) {
     let first = into.vertices.len() as u32;
-    into.vertices
-        .extend(source.vertices.iter().map(|vertex| Vertex {
-            position: [
-                vertex.position[0] + offset[0],
-                vertex.position[1] + offset[1],
-                vertex.position[2] + offset[2],
-            ],
-            ..*vertex
+
+    // Exactly zero, not near-zero: this is an authored value, and a part that says `rotation 0 0 0`
+    // means it. Anything else goes through the general path, which is correct for zero as well —
+    // this branch is a saving, never a difference.
+    if rotation == [0.0, 0.0, 0.0] {
+        into.vertices
+            .extend(source.vertices.iter().map(|vertex| Vertex {
+                position: [
+                    vertex.position[0] + position[0],
+                    vertex.position[1] + position[1],
+                    vertex.position[2] + position[2],
+                ],
+                ..*vertex
+            }));
+    } else {
+        // ADR 0053's trigonometry, so a compound tessellates identically on every machine.
+        let turn = amadeo_transform::Mat4::from_euler_degrees(rotation);
+        // A pure rotation has no translation column, so transforming a *direction* through it is the
+        // same call as transforming a point — the fourth column contributes nothing. That is why
+        // normals and tangents can use `transform_point4` here and could not if this composed the
+        // translation into the matrix.
+        let turned = |vector: [f32; 3]| -> [f32; 3] {
+            let out = turn.transform_point4(vector);
+            [out[0], out[1], out[2]]
+        };
+
+        into.vertices.extend(source.vertices.iter().map(|vertex| {
+            let placed = turned(vertex.position);
+            let tangent = turned([vertex.tangent[0], vertex.tangent[1], vertex.tangent[2]]);
+            Vertex {
+                position: [
+                    placed[0] + position[0],
+                    placed[1] + position[1],
+                    placed[2] + position[2],
+                ],
+                normal: turned(vertex.normal),
+                // **The handedness sign is not a direction and does not turn.** A rotation
+                // preserves orientation, so the bitangent the shader recovers as
+                // `cross(normal, tangent.xyz) * w` stays on the same side.
+                tangent: [tangent[0], tangent[1], tangent[2], vertex.tangent[3]],
+                ..*vertex
+            }
         }));
+    }
+
     into.indices
         .extend(source.indices.iter().map(|index| index + first));
+}
+
+/// Which primitive a [`Part`] is — ADR 0074 §2.
+///
+/// # Why every variant wraps its shape in a field called `shape`
+///
+/// `#[derive(Reflect)]` supports named-field variants and refuses tuple ones, because positional
+/// fields have no names to put in a scene file. So `Cylinder(CylinderMesh)` is not available and
+/// `Cylinder { shape: CylinderMesh }` is. The cost is one indent in the file; the alternative was
+/// inlining each primitive's fields into a variant, which would define every shape **twice** and put
+/// the two copies a hundred lines apart.
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+pub enum Solid {
+    /// A box.
+    Box {
+        /// The primitive's own parameters.
+        shape: BoxMesh,
+    },
+    /// A flat plane.
+    Plane {
+        /// The primitive's own parameters.
+        shape: PlaneMesh,
+    },
+    /// A vaulted section.
+    Arch {
+        /// The primitive's own parameters.
+        shape: ArchMesh,
+    },
+    /// A column, cone or frustum.
+    Cylinder {
+        /// The primitive's own parameters.
+        shape: CylinderMesh,
+    },
+    /// A ball.
+    Sphere {
+        /// The primitive's own parameters.
+        shape: SphereMesh,
+    },
+    /// A ramp.
+    Wedge {
+        /// The primitive's own parameters.
+        shape: WedgeMesh,
+    },
+    /// A flight of steps.
+    Stair {
+        /// The primitive's own parameters.
+        shape: StairMesh,
+    },
+}
+
+impl Default for Solid {
+    /// A unit box, matching what `Solid::Box` with nothing said would be.
+    fn default() -> Self {
+        Self::Box {
+            shape: BoxMesh::default(),
+        }
+    }
+}
+
+impl Solid {
+    /// Turns whichever primitive this is into geometry.
+    ///
+    /// The whole of the dispatch, and the reason `Solid` wraps the primitives rather than restating
+    /// them: adding a shape to the engine is one variant and one arm.
+    #[must_use]
+    pub fn tessellate(&self) -> MeshData {
+        match self {
+            Solid::Box { shape } => shape.tessellate(),
+            Solid::Plane { shape } => shape.tessellate(),
+            Solid::Arch { shape } => shape.tessellate(),
+            Solid::Cylinder { shape } => shape.tessellate(),
+            Solid::Sphere { shape } => shape.tessellate(),
+            Solid::Wedge { shape } => shape.tessellate(),
+            Solid::Stair { shape } => shape.tessellate(),
+        }
+    }
+}
+
+/// One axis of repetition for a [`Part`] — ADR 0074 §3's `array`.
+///
+/// A run of racking is one part and one of these. Two of them on the same part is a **grid**, which
+/// is why this is a list rather than a pair of "count and second count" fields: N axes fall out of
+/// the list length instead of needing a special case for two.
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+pub struct Repeat {
+    /// How many copies in total, including the original. `1` is no repetition.
+    #[reflect(min = 1.0, max = 4096.0, default = 1)]
+    pub count: u32,
+    /// How far each copy moves from the one before it, in the compound's own space.
+    #[reflect(unit = "world units", default = [0.0, 0.0, 0.0])]
+    pub step: [f32; 3],
+}
+
+impl Default for Repeat {
+    fn default() -> Self {
+        Self {
+            count: 1,
+            step: [0.0, 0.0, 0.0],
+        }
+    }
+}
+
+/// One primitive placed inside a [`CompoundMesh`].
+#[derive(Debug, Clone, PartialEq, StableHash, Reflect)]
+pub struct Part {
+    /// Which primitive, and its parameters.
+    ///
+    /// **Required**, with no default: a part with no shape is not a part. ADR 0076's line — a field
+    /// defaults when it is authored data somebody might not care about, and stays required when its
+    /// absence is a mistake.
+    pub solid: Solid,
+    /// Where it sits, in the compound's own space.
+    #[reflect(unit = "world units", default = [0.0, 0.0, 0.0])]
+    pub position: [f32; 3],
+    /// How it is turned, as Euler degrees in ADR 0018's order.
+    ///
+    /// **No scale, deliberately**, and `append_transformed` says why. A part is parametric and carries its
+    /// own dimensions, so a wider leg is a larger `radius` rather than a scale factor, which keeps
+    /// the inverse-transpose normal rule out of this format entirely.
+    #[reflect(unit = "degrees", default = [0.0, 0.0, 0.0])]
+    pub rotation: [f32; 3],
+    /// Repetition, one entry per axis. Empty is a single copy.
+    #[reflect(default = Vec::new())]
+    pub repeat: Vec<Repeat>,
+    /// Mirror this part across the YZ, XZ and XY planes — ADR 0074 §3's `mirror`.
+    ///
+    /// A symmetrical fitting is one half and a mirror. Each flag **adds** the reflected copy rather
+    /// than replacing the original, so one flag makes a pair.
+    #[reflect(default = [false, false, false])]
+    pub mirror: [bool; 3],
+}
+
+impl Default for Part {
+    fn default() -> Self {
+        Self {
+            solid: Solid::default(),
+            position: [0.0, 0.0, 0.0],
+            rotation: [0.0, 0.0, 0.0],
+            repeat: Vec::new(),
+            mirror: [false, false, false],
+        }
+    }
+}
+
+/// Several primitives assembled into one mesh — ADR 0074 §2.
+///
+/// # What this buys that four more primitives did not
+///
+/// A table is five parts, a lamp fitting is a cylinder and a cage of thin bars, a run of racking is
+/// one part and a [`Repeat`]. The games already build those out of prefab children, which costs an
+/// entity, a transform and a draw call each; this is **one mesh, one asset, one draw call**, and it
+/// is a file a person or an agent can read.
+///
+/// Union is concatenation, so no boolean geometry is involved. **Subtraction is deliberately not
+/// here** (ADR 0074 §2): a robust triangle boolean has a long tail of degenerate cases and a fragile
+/// one is worse than none.
+#[derive(Debug, Clone, PartialEq, StableHash, Reflect)]
+pub struct CompoundMesh {
+    /// The parts, in file order. Order does not affect the result.
+    ///
+    /// **Required**, with no default: an empty compound tessellates to nothing, which is exactly the
+    /// "draws nothing while reporting no fault" case ADR 0075 refuses to make the default.
+    pub parts: Vec<Part>,
+}
+
+impl Default for CompoundMesh {
+    /// One unit box, so a default compound is something rather than nothing.
+    fn default() -> Self {
+        Self {
+            parts: vec![Part::default()],
+        }
+    }
+}
+
+impl Component for CompoundMesh {}
+
+impl CompoundMesh {
+    /// Assembles every part into one mesh.
+    ///
+    /// # Tangents are generated once, at the end
+    ///
+    /// Not per part. A per-part call would give the seam between two parts two different tangent
+    /// frames, and a normal map would light across it wrong — invisible until a light moves, which is
+    /// the same failure mode `append_transformed` exists to prevent for normals.
+    #[must_use]
+    pub fn tessellate(&self) -> MeshData {
+        let mut data = MeshData::default();
+
+        for part in &self.parts {
+            let shape = part.solid.tessellate();
+
+            // Every offset this part is repeated at, including `[0, 0, 0]` for the original. Built
+            // first so the mirror pass below sees the finished run rather than having to repeat
+            // itself, and so two `Repeat` entries compose into a grid with no special case.
+            let mut offsets = vec![[0.0_f32, 0.0, 0.0]];
+            for repeat in &part.repeat {
+                let count = repeat.count.clamp(1, 4096);
+                let mut grown = Vec::with_capacity(offsets.len() * count as usize);
+                for base in &offsets {
+                    for step in 0..count {
+                        let along = step as f32;
+                        grown.push([
+                            base[0] + repeat.step[0] * along,
+                            base[1] + repeat.step[1] * along,
+                            base[2] + repeat.step[2] * along,
+                        ]);
+                    }
+                }
+                offsets = grown;
+            }
+
+            for offset in &offsets {
+                let position = [
+                    part.position[0] + offset[0],
+                    part.position[1] + offset[1],
+                    part.position[2] + offset[2],
+                ];
+
+                // Placed first, then mirrored — **not the other way round**. A mirror flag means
+                // "reflect this part through the compound's own plane", so it has to act on the part
+                // where it actually sits, after its rotation. Reflecting the raw shape and then
+                // rotating it would turn the copy the wrong way whenever the part is rotated, which
+                // is precisely when a symmetrical fitting needs a mirror.
+                let mut placed = MeshData::default();
+                append_transformed(&mut placed, &shape, position, part.rotation);
+
+                // Each flag **doubles what exists so far**, so `[true, true, false]` gives four
+                // copies rather than three — one per quadrant, which is what a symmetrical fitting
+                // wants and what Blender's mirror modifier does. Reflecting only the original would
+                // leave the fourth quadrant empty.
+                let mut copies = vec![placed];
+                for (axis, wanted) in part.mirror.iter().enumerate() {
+                    if !wanted {
+                        continue;
+                    }
+                    let reflected: Vec<MeshData> = copies
+                        .iter()
+                        .map(|copy| mirror_across(copy, axis))
+                        .collect();
+                    copies.extend(reflected);
+                }
+
+                for copy in &copies {
+                    // Already placed, so this is the cheap identity branch: a straight concatenation
+                    // with the index offset applied.
+                    append_transformed(&mut data, copy, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
+                }
+            }
+        }
+
+        data.generate_tangents();
+        data
+    }
+}
+
+/// Geometry given directly, as vertices and triangles — ADR 0074 §4 and ADR 0035's promised form.
+///
+/// # This is the dump target, not the path
+///
+/// ADR 0074 is emphatic and this doc comment is the place a reader meets it: raw vertex data exists
+/// so that **importers and generators have somewhere to land**, and so `amadeo-gltf` stays honest. It
+/// is not how anything is authored by hand. A door is [`CompoundMesh`] and two numbers; a door as two
+/// hundred vertices is a file nobody can edit and a diff nobody can review, which is invariant I1
+/// technically satisfied and practically lost.
+///
+/// **If you are typing one of these by hand, you want a compound.**
+///
+/// # Flat lists rather than a list of structs
+///
+/// Positions are `[x, y, z, x, y, z, …]` and indices are flat triples. A `Vec<Vertex>` would nest a
+/// struct per vertex, which for real geometry is thousands of indented blocks — the scene format
+/// would technically hold it and no tool or person would survive reading it. Flat lists keep a
+/// generated mesh to a handful of long lines.
+///
+/// Normals are optional: an empty list means "work them out from the triangles", which is what a
+/// generator that only knows positions wants. UVs likewise default to nothing.
+#[derive(Debug, Clone, PartialEq, StableHash, Reflect)]
+pub struct VertexMesh {
+    /// Vertex positions, three numbers each.
+    #[reflect(default = Vec::new())]
+    pub positions: Vec<f32>,
+    /// Triangle corners, three indices each, into [`VertexMesh::positions`].
+    #[reflect(default = Vec::new())]
+    pub indices: Vec<u32>,
+    /// Vertex normals, three numbers each. **Empty means derive them from the triangles.**
+    #[reflect(default = Vec::new())]
+    pub normals: Vec<f32>,
+    /// Texture coordinates, two numbers each. Empty means every vertex gets `[0, 0]`.
+    #[reflect(default = Vec::new())]
+    pub uvs: Vec<f32>,
+}
+
+impl Default for VertexMesh {
+    /// Empty, which is the honest default for a dump target: there is no sensible stand-in geometry.
+    fn default() -> Self {
+        Self {
+            positions: Vec::new(),
+            indices: Vec::new(),
+            normals: Vec::new(),
+            uvs: Vec::new(),
+        }
+    }
+}
+
+impl Component for VertexMesh {}
+
+impl VertexMesh {
+    /// Turns the flat lists into geometry.
+    ///
+    /// **Nothing here is fatal.** A trailing partial vertex, an index past the end, or a partial
+    /// triangle is dropped rather than refused, for ADR 0021's reason: a game with one damaged asset
+    /// should start and be visibly wrong rather than fail to run. The damage is visible — a hole —
+    /// and `amadeo check` is where a malformed file gets reported.
+    #[must_use]
+    pub fn tessellate(&self) -> MeshData {
+        let count = self.positions.len() / 3;
+        let mut data = MeshData::default();
+
+        for index in 0..count {
+            let at = index * 3;
+            let normal = if self.normals.len() >= at + 3 {
+                [self.normals[at], self.normals[at + 1], self.normals[at + 2]]
+            } else {
+                // Filled in below from the triangles. Not zero-length here, because a zero normal
+                // normalises to `NaN` and a `NaN` spreads through everything it touches.
+                [0.0, 1.0, 0.0]
+            };
+            let uv_at = index * 2;
+            let uv = if self.uvs.len() >= uv_at + 2 {
+                [self.uvs[uv_at], self.uvs[uv_at + 1]]
+            } else {
+                [0.0, 0.0]
+            };
+
+            data.vertices.push(Vertex {
+                position: [
+                    self.positions[at],
+                    self.positions[at + 1],
+                    self.positions[at + 2],
+                ],
+                normal,
+                uv,
+                ..Vertex::default()
+            });
+        }
+
+        for triangle in self.indices.chunks_exact(3) {
+            if triangle.iter().all(|corner| (*corner as usize) < count) {
+                data.indices.extend(triangle);
+            }
+        }
+
+        // No normals supplied, so take them from the triangles. `flat_shade` is exactly that
+        // operation and it already handles a degenerate triangle by leaving its vertices alone.
+        if self.normals.len() < count * 3 {
+            data.flat_shade();
+        }
+
+        data.generate_tangents();
+        data
+    }
+}
+
+/// Reflects a mesh through the plane perpendicular to `axis`.
+///
+/// # Three things change together, and two of them are easy to forget
+///
+/// A reflection is not a rotation: it **reverses orientation**. So as well as negating one component
+/// of every position and normal, the triangles have to be **wound the other way** — otherwise every
+/// face ends up pointing into the solid — and the tangent's handedness sign has to flip, because the
+/// bitangent the shader recovers as `cross(normal, tangent.xyz) * w` would otherwise come out on the
+/// wrong side.
+///
+/// Unlike the rotation case, **the winding half of this is catchable**:
+/// `every_primitive_is_wound_to_match_its_own_normals` compares a triangle's winding against its own
+/// normals, and a reflection that flipped one without the other is exactly that disagreement. That is
+/// why this is safer to write than `append_transformed`'s rotation was, and why the mirror test
+/// below leans on the winding check rather than duplicating it.
+fn mirror_across(source: &MeshData, axis: usize) -> MeshData {
+    let flip = |mut vector: [f32; 3]| {
+        vector[axis] = -vector[axis];
+        vector
+    };
+
+    let vertices = source
+        .vertices
+        .iter()
+        .map(|vertex| {
+            let mut tangent = vertex.tangent;
+            tangent[axis] = -tangent[axis];
+            // The handedness sign, which a reflection *does* flip — unlike a rotation.
+            tangent[3] = -tangent[3];
+            Vertex {
+                position: flip(vertex.position),
+                normal: flip(vertex.normal),
+                tangent,
+                ..*vertex
+            }
+        })
+        .collect();
+
+    // Reversed corner order, which is what keeps a face pointing out of the reflected solid.
+    let indices = source
+        .indices
+        .chunks_exact(3)
+        .flat_map(|triangle| [triangle[0], triangle[2], triangle[1]])
+        .collect();
+
+    MeshData { vertices, indices }
 }
 
 #[cfg(test)]
@@ -805,6 +1280,38 @@ mod tests {
                 .tessellate(),
             ),
             ("stair", StairMesh::default().tessellate()),
+            // An assembly, which is a new way to get this wrong rather than the same shapes again:
+            // its parts are rotated, repeated and mirrored, and each of those touches winding or
+            // normals. The rotated part is the one this check cannot fully vouch for — see
+            // `rotating_a_part_rotates_its_normals_and_tangents_with_it` — but the *mirrored* one it
+            // catches completely, because a reflection reverses orientation.
+            (
+                "compound",
+                CompoundMesh {
+                    parts: vec![
+                        Part {
+                            solid: Solid::Cylinder {
+                                shape: CylinderMesh::default(),
+                            },
+                            position: [0.4, 0.0, 0.0],
+                            rotation: [0.0, 0.0, 25.0],
+                            repeat: vec![Repeat {
+                                count: 3,
+                                step: [0.0, 0.6, 0.0],
+                            }],
+                            mirror: [true, false, false],
+                        },
+                        Part {
+                            solid: Solid::Wedge {
+                                shape: WedgeMesh::default(),
+                            },
+                            rotation: [15.0, 40.0, 0.0],
+                            ..Part::default()
+                        },
+                    ],
+                }
+                .tessellate(),
+            ),
         ];
 
         for (name, data) in cases {
@@ -980,6 +1487,292 @@ mod tests {
                 T::STATIC_NAME
             )
         })
+    }
+
+    /// A compound of one part, with everything else left at its default.
+    fn one_part(solid: Solid, position: [f32; 3]) -> Part {
+        Part {
+            solid,
+            position,
+            ..Part::default()
+        }
+    }
+
+    #[test]
+    fn a_compound_is_the_union_of_its_parts() {
+        // ADR 0074 §2: union is concatenation, so a compound's triangles are exactly its parts' and
+        // no boolean geometry is involved. Two boxes side by side, checked as a count and as a reach.
+        let single = BoxMesh {
+            size: [1.0, 1.0, 1.0],
+        }
+        .tessellate();
+
+        let pair = CompoundMesh {
+            parts: vec![
+                one_part(
+                    Solid::Box {
+                        shape: BoxMesh {
+                            size: [1.0, 1.0, 1.0],
+                        },
+                    },
+                    [-2.0, 0.0, 0.0],
+                ),
+                one_part(
+                    Solid::Box {
+                        shape: BoxMesh {
+                            size: [1.0, 1.0, 1.0],
+                        },
+                    },
+                    [2.0, 0.0, 0.0],
+                ),
+            ],
+        }
+        .tessellate();
+
+        assert_eq!(pair.indices.len(), single.indices.len() * 2);
+        assert_eq!(pair.vertices.len(), single.vertices.len() * 2);
+
+        let widest = pair
+            .vertices
+            .iter()
+            .fold(0.0_f32, |wide, v| wide.max(v.position[0]));
+        assert!(
+            (widest - 2.5).abs() < 0.001,
+            "the far box's outer face should reach 2.5, got {widest}"
+        );
+    }
+
+    #[test]
+    fn a_repeat_makes_a_run_and_two_repeats_make_a_grid() {
+        // ADR 0074 §3's `array`, and the reason `repeat` is a **list** rather than a pair of count
+        // fields: a grid is two entries and needs no special case, so N axes fall out of the length.
+        let leg = || Solid::Cylinder {
+            shape: CylinderMesh {
+                radius: 0.05,
+                top_radius: 0.05,
+                height: 0.7,
+                ..CylinderMesh::default()
+            },
+        };
+        let one = CompoundMesh {
+            parts: vec![one_part(leg(), [0.0, 0.0, 0.0])],
+        }
+        .tessellate();
+
+        let run = CompoundMesh {
+            parts: vec![Part {
+                solid: leg(),
+                repeat: vec![Repeat {
+                    count: 4,
+                    step: [0.5, 0.0, 0.0],
+                }],
+                ..Part::default()
+            }],
+        }
+        .tessellate();
+        assert_eq!(run.indices.len(), one.indices.len() * 4);
+
+        let grid = CompoundMesh {
+            parts: vec![Part {
+                solid: leg(),
+                repeat: vec![
+                    Repeat {
+                        count: 4,
+                        step: [0.5, 0.0, 0.0],
+                    },
+                    Repeat {
+                        count: 3,
+                        step: [0.0, 0.0, 0.5],
+                    },
+                ],
+                ..Part::default()
+            }],
+        }
+        .tessellate();
+        assert_eq!(
+            grid.indices.len(),
+            one.indices.len() * 12,
+            "two repeats should multiply, not add"
+        );
+
+        // The run really is spread out rather than stacked in one place.
+        let reach = run
+            .vertices
+            .iter()
+            .fold(0.0_f32, |wide, v| wide.max(v.position[0]));
+        assert!(reach > 1.5, "a four-step run only reached {reach}");
+    }
+
+    #[test]
+    fn a_mirror_adds_a_reflected_copy_and_flips_its_handedness() {
+        // ADR 0074 §3's `mirror`: a symmetrical fitting is one half and a flag. Each flag **adds**
+        // rather than replaces, so one flag makes a pair and two make four.
+        let bracket = || Part {
+            solid: Solid::Box {
+                shape: BoxMesh {
+                    size: [0.2, 0.2, 0.2],
+                },
+            },
+            position: [1.0, 0.0, 0.0],
+            ..Part::default()
+        };
+
+        let alone = CompoundMesh {
+            parts: vec![bracket()],
+        }
+        .tessellate();
+        let paired = CompoundMesh {
+            parts: vec![Part {
+                mirror: [true, false, false],
+                ..bracket()
+            }],
+        }
+        .tessellate();
+
+        assert_eq!(paired.indices.len(), alone.indices.len() * 2);
+
+        // The copy is on the other side, which is the whole point.
+        let leftmost = paired
+            .vertices
+            .iter()
+            .fold(f32::MAX, |low, v| low.min(v.position[0]));
+        assert!(
+            (leftmost + 1.1).abs() < 0.001,
+            "the mirrored copy should reach -1.1, got {leftmost}"
+        );
+
+        // Two flags double twice.
+        let four = CompoundMesh {
+            parts: vec![Part {
+                mirror: [true, true, false],
+                ..bracket()
+            }],
+        }
+        .tessellate();
+        assert_eq!(four.indices.len(), alone.indices.len() * 4);
+    }
+
+    #[test]
+    fn a_mirrored_part_is_not_inside_out() {
+        // **The failure a reflection introduces that a rotation does not.** A reflection reverses
+        // orientation, so negating positions without reversing the winding leaves every face of the
+        // mirrored copy pointing into the solid. Unlike the rotation case, the winding check *can*
+        // see this — which is why `mirror_across` is safer to write than `append_transformed` was,
+        // and why this test is one line of leaning on the existing check rather than a new one.
+        let assembly = CompoundMesh {
+            parts: vec![Part {
+                solid: Solid::Wedge {
+                    shape: WedgeMesh::default(),
+                },
+                position: [0.8, 0.0, 0.4],
+                rotation: [0.0, 35.0, 0.0],
+                mirror: [true, false, true],
+                ..Part::default()
+            }],
+        }
+        .tessellate();
+
+        if let Err(problem) = wound_to_match_normals(&assembly) {
+            panic!("a mirrored, rotated part: {problem}");
+        }
+    }
+
+    #[test]
+    fn rotating_a_part_rotates_its_normals_and_tangents_with_it() {
+        // **Written before `append_transformed` existed, because it is the one defect in this feature
+        // that nothing else can see.**
+        //
+        // `every_primitive_is_wound_to_match_its_own_normals` compares a triangle's winding against
+        // its own normals — and a rotation moves *both*, together, consistently. So a part whose
+        // normals were left unrotated while its positions turned would pass that test perfectly, and
+        // would render as a shape that shades correctly until a light moves. That is the failure
+        // `append_translated`'s doc comment refused rotation to avoid; this is what replaces the
+        // refusal.
+        //
+        // The assertion is direct: rotate a part, and every normal must equal the unrotated part's
+        // normal put through the same matrix. Nothing about winding, nothing about pixels.
+        let part = BoxMesh {
+            size: [2.0, 0.5, 1.0],
+        }
+        .tessellate();
+
+        let rotation = [0.0, 90.0, 0.0];
+        let matrix = amadeo_transform::Mat4::from_euler_degrees(rotation);
+
+        let mut rotated = MeshData::default();
+        append_transformed(&mut rotated, &part, [0.0, 0.0, 0.0], rotation);
+
+        assert_eq!(
+            rotated.vertices.len(),
+            part.vertices.len(),
+            "a transform must not change how many vertices a part has"
+        );
+
+        for (index, (before, after)) in part.vertices.iter().zip(&rotated.vertices).enumerate() {
+            let expected = matrix.transform_point4(before.normal);
+            for axis in 0..3 {
+                assert!(
+                    (after.normal[axis] - expected[axis]).abs() < 1e-5,
+                    "vertex {index}'s normal came out {:?}, expected {:?} — the positions turned and \
+                     the normals did not, which shades correctly until a light moves",
+                    after.normal,
+                    [expected[0], expected[1], expected[2]]
+                );
+            }
+
+            // The tangent turns too, and its handedness does *not*: `w` is a sign, not a direction,
+            // and a rotation cannot flip it.
+            let expected_tangent =
+                matrix.transform_point4([before.tangent[0], before.tangent[1], before.tangent[2]]);
+            for (axis, wanted) in expected_tangent.iter().take(3).enumerate() {
+                assert!(
+                    (after.tangent[axis] - wanted).abs() < 1e-5,
+                    "vertex {index}'s tangent did not turn with its part"
+                );
+            }
+            assert_eq!(
+                after.tangent[3], before.tangent[3],
+                "a rotation must not change a tangent's handedness"
+            );
+        }
+    }
+
+    #[test]
+    fn a_stair_is_unchanged_by_the_move_to_a_general_transform() {
+        // The migration test, written before `append_translated` was deleted. `StairMesh` was the one
+        // shape composing parts, through a translate-only helper that could not get a normal wrong;
+        // this proves the general path did not regress it.
+        //
+        // **Positions and normals rather than whole vertices**, deliberately: adding a
+        // `generate_tangents` call to `StairMesh` later is an orthogonal change, and comparing whole
+        // vertices would make this test fail for that unrelated reason.
+        let data = StairMesh::default().tessellate();
+
+        // The property the old helper guaranteed by construction: every box in the flight keeps
+        // axis-aligned normals, because a translation cannot turn one.
+        for vertex in &data.vertices {
+            let axes = vertex
+                .normal
+                .iter()
+                .filter(|component| component.abs() > 0.001)
+                .count();
+            assert_eq!(
+                axes, 1,
+                "a stair's normals should still be axis-aligned, got {:?}",
+                vertex.normal
+            );
+        }
+
+        // And the flight is still where it was: the arithmetic in `total_rise`/`total_run` is what a
+        // level designer places against.
+        let tallest = data
+            .vertices
+            .iter()
+            .fold(0.0_f32, |high, v| high.max(v.position[1]));
+        assert!(
+            (tallest - StairMesh::default().total_rise()).abs() < 0.001,
+            "the flight reaches {tallest}, not its own total rise"
+        );
     }
 
     #[test]

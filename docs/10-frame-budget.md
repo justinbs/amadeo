@@ -50,11 +50,18 @@ checked is a number about an unknown scene.
 
 | | |
 |---|---|
-| Drawn meshes | 11 |
+| Drawn meshes | 11 at the time of measurement; **16 since session 21** |
 | Bodies with a collider | 11 (10 static, 1 kinematic character) |
 | Characters | 1 |
 | Shadow-casting lights | 1, orthogonal, 2048² map |
 | Render target | 1280 × 720, HDR scene target plus a post pass |
+
+**The scene has grown since these numbers were taken and they have not been re-measured.** Session
+21 added a table, a bolted generator and a lamp fitting to `games/atrium` — the first non-box meshes
+in any game here (ADR 0074 §2). They add **three** drawables, not fifteen: a `CompoundMesh` is one
+mesh, one asset and one draw call however many parts it has, which is the argument for it over the
+prefab-children arrangement the games used before. Re-measuring is item 19 of
+`docs/13-the-engine-gate.md`, which is about widening this evidence base rather than nudging it.
 
 ---
 

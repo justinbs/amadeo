@@ -9,6 +9,8 @@ assets
   brass_key
   floor
   footstep
+  generator
+  lamp_fitting
   lamp_flicker
   lamp_hum
   lantern_sweep
@@ -19,6 +21,7 @@ assets
   signage
   slate
   stone
+  table
   wall_north
   wall_side
   watcher
@@ -829,3 +832,30 @@ entity hud "Interface root"
             padding None
             size 0.0 0.0
             visible true
+
+entity table "Reading table"
+  Mesh
+    material "amber"
+    mesh "table"
+  Transform
+    rotation 0.0 -18.0 0.0
+    scale 1.0 1.0 1.0
+    translation -4.2 0.0 -2.6
+
+entity generator "Bolted generator"
+  Mesh
+    material "rust"
+    mesh "generator"
+  Transform
+    rotation 0.0 24.0 0.0
+    scale 1.0 1.0 1.0
+    translation 5.6 0.0 -4.4
+
+entity lamp_fitting "Bar-guard lamp fitting"
+  Mesh
+    material "amber"
+    mesh "lamp_fitting"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 3.4 0.0

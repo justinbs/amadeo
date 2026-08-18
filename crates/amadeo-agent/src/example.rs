@@ -99,9 +99,15 @@ fn field_unwritable(value: &Value) -> Option<String> {
         Value::Map(entries) if entries.is_empty() => {
             Some("it has an empty map field, and an empty block is a parse error".to_string())
         }
-        Value::List(items) if items.is_empty() => {
-            Some("it has an empty list field, and an empty block is a parse error".to_string())
-        }
+        // **An empty list used to be refused here and no longer is.** The format grew a spelling for
+        // it — `[]`, written by `amadeo_scene::inline_value` and read back by the parser — when
+        // ADR 0069's save work found that every registered event queue holds two empty lists at rest,
+        // so the engine was writing snapshots it could not read back.
+        //
+        // This guard outlived that fix by three sessions and cost a real answer: `CompoundMesh` has a
+        // `repeat` field defaulting to an empty list, so `describe CompoundMesh --example` reported
+        // "no scene form" for the flagship type of ADR 0074 while the format could spell it perfectly.
+        // An empty *map* and an empty *struct* have no marker and are still genuinely unwritable.
         Value::Struct(fields) if fields.is_empty() => {
             Some("it has an empty struct field, and an empty block is a parse error".to_string())
         }

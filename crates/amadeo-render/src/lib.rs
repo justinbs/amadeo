@@ -75,7 +75,10 @@ pub use mesh::{
     MAX_SHADOW_SPOTS, Material, MaterialCache, Mesh, MeshCache, MeshData, PlaneMesh, PointLight,
     ShadowMode, SpotLight, Vertex,
 };
-pub use solid::{CylinderMesh, DEFAULT_SIDES, SphereMesh, StairMesh, WedgeMesh};
+pub use solid::{
+    CompoundMesh, CylinderMesh, DEFAULT_SIDES, Part, Repeat, Solid, SphereMesh, StairMesh,
+    VertexMesh, WedgeMesh,
+};
 pub use sprites::{COLLECT_SPRITES, collect_sprites};
 pub use textures::{
     COLOR_SPACE_SETTING, LINEAR_COLOR_SPACE, PLACEHOLDER_TEXTURE_ID, TextureCache, TextureFailure,

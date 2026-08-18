@@ -1,0 +1,42 @@
+scene lamp_fitting
+version 1
+
+entity mesh "Bar-guard lamp fitting"
+  CompoundMesh
+    parts
+      - position 0.0 0.0 0.0
+        solid Cylinder
+          shape
+            height 0.06
+            radius 0.09
+            top_radius 0.07
+      - position 0.0 -0.16 0.0
+        solid Sphere
+          shape
+            radius 0.055
+            rings 6
+            segments 10
+      - mirror true false false
+        position 0.078 -0.14 0.0
+        rotation 0.0 0.0 10.0
+        solid Cylinder
+          shape
+            height 0.3
+            radius 0.004
+            top_radius 0.004
+      - mirror true false false
+        position 0.055 -0.14 0.055
+        rotation -10.0 0.0 10.0
+        solid Cylinder
+          shape
+            height 0.3
+            radius 0.004
+            top_radius 0.004
+      - mirror true false false
+        position 0.0 -0.14 0.078
+        rotation -10.0 0.0 0.0
+        solid Cylinder
+          shape
+            height 0.3
+            radius 0.004
+            top_radius 0.004

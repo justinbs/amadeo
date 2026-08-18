@@ -72,7 +72,15 @@ fn the_scene_complexity_the_budget_is_quoted_against() {
     // knowing that this number *falls back to twelve once somebody picks the key up*: storing an
     // item removes its `Transform`, and every pass that draws or simulates a thing requires one.
     // That is the module's whole mechanism showing up in a measurement taken for another reason.
-    assert_eq!(meshes, 13, "drawn meshes");
+    // **Sixteen since the room got furniture** (ADR 0074 §2, session 21): a table, a bolted
+    // generator and a lamp fitting, each a `CompoundMesh` assembled from several primitives. They are
+    // the first things in any game here that are not axis-aligned boxes, which is the measurement the
+    // engine gate exists to move — so this number going up is the point rather than a regression.
+    //
+    // Worth knowing for `docs/10`: they cost **three** drawables between them, not fifteen. A
+    // compound is one mesh, one asset and one draw call however many parts it has, which is the whole
+    // argument for it over the prefab-children arrangement the games used before.
+    assert_eq!(meshes, 16, "drawn meshes");
     assert_eq!(bodies, 12, "bodies with a collider");
     assert_eq!(characters, 1, "characters");
     assert_eq!(casters, 1, "shadow-casting lights");

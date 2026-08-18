@@ -10,8 +10,9 @@ use amadeo_reflect::{
     FieldInfo, Reflect, ReflectError, RegistryError, Replication, TypeInfo, TypeKind, Value,
 };
 use amadeo_render::{
-    ArchMesh, BoxMesh, Camera, CylinderMesh, Environment, EnvironmentCache, GltfPart, Material,
-    MaterialCache, Mesh, MeshCache, MeshData, PlaneMesh, SphereMesh, StairMesh, Vertex, WedgeMesh,
+    ArchMesh, BoxMesh, Camera, CompoundMesh, CylinderMesh, Environment, EnvironmentCache, GltfPart,
+    Material, MaterialCache, Mesh, MeshCache, MeshData, PlaneMesh, SphereMesh, StairMesh, Vertex,
+    VertexMesh, WedgeMesh,
 };
 use amadeo_scene::PrefabLibrary;
 use std::collections::{BTreeMap, BTreeSet};
@@ -315,11 +316,11 @@ impl App {
 
     /// Registers every component the engine's own asset loaders read out of an asset file.
     ///
-    /// The ten of them: [`BoxMesh`], [`PlaneMesh`], [`ArchMesh`], [`CylinderMesh`], [`SphereMesh`],
-    /// [`WedgeMesh`], [`StairMesh`] and [`GltfPart`], which [`App::load_meshes`] reads, plus
-    /// [`Material`] and [`Environment`].
+    /// The twelve of them: [`BoxMesh`], [`PlaneMesh`], [`ArchMesh`], [`CylinderMesh`], [`SphereMesh`],
+    /// [`WedgeMesh`], [`StairMesh`], [`CompoundMesh`], [`VertexMesh`] and [`GltfPart`], which
+    /// [`App::load_meshes`] reads, plus [`Material`] and [`Environment`].
     ///
-    /// # Why these ten and not every engine component
+    /// # Why these twelve and not every engine component
     ///
     /// The rule is narrow on purpose: **a component a game registers only because it ships the files
     /// holding it.** No entity carries a `BoxMesh` — the shape lives in a `.mesh` asset and
@@ -363,6 +364,8 @@ impl App {
         self.register_component::<SphereMesh>()?;
         self.register_component::<WedgeMesh>()?;
         self.register_component::<StairMesh>()?;
+        self.register_component::<CompoundMesh>()?;
+        self.register_component::<VertexMesh>()?;
         self.register_component::<GltfPart>()?;
         self.register_component::<Material>()?;
         self.register_component::<Environment>()?;
@@ -810,6 +813,16 @@ impl App {
             built.push((id, shape.tessellate()));
         }
         for (id, shape) in self.read_component_assets::<StairMesh>(&wanted) {
+            built.push((id, shape.tessellate()));
+        }
+        // ADR 0074 §2. The one kind here that is not a primitive: it assembles the others, which is
+        // what makes a table or a lamp fitting one asset and one draw call rather than five entities.
+        for (id, shape) in self.read_component_assets::<CompoundMesh>(&wanted) {
+            built.push((id, shape.tessellate()));
+        }
+        // ADR 0074 §4: the dump target for importers and generators, deliberately not a hand-authoring
+        // path. ADR 0035 promised this form five milestones ago and nothing had built it.
+        for (id, shape) in self.read_component_assets::<VertexMesh>(&wanted) {
             built.push((id, shape.tessellate()));
         }
         // The third producer, and the one ADR 0035 predicted: geometry read out of a glTF file

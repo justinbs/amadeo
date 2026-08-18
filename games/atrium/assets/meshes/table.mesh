@@ -1,0 +1,17 @@
+scene table
+version 1
+
+entity mesh "Reading table"
+  CompoundMesh
+    parts
+      - position 0.0 0.72 0.0
+        solid Box
+          shape
+            size 1.6 0.06 0.9
+      - mirror true false true
+        position 0.72 0.36 0.37
+        solid Cylinder
+          shape
+            height 0.72
+            radius 0.035
+            top_radius 0.045
