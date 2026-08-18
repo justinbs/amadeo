@@ -1,0 +1,23 @@
+scene vestibule
+version 1
+
+entity mesh "Vestibule beyond the doorway"
+  CompoundMesh
+    parts
+      - position 0.0 -0.15 0.0
+        solid Box
+          shape
+            size 5.0 0.3 5.0
+      - position 0.0 1.85 -2.6
+        solid Box
+          shape
+            size 5.0 4.0 0.4
+      - mirror true false false
+        position 2.3 1.85 0.0
+        solid Box
+          shape
+            size 0.4 4.0 5.0
+      - position 0.0 3.85 0.0
+        solid Box
+          shape
+            size 5.0 0.3 5.0

@@ -80,8 +80,16 @@ fn the_scene_complexity_the_budget_is_quoted_against() {
     // Worth knowing for `docs/10`: they cost **three** drawables between them, not fifteen. A
     // compound is one mesh, one asset and one draw call however many parts it has, which is the whole
     // argument for it over the prefab-children arrangement the games used before.
-    assert_eq!(meshes, 18, "drawn meshes");
-    assert_eq!(bodies, 12, "bodies with a collider");
+    // **Twenty since the Atrium became a room** (item 12a, session 21): a roof with an oculus, a
+    // north wall with a doorway, and a vestibule to look into. The engine gate's reasoning was that
+    // a sky, textures and lighting are properties of a *space* -- so a showroom cannot answer the
+    // questions Phase C asks, and light with no opening to come through has nothing to do.
+    assert_eq!(meshes, 20, "drawn meshes");
+    // **Fourteen since the doorway**: the north wall's single collider became two pier colliders, so
+    // the opening is walkable rather than a hole you can see through and not pass, and the roof got
+    // one so the follow camera stops rising through it -- which it did, and the first capture of the
+    // roofed room was a picture of its top surface.
+    assert_eq!(bodies, 14, "bodies with a collider");
     assert_eq!(characters, 1, "characters");
     assert_eq!(casters, 1, "shadow-casting lights");
 }

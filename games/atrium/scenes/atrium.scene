@@ -19,6 +19,7 @@ assets
   paving
   pillar
   plinth
+  roof
   room_tone
   rust
   screen_frame
@@ -27,6 +28,8 @@ assets
   stone
   stone_slab
   table
+  vestibule
+  wall_doorway
   wall_north
   wall_side
   watcher
@@ -53,15 +56,21 @@ entity floor "Floor"
     translation 0.0 -0.25 0.0
 
 entity wall_north "North wall"
+  Mesh
+    material "slate"
+    mesh "wall_doorway"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 2.0 -10.0
+
+entity door_pier_west "West door pier"
   Collider
     friction 0.8
     restitution 0.0
     sensor false
     shape Cuboid
-      size 20.0 4.0 0.5
-  Mesh
-    material "slate"
-    mesh "wall_north"
+      size 9.4 4.0 0.5
   RigidBody
     angular_damping 0.0
     gravity true
@@ -71,7 +80,25 @@ entity wall_north "North wall"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 2.0 -10.0
+    translation -5.3 2.0 -10.0
+
+entity door_pier_east "East door pier"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 9.4 4.0 0.5
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 5.3 2.0 -10.0
 
 entity wall_south "South wall"
   Collider
@@ -852,9 +879,9 @@ entity generator "Bolted generator"
     material "rust"
     mesh "generator"
   Transform
-    rotation 0.0 24.0 0.0
+    rotation 0.0 -118.0 0.0
     scale 1.0 1.0 1.0
-    translation 5.6 0.0 -4.4
+    translation 7.1 0.0 -6.9
 
 entity lamp_fitting "Standing lamp"
   Mesh
@@ -867,22 +894,52 @@ entity lamp_fitting "Standing lamp"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation -5.4 1.72 -4.9
+    translation -5.9 1.72 -1.9
 
 entity glass_pane "Glazed screen"
   Mesh
     material "glass"
     mesh "glass_pane"
   Transform
-    rotation 0.0 -8.0 0.0
+    rotation 0.0 -90.0 0.0
     scale 1.0 1.0 1.0
-    translation 2.1 0.0 1.9
+    translation 4.4 0.0 -5.2
 
 entity screen_frame "Glazed screen frame"
   Mesh
     material "slate"
     mesh "screen_frame"
   Transform
-    rotation 0.0 -8.0 0.0
+    rotation 0.0 -90.0 0.0
     scale 1.0 1.0 1.0
-    translation 2.1 0.0 1.9
+    translation 4.4 0.0 -5.2
+
+entity roof "Roof with an oculus"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 20.0 0.4 20.0
+  Mesh
+    material "slate"
+    mesh "roof"
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 4.2 0.0
+
+entity vestibule "Vestibule beyond the doorway"
+  Mesh
+    material "paving"
+    mesh "vestibule"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 -12.6

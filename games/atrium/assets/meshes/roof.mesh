@@ -1,0 +1,16 @@
+scene roof
+version 1
+
+entity mesh "Roof with an oculus"
+  CompoundMesh
+    parts
+      - mirror false false true
+        position 0.0 0.0 -7.0
+        solid Box
+          shape
+            size 20.0 0.4 6.0
+      - mirror true false false
+        position 7.0 0.0 0.0
+        solid Box
+          shape
+            size 6.0 0.4 8.0

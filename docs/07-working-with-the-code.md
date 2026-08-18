@@ -1961,6 +1961,23 @@ The mitigation is one sentence and it is cheap: **when you remove a limitation, 
 it.** The assertion is almost always in a different crate from the fix — which is exactly why the
 person making the fix does not see it.
 
+### One principle, three habits: verify the effect, not the action
+
+The three entries that follow were learned separately, in three different parts of the engine, and
+read as unrelated war stories. They are the same rule:
+
+| Habit | The action that lies | What to check instead |
+|---|---|---|
+| Mutate the assertion and watch it go red | a green test | that it *can* go red |
+| Dump the artefact before arguing | a confident theory | what the frame actually contains |
+| Grep for the result of an edit | a command that exited zero | that the new text is in the file |
+
+In every case the **action** reported success and the **effect** had not happened: a test passed for
+the wrong reason, a model of the code was wrong in a way reasoning could not reach, a substitution
+matched nothing. None is caught by care, and all three are caught by one extra step costing seconds.
+
+**When something matters, look at what changed rather than at what you did.**
+
 ### Mutate every capture assertion once, and say in the comment that you did
 
 Session 21 wrote **two** vacuous tests, and neither was caught by care in writing them or by review.

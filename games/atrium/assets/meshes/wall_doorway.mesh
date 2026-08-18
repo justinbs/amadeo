@@ -1,0 +1,15 @@
+scene wall_doorway
+version 1
+
+entity mesh "Wall with a doorway"
+  CompoundMesh
+    parts
+      - mirror true false false
+        position 5.3 0.0 0.0
+        solid Box
+          shape
+            size 9.4 4.0 0.5
+      - position 0.0 1.05 0.0
+        solid Box
+          shape
+            size 1.2 1.9 0.5
