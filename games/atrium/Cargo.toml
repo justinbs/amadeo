@@ -73,3 +73,7 @@ path = "src/bin/tone.rs"
 [[bin]]
 name = "surfaces"
 path = "src/bin/surfaces.rs"
+
+[[bin]]
+name = "daylight"
+path = "src/bin/daylight.rs"

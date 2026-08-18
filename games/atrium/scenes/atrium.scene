@@ -4,6 +4,7 @@ version 1
 assets
   BebasNeue-Regular
   amber
+  atrium_daylight
   atrium_look
   body
   brass_key
@@ -266,7 +267,7 @@ entity plinth "Plinth"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 0.5 -6.0
+    translation -2.9 0.5 -6.2
 
 entity brass_key "Brass key"
   Collider
