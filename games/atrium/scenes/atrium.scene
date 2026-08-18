@@ -16,14 +16,17 @@ assets
   lamp_flicker
   lamp_hum
   lantern_sweep
+  paving
   pillar
   plinth
+  plinth_stone
   room_tone
   rust
   screen_frame
   signage
   slate
   stone
+  stone_slab
   table
   wall_north
   wall_side
@@ -37,7 +40,7 @@ entity floor "Floor"
     shape Cuboid
       size 20.0 0.5 20.0
   Mesh
-    material "stone"
+    material "paving"
     mesh "floor"
   RigidBody
     angular_damping 0.0
@@ -226,7 +229,7 @@ entity plinth "Plinth"
     shape Cuboid
       size 3.0 1.0 3.0
   Mesh
-    material "slate"
+    material "plinth_stone"
     mesh "plinth"
   RigidBody
     angular_damping 0.0

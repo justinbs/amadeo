@@ -2890,3 +2890,108 @@ fn a_blended_surface_casts_no_shadow_and_an_opaque_one_does() {
          beside it: under {under_blended:?}, lit {lit_blended:?}"
     );
 }
+
+#[test]
+fn uv_scale_repeats_a_texture_and_one_is_the_untouched_control() {
+    // **ADR 0078's claim, as pixels.** `uv_scale` multiplies the mesh's own coordinates, so a surface
+    // asking for four repeats shows four times as many features across the same span.
+    //
+    // The `[1, 1]` case is the control **in the same test**, and it is load-bearing twice over: it is
+    // what makes the comparison discriminating, and `[1, 1]` being the identity is what let this land
+    // without moving a single existing capture.
+    //
+    // Built on `a_lit_box` rather than a hand-rolled world. The first version rolled its own camera
+    // and sun and the checker never reached the surface at all — caught immediately by the
+    // "the control must show something" assertion below, which is exactly why that assertion is
+    // there rather than only the comparison.
+    //
+    // Verified by mutation when written: dropping `* instance.uv_scale.xy` from `mesh.wgsl` makes
+    // both counts equal and this goes red.
+    let edges_across = |scale: [f32; 2]| -> Option<usize> {
+        let mut world = a_lit_box([1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 2.0]);
+
+        // A two-by-two checker of **large** texels: at `uv_scale` one the front face wears two bands
+        // across, and at four it wears eight.
+        //
+        // Large on purpose, and this was the second thing to get wrong. A one-pixel checker is
+        // destroyed by the sampler long before it reaches a pixel: the face covers far more screen
+        // pixels than the texture has texels, so bilinear *magnification* averages neighbours into a
+        // flat grey. Big texels survive magnification, and keeping the repeat count low keeps the
+        // four-times case out of the minification range where mipmapping would blur it away instead.
+        let side = 64_u32;
+        let mut pixels = Vec::with_capacity((side * side * 4) as usize);
+        for y in 0..side {
+            for x in 0..side {
+                let value = if ((x / 32) + (y / 32)) % 2 == 0 {
+                    20
+                } else {
+                    240
+                };
+                pixels.extend_from_slice(&[value, value, value, 255]);
+            }
+        }
+
+        let mut textures = amadeo_render::TextureCache::new();
+        textures.insert_decoded(
+            "checker",
+            TextureData {
+                width: side,
+                height: side,
+                format: amadeo_image::PixelFormat::Rgba8UnormSrgb,
+                pixels,
+            },
+        );
+        world.insert_service(textures);
+
+        if let Some(materials) = world.service_mut::<MaterialCache>() {
+            materials.insert(
+                "paint",
+                Material {
+                    base_colour: [1.0, 1.0, 1.0, 1.0],
+                    base_colour_texture: "checker".to_string(),
+                    uv_scale: scale,
+                    ..Material::default()
+                },
+            );
+        }
+
+        // **256 rather than 64, and that is not cosmetic.** At 64 the four-times case put roughly ten
+        // texels behind every screen pixel, which is squarely in the minification range -- so
+        // mipmapping blurred the bands away and the count came back equal to the control. It passed on
+        // WARP through FXC and failed on a real GPU, because the two choose mip levels differently.
+        // Capturing larger keeps both cases magnified, where the comparison is about `uv_scale` rather
+        // than about a sampler.
+        let image = capture(&mut world, 256, 256)?;
+
+        // Transitions along the middle of the box's front face. More repeats, more transitions —
+        // and this counts *changes* rather than absolute values, so it does not depend on any band
+        // landing on any particular pixel.
+        let mut edges = 0;
+        let mut previous = pixel_at(&image, 84, 128)[0];
+        for x in 85..172 {
+            let here = pixel_at(&image, x, 128)[0];
+            if here.abs_diff(previous) > 40 {
+                edges += 1;
+            }
+            previous = here;
+        }
+        Some(edges)
+    };
+
+    let (Some(plain), Some(repeated)) = (edges_across([1.0, 1.0]), edges_across([4.0, 4.0])) else {
+        return;
+    };
+
+    // The control has to show *something*, or the comparison below is between two nothings — which is
+    // how a capture test goes quietly vacuous, and did on this test's first draft.
+    assert!(
+        plain >= 1,
+        "the control box shows {plain} edges, so the checker is not reaching the surface at all and \
+         nothing below this means anything"
+    );
+    assert!(
+        repeated > plain * 2,
+        "four repeats should show far more edges across the same face than one: uv_scale [1,1] gave \
+         {plain}, [4,4] gave {repeated}"
+    );
+}

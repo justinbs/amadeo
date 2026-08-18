@@ -776,6 +776,17 @@ pub struct Material {
     /// drove its alpha through 0.99.
     #[reflect(default = AlphaMode::Opaque)]
     pub alpha_mode: AlphaMode,
+    /// How many times a texture repeats across this surface — ADR 0078.
+    ///
+    /// **Texel density**, which is the first thing that goes wrong when textures arrive. A 12 m wall
+    /// and a 0.4 m crate both carry UVs running 0 to 1, so one image stretches across both at a
+    /// thirty-fold difference in density unless something says otherwise. Every art pipeline in the
+    /// industry has a texel-density standard for exactly this reason; Unity spells it `_MainTex_ST`
+    /// and Unreal puts U/V tiling on a `TexCoord` node.
+    ///
+    /// `[1, 1]` is the mesh's own UVs unchanged. A wall wanting a 1 m tile over 12 m asks for `12`.
+    #[reflect(min = 0.0, max = 4096.0, default = [1.0, 1.0])]
+    pub uv_scale: [f32; 2],
 }
 
 /// Whether a surface is drawn opaque or blended — ADR 0077.
@@ -820,6 +831,7 @@ impl Default for Material {
             normal_strength: 1.0,
             metallic_roughness_texture: String::new(),
             alpha_mode: AlphaMode::Opaque,
+            uv_scale: [1.0, 1.0],
         }
     }
 }
@@ -2027,6 +2039,7 @@ mod tests {
             normal_strength: 0.75,
             metallic_roughness_texture: "rust_plate_wear".to_string(),
             alpha_mode: AlphaMode::Blend,
+            uv_scale: [3.0, 2.0],
         };
         let back = Material::from_value(&material.to_value()).expect("round trips");
         assert_eq!(back, material);

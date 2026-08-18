@@ -298,6 +298,8 @@ struct InstanceInput {
     @location(7) base_colour: vec4<f32>,
     // rgb = emissive. a unused.
     @location(8) emissive: vec4<f32>,
+    // xy = texture coordinate scale (ADR 0078). zw unused.
+    @location(11) uv_scale: vec4<f32>,
     // x = metallic, y = roughness, z = normal_strength. w unused.
     @location(10) surface: vec4<f32>,
 };
@@ -357,7 +359,10 @@ fn vs_main(vertex: VertexInput, instance: InstanceInput) -> VertexOutput {
     out.metallic = instance.surface.x;
     out.roughness = instance.surface.y;
     out.world_position = world.xyz;
-    out.uv = vertex.uv;
+    // **Texel density** (ADR 0078). A 12 m wall and a 0.4 m crate have the same 0..1 UVs, so without
+    // this one image is stretched across both at a thirty-fold difference in density -- which reads as
+    // a bug rather than as art. The scale is per material, so the wall asks for more repeats.
+    out.uv = vertex.uv * instance.uv_scale.xy;
     return out;
 }
 

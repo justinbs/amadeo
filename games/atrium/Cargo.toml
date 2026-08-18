@@ -23,6 +23,7 @@ amadeo-app = { workspace = true, features = ["gpu"] }
 # `cargo test --workspace` too, and on Linux that needs ALSA's headers; CI installs them.
 amadeo-audio = { workspace = true, features = ["kira"] }
 amadeo-core.workspace = true
+amadeo-image.workspace = true
 amadeo-ecs.workspace = true
 # A footstep is an event, not a state (ADR 0059). This game is what sends them.
 amadeo-events.workspace = true
@@ -68,3 +69,7 @@ path = "src/main.rs"
 [[bin]]
 name = "tone"
 path = "src/bin/tone.rs"
+
+[[bin]]
+name = "surfaces"
+path = "src/bin/surfaces.rs"

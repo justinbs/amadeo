@@ -97,6 +97,11 @@ struct GpuMeshInstance {
     base_colour: [f32; 4],
     /// rgb = emissive, a unused.
     emissive: [f32; 4],
+    /// Texture coordinate scale: `[u, v, unused, unused]` — ADR 0078.
+    ///
+    /// Its own field rather than packed into the spare lanes of `emissive` and `surface`, which would
+    /// have cost no bytes and put two halves of one number in two unrelated places.
+    uv_scale: [f32; 4],
     /// How this surface responds to light: `[metallic, roughness, normal_strength, unused]`.
     ///
     /// The scalar half of the material. A metallic-roughness *texture* multiplies into the first two
@@ -2075,6 +2080,7 @@ impl WgpuBackend {
                                     6 => Float32x4,
                                     7 => Float32x4,
                                     8 => Float32x4,
+                                    11 => Float32x4,
                                     10 => Float32x4,
                                 ],
                             }),
@@ -4383,6 +4389,12 @@ fn batch_mesh_instances<'a>(
                 instance.material.emissive[0],
                 instance.material.emissive[1],
                 instance.material.emissive[2],
+                0.0,
+            ],
+            uv_scale: [
+                instance.material.uv_scale[0],
+                instance.material.uv_scale[1],
+                0.0,
                 0.0,
             ],
             surface: [

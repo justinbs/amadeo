@@ -489,6 +489,7 @@ dependencies = [
  "amadeo-core",
  "amadeo-ecs",
  "amadeo-events",
+ "amadeo-image",
  "amadeo-input",
  "amadeo-interaction",
  "amadeo-inventory",
