@@ -2815,3 +2815,78 @@ fn a_blended_surface_composites_over_the_sky_and_not_the_clear_colour() {
          by it"
     );
 }
+
+#[test]
+fn a_blended_surface_casts_no_shadow_and_an_opaque_one_does() {
+    // **The only piece of ADR 0077's behaviour that had no test at all**, found by the reviewer
+    // mutating the filter at `lib.rs`'s caster collection to `|_| true` and watching all 46 capture
+    // tests stay green. A one-line filter in the middle of a chain, whose removal is completely
+    // silent, and whose symptom is a hard black rectangle under a pane of glass on a pale floor.
+    //
+    // The opaque box is the control **in the same test**, which is the pattern the shape tests
+    // established and is strictly better than a mutation somebody ran once: if a refactor of the
+    // caster chain dropped the filter, the two images become identical and this fails.
+    //
+    // Verified by mutation when written: removing the filter makes the blended case shadow the floor
+    // and this goes red.
+    let floor_under = |mode: AlphaMode| -> Option<([u8; 4], [u8; 4])> {
+        let mut world = a_floor_under_a_floating_box(ShadowMode::Orthogonal);
+
+        // The block is `pale` and opaque in the helper; this is the one thing that changes.
+        if let Some(materials) = world.service_mut::<MaterialCache>() {
+            materials.insert(
+                "pale",
+                Material {
+                    base_colour: [0.9, 0.9, 0.9, 1.0],
+                    ..Material::default()
+                },
+            );
+            materials.insert(
+                "glazed",
+                Material {
+                    base_colour: [0.9, 0.9, 0.9, 0.4],
+                    alpha_mode: mode,
+                    ..Material::default()
+                },
+            );
+        }
+        // Repoint the floating block at the material under test, leaving the floor `pale`.
+        let block = world
+            .entities()
+            .into_iter()
+            .find(|entity| {
+                world
+                    .get::<Mesh>(*entity)
+                    .is_some_and(|mesh| mesh.mesh == "block")
+            })
+            .expect("the helper spawns a block");
+        world.insert(block, Mesh::new("block", "glazed"));
+
+        let image = capture(&mut world, 64, 64)?;
+        // Screen centre is where the block's shadow lands; the left edge is the same floor under the
+        // same light five units away, so the pair differs in exactly one thing.
+        Some((pixel_at(&image, 32, 32), pixel_at(&image, 10, 32)))
+    };
+
+    let (Some((under_opaque, lit_opaque)), Some((under_blended, lit_blended))) = (
+        floor_under(AlphaMode::Opaque),
+        floor_under(AlphaMode::Blend),
+    ) else {
+        return;
+    };
+
+    // The control: an opaque block shadows the floor beneath it.
+    assert!(
+        i32::from(lit_opaque[0]) > i32::from(under_opaque[0]) + 25,
+        "the control failed — an opaque block should darken the floor under it: under {under_opaque:?}, \
+         lit {lit_opaque:?}. If these match, the shadow pass rather than the filter is what broke"
+    );
+
+    // The claim: a blended block does not. Unreal, Unity and Godot all default this way, because a
+    // pane of glass with no shadow reads as glass and one with a hard black rectangle reads as a bug.
+    assert!(
+        i32::from(under_blended[0]) + 15 > i32::from(lit_blended[0]),
+        "a blended surface should cast no shadow, but the floor under it is darker than the floor \
+         beside it: under {under_blended:?}, lit {lit_blended:?}"
+    );
+}

@@ -1961,6 +1961,34 @@ The mitigation is one sentence and it is cheap: **when you remove a limitation, 
 it.** The assertion is almost always in a different crate from the fix — which is exactly why the
 person making the fix does not see it.
 
+### Mutate every capture assertion once, and say in the comment that you did
+
+Session 21 wrote **two** vacuous tests, and neither was caught by care in writing them or by review.
+Both were caught by breaking the thing they tested and watching them stay green.
+
+They share a shape, and it is not "a bad assertion": **the assertion was true for a reason other than
+the one it was written for.**
+
+| The test | What it asserted | Why it passed anyway |
+|---|---|---|
+| The first sky-ordering test | a pane against a blue sky reads blue | the sky pass *painted over* the pane, so the pixel was the sky in either order |
+| Session 20's pause test | the player's translation is unchanged | a player with no input does not move whether paused or not |
+| Two capture framings | the shape covers the middle of the frame | it did — as a flat face square-on, or a slab, with the feature off screen |
+
+No amount of care catches this, because the assertion is *correct*; what it cannot do is tell the
+passing case from the failing one. **Only running the failing case shows that.** So:
+
+- **Break the thing, run the test, watch it go red, put it back.** Once, when the test is written.
+- **Say so in the comment**, because the next person cannot tell a mutated assertion from an
+  unmutated one, and the whole problem is that both look identical when green.
+- **Prefer a control inside the test where one can be built.** Rendering a `BoxMesh` of the same
+  bounds beside the shape under test, or an opaque material beside a blended one, makes the
+  discrimination *structural*: if a change stops the two differing, the comparison fails by itself.
+  That is a permanent mutation rather than one somebody performed once, and it is strictly better.
+
+The engine gate's shape tests all carry a control for this reason, and the pattern is worth copying to
+anything that asserts a colour.
+
 ### A mesh now has three independent properties, not two
 
 The entry above pairs **normals** and **winding** and says getting one right does not check the other.
