@@ -23,10 +23,10 @@
 
 use amadeo_ecs::World;
 use amadeo_render::{
-    ArchMesh, BoxMesh, Camera, CompoundMesh, CylinderMesh, DirectionalLight, Environment,
-    EnvironmentCache, Fog, Material, MaterialCache, Mesh, MeshCache, MeshData, NullBackend, Part,
-    PointLight, Quad, RenderBackend, Renderer, ShadowMode, Solid, SphereMesh, SpotLight, StairMesh,
-    TextureData, Vignette, WedgeMesh, WgpuBackend, render_quads,
+    AlphaMode, ArchMesh, BoxMesh, Camera, CompoundMesh, CylinderMesh, DirectionalLight,
+    Environment, EnvironmentCache, Fog, Material, MaterialCache, Mesh, MeshCache, MeshData,
+    NullBackend, Part, PointLight, Quad, RenderBackend, Renderer, ShadowMode, Solid, SphereMesh,
+    SpotLight, StairMesh, TextureData, Vignette, WedgeMesh, WgpuBackend, render_quads,
 };
 use amadeo_transform::Transform;
 
@@ -2439,5 +2439,266 @@ fn a_faceted_sphere_reads_as_faceted_and_a_smooth_one_does_not() {
         smooth > faceted * 2,
         "a smooth sphere should change brightness far more often across a scanline than a faceted \
          one: smooth {smooth} steps, faceted {faceted}"
+    );
+}
+
+/// A world with a red wall behind and a coloured pane in front of it, both facing the camera.
+///
+/// The pane is the thing under test; the wall is what it has to composite *against*. `alpha` and
+/// `mode` are the two variables, so one helper covers the opaque control and the blended case.
+fn wall_and_pane(alpha: f32, mode: AlphaMode) -> World {
+    let mut world = World::new();
+
+    let eye = world.spawn();
+    world.insert(
+        eye,
+        Transform {
+            translation: [0.0, 0.0, 3.0],
+            ..Transform::default()
+        },
+    );
+    world.insert(eye, Camera::perspective(45.0));
+
+    let mut meshes = MeshCache::new();
+    meshes.insert(
+        "wall",
+        BoxMesh {
+            size: [4.0, 4.0, 0.2],
+        }
+        .tessellate(),
+    );
+    meshes.insert(
+        "pane",
+        BoxMesh {
+            size: [1.2, 1.2, 0.05],
+        }
+        .tessellate(),
+    );
+    world.insert_service(meshes);
+
+    let mut materials = MaterialCache::new();
+    materials.insert(
+        "wall",
+        Material {
+            base_colour: [0.7, 0.1, 0.1, 1.0],
+            roughness: 0.9,
+            ..Material::default()
+        },
+    );
+    materials.insert(
+        "pane",
+        Material {
+            base_colour: [0.1, 0.35, 0.8, alpha],
+            roughness: 0.4,
+            alpha_mode: mode,
+            ..Material::default()
+        },
+    );
+    world.insert_service(materials);
+
+    // The wall, well behind.
+    let wall = world.spawn();
+    world.insert(
+        wall,
+        Transform {
+            translation: [0.0, 0.0, -2.0],
+            ..Transform::default()
+        },
+    );
+    world.insert(wall, Mesh::new("wall", "wall"));
+
+    // The pane, between the camera and the wall.
+    let pane = world.spawn();
+    world.insert(
+        pane,
+        Transform {
+            translation: [0.0, 0.0, 0.4],
+            ..Transform::default()
+        },
+    );
+    world.insert(pane, Mesh::new("pane", "pane"));
+
+    let sun = world.spawn();
+    world.insert(
+        sun,
+        Transform {
+            rotation: [-20.0, 25.0, 0.0],
+            ..Transform::default()
+        },
+    );
+    world.insert(
+        sun,
+        DirectionalLight {
+            intensity: 1.2,
+            ..DirectionalLight::default()
+        },
+    );
+
+    world
+}
+
+#[test]
+fn a_blended_pane_lets_what_is_behind_it_through() {
+    // **ADR 0077's claim, as pixels.** A blended surface composites over what is already there, so a
+    // blue pane over a red wall reads as a mix of the two -- where an opaque pane of the same colour
+    // hides the wall completely.
+    //
+    // The **opaque pane is the control, rendered in the same test**, which is the pattern the shape
+    // tests established: if a future change stopped blending, both images become the same and the
+    // comparison fails rather than quietly measuring nothing.
+    let centre_of = |mut world: World| -> Option<[u8; 4]> {
+        let image = capture(&mut world, 96, 96)?;
+        Some(pixel_at(&image, 48, 48))
+    };
+
+    let (Some(solid), Some(blended)) = (
+        centre_of(wall_and_pane(1.0, AlphaMode::Opaque)),
+        centre_of(wall_and_pane(0.45, AlphaMode::Blend)),
+    ) else {
+        return;
+    };
+
+    // The wall is red and the pane is blue, so "the wall showing through" is measurable as red
+    // arriving where the opaque pane admitted none.
+    assert!(
+        blended[0] > solid[0] + 15,
+        "a blended pane should let the red wall through: opaque {solid:?}, blended {blended:?}"
+    );
+    // And it is still a blue pane rather than just the wall -- blending, not discarding.
+    assert!(
+        blended[2] > blended[0],
+        "the pane should still read as blue over the wall, got {blended:?}"
+    );
+}
+
+#[test]
+fn a_blended_surface_composites_the_same_from_either_side() {
+    // The **sort**, which is the half of ADR 0077 that a single fixed camera cannot check. Blending
+    // is not commutative, so if the back-to-front order were wrong -- or absent, leaving whatever
+    // order collection happened to produce -- the two panes would composite differently depending on
+    // which one the renderer reached first.
+    //
+    // Two panes at different depths, rendered from in front and from behind. Seen from either side
+    // the nearer one is over the further one, so the near pane's colour should dominate in both.
+    let scene = |from_behind: bool| -> Option<[u8; 4]> {
+        let mut world = World::new();
+
+        let eye = world.spawn();
+        let z = if from_behind { -3.0 } else { 3.0 };
+        let yaw = if from_behind { 180.0 } else { 0.0 };
+        world.insert(
+            eye,
+            Transform {
+                translation: [0.0, 0.0, z],
+                rotation: [0.0, yaw, 0.0],
+                ..Transform::default()
+            },
+        );
+        world.insert(eye, Camera::perspective(45.0));
+
+        let mut meshes = MeshCache::new();
+        meshes.insert(
+            "pane",
+            BoxMesh {
+                size: [1.4, 1.4, 0.04],
+            }
+            .tessellate(),
+        );
+        world.insert_service(meshes);
+
+        let mut materials = MaterialCache::new();
+        for (name, colour) in [
+            ("blue", [0.1, 0.3, 0.9, 0.5]),
+            ("orange", [0.9, 0.3, 0.1, 0.5]),
+        ] {
+            materials.insert(
+                name,
+                Material {
+                    base_colour: colour,
+                    alpha_mode: AlphaMode::Blend,
+                    ..Material::default()
+                },
+            );
+        }
+        world.insert_service(materials);
+
+        // Spawned in a fixed order, so a renderer that simply drew them in spawn order would get one
+        // of the two views right by luck and the other wrong.
+        for (name, at) in [("orange", -0.6_f32), ("blue", 0.6)] {
+            let pane = world.spawn();
+            world.insert(
+                pane,
+                Transform {
+                    translation: [0.0, 0.0, at],
+                    ..Transform::default()
+                },
+            );
+            world.insert(pane, Mesh::new("pane", name));
+        }
+
+        let image = capture(&mut world, 96, 96)?;
+        Some(pixel_at(&image, 48, 48))
+    };
+
+    let (Some(front), Some(behind)) = (scene(false), scene(true)) else {
+        return;
+    };
+
+    // From +Z the blue pane is nearest, so blue dominates. From -Z the orange one is, so red does.
+    // A renderer that ignored the sort would give the same answer to both.
+    assert!(
+        front[2] > front[0],
+        "seen from +Z the near blue pane should dominate, got {front:?}"
+    );
+    assert!(
+        behind[0] > behind[2],
+        "seen from -Z the near orange pane should dominate, got {behind:?}"
+    );
+}
+
+#[test]
+fn an_opaque_scene_is_byte_identical_with_transparency_built() {
+    // The control that makes the two above safe to have landed. `AlphaMode` defaults to `Opaque`, so
+    // every scene that predates ADR 0077 must render *exactly* as it did -- not nearly. A second
+    // pipeline that ran regardless, or an empty blended pass that still resolved or cleared
+    // something, is what this catches.
+    //
+    // Byte-identical rather than close, because "close" is also what an accidental extra pass is.
+    let mut opaque = wall_and_pane(1.0, AlphaMode::Opaque);
+    let Some(before) = capture(&mut opaque, 96, 96) else {
+        return;
+    };
+
+    // The same scene again, with a blended surface present in the world this time but placed
+    // entirely **behind the camera**, so it is culled and contributes nothing. If the blended pass
+    // did anything at all when its list is empty, these two would differ.
+    let mut with_a_blended_elsewhere = wall_and_pane(1.0, AlphaMode::Opaque);
+    let ghost = with_a_blended_elsewhere.spawn();
+    with_a_blended_elsewhere.insert(
+        ghost,
+        Transform {
+            translation: [0.0, 0.0, 40.0],
+            ..Transform::default()
+        },
+    );
+    with_a_blended_elsewhere.insert(ghost, Mesh::new("pane", "ghost"));
+    if let Some(materials) = with_a_blended_elsewhere.service_mut::<MaterialCache>() {
+        materials.insert(
+            "ghost",
+            Material {
+                base_colour: [0.0, 1.0, 0.0, 0.5],
+                alpha_mode: AlphaMode::Blend,
+                ..Material::default()
+            },
+        );
+    }
+    let Some(after) = capture(&mut with_a_blended_elsewhere, 96, 96) else {
+        return;
+    };
+
+    assert_eq!(
+        before.pixels, after.pixels,
+        "a culled blended surface changed an opaque frame, so the blended pass is doing something \
+         when it has nothing to draw"
     );
 }

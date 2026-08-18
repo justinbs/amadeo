@@ -366,6 +366,23 @@ pub struct View {
     /// Two lists, each culled to what actually needs it. The overlap between them is duplicated in
     /// the instance buffer, which is a matrix and two colours per repeat and is not worth avoiding.
     pub shadow_casters: Vec<MeshInstance>,
+    /// Blended meshes, **furthest from the eye first** — ADR 0077.
+    ///
+    /// A separate list from [`View::meshes`] rather than a flag on the instance, because the two are
+    /// drawn by different pipelines in a fixed order and the split is what decides the frame: every
+    /// opaque surface, then the sky, then these.
+    ///
+    /// # Why they cannot simply be drawn with the rest
+    ///
+    /// Blending is not commutative. A pane of glass drawn before the wall behind it composites
+    /// against the background instead of against the wall, and no amount of depth testing fixes it —
+    /// the wall's fragments are *rejected* once the nearer glass has written depth. Hence both halves
+    /// of the rule: **sorted back to front, and the blended pass does not write depth.** Writing depth
+    /// would make two blended surfaces hide each other in whichever order they happened to arrive.
+    ///
+    /// Empty for a scene with nothing transparent, which is every scene that predates ADR 0077 — and
+    /// is what makes an opaque capture byte-identical to before it existed.
+    pub transparent: Vec<MeshInstance>,
     /// Directional lights affecting this view.
     ///
     /// On the view rather than the frame because a camera rendering to a texture may one day want
@@ -868,6 +885,7 @@ mod tests {
                 eye: [0.0, 0.0],
                 eye_matrix: amadeo_transform::Mat4::IDENTITY,
                 meshes: Vec::new(),
+                transparent: Vec::new(),
                 shadow_casters: Vec::new(),
                 lights: Vec::new(),
                 punctual: Vec::new(),

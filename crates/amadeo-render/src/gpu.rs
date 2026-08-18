@@ -888,6 +888,8 @@ pub struct WgpuBackend {
     present_pipeline: wgpu::RenderPipeline,
     /// Draws 3D geometry with one directional light. See `mesh.wgsl`.
     mesh_pipeline: wgpu::RenderPipeline,
+    /// The same pipeline with alpha blending on and depth writes off — ADR 0077.
+    transparent_pipeline: wgpu::RenderPipeline,
     /// Draws the scene from a light's point of view, depth only (ADR 0038).
     shadow_pipeline: wgpu::RenderPipeline,
     /// Paints the environment behind everything else (ADR 0049). Shares `mesh_pipeline`'s layout.
@@ -2031,102 +2033,121 @@ impl WgpuBackend {
             immediate_size: 0,
         });
 
-        let mesh_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("amadeo mesh pipeline"),
-            layout: Some(&mesh_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &mesh_shader,
-                entry_point: Some("vs_main"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &[
-                    // Per vertex: position, normal, uv, tangent.
-                    Some(wgpu::VertexBufferLayout {
-                        array_stride: size_of::<GpuVertex>() as u64,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &wgpu::vertex_attr_array![
-                            0 => Float32x3,
-                            1 => Float32x3,
-                            2 => Float32x2,
-                            // 9, not 3: locations are one namespace shared with the instance
-                            // buffer below, which already claimed 3 through 8. Renumbering those
-                            // to keep the vertex attributes contiguous would touch the shadow
-                            // pipeline and both shaders to buy nothing.
-                            9 => Float32x4,
+        // **One descriptor, two pipelines** (ADR 0077). The blended one differs from the opaque one
+        // in exactly two states, and writing it out twice would be a hundred lines that have to stay
+        // in step -- a vertex layout, four bind groups, MSAA and the culling decision, none of which
+        // transparency changes.
+        let mesh_pipeline_for =
+            |label: &str, blend: Option<wgpu::BlendState>, depth_write: bool| {
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some(label),
+                    layout: Some(&mesh_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &mesh_shader,
+                        entry_point: Some("vs_main"),
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                        buffers: &[
+                            // Per vertex: position, normal, uv, tangent.
+                            Some(wgpu::VertexBufferLayout {
+                                array_stride: size_of::<GpuVertex>() as u64,
+                                step_mode: wgpu::VertexStepMode::Vertex,
+                                attributes: &wgpu::vertex_attr_array![
+                                    0 => Float32x3,
+                                    1 => Float32x3,
+                                    2 => Float32x2,
+                                    // 9, not 3: locations are one namespace shared with the instance
+                                    // buffer below, which already claimed 3 through 8. Renumbering those
+                                    // to keep the vertex attributes contiguous would touch the shadow
+                                    // pipeline and both shaders to buy nothing.
+                                    9 => Float32x4,
+                                ],
+                            }),
+                            // Per instance: four matrix columns, two colours, and the surface parameters.
+                            // Locations continue from 3, because they share one shader with the vertex
+                            // attributes above — which is why the tangent had to take 9 and this takes 10.
+                            Some(wgpu::VertexBufferLayout {
+                                array_stride: size_of::<GpuMeshInstance>() as u64,
+                                step_mode: wgpu::VertexStepMode::Instance,
+                                attributes: &wgpu::vertex_attr_array![
+                                    3 => Float32x4,
+                                    4 => Float32x4,
+                                    5 => Float32x4,
+                                    6 => Float32x4,
+                                    7 => Float32x4,
+                                    8 => Float32x4,
+                                    10 => Float32x4,
+                                ],
+                            }),
                         ],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &mesh_shader,
+                        entry_point: Some("fs_main"),
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: SCENE_FORMAT,
+                            // Opaque. Transparent meshes need back-to-front sorting within a `SortOrder`
+                            // (ADR 0018 says so), and doing that before there is anything transparent to
+                            // sort would be guessing at the shape of a problem nobody has yet.
+                            blend,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
                     }),
-                    // Per instance: four matrix columns, two colours, and the surface parameters.
-                    // Locations continue from 3, because they share one shader with the vertex
-                    // attributes above — which is why the tangent had to take 9 and this takes 10.
-                    Some(wgpu::VertexBufferLayout {
-                        array_stride: size_of::<GpuMeshInstance>() as u64,
-                        step_mode: wgpu::VertexStepMode::Instance,
-                        attributes: &wgpu::vertex_attr_array![
-                            3 => Float32x4,
-                            4 => Float32x4,
-                            5 => Float32x4,
-                            6 => Float32x4,
-                            7 => Float32x4,
-                            8 => Float32x4,
-                            10 => Float32x4,
-                        ],
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::TriangleList,
+                        strip_index_format: None,
+                        front_face: wgpu::FrontFace::Ccw,
+                        // **Nothing is culled, and that fixes seeing the sky from underground.**
+                        //
+                        // Terrain from surface nets is an open *surface*, not a closed solid: it is the
+                        // boundary between rock and air and it has no underside. Culling back faces meant
+                        // that from below it vanished entirely — so a camera under the ground looked
+                        // straight through the world to the skybox, which is what "digging down shows the
+                        // sky" actually was.
+                        //
+                        // The reason this is safe rather than a trade is worth stating: **for a closed mesh
+                        // it changes nothing at all.** A box's back faces are always behind its front faces,
+                        // so the depth test rejects them and the picture is identical — the cost is
+                        // rasterising fragments that early-Z then discards. The only views that change are
+                        // exactly the ones that were wrong.
+                        //
+                        // The shader flips the normal for a back face (`@builtin(front_facing)`), without
+                        // which the underside of the ground would be lit as though it faced the sky.
+                        //
+                        // Per-material would be the grown-up version and is deliberately not done yet: it is
+                        // a field on every `.material` file (Q32) to buy back overdraw the frame budget says
+                        // is nowhere near mattering.
+                        cull_mode: None,
+                        polygon_mode: wgpu::PolygonMode::Fill,
+                        unclipped_depth: false,
+                        conservative: false,
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_write_enabled: Some(depth_write),
+                        // `Less` because the projection puts near at 0 and far at 1 — a fragment passes
+                        // when it is nearer than what is already there. Reversed depth would flip this.
+                        depth_compare: Some(wgpu::CompareFunction::Less),
+                        stencil: wgpu::StencilState::default(),
+                        bias: wgpu::DepthBiasState::default(),
                     }),
-                ],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &mesh_shader,
-                entry_point: Some("fs_main"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: SCENE_FORMAT,
-                    // Opaque. Transparent meshes need back-to-front sorting within a `SortOrder`
-                    // (ADR 0018 says so), and doing that before there is anything transparent to
-                    // sort would be guessing at the shape of a problem nobody has yet.
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                // **Nothing is culled, and that fixes seeing the sky from underground.**
-                //
-                // Terrain from surface nets is an open *surface*, not a closed solid: it is the
-                // boundary between rock and air and it has no underside. Culling back faces meant
-                // that from below it vanished entirely — so a camera under the ground looked
-                // straight through the world to the skybox, which is what "digging down shows the
-                // sky" actually was.
-                //
-                // The reason this is safe rather than a trade is worth stating: **for a closed mesh
-                // it changes nothing at all.** A box's back faces are always behind its front faces,
-                // so the depth test rejects them and the picture is identical — the cost is
-                // rasterising fragments that early-Z then discards. The only views that change are
-                // exactly the ones that were wrong.
-                //
-                // The shader flips the normal for a back face (`@builtin(front_facing)`), without
-                // which the underside of the ground would be lit as though it faced the sky.
-                //
-                // Per-material would be the grown-up version and is deliberately not done yet: it is
-                // a field on every `.material` file (Q32) to buy back overdraw the frame budget says
-                // is nowhere near mattering.
-                cull_mode: None,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: Some(true),
-                // `Less` because the projection puts near at 0 and far at 1 — a fragment passes
-                // when it is nearer than what is already there. Reversed depth would flip this.
-                depth_compare: Some(wgpu::CompareFunction::Less),
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: SCENE_MULTISAMPLE,
-            multiview_mask: None,
-            cache: None,
-        });
+                    multisample: SCENE_MULTISAMPLE,
+                    multiview_mask: None,
+                    cache: None,
+                })
+            };
+
+        let mesh_pipeline = mesh_pipeline_for("amadeo mesh pipeline", None, true);
+
+        // **Blended, and it does not write depth** (ADR 0077). Both halves are required rather than
+        // tuned: writing depth would make two blended surfaces hide each other in whichever order
+        // they happened to arrive, which is the thing the back-to-front sort exists to decide. It
+        // still *tests* depth, so glass behind a wall is correctly hidden by it.
+        let transparent_pipeline = mesh_pipeline_for(
+            "amadeo transparent mesh pipeline",
+            Some(wgpu::BlendState::ALPHA_BLENDING),
+            false,
+        );
 
         // The sky, drawn behind everything (ADR 0049).
         //
@@ -2394,6 +2415,7 @@ impl WgpuBackend {
             sprite_pipeline,
             present_pipeline,
             mesh_pipeline,
+            transparent_pipeline,
             shadow_pipeline,
             sky_pipeline,
             shadow_layout,
@@ -3375,9 +3397,12 @@ impl RenderBackend for WgpuBackend {
         let mut mesh_instances: Vec<GpuMeshInstance> = Vec::new();
         let mut mesh_draws: Vec<Vec<(&str, MaterialTextures, std::ops::Range<u32>)>> =
             Vec::with_capacity(frame.views.len());
+        // The blended run (ADR 0077), drawn after the opaque one and the sky.
+        let mut transparent_draws: Vec<Vec<(&str, MaterialTextures, std::ops::Range<u32>)>> =
+            Vec::with_capacity(frame.views.len());
         // The shadow pass's own ranges, over the same instance buffer. Kept in step with
         // `mesh_draws`: every path that pushes to one pushes to the other, so one `view_index`
-        // addresses both and they cannot drift out of alignment.
+        // addresses all three and they cannot drift out of alignment.
         let mut shadow_draws: Vec<Vec<(&str, MaterialTextures, std::ops::Range<u32>)>> =
             Vec::with_capacity(frame.views.len());
 
@@ -3599,78 +3624,20 @@ impl RenderBackend for WgpuBackend {
             // draws. They overlap, and the overlap is written twice — a matrix and two colours per
             // repeat, which is cheaper than the second buffer and the second resize path that
             // avoiding it would cost. See `View::shadow_casters` for why they are different lists.
-            let mut draws: Vec<(&str, MaterialTextures, std::ops::Range<u32>)> = Vec::new();
-            for instance in &view.meshes {
-                let first = mesh_instances.len() as u32;
-                mesh_instances.push(GpuMeshInstance {
-                    model: instance.model.columns,
-                    base_colour: instance.material.base_colour,
-                    emissive: [
-                        instance.material.emissive[0],
-                        instance.material.emissive[1],
-                        instance.material.emissive[2],
-                        0.0,
-                    ],
-                    surface: [
-                        instance.material.metallic,
-                        instance.material.roughness,
-                        instance.material.normal_strength,
-                        0.0,
-                    ],
-                });
-                let last = mesh_instances.len() as u32;
-
-                let textures = MaterialTextures::of(&instance.material);
-                match draws.last_mut() {
-                    Some((mesh, bound, range))
-                        if *mesh == instance.mesh.as_str() && *bound == textures =>
-                    {
-                        range.end = last;
-                    }
-                    _ => draws.push((instance.mesh.as_str(), textures, first..last)),
-                }
-            }
+            let draws = batch_mesh_instances(&view.meshes, &mut mesh_instances);
             mesh_draws.push(draws);
 
-            let mut casters: Vec<(&str, MaterialTextures, std::ops::Range<u32>)> = Vec::new();
-            for instance in &view.shadow_casters {
-                let first = mesh_instances.len() as u32;
-                mesh_instances.push(GpuMeshInstance {
-                    model: instance.model.columns,
-                    base_colour: instance.material.base_colour,
-                    emissive: [
-                        instance.material.emissive[0],
-                        instance.material.emissive[1],
-                        instance.material.emissive[2],
-                        0.0,
-                    ],
-                    surface: [
-                        instance.material.metallic,
-                        instance.material.roughness,
-                        instance.material.normal_strength,
-                        0.0,
-                    ],
-                });
-                let last = mesh_instances.len() as u32;
-
-                let textures = MaterialTextures::of(&instance.material);
-                match casters.last_mut() {
-                    Some((mesh, bound, range))
-                        if *mesh == instance.mesh.as_str() && *bound == textures =>
-                    {
-                        range.end = last;
-                    }
-                    _ => casters.push((instance.mesh.as_str(), textures, first..last)),
-                }
-            }
+            transparent_draws.push(batch_mesh_instances(&view.transparent, &mut mesh_instances));
+            let casters = batch_mesh_instances(&view.shadow_casters, &mut mesh_instances);
             shadow_draws.push(casters);
         }
 
-        // Before any pass opens — see `ensure_material_bind_groups`. Both lists, because the shadow
+        // Before any pass opens — see `ensure_material_bind_groups`. **All three lists**: the shadow
         // pass draws its own set of instances and a caster the camera cannot see still needs a
-        // binding to draw with.
+        // binding to draw with, and so does a blended surface (ADR 0077).
         let wanted: Vec<MaterialTextures> = mesh_draws
             .iter()
+            .chain(transparent_draws.iter())
             .chain(shadow_draws.iter())
             .flatten()
             .map(|(_, textures, _)| textures.clone())
@@ -3959,10 +3926,21 @@ impl RenderBackend for WgpuBackend {
                     // without depth at all. Today no camera carries both (a projection selects one
                     // or the other), so the order is a statement of intent rather than a behaviour
                     // anything depends on.
-                    if let Some(draws) = mesh_draws.get(index)
-                        && !draws.is_empty()
-                    {
-                        pass.set_pipeline(&self.mesh_pipeline);
+                    // **Bound and drawn twice: once opaque, once blended, with the sky between**
+                    // (ADR 0077). A closure rather than two copies, and it has to re-bind rather
+                    // than merely switch pipeline — the sky's layout has two bind groups where this
+                    // has four, so drawing it invalidates every binding set before it.
+                    let draw_run = |pass: &mut wgpu::RenderPass<'_>,
+                                        pipeline: &wgpu::RenderPipeline,
+                                        draws: &[(
+                        &str,
+                        MaterialTextures,
+                        std::ops::Range<u32>,
+                    )]| {
+                        if draws.is_empty() {
+                            return;
+                        }
+                        pass.set_pipeline(pipeline);
                         pass.set_bind_group(
                             0,
                             &self.mesh_view_bind_group,
@@ -4014,6 +3992,10 @@ impl RenderBackend for WgpuBackend {
                             );
                             pass.draw_indexed(0..mesh.index_count, 0, range.clone());
                         }
+                    };
+
+                    if let Some(draws) = mesh_draws.get(index) {
+                        draw_run(&mut pass, &self.mesh_pipeline, draws);
                     }
 
                     // The sky, behind everything drawn above (ADR 0049).
@@ -4036,6 +4018,14 @@ impl RenderBackend for WgpuBackend {
                         pass.set_bind_group(1, &sky.bind_group, &[]);
                         // Three vertices, no buffer — see `sky.wgsl`.
                         pass.draw(0..3, 0..1);
+                    }
+
+                    // **Blended surfaces last, over the finished opaque image and the sky**
+                    // (ADR 0077). Furthest first, and this pipeline does not write depth — see
+                    // `View::transparent`. Drawing them before the sky would composite glass against
+                    // the clear colour rather than against the horizon behind it.
+                    if let Some(draws) = transparent_draws.get(index) {
+                        draw_run(&mut pass, &self.transparent_pipeline, draws);
                     }
 
                     let camera_offset = index as u32 * self.camera_stride as u32;
@@ -4364,4 +4354,54 @@ impl WgpuBackend {
     pub fn last_gpu_timing(&self) -> Option<&GpuFrameTiming> {
         self.last_timing.as_ref()
     }
+}
+
+/// Packs a run of mesh instances into the shared instance buffer and returns its draw ranges.
+///
+/// # Why this is a function rather than three loops
+///
+/// A view contributes three runs to one buffer — what the camera draws opaque, what it draws blended
+/// (ADR 0077), and what the shadow pass draws — and the packing is identical for all three. Two
+/// hand-written copies already existed and had to agree about the instance layout and about how
+/// consecutive instances merge into one draw; a third would have been the copy that drifted.
+///
+/// **Consecutive instances sharing a mesh and a texture set become one draw call**, which is what
+/// makes a `repeat`ed part or a row of identical props cheap. The merge is only ever with the
+/// *previous* instance, so it relies on the caller having sorted already — which collection does.
+fn batch_mesh_instances<'a>(
+    instances: &'a [crate::MeshInstance],
+    buffer: &mut Vec<GpuMeshInstance>,
+) -> Vec<(&'a str, MaterialTextures, std::ops::Range<u32>)> {
+    let mut draws: Vec<(&str, MaterialTextures, std::ops::Range<u32>)> = Vec::new();
+
+    for instance in instances {
+        let first = buffer.len() as u32;
+        buffer.push(GpuMeshInstance {
+            model: instance.model.columns,
+            base_colour: instance.material.base_colour,
+            emissive: [
+                instance.material.emissive[0],
+                instance.material.emissive[1],
+                instance.material.emissive[2],
+                0.0,
+            ],
+            surface: [
+                instance.material.metallic,
+                instance.material.roughness,
+                instance.material.normal_strength,
+                0.0,
+            ],
+        });
+        let last = buffer.len() as u32;
+
+        let textures = MaterialTextures::of(&instance.material);
+        match draws.last_mut() {
+            Some((mesh, bound, range)) if *mesh == instance.mesh.as_str() && *bound == textures => {
+                range.end = last;
+            }
+            _ => draws.push((instance.mesh.as_str(), textures, first..last)),
+        }
+    }
+
+    draws
 }

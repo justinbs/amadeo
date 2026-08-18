@@ -767,6 +767,37 @@ pub struct Material {
     /// `color_space = "linear"` (**Q31**).
     #[reflect(default = String::new())]
     pub metallic_roughness_texture: String,
+    /// How this surface deals with being see-through — ADR 0077.
+    ///
+    /// **Declared rather than inferred from `base_colour`'s alpha**, and that is a deliberate choice
+    /// rather than ceremony. Inferring "alpha below one means blend" would be a *derivation standing
+    /// in for a decision*, which `docs/07` records five instances of in this repository — and it would
+    /// mean a material could not be authored as opaque-but-faded, nor stay opaque while an animation
+    /// drove its alpha through 0.99.
+    #[reflect(default = AlphaMode::Opaque)]
+    pub alpha_mode: AlphaMode,
+}
+
+/// Whether a surface is drawn opaque or blended — ADR 0077.
+///
+/// # Only two variants, and the missing one is deliberate
+///
+/// `Mask` — alpha cutout, which discards a fragment below a threshold — is **not here yet**. It needs
+/// something to sample its alpha *from*, and every `base_colour_texture` in this repository is empty,
+/// so a cutout material today would cut out a rectangle. Adding the variant before the behaviour is
+/// the defect ADR 0056 found in bloom, where a scene could ask for something and silently get
+/// nothing; ADR 0055's precedent is the right one — fill a variant when you build it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub enum AlphaMode {
+    /// Fully solid. Writes depth, needs no sorting, and is what every existing material is.
+    #[default]
+    Opaque,
+    /// Blended over what is behind it, by `base_colour`'s alpha.
+    ///
+    /// Drawn after everything opaque, back to front, and **does not write depth** — see
+    /// [`View::transparent`](crate::View::transparent) for why both of those are required rather than
+    /// tuning.
+    Blend,
 }
 
 impl Default for Material {
@@ -788,6 +819,7 @@ impl Default for Material {
             // 0.0 default would silently flatten the first map anyone attached.
             normal_strength: 1.0,
             metallic_roughness_texture: String::new(),
+            alpha_mode: AlphaMode::Opaque,
         }
     }
 }
@@ -1994,6 +2026,7 @@ mod tests {
             normal_texture: "rust_plate_normal".to_string(),
             normal_strength: 0.75,
             metallic_roughness_texture: "rust_plate_wear".to_string(),
+            alpha_mode: AlphaMode::Blend,
         };
         let back = Material::from_value(&material.to_value()).expect("round trips");
         assert_eq!(back, material);

@@ -131,6 +131,8 @@ pub fn collect_ui(world: &mut World) {
         quads,
         batches,
         meshes: Vec::new(),
+        // A UI view draws quads and glyphs, never a mesh — so neither list has anything in it.
+        transparent: Vec::new(),
         shadow_casters: Vec::new(),
         lights: Vec::new(),
         punctual: Vec::new(),

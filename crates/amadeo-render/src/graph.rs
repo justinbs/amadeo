@@ -1039,6 +1039,7 @@ mod tests {
                     quads: Vec::new(),
                     batches: Vec::new(),
                     meshes: Vec::new(),
+                    transparent: Vec::new(),
                     shadow_casters: Vec::new(),
                     lights: Vec::new(),
                     punctual: Vec::new(),

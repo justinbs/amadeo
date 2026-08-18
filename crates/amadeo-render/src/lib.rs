@@ -71,9 +71,9 @@ pub use ibl::{
     SPECULAR_SIZE, SkyCache, irradiance, prefilter_specular,
 };
 pub use mesh::{
-    ArchMesh, BoxMesh, DirectionalLight, GltfPart, MAX_PUNCTUAL_LIGHTS, MAX_SHADOW_LAYERS,
-    MAX_SHADOW_SPOTS, Material, MaterialCache, Mesh, MeshCache, MeshData, PlaneMesh, PointLight,
-    ShadowMode, SpotLight, Vertex,
+    AlphaMode, ArchMesh, BoxMesh, DirectionalLight, GltfPart, MAX_PUNCTUAL_LIGHTS,
+    MAX_SHADOW_LAYERS, MAX_SHADOW_SPOTS, Material, MaterialCache, Mesh, MeshCache, MeshData,
+    PlaneMesh, PointLight, ShadowMode, SpotLight, Vertex,
 };
 pub use solid::{
     CompoundMesh, CylinderMesh, DEFAULT_SIDES, Part, Repeat, Solid, SphereMesh, StairMesh,
@@ -307,9 +307,26 @@ impl Renderer {
     ///
     /// [`MeshCache`] bumps a version on every write, so "is my copy stale" is two integers rather
     /// than a comparison of megabytes.
+    /// # Every list a view draws from, not just the camera's
+    ///
+    /// It used to iterate `view.meshes` alone, and ADR 0077 found that: a blended pane was collected
+    /// into `view.transparent`, reached the backend, and drew **nothing at all**, because its geometry
+    /// had never been uploaded and the draw loop skips a mesh it does not have. The symptom was a
+    /// transparent surface that was simply absent, which reads as blending being broken rather than
+    /// as an upload being missed.
+    ///
+    /// `shadow_casters` had the same latent hole and was only ever safe by coincidence: it is culled
+    /// to the *light's* box where `meshes` is culled to the camera's, so a caster behind the camera
+    /// has always been able to name a mesh no other list mentions. Nothing had noticed because the
+    /// two lists overlap heavily in the scenes that exist.
     fn upload_frame_meshes(&mut self, frame: &FrameData, cache: &MeshCache) {
         for view in &frame.views {
-            for instance in &view.meshes {
+            for instance in view
+                .meshes
+                .iter()
+                .chain(&view.transparent)
+                .chain(&view.shadow_casters)
+            {
                 let Some(version) = cache.version_of(&instance.mesh) else {
                     continue;
                 };
@@ -981,6 +998,59 @@ fn visible_meshes(drawables: &[Drawable], frustum: &Frustum) -> Vec<MeshInstance
         .collect()
 }
 
+/// Splits what a camera can see into what is drawn solid and what is blended over it — ADR 0077.
+///
+/// # Why the split happens here rather than in the backend
+///
+/// Draw order for transparency is **back to front**, which is a decision about the frame rather than
+/// about a device. Making it here means one implementation that `NullBackend` sees too, so an ordering
+/// mistake is catchable with no GPU — the same argument ADR 0038 makes for fitting shadow matrices at
+/// collection, and the reason `Frustum` is shared with `render.describe`.
+///
+/// # The sort, and the two things it has to get right
+///
+/// Blended surfaces are sorted by **distance from the eye, furthest first**, because blending is not
+/// commutative: glass drawn before what is behind it composites against the background instead.
+///
+/// Two surfaces at exactly the same distance are common — a pane and its frame, an array of identical
+/// panels — so what happens to *equal* elements matters. **`sort_by` is a stable sort**, and the order
+/// it is given is already reproducible: `collect_meshes` sorts by `SortOrder` stably over a
+/// deterministic query order. So equal distances keep a reproducible order with no explicit tie-break,
+/// and `total_cmp` rather than `partial_cmp` is what keeps a `NaN` from making the comparison
+/// inconsistent and the sort's output arbitrary.
+///
+/// `SortOrder` still dominates: it is compared first, so an author who has said "this pane belongs in
+/// front" gets that, and the distance sort only decides within an order.
+///
+/// # It sorts by origin, which is an approximation and always will be
+///
+/// The distance is to the instance's **origin**, not to its nearest point or its centroid. Per-object
+/// transparency sorting is approximate in every engine that does it — two long panes crossing at right
+/// angles have no correct order at all — and the answers are per-triangle sorting (far too slow) or
+/// order-independent transparency (a much larger feature). Authoring around it is what `SortOrder` is
+/// for.
+fn split_by_alpha(
+    visible: Vec<MeshInstance>,
+    eye: [f32; 3],
+) -> (Vec<MeshInstance>, Vec<MeshInstance>) {
+    let (mut blended, opaque): (Vec<MeshInstance>, Vec<MeshInstance>) = visible
+        .into_iter()
+        .partition(|instance| instance.material.alpha_mode == crate::AlphaMode::Blend);
+
+    blended.sort_by(|a, b| {
+        let distance = |instance: &MeshInstance| {
+            let at = instance.model.translation();
+            let offset = [at[0] - eye[0], at[1] - eye[1], at[2] - eye[2]];
+            offset[0] * offset[0] + offset[1] * offset[1] + offset[2] * offset[2]
+        };
+        a.order
+            .cmp(&b.order)
+            .then(distance(b).total_cmp(&distance(a)))
+    });
+
+    (opaque, blended)
+}
+
 /// Collects every drawable entity and hands the frame to the backend.
 ///
 /// Registered in the app layer's `Render` stage, outside the deterministic zone. Does nothing if no
@@ -1138,8 +1208,8 @@ pub fn render_quads(world: &mut World) {
                 // Two lists, each culled against what actually needs it: the colour pass draws what
                 // the camera can see, the shadow pass draws what the light can. See
                 // `View::shadow_casters` for why one list holding the union does not work.
-                let (visible, casters) = if flat {
-                    (Vec::new(), Vec::new())
+                let (visible, blended, casters) = if flat {
+                    (Vec::new(), Vec::new(), Vec::new())
                 } else {
                     let aspect = viewport.0 as f32 / viewport.1.max(1) as f32;
                     let projection = match camera.projection {
@@ -1195,10 +1265,12 @@ pub fn render_quads(world: &mut World) {
                             .collect()
                     };
 
-                    (
-                        visible_meshes(&meshes, &Frustum::from_view_projection(&view_projection)),
-                        casters,
-                    )
+                    let visible =
+                        visible_meshes(&meshes, &Frustum::from_view_projection(&view_projection));
+                    // ADR 0077: the blended half is split out and sorted here rather than in the
+                    // backend, so `NullBackend` sees the same order a GPU does.
+                    let (solid, blended) = split_by_alpha(visible, eye_matrix.translation());
+                    (solid, blended, casters)
                 };
 
                 View {
@@ -1209,6 +1281,7 @@ pub fn render_quads(world: &mut World) {
                     quads: if flat { quads.clone() } else { Vec::new() },
                     batches: if flat { batches.clone() } else { Vec::new() },
                     meshes: visible,
+                    transparent: blended,
                     shadow_casters: casters,
                     lights: view_lights,
                     // Empty for a 2D view: a sprite has no normal and no position in depth, so
