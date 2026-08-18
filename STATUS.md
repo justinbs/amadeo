@@ -36,17 +36,25 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > visible rather than re-derived. **Update it in place as items land.** Do not let the next plan go
 > back into a transcript.
 >
-> **Phase A passed on the critic's fourth pass** (items 1–7 plus 3b): the geometry set is registered,
-> discoverable, faceted, capture tested, and the documents that disagreed with each other no longer
-> do. **Phase B is under way** — items 8 and 9 (`CompoundMesh`, `array`, `mirror`, raw vertex data)
-> have landed and are with the critic. What is left of Phase B is `uv_scale`, the blended transparent
-> pass, and particles.
+> **Phase A passed on the critic's fourth pass** (items 1–7 plus 3b). **Items 8 and 9 passed on its
+> fifth.** Items 11 and 10 are **built and awaiting a verdict** — the reviewer hit a session limit
+> mid-pass, and `docs/13` marks them amber rather than green because the file must not claim a verdict
+> nobody gave. What is left of Phase B after those is **particles** (item 12), and item 12b
+> (volumetric light shafts) exists now because item 12's old close condition asked for motes in a beam
+> nothing makes visible.
 >
-> **One of the three defining measurements has moved, for the first time.** `.mesh` assets that are
-> `BoxMesh` went from **23 of 23 to 23 of 26** — `games/atrium` has a table, a bolted generator and a
-> bar-guard lamp fitting, each a `CompoundMesh` authored as text, each one asset and one draw call.
-> They are the first things in any game here that are not axis-aligned boxes. The other two have not
-> moved: 36 of 36 material texture slots are still `""`, and 0 of 17 protocol methods mutate.
+> **Two of the three defining measurements have moved, both for the first time.**
+>
+> - `.mesh` assets that are `BoxMesh`: **23 of 23 → 23 of 26.** A table, a bolted generator and a
+>   standing lamp, each a `CompoundMesh` authored as text, each one asset and one draw call. The first
+>   things in any game here that are not axis-aligned boxes.
+> - Material texture slots that are `""`: **36 of 36 → 43 of 45.** The Atrium's floor and plinth sample
+>   a generated slab texture at a matched texel density. **That is the first textured pixel this engine
+>   has ever drawn in a game** — mipmaps in linear light, 16x anisotropy and the whole sampler path
+>   were written and tested in session 14 and had never reached a picture.
+>
+> The third has not moved and is deliberately deferred: 0 of 17 protocol methods mutate, which is
+> item 20 and belongs to M4.
 >
 > **Phase A itself moved none of them, and that is the honest summary of it** — it was about making
 > it *possible*, and every hour of it paid off in Phase B taking an afternoon.
@@ -159,10 +167,12 @@ acted on. Its first recommendation was that its own plan had to become a file, w
   reintroduced in the primitives added to serve low poly.
 - **Three documents cited a source that did not contain the claim** — including `docs/12-the-bar.md`,
   the document that sets the standard. Now **Q41**.
-- **Then Phase B, in an afternoon, because Phase A had cleared the way.** `CompoundMesh` assembles
-  primitives into one mesh with per-part rotation, a translational `array` and a `mirror`; `VertexMesh`
-  is ADR 0074 §4's dump target, which ADR 0035 promised five milestones ago and nothing had built.
-  The Atrium got furniture.
+- **Then Phase B, because Phase A had cleared the way.** `CompoundMesh` assembles primitives into one
+  mesh with per-part rotation, a translational `array` and a `mirror` (ADR 0074 §2, §3); `VertexMesh`
+  is §4's dump target, which ADR 0035 promised five milestones ago and nothing had built. **ADR 0077**
+  gave the engine transparency -- a declared `AlphaMode`, a second pipeline, a back-to-front sort done
+  at collection so `NullBackend` sees it too. **ADR 0078** gave it texel density. The Atrium got
+  furniture, a glazed screen you can see through, and a textured floor.
 - **And the same defaults defect was one type-family over (ADR 0076).** Shapes and `Material`
   declared defaults; `Camera`, `Environment` and the three lights declared none, so
   `describe --example` — which `docs/12` §3 makes the primary way an agent learns to author an asset

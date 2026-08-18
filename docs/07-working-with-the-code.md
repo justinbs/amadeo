@@ -1989,6 +1989,31 @@ passing case from the failing one. **Only running the failing case shows that.**
 The engine gate's shape tests all carry a control for this reason, and the pattern is worth copying to
 anything that asserts a colour.
 
+#### Undo the mutation with the inverse edit, never with `git checkout`
+
+Session 21 lost work to this **twice**, and the second time it cost two rounds of wrong theorising.
+
+`git checkout <file>` restores the file to **HEAD**, not to "before I broke it". So when the thing
+being mutated is a feature that has not been committed yet — which is the normal case, because you
+mutate a test the moment you write it — the restore silently reverts *the feature as well as the
+mutation*. Nothing fails, because the code still compiles and the tests still pass; they just pass for
+the old reasons.
+
+The second instance is worth spelling out because the symptom was so misleading. `uv_scale` was
+mutated out of `mesh.wgsl` to check the test could fail, then "restored" with `git checkout`, which
+deleted the feature. The test then failed identically on a real GPU and on WARP — and two plausible,
+carefully-argued theories followed, about mip selection and about vertex-attribute offsets. Dumping the
+image showed two identical checkers and answered it in one look.
+
+Two rules, and the first is enough on its own:
+
+- **Undo a mutation with the inverse edit.** You know exactly what you changed; change it back.
+- **Or commit first, then mutate.** Then `git checkout` means what you wanted it to mean.
+
+And the general form, which is session 19's lesson arriving a third time: **when a capture disagrees
+with your model of the code, look at the picture before refining the model.** Both wrong theories were
+about the GPU. The fault was in the file.
+
 ### A mesh now has three independent properties, not two
 
 The entry above pairs **normals** and **winding** and says getting one right does not check the other.
