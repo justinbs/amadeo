@@ -1,7 +1,7 @@
 scene lamp_fitting
 version 1
 
-entity mesh "Bar-guard lamp fitting"
+entity mesh "Standing lamp"
   CompoundMesh
     parts
       - position 0.0 0.0 0.0
@@ -40,3 +40,17 @@ entity mesh "Bar-guard lamp fitting"
             height 0.3
             radius 0.004
             top_radius 0.004
+      - position 0.0 -1.02 0.0
+        solid Cylinder
+          shape
+            height 1.4
+            radius 0.016
+            sides 8
+            top_radius 0.016
+      - position 0.0 -1.7 0.0
+        solid Cylinder
+          shape
+            height 0.04
+            radius 0.16
+            sides 16
+            top_radius 0.14

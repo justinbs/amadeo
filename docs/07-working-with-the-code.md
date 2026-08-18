@@ -1937,6 +1937,30 @@ instance the wrong answer was *plausible* rather than absurd, so nothing downstr
 When you find yourself computing something that a caller could simply state, ask which cases you have
 actually tried. If the answer is "the ones in front of me", state it instead.
 
+### And its sibling: a statement that was true when written and silently stopped being
+
+The table above is about a value nobody decided. This one is about a claim nobody revisited, and by
+the end of session 21 it had **five** documented instances — which makes it the most repeated defect
+in this repository. In every case the statement was correct on the day it was written, something
+later removed what made it true, and **nothing failed**:
+
+| Where | What it asserted | What removed it |
+|---|---|---|
+| `append_translated`'s doc comment | rotation is refused *deliberately* | `CompoundMesh` needed rotation (ADR 0074 §2) |
+| `describe --example`'s guard | an empty list field has no scene spelling | the format grew `[]` during ADR 0069's save work |
+| `docs/12`, `STATUS`, `docs/11` | `docs/06` records skeletal animation as blocked | `docs/06` never contained it — three documents repeated one unchecked citation |
+| `solid.rs`'s faceting comment | a cone's facet is non-planar, so `flat_shade` would crease it | it was never true; a frustum's lateral facet is a planar trapezoid |
+| ADR 0034's fog note | fog needs a depth buffer | true of a *post-process* shape; ADR 0073 made it a forward term |
+
+**The failure mode is that nothing breaks.** The guard kept refusing, the comment kept asserting, the
+citation kept being repeated. No test goes red, because a test checks behaviour and these are claims
+*about* behaviour. The fog one cost four milestones; the `--example` one cost three sessions and the
+flagship type of ADR 0074 its scene form.
+
+The mitigation is one sentence and it is cheap: **when you remove a limitation, grep for what asserted
+it.** The assertion is almost always in a different crate from the fix — which is exactly why the
+person making the fix does not see it.
+
 ### A mesh now has three independent properties, not two
 
 The entry above pairs **normals** and **winding** and says getting one right does not check the other.

@@ -851,11 +851,15 @@ entity generator "Bolted generator"
     scale 1.0 1.0 1.0
     translation 5.6 0.0 -4.4
 
-entity lamp_fitting "Bar-guard lamp fitting"
+entity lamp_fitting "Standing lamp"
   Mesh
     material "amber"
     mesh "lamp_fitting"
+  PointLight
+    colour 1.0 0.86 0.66
+    intensity 6.0
+    range 7.0
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 3.4 0.0
+    translation -5.4 1.72 -4.9
