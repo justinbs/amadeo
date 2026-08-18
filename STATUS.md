@@ -36,14 +36,20 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > visible rather than re-derived. **Update it in place as items land.** Do not let the next plan go
 > back into a transcript.
 >
-> **Phase A is done** (items 1–7): the geometry set is registered, discoverable, faceted, capture
-> tested, and the documents that disagreed with each other no longer do. **Phase B is next** and is
-> the one that matters — `CompoundMesh` and ADR 0074's modifiers, raw vertex data, `uv_scale`,
-> transparency, particles.
+> **Phase A passed on the critic's fourth pass** (items 1–7 plus 3b): the geometry set is registered,
+> discoverable, faceted, capture tested, and the documents that disagreed with each other no longer
+> do. **Phase B is under way** — items 8 and 9 (`CompoundMesh`, `array`, `mirror`, raw vertex data)
+> have landed and are with the critic. What is left of Phase B is `uv_scale`, the blended transparent
+> pass, and particles.
 >
-> **The three defining measurements have still not moved**: 23 of 23 `.mesh` assets are `BoxMesh`,
-> 36 of 36 material texture slots are `""`, 0 of 17 protocol methods mutate. Phase A was about making
-> it *possible* to move them. Nothing in Phase A moves them, and that is the honest summary of it.
+> **One of the three defining measurements has moved, for the first time.** `.mesh` assets that are
+> `BoxMesh` went from **23 of 23 to 23 of 26** — `games/atrium` has a table, a bolted generator and a
+> bar-guard lamp fitting, each a `CompoundMesh` authored as text, each one asset and one draw call.
+> They are the first things in any game here that are not axis-aligned boxes. The other two have not
+> moved: 36 of 36 material texture slots are still `""`, and 0 of 17 protocol methods mutate.
+>
+> **Phase A itself moved none of them, and that is the honest summary of it** — it was about making
+> it *possible*, and every hour of it paid off in Phase B taking an afternoon.
 >
 > ### Two things waiting on Justin, neither blocking
 >
@@ -127,7 +133,7 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > fresher — so anything written between ticks was silently undone. **The fallback was hiding all
 > three.**
 
-**Everything is pushed through `751489a`.** Check with `gh run list` rather than assuming — `gh` is
+**Everything is pushed through `7ba77f3`.** Check with `gh run list` rather than assuming — `gh` is
 not on PATH, so prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`. A run takes about
 29 minutes and `gh run view <id> --json jobs` shows five jobs separately, so check once at a plausible
 time and keep working. One historical red mark to ignore for ever: `6e56c0b`'s docs job, fixed by
@@ -153,6 +159,10 @@ acted on. Its first recommendation was that its own plan had to become a file, w
   reintroduced in the primitives added to serve low poly.
 - **Three documents cited a source that did not contain the claim** — including `docs/12-the-bar.md`,
   the document that sets the standard. Now **Q41**.
+- **Then Phase B, in an afternoon, because Phase A had cleared the way.** `CompoundMesh` assembles
+  primitives into one mesh with per-part rotation, a translational `array` and a `mirror`; `VertexMesh`
+  is ADR 0074 §4's dump target, which ADR 0035 promised five milestones ago and nothing had built.
+  The Atrium got furniture.
 - **And the same defaults defect was one type-family over (ADR 0076).** Shapes and `Material`
   declared defaults; `Camera`, `Environment` and the three lights declared none, so
   `describe --example` — which `docs/12` §3 makes the primary way an agent learns to author an asset
@@ -174,6 +184,13 @@ acted on. Its first recommendation was that its own plan had to become a file, w
   intensity 3.0 every lit pixel clipped to 255 — the entire shading being compared was above the top
   of the range. **Printing the scanline found both in one run**, after reasoning had produced two
   wrong theories. Session 19's lesson, third instalment.
+- **A guard outlives the limitation it was written for, and nothing fails when it does.**
+  `describe --example` refused a scene form for `CompoundMesh` — "it has an empty list field, and an
+  empty block is a parse error" — three sessions after the format grew `[]` for exactly that case.
+  Nothing broke; an answer simply stopped being given, for the flagship type of ADR 0074. This is the
+  same shape as the `append_translated` doc comment that asserted rotation was refused *deliberately*
+  and became false the day a compound needed one. **When you remove a limitation, grep for what
+  refuses on account of it** — the refusal is usually in a different crate from the fix.
 - **`Value::F32` was written by widening to `f64`**, so `0.18` came out `0.18000000715255737` in every
   `describe --example`, `world.entity` dump, snapshot and glTF import. It survived because
   **`amadeo fmt` has no schema**: it reads every number as an `f64` and writes the same `f64` back, so
@@ -181,6 +198,14 @@ acted on. Its first recommendation was that its own plan had to become a file, w
   values the format itself produced would never have found it. **And fixing it in one writer felt like
   fixing it** — the scene spelling was right and the JSON one, which is the half an agent parses, was
   still wrong for another hour.
+- **Write the test that the existing tests provably cannot subsume.** `wound_to_match_normals` compares
+  a triangle's winding against its own normals — and a rotation moves *both*, together, consistently.
+  So a compound part whose normals were left unrotated would pass it perfectly and render as a shape
+  that shades correctly until a light moves. That test was written *before* `append_transformed`
+  existed and watched to fail for the right reason. **A mirror is the opposite case** and the existing
+  check does catch it, because a reflection reverses orientation — which is why `mirror_across` was
+  the safer of the two to write. Ask which existing check covers a new operation *before* trusting a
+  green suite to cover it.
 - **A capture test can pass against a picture that shows nothing.** `every_parametric_shape_draws_*`
   reported a wedge as *missing* (it sat below the crosshair) and then, framed better, could not tell a
   stair from a box — because a `StairMesh` climbs along +Z, so a camera on the +Z axis is looking at
