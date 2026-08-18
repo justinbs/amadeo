@@ -2015,6 +2015,28 @@ restores from the **index**, not from HEAD. It reverted the feature because noth
 index happened to match HEAD. **`git add` the file before mutating it** and the index holds your work,
 after which the restore does exactly what you expected.
 
+#### A search-and-replace that matches nothing still succeeds
+
+Session 21 reported a test assertion as changed when it had not been, and only found out because a
+reviewer read the file. The mechanism is worth knowing because it is silent by construction:
+
+```bash
+perl -0pi -e 's/old text/new text/' some_file.rs   # exit 0 whether or not it matched
+sed -i 's/old/new/' some_file.rs                   # the same
+```
+
+**Neither reports a miss.** The command succeeded; the substitution did not happen. And the usual
+next step hides it further — `cargo fmt && cargo test` passes, because the file is still the file it
+was, and a test that was green stays green.
+
+The specific way it bit: the target text had been **reflowed by `cargo fmt`** since the pattern was
+written, so a multi-line pattern that had matched an hour earlier no longer did.
+
+The rule is one line: **grep for the result, not for the exit code.** After any scripted edit, check
+the new text is present — `grep -c 'new text' file` — before believing it, and certainly before
+reporting it. The dedicated edit tools fail loudly on a missed match, which is the reason to prefer
+them for anything whose absence would be quiet.
+
 #### Dump the artefact before arguing
 
 Three instances now, and the third cost the most.

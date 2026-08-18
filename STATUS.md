@@ -36,12 +36,12 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > visible rather than re-derived. **Update it in place as items land.** Do not let the next plan go
 > back into a transcript.
 >
-> **Phase A passed on the critic's fourth pass** (items 1–7 plus 3b). **Items 8 and 9 passed on its
-> fifth.** Items 11 and 10 are **built and awaiting a verdict** — the reviewer hit a session limit
-> mid-pass, and `docs/13` marks them amber rather than green because the file must not claim a verdict
-> nobody gave. What is left of Phase B after those is **particles** (item 12), and item 12b
-> (volumetric light shafts) exists now because item 12's old close condition asked for motes in a beam
-> nothing makes visible.
+> **Phase A passed on review 4. Items 8 and 9 passed on review 5. Item 11 passed on review 6.**
+> **Item 10 is built and awaiting a verdict** — its three follow-ups from review 6 are done and
+> self-audited against the code, and the reviewer hit a session limit before ruling. `docs/13` marks
+> it amber rather than green, because the file must not claim a verdict nobody gave. What is left of
+> Phase B after it is **particles** (item 12), and item 12b (volumetric light shafts) exists because
+> item 12's old close condition asked for motes in a beam nothing makes visible.
 >
 > **Two of the three defining measurements have moved, both for the first time.**
 >
@@ -194,6 +194,12 @@ acted on. Its first recommendation was that its own plan had to become a file, w
   intensity 3.0 every lit pixel clipped to 255 — the entire shading being compared was above the top
   of the range. **Printing the scanline found both in one run**, after reasoning had produced two
   wrong theories. Session 19's lesson, third instalment.
+- **A scripted edit that matches nothing still exits zero.** I reported a test assertion as changed
+  when it had not been, and found out only because the reviewer read the file. `perl -0pi -e` and
+  `sed -i` both succeed whether or not the pattern matched, and the usual next step -- `cargo fmt &&
+  cargo test` -- passes, because the file is unchanged and a green test stays green. What made it miss
+  was `cargo fmt` having **reflowed** the target text since the pattern was written. The rule is to
+  grep for the *result* rather than the exit code, and it is now in `docs/07`.
 - **A guard outlives the limitation it was written for, and nothing fails when it does.**
   `describe --example` refused a scene form for `CompoundMesh` — "it has an empty list field, and an
   empty block is a parse error" — three sessions after the format grew `[]` for exactly that case.
