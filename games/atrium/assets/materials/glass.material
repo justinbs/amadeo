@@ -1,0 +1,9 @@
+scene glass
+version 1
+
+entity material "Glass"
+  Material
+    alpha_mode Blend
+    base_colour 0.62 0.78 0.8 0.34
+    metallic 0.0
+    roughness 0.08

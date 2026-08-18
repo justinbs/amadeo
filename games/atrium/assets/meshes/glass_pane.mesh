@@ -1,0 +1,6 @@
+scene glass_pane
+version 1
+
+entity mesh "Glazed pane"
+  BoxMesh
+    size 2.6 2.4 0.03

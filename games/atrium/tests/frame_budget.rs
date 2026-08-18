@@ -80,7 +80,7 @@ fn the_scene_complexity_the_budget_is_quoted_against() {
     // Worth knowing for `docs/10`: they cost **three** drawables between them, not fifteen. A
     // compound is one mesh, one asset and one draw call however many parts it has, which is the whole
     // argument for it over the prefab-children arrangement the games used before.
-    assert_eq!(meshes, 16, "drawn meshes");
+    assert_eq!(meshes, 18, "drawn meshes");
     assert_eq!(bodies, 12, "bodies with a collider");
     assert_eq!(characters, 1, "characters");
     assert_eq!(casters, 1, "shadow-casting lights");

@@ -1,0 +1,19 @@
+scene screen_frame
+version 1
+
+entity mesh "Screen frame"
+  CompoundMesh
+    parts
+      - mirror true false false
+        position 1.34 1.3 0.0
+        solid Box
+          shape
+            size 0.08 2.6 0.1
+      - position 0.0 0.06 0.0
+        solid Box
+          shape
+            size 2.76 0.12 0.16
+      - position 0.0 2.56 0.0
+        solid Box
+          shape
+            size 2.76 0.1 0.14

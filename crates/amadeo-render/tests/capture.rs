@@ -2702,3 +2702,116 @@ fn an_opaque_scene_is_byte_identical_with_transparency_built() {
          when it has nothing to draw"
     );
 }
+
+#[test]
+fn a_blended_surface_composites_over_the_sky_and_not_the_clear_colour() {
+    // **ADR 0077 §3's second half, which no other test could see.** The blended pass draws *after*
+    // the sky, and the reason is that a pane drawn before it would composite against the clear
+    // colour rather than against the horizon behind it.
+    //
+    // The three tests above cannot check that, and the reason is worth writing down: neither of their
+    // scenes names a sky, so `self.environments.get(...)` returns `None`, the sky pass never runs at
+    // all, and the transparent block's position relative to it is unobservable. **Moving the
+    // transparent draw above the sky leaves all three of them green.** `games/warren` and
+    // `games/scarp` both name skies, so this is a case that exists rather than a hypothetical.
+    //
+    // **The obvious version of this test is vacuous and I wrote it first.** A nearly-clear pane
+    // against a coloured sky reads as that sky whether the pane is drawn before or after -- because
+    // if it is drawn first, the sky pass (which does not depth-test against it, the blended pipeline
+    // having written no depth) simply covers it, and the pixel is the sky either way. Moving the
+    // transparent draw above the sky left it green, which is how it was caught.
+    //
+    // So the pane is **strongly tinted**, and the control is the same sky with **no pane at all**. In
+    // the right order the pane visibly changes the pixel; in the wrong one it is erased and the two
+    // are identical.
+    let against_the_sky = |sky_colour: [f32; 4], with_pane: bool| -> Option<[u8; 4]> {
+        let mut world = World::new();
+
+        let eye = world.spawn();
+        world.insert(
+            eye,
+            Transform {
+                translation: [0.0, 0.0, 3.0],
+                ..Transform::default()
+            },
+        );
+        let mut camera = Camera::perspective(45.0);
+        camera.environment = "outdoors".to_string();
+        world.insert(eye, camera);
+
+        let mut skies = amadeo_render::SkyCache::new();
+        skies.insert("overhead", amadeo_render::EnvironmentMap::solid(sky_colour));
+        world.insert_service(skies);
+
+        let mut looks = EnvironmentCache::new();
+        looks.insert(
+            "outdoors",
+            Environment {
+                sky: "overhead".to_string(),
+                ..Environment::default()
+            },
+        );
+        world.insert_service(looks);
+
+        let mut meshes = MeshCache::new();
+        meshes.insert(
+            "pane",
+            BoxMesh {
+                size: [2.0, 2.0, 0.04],
+            }
+            .tessellate(),
+        );
+        world.insert_service(meshes);
+
+        let mut materials = MaterialCache::new();
+        materials.insert(
+            "pane",
+            Material {
+                // Strongly tinted, so the pane changes the pixel rather than merely letting the sky
+                // through unaltered -- see the note above about why nearly-clear is unfalsifiable.
+                base_colour: [0.05, 0.9, 0.15, 0.75],
+                alpha_mode: AlphaMode::Blend,
+                ..Material::default()
+            },
+        );
+        world.insert_service(materials);
+
+        // Nothing behind it but sky. Omitted entirely for the control.
+        if with_pane {
+            let pane = world.spawn();
+            world.insert(pane, Transform::at(0.0, 0.0));
+            world.insert(pane, Mesh::new("pane", "pane"));
+        }
+
+        let image = capture(&mut world, 96, 96)?;
+        Some(pixel_at(&image, 48, 48))
+    };
+
+    let sky = [0.9, 0.15, 0.05, 1.0];
+    let (Some(bare), Some(glazed)) = (against_the_sky(sky, false), against_the_sky(sky, true))
+    else {
+        return;
+    };
+
+    // The control is a red sky with nothing in front of it.
+    assert!(
+        bare[0] > bare[1] + 30,
+        "the control should be the red sky itself, got {bare:?}"
+    );
+
+    // With the pane in front of it, the red must drop a long way: the pane covers three quarters of
+    // it and is not red. **Drawing the pane before the sky erases it** — the sky pass does not
+    // depth-test against a surface that wrote no depth — so the wrong order gives exactly `bare` and
+    // this fails. Measured: `[243, 108, 63]` alone against `[99, 105, 28]` through the pane.
+    //
+    // The assertion is on **red falling** rather than on green rising, and the reason is worth
+    // knowing before someone "fixes" it: there is no light in this scene, so the pane is lit only by
+    // the sky's own ambient and contributes very little colour of its own. What it does is *occlude*,
+    // and occlusion is the thing being tested.
+    assert!(
+        glazed[0] + 40 < bare[0],
+        "a pane in front of a red sky should cut the red a long way: sky alone {bare:?}, through \
+         the pane {glazed:?} — equal values mean the pane was drawn before the sky and painted over \
+         by it"
+    );
+}

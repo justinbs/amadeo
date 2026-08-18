@@ -10,6 +10,8 @@ assets
   floor
   footstep
   generator
+  glass
+  glass_pane
   lamp_fitting
   lamp_flicker
   lamp_hum
@@ -18,6 +20,7 @@ assets
   plinth
   room_tone
   rust
+  screen_frame
   signage
   slate
   stone
@@ -863,3 +866,21 @@ entity lamp_fitting "Standing lamp"
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation -5.4 1.72 -4.9
+
+entity glass_pane "Glazed screen"
+  Mesh
+    material "glass"
+    mesh "glass_pane"
+  Transform
+    rotation 0.0 -8.0 0.0
+    scale 1.0 1.0 1.0
+    translation 2.1 0.0 1.9
+
+entity screen_frame "Glazed screen frame"
+  Mesh
+    material "slate"
+    mesh "screen_frame"
+  Transform
+    rotation 0.0 -8.0 0.0
+    scale 1.0 1.0 1.0
+    translation 2.1 0.0 1.9

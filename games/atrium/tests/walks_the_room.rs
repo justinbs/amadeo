@@ -107,7 +107,7 @@ fn the_room_loads_from_its_scene_file() {
 
     let meshes = app.world.query::<(&Mesh,)>().count();
     assert_eq!(
-        meshes, 16,
+        meshes, 18,
         "a floor, four walls, four pillars, a plinth, the player's body, the watcher, the brass \
          key on the plinth, and three compound props — a table, a bolted generator and a lamp \
          fitting, which are the first meshes in any game here that are not axis-aligned boxes"

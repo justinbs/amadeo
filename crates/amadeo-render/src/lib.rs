@@ -1256,6 +1256,20 @@ pub fn render_quads(world: &mut World) {
                     } else {
                         meshes
                             .iter()
+                            // **A blended surface casts no shadow** (ADR 0077). Not a limitation
+                            // being deferred — it is the *right default*, and it is what Unreal,
+                            // Unity and Godot all do with a transparent material unless you opt in.
+                            //
+                            // The two wrong answers are not equally wrong. A pane of glass with no
+                            // shadow reads as glass; a pane of glass with a hard black rectangle
+                            // under it reads as a bug, and on a pale floor under one sun it is the
+                            // most visible thing in the frame. A *correct* transparent shadow needs
+                            // a threshold to test against, so it belongs with alpha cutout — this is
+                            // only about which answer ships until then, and it gets more expensive
+                            // to change once content has been tuned around the other one.
+                            .filter(|drawable| {
+                                drawable.instance.material.alpha_mode != AlphaMode::Blend
+                            })
                             .filter(|drawable| {
                                 volumes.iter().any(|volume| {
                                     volume.intersects_aabb(drawable.min, drawable.max)

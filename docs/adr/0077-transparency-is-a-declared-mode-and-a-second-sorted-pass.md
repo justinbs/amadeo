@@ -88,10 +88,16 @@ before the sky composites against the clear colour rather than against the horiz
 - **Three near-identical instance-packing loops became one function.** Two already existed and had to
   agree about the instance layout and the draw-merging rule; a third would have been the copy that
   drifted.
-- **Shadows from a blended surface are not modelled.** A pane of glass casts an opaque shadow, because
-  the shadow pass draws depth only and knows nothing about alpha. That is the standard behaviour of a
-  simple shadow map, it is wrong for glass, and the fix belongs with alpha cutout — where a threshold
-  exists to test.
-- **Nothing in the repository uses it yet**, and that is deliberate. This ADR delivers the mechanism
-  Phase C's content needs; a game using it is item 13's business, and the engine gate exists precisely
-  to stop a feature being declared done on the strength of a test alone.
+- **A blended surface casts no shadow at all**, which is the *right* default rather than a deferral.
+  Unreal, Unity and Godot all default a transparent material to not casting, and the reason is that the
+  two wrong answers are not equally wrong: a pane of glass with no shadow reads as glass, and a pane
+  with a hard black rectangle under it reads as a bug — on a pale floor under one sun it is the most
+  visible thing in the frame. A *correct* transparent shadow needs a threshold to test against, so it
+  belongs with alpha cutout; this is only about which answer ships until then, and it calcifies once
+  content is tuned around the other one.
+- **`games/atrium` has a glazed screen**, which is the engine's first blended surface in a game. It was
+  going to land with no user at all, on the reasoning that content belongs to item 13 — and that was
+  wrong for a reason this ADR had already written down: the gate exists precisely to stop a feature
+  being declared done on the strength of a test alone. Twenty lines of scene text, and **it is what
+  found the shadow default above**: a black rectangle under the glass on a white floor was obvious in
+  the first capture, where the same fact had sat in this file as a documented limitation.
