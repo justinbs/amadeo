@@ -14,3 +14,13 @@ entity mesh "Roof with an oculus"
         solid Box
           shape
             size 6.0 0.4 8.0
+      - mirror false false true
+        position 0.0 -0.35 -4.15
+        solid Box
+          shape
+            size 8.7 0.7 0.3
+      - mirror true false false
+        position 4.2 -0.35 0.0
+        solid Box
+          shape
+            size 0.3 0.7 8.0

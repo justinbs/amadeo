@@ -879,9 +879,9 @@ entity generator "Bolted generator"
     material "rust"
     mesh "generator"
   Transform
-    rotation 0.0 -118.0 0.0
+    rotation 0.0 164.0 0.0
     scale 1.0 1.0 1.0
-    translation 7.1 0.0 -6.9
+    translation 5.9 0.0 -8.6
 
 entity lamp_fitting "Standing lamp"
   Mesh
@@ -901,18 +901,18 @@ entity glass_pane "Glazed screen"
     material "glass"
     mesh "glass_pane"
   Transform
-    rotation 0.0 -90.0 0.0
+    rotation 0.0 -64.0 0.0
     scale 1.0 1.0 1.0
-    translation 4.4 0.0 -5.2
+    translation -3.0 0.0 -7.4
 
 entity screen_frame "Glazed screen frame"
   Mesh
     material "slate"
     mesh "screen_frame"
   Transform
-    rotation 0.0 -90.0 0.0
+    rotation 0.0 -64.0 0.0
     scale 1.0 1.0 1.0
-    translation 4.4 0.0 -5.2
+    translation -3.0 0.0 -7.4
 
 entity roof "Roof with an oculus"
   Collider
@@ -943,3 +943,13 @@ entity vestibule "Vestibule beyond the doorway"
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 0.0 0.0 -12.6
+
+entity vestibule_light "Vestibule daylight"
+  PointLight
+    colour 1.0 0.95 0.86
+    intensity 34.0
+    range 11.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 2.6 -12.4

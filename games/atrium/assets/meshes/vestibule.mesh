@@ -17,7 +17,3 @@ entity mesh "Vestibule beyond the doorway"
         solid Box
           shape
             size 0.4 4.0 5.0
-      - position 0.0 3.85 0.0
-        solid Box
-          shape
-            size 5.0 0.3 5.0
