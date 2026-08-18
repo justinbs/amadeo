@@ -393,10 +393,28 @@ impl BoxMesh {
             ),
         ];
 
+        // **UVs are in metres, not 0..1 per face** — ADR 0078 §3. Each face's coordinates span its own
+        // real width and height, so a 4 m face gets `u` from 0 to 4 and a 0.4 m one gets 0 to 0.4.
+        //
+        // The 0..1 convention this replaced could not express texel density at all: it makes every
+        // face wear exactly one copy of the image whatever its size, so a wall and a crate show the
+        // same stone at a thirty-fold difference in scale, and `Material::uv_scale` — being one
+        // multiplier — could only ever fix one of them. It was also wrong *within* a single box: a
+        // 3 m × 1 m side stretched a square image three to one.
+        let extent = |normal: [f32; 3]| -> [f32; 2] {
+            if normal[0] != 0.0 {
+                [self.size[2], self.size[1]]
+            } else if normal[1] != 0.0 {
+                [self.size[0], self.size[2]]
+            } else {
+                [self.size[0], self.size[1]]
+            }
+        };
+
         let mut data = MeshData::default();
         for (normal, corners) in faces {
             let first = data.vertices.len() as u32;
-            // UVs run [0,0] at the first corner round to [0,1], so each face shows the whole image.
+            let span = extent(normal);
             for (corner, uv) in corners
                 .iter()
                 .zip([[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]])
@@ -404,7 +422,7 @@ impl BoxMesh {
                 data.vertices.push(Vertex {
                     position: *corner,
                     normal,
-                    uv,
+                    uv: [uv[0] * span[0], uv[1] * span[1]],
                     ..Vertex::default()
                 });
             }
@@ -448,7 +466,13 @@ impl PlaneMesh {
 
         // Counter-clockwise seen from above, which is from +Y looking down.
         let corners = [[-x, 0.0, z], [x, 0.0, z], [x, 0.0, -z], [-x, 0.0, -z]];
-        let uvs = [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
+        // In metres, like every other flat producer — see `BoxMesh::tessellate` (ADR 0078 §3).
+        let uvs = [
+            [0.0, self.size[1]],
+            [self.size[0], self.size[1]],
+            [self.size[0], 0.0],
+            [0.0, 0.0],
+        ];
 
         let mut data = MeshData {
             vertices: corners
@@ -776,15 +800,21 @@ pub struct Material {
     /// drove its alpha through 0.99.
     #[reflect(default = AlphaMode::Opaque)]
     pub alpha_mode: AlphaMode,
-    /// How many times a texture repeats across this surface — ADR 0078.
+    /// How many times a texture repeats **per metre** — ADR 0078.
     ///
-    /// **Texel density**, which is the first thing that goes wrong when textures arrive. A 12 m wall
-    /// and a 0.4 m crate both carry UVs running 0 to 1, so one image stretches across both at a
-    /// thirty-fold difference in density unless something says otherwise. Every art pipeline in the
-    /// industry has a texel-density standard for exactly this reason; Unity spells it `_MainTex_ST`
-    /// and Unreal puts U/V tiling on a `TexCoord` node.
+    /// **Texel density**, which is the first thing that goes wrong when textures arrive.
     ///
-    /// `[1, 1]` is the mesh's own UVs unchanged. A wall wanting a 1 m tile over 12 m asks for `12`.
+    /// The unit is what makes this work, and it took two goes. The procedural producers emit UVs in
+    /// **mesh-local metres** (ADR 0078 §3), so this is a repeats-per-metre figure and **one material
+    /// covers a 12 m wall and a 0.4 m crate at the same stone size**. Under the 0..1-per-face
+    /// convention it could not: one multiplier against "one copy per face however big the face is"
+    /// needs a different value for every object, which means a material per object — the same failure
+    /// one level up.
+    ///
+    /// `[1, 1]` is one repeat per metre. A 2 m stone tile is `[0.5, 0.5]`.
+    ///
+    /// `GltfPart` is deliberately unaffected: an imported mesh carries whatever UVs its DCC authored,
+    /// which is the same split Unity and Unreal live with.
     #[reflect(min = 0.0, max = 4096.0, default = [1.0, 1.0])]
     pub uv_scale: [f32; 2],
 }
@@ -2024,6 +2054,69 @@ mod tests {
         assert_eq!(cache.get(""), Material::default());
         assert_eq!(cache.get("stone_rough"), Material::default());
         assert!(!cache.is_loaded("stone_rough"));
+    }
+
+    #[test]
+    fn a_face_gets_uvs_in_its_own_metres_rather_than_zero_to_one() {
+        // **ADR 0078 §3's claim, and the arithmetic the reviewer used to find the gap.** A `BoxMesh`
+        // used to emit UVs running 0..1 across every face whatever its size, which has two
+        // consequences and the second is the one that is hard to unsee:
+        //
+        // - a 12 m wall and a 0.4 m crate wear the same image at a thirty-fold difference in scale,
+        //   and one `uv_scale` multiplier cannot fix both — so you need a material per object, which
+        //   is the failure `uv_scale` exists to prevent, moved up one level; and
+        // - a **single non-square face** is stretched. A 3 m x 1 m side wearing a square image
+        //   compresses it three to one, and `games/atrium`'s plinth was doing exactly that.
+        //
+        // In metres, both go away: `u` and `v` are real distances, so a square image is square
+        // everywhere and one material covers everything made of that stone.
+        let data = BoxMesh {
+            size: [4.0, 1.0, 0.5],
+        }
+        .tessellate();
+
+        let span = |axis: usize, face: usize| {
+            let corners = &data.vertices[face * 4..face * 4 + 4];
+            let low = corners.iter().fold(f32::MAX, |a, v| a.min(v.uv[axis]));
+            let high = corners.iter().fold(f32::MIN, |a, v| a.max(v.uv[axis]));
+            high - low
+        };
+
+        // **Compared against each face's own geometry rather than an assumed face order**, which is
+        // both more robust and a truer statement of the claim: a face's UV extents are its own two
+        // in-plane dimensions, whichever face it is. Written the other way first, against a guessed
+        // ordering, and it failed on face zero for a reason that had nothing to do with the feature.
+        for face in 0..6 {
+            let corners = &data.vertices[face * 4..face * 4 + 4];
+            let normal = corners[0].normal;
+
+            // The two world axes this face lies in — everything except the one its normal points
+            // along — and how far it reaches along each.
+            let mut geometry: Vec<f32> = Vec::new();
+            for (axis, component) in normal.iter().enumerate() {
+                if component.abs() > 0.5 {
+                    continue;
+                }
+                let low = corners
+                    .iter()
+                    .fold(f32::MAX, |a, v| a.min(v.position[axis]));
+                let high = corners
+                    .iter()
+                    .fold(f32::MIN, |a, v| a.max(v.position[axis]));
+                geometry.push(high - low);
+            }
+            geometry.sort_by(f32::total_cmp);
+
+            let mut uv = vec![span(0, face), span(1, face)];
+            uv.sort_by(f32::total_cmp);
+
+            for pair in 0..2 {
+                assert!(
+                    (uv[pair] - geometry[pair]).abs() < 0.001,
+                    "a face with normal {normal:?} measures {geometry:?} metres and its UVs span \n                     {uv:?} — they have to be the same numbers, or the image is stretched"
+                );
+            }
+        }
     }
 
     #[test]

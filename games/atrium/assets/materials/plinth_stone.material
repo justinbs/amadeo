@@ -1,9 +1,0 @@
-scene plinth_stone
-version 1
-
-entity material "Plinth stone"
-  Material
-    base_colour 0.82 0.81 0.79 1.0
-    base_colour_texture "stone_slab"
-    roughness 0.85
-    uv_scale 0.75 0.75

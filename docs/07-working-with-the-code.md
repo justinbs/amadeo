@@ -2010,9 +2010,30 @@ Two rules, and the first is enough on its own:
 - **Undo a mutation with the inverse edit.** You know exactly what you changed; change it back.
 - **Or commit first, then mutate.** Then `git checkout` means what you wanted it to mean.
 
-And the general form, which is session 19's lesson arriving a third time: **when a capture disagrees
-with your model of the code, look at the picture before refining the model.** Both wrong theories were
-about the GPU. The fault was in the file.
+There is also a **safe** way to use `git checkout`, and it is one command: `git checkout -- <file>`
+restores from the **index**, not from HEAD. It reverted the feature because nothing was staged, so the
+index happened to match HEAD. **`git add` the file before mutating it** and the index holds your work,
+after which the restore does exactly what you expected.
+
+#### Dump the artefact before arguing
+
+Three instances now, and the third cost the most.
+
+When a capture, a replay or a dump disagrees with your model of the code, **look at the artefact before
+refining the model.** In every case so far the model was wrong in a way that reasoning could not reach,
+and one look settled it:
+
+- Session 19: two confident wrong theories about the geometry, against a capture of the *handcrafted*
+  room — which located the fault in ten minutes.
+- Session 21, transparency: two theories about a missing material bind group and a depth-test
+  rejection, against one dump of what `split_by_alpha` had actually produced. Collection was perfect;
+  the fault was in the backend.
+- Session 21, texel density: two theories about mip selection and vertex-attribute offsets, against
+  one image showing two identical checkers. The shader line was simply gone.
+
+The tell is **two plausible theories that disagree**. That is the moment to stop arguing and print
+something — a `Vec` of what a pass produced, a PNG of what a camera saw. It is almost always cheaper
+than the next round of reasoning, and unlike reasoning it cannot be confidently wrong.
 
 ### A mesh now has three independent properties, not two
 

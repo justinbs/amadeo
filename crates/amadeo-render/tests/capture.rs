@@ -508,6 +508,11 @@ fn a_materials_texture_actually_reaches_the_pixels() {
             Material {
                 base_colour: [1.0, 1.0, 1.0, 1.0],
                 base_colour_texture: "halves".to_string(),
+                // **One repeat across the box's 2 m face.** Since ADR 0078 §3 the producers emit
+                // UVs in metres, so the default one-repeat-per-metre would wear the image twice and
+                // this test would pass for the wrong reason -- the left sample landing in the first
+                // copy's blue half and the right in the second copy's red half.
+                uv_scale: [0.5, 0.5],
                 ..Material::default()
             },
         );
@@ -2978,7 +2983,9 @@ fn uv_scale_repeats_a_texture_and_one_is_the_untouched_control() {
         Some(edges)
     };
 
-    let (Some(plain), Some(repeated)) = (edges_across([1.0, 1.0]), edges_across([4.0, 4.0])) else {
+    // The box is 2 m across, and `uv_scale` is **repeats per metre** since ADR 0078 §3. So 0.5 is
+    // exactly one copy of the checker over the face, and 2.0 is four copies.
+    let (Some(plain), Some(repeated)) = (edges_across([0.5, 0.5]), edges_across([2.0, 2.0])) else {
         return;
     };
 

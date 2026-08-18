@@ -19,7 +19,6 @@ assets
   paving
   pillar
   plinth
-  plinth_stone
   room_tone
   rust
   screen_frame
@@ -229,7 +228,7 @@ entity plinth "Plinth"
     shape Cuboid
       size 3.0 1.0 3.0
   Mesh
-    material "plinth_stone"
+    material "paving"
     mesh "plinth"
   RigidBody
     angular_damping 0.0

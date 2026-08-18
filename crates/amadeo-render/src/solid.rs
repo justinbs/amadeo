@@ -156,7 +156,16 @@ impl CylinderMesh {
             let (a_high, _) = ring(top, half, step as f32);
             let (b_low, b_edge_normal) = ring(bottom, -half, (step + 1) as f32);
             let (b_high, _) = ring(top, half, (step + 1) as f32);
-            let (u0, u1) = (step as f32 / sides as f32, (step + 1) as f32 / sides as f32);
+            // UVs in metres (ADR 0078 §3): `u` is arc length round the barrel and `v` is height. The
+            // side of a cylinder is developable -- you can unroll it flat -- so arc length is a real
+            // distance rather than an analogy, which is why this producer can join the flat ones.
+            // The mean radius is used, so a frustum gets one consistent circumference rather than a
+            // texture that slides as the radius changes.
+            let circumference = std::f32::consts::TAU * (bottom + top) * 0.5;
+            let (u0, u1) = (
+                circumference * step as f32 / sides as f32,
+                circumference * (step + 1) as f32 / sides as f32,
+            );
 
             // **Where flat shading happens, and why it is one line rather than a second code path.**
             // The vertices are already unshared per facet -- they have to be, for the seam's UVs -- so
@@ -179,8 +188,8 @@ impl CylinderMesh {
 
             let first = data.vertices.len() as u32;
             for (position, normal, uv) in [
-                (a_low, a_normal, [u0, 1.0]),
-                (b_low, b_normal, [u1, 1.0]),
+                (a_low, a_normal, [u0, self.height.max(0.0001)]),
+                (b_low, b_normal, [u1, self.height.max(0.0001)]),
                 (b_high, b_normal, [u1, 0.0]),
                 (a_high, a_normal, [u0, 0.0]),
             ] {
@@ -221,7 +230,8 @@ fn cap(data: &mut MeshData, radius: f32, y: f32, sides: u32, upward: bool) {
     data.vertices.push(Vertex {
         position: [0.0, y, 0.0],
         normal,
-        uv: [0.5, 0.5],
+        // The cap disc in metres, centred on the axis (ADR 0078 §3).
+        uv: [0.0, 0.0],
         ..Vertex::default()
     });
 
@@ -230,8 +240,10 @@ fn cap(data: &mut MeshData, radius: f32, y: f32, sides: u32, upward: bool) {
         data.vertices.push(Vertex {
             position: [radius * sine, y, radius * cosine],
             normal,
-            // The cap's own disc, so a texture reads as a circle rather than as a stretched strip.
-            uv: [0.5 + 0.5 * sine, 0.5 + 0.5 * cosine],
+            // The cap's own disc, so a texture reads as a circle rather than as a stretched strip --
+            // now in metres from the axis, so a wide drum's lid and a narrow one's carry the same
+            // stone at the same size.
+            uv: [radius * sine, radius * cosine],
             ..Vertex::default()
         });
     }
@@ -521,6 +533,21 @@ impl WedgeMesh {
                 continue;
             }
 
+            // UVs in metres, like every other flat producer (ADR 0078 §3). The face's own two
+            // in-plane dimensions, taken from its normal — and the **slope** measured along its
+            // actual incline rather than its footprint, or a steep ramp's texture would be
+            // compressed exactly in the direction the eye is most likely to notice.
+            let span: [f32; 2] = if normal[0] != 0.0 {
+                [self.depth, self.height_front.max(self.height_back)]
+            } else if normal[1] < 0.0 {
+                [self.width, self.depth]
+            } else if normal[2] != 0.0 {
+                [self.width, self.height_front.max(self.height_back)]
+            } else {
+                let rise = self.height_front - self.height_back;
+                [self.width, (self.depth * self.depth + rise * rise).sqrt()]
+            };
+
             let first = data.vertices.len() as u32;
             for (corner, uv) in corners
                 .iter()
@@ -529,7 +556,7 @@ impl WedgeMesh {
                 data.vertices.push(Vertex {
                     position: *corner,
                     normal,
-                    uv,
+                    uv: [uv[0] * span[0], uv[1] * span[1]],
                     ..Vertex::default()
                 });
             }

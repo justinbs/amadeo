@@ -66,3 +66,46 @@ number into two unrelated fields would have cost nothing and been exactly the ki
 - **Non-uniform scale on a part still has no answer**, and this does not change that. `uv_scale`
   scales coordinates, not geometry; the inverse-transpose normal rule ADR 0074 kept out of the format
   stays out.
+
+---
+
+## Amendment, same session — §3: the producers emit UVs in metres
+
+**The first version of this ADR fixed the half of texel density that lives in the material and left
+the half that lives in the mesh.** The engine gate's sixth review found it, and the evidence was in the
+two files the ADR itself had produced: `paving.material` and `plinth_stone.material` were
+byte-identical apart from one number.
+
+**Two materials, for one stone, because the objects were different sizes.** That is the failure this
+ADR exists to prevent, moved up one level — a game with fifty differently-sized props made of the same
+stone would have needed fifty materials.
+
+And it was wrong *within* a single object, by arithmetic rather than by eye. `BoxMesh` emitted UVs
+running 0..1 across **every** face regardless of that face's dimensions, so the Atrium's 3 × 1 × 3
+plinth carried 2.0 m square slabs on its top and slabs **2.0 m wide by 0.67 m tall** on its sides.
+
+### The missing half was never in the material
+
+In a DCC, "texel density" means the mesh's UVs are already proportional to surface area, and Unity's
+`_MainTex_ST` and Unreal's `TexCoord` tiling multiply *that*. Amadeo's procedural producers emitted
+0..1 per face, which is the one convention under which a material-level multiplier cannot work.
+
+So **`BoxMesh`, `PlaneMesh`, `WedgeMesh`, `StairMesh` and `CylinderMesh` emit UVs in mesh-local
+metres**, and `uv_scale` is a **repeats-per-metre** figure. One material now covers a wall and a crate
+at the same stone size, and a non-square face is right for free.
+
+- **`StairMesh` gets it without being touched**, because it composes `BoxMesh` blocks.
+- **A wedge's slope is measured along its incline**, not its footprint, or a steep ramp compresses its
+  texture in exactly the direction the eye notices.
+- **A cylinder's side is developable** — you can unroll it — so arc length is a real distance rather
+  than an analogy, which is why it joins the flat producers. It uses the mean radius, so a frustum
+  gets one consistent circumference instead of a texture that slides as the radius changes.
+- **`ArchMesh` and `SphereMesh` are not converted.** An arch is developable and should follow; a
+  sphere is doubly curved and has no distortion-free mapping at all, which is a separate decision.
+  Neither is sampled by anything today.
+- **`GltfPart` is deliberately untouched.** An imported mesh carries the UVs its DCC authored, which is
+  the same split Unity and Unreal live with.
+
+**It was cheapest to change now and would never have been cheaper**: two materials in the repository
+sampled a texture. After a texture generator it is every material in every game, plus every capture
+that samples one.
