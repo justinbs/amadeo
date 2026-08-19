@@ -799,6 +799,24 @@ pub struct Material {
     /// `color_space = "linear"` (**Q31**).
     #[reflect(default = String::new())]
     pub metallic_roughness_texture: String,
+    /// How strongly the map's **red** channel darkens ambient light — glTF's
+    /// `occlusionTexture.strength`, and ADR 0083.
+    ///
+    /// Red was documented as unused here for two milestones. It is glTF's **occlusion** channel:
+    /// how much of the surrounding environment a point can see, baked into the texture. A point
+    /// down in a joint sees only a slice of sky, so it receives less ambient light than the face
+    /// beside it — and until this existed it received exactly as much, which is most of why a
+    /// generated stone read as a picture of stone printed on a flat sheet.
+    ///
+    /// **It multiplies ambient only, never the sun or a lamp.** See `mesh.wgsl` for why: a direct
+    /// light either reaches a point or the shadow map already said it does not, and occluding it
+    /// again paints a second wrong shadow. Multiplying everything is what makes AO read as grime.
+    ///
+    /// `0.0` ignores the map, `1.0` takes it as authored. The placeholder texture is white, so a
+    /// material naming no map is unoccluded at every strength — which is what keeps this free to
+    /// add.
+    #[reflect(min = 0.0, max = 1.0, default = 1.0)]
+    pub occlusion_strength: f32,
     /// How this surface deals with being see-through — ADR 0077.
     ///
     /// **Declared rather than inferred from `base_colour`'s alpha**, and that is a deliberate choice
@@ -868,6 +886,9 @@ impl Default for Material {
             // 0.0 default would silently flatten the first map anyone attached.
             normal_strength: 1.0,
             metallic_roughness_texture: String::new(),
+            // The identity again, for `normal_strength`'s reason: a material that names no map must
+            // shade the same whatever this says.
+            occlusion_strength: 1.0,
             alpha_mode: AlphaMode::Opaque,
             uv_scale: [1.0, 1.0],
         }
@@ -2144,6 +2165,7 @@ mod tests {
             normal_texture: "rust_plate_normal".to_string(),
             normal_strength: 0.75,
             metallic_roughness_texture: "rust_plate_wear".to_string(),
+            occlusion_strength: 0.5,
             alpha_mode: AlphaMode::Blend,
             uv_scale: [3.0, 2.0],
         };

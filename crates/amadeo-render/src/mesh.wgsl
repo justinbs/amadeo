@@ -349,7 +349,7 @@ struct InstanceInput {
     @location(8) emissive: vec4<f32>,
     // xy = texture coordinate scale (ADR 0078). zw unused.
     @location(11) uv_scale: vec4<f32>,
-    // x = metallic, y = roughness, z = normal_strength. w unused.
+    // x = metallic, y = roughness, z = normal_strength, w = occlusion_strength.
     @location(10) surface: vec4<f32>,
 };
 
@@ -369,6 +369,7 @@ struct VertexOutput {
     @location(6) normal_strength: f32,
     @location(7) metallic: f32,
     @location(8) roughness: f32,
+    @location(9) occlusion_strength: f32,
 };
 
 @vertex
@@ -407,6 +408,7 @@ fn vs_main(vertex: VertexInput, instance: InstanceInput) -> VertexOutput {
     out.normal_strength = instance.surface.z;
     out.metallic = instance.surface.x;
     out.roughness = instance.surface.y;
+    out.occlusion_strength = instance.surface.w;
     out.world_position = world.xyz;
     // **Texel density** (ADR 0078). A 12 m wall and a 0.4 m crate have the same 0..1 UVs, so without
     // this one image is stretched across both at a thirty-fold difference in density -- which reads as
@@ -570,14 +572,31 @@ fn fs_main(
     let sampled = textureSample(base_colour_map, base_colour_sampler, in.uv);
     let albedo = in.base_colour * sampled;
 
-    // The metallic-roughness map multiplies the scalars, glTF's packing: green is roughness, blue is
-    // metallic. The placeholder is white, so a material without one is exactly its scalars.
+    // The metallic-roughness map multiplies the scalars, glTF's packing: **red is occlusion**, green
+    // is roughness, blue is metallic. The placeholder is white, so a material without one is exactly
+    // its scalars and is unoccluded.
     let packed = textureSample(metallic_roughness_map, base_colour_sampler, in.uv);
     let metallic = clamp(in.metallic * packed.b, 0.0, 1.0);
     // Floored well above zero. A perfectly smooth surface concentrates its whole highlight into a
     // single point, which is infinitely bright and one blazing pixel wide -- it aliases horribly and
     // reads as a firefly rather than as polish.
     let roughness = clamp(in.roughness * packed.g, 0.04, 1.0);
+
+    // **Ambient occlusion, red channel, and it multiplies the AMBIENT terms only.**
+    //
+    // That restriction is glTF's and it is the whole difference between occlusion and dirt. Ambient
+    // is light arriving from the whole environment at once, so a point down inside a joint receives
+    // less of it — most of the sky it would otherwise see is blocked by the stone either side. The
+    // sun is one direction: either it reaches this point or the shadow map already said it does not,
+    // and darkening it again would put a second, softer, wrong shadow on top of the real one.
+    //
+    // Multiplying everything is the mistake that makes AO read as smeared grime, and it is what a
+    // post-process AO applied to the final image cannot avoid.
+    //
+    // `mix` rather than a multiply, which is glTF's `occlusionTexture.strength` exactly: strength 0
+    // is no occlusion whatever the map says, strength 1 is the map. The placeholder samples 1.0, so
+    // a material with no map is unoccluded at every strength.
+    let baked_occlusion = mix(1.0, packed.r, clamp(in.occlusion_strength, 0.0, 1.0));
 
     // **What metallic actually means**, and it is two changes at once rather than a dial:
     //
@@ -708,8 +727,10 @@ fn fs_main(
     // could not be right for both, which is what `Environment::sky_ambient` exists to record. `1.0`
     // is the identity, so a scene that authors none renders byte-identically.
     // Both halves scaled together, so the dial means the same thing it did when ambient was one sum.
-    let lit_diffuse = direct_diffuse + ambient_diffuse * view.ambient_params.x;
-    let lit_specular = direct_specular + ambient_specular * view.ambient_params.x;
+    // And both occluded together: a joint that sees less sky also reflects less of it, so applying
+    // occlusion to the diffuse half alone would leave a specular sheen sitting in the recess.
+    let lit_diffuse = direct_diffuse + ambient_diffuse * view.ambient_params.x * baked_occlusion;
+    let lit_specular = direct_specular + ambient_specular * view.ambient_params.x * baked_occlusion;
 
     // **Premultiplied output, and this is ADR 0080's whole point.**
     //

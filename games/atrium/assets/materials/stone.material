@@ -11,5 +11,6 @@ entity material "Pale stone"
     metallic_roughness_texture "stone_slab_surface"
     normal_strength 1.0
     normal_texture "stone_slab_normal"
+    occlusion_strength 1.0
     roughness 0.9
     uv_scale 0.5 0.5

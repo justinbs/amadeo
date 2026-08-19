@@ -272,14 +272,22 @@ fn render_normal(stone: &Stone) -> Vec<u8> {
     pixels
 }
 
-/// The metallic-roughness map, in **linear** bytes.
+/// The occlusion-metallic-roughness map, in **linear** bytes.
 ///
-/// glTF 2.0's packing, which the engine follows rather than invents: **green is roughness, blue is
-/// metallic**. Red is unused and written as zero.
+/// glTF 2.0's packing, which the engine follows rather than invents: **red is occlusion**, green is
+/// roughness, blue is metallic.
 ///
-/// Stone is a dielectric, so metallic is zero everywhere and this map earns its place through
-/// roughness alone — joints are rougher than faces and the grain jitters the faces, which is what
-/// stops a large flat surface reading as one sheet of the same plastic.
+/// Stone is a dielectric, so metallic is zero everywhere. The other two both come off the same
+/// height field as the normal map: joints are rougher than faces, and joints are also *deeper*, so
+/// they see less of the sky.
+///
+/// # Red was written as zero and read by nothing, which is worse than either
+///
+/// It was documented here as unused, and the shader did discard it — but nothing in that arrangement
+/// was safe. `mesh.wgsl` reading `packed.r` as occlusion against a map full of zeroes would have made
+/// every stone surface in the game pitch black in ambient light, and the only thing standing between
+/// those two facts was that neither file had changed yet. ADR 0083 read the channel; this fills it,
+/// in the same commit, because either alone is a defect.
 fn render_surface(stone: &Stone) -> Vec<u8> {
     let mut pixels = Vec::with_capacity((SIZE * SIZE * 4) as usize);
 
@@ -293,7 +301,7 @@ fn render_surface(stone: &Stone) -> Vec<u8> {
                 + (stone.joint_roughness - stone.face_roughness) * joint
                 + jitter;
 
-            pixels.push(0);
+            pixels.push(to_unit_byte(cavity(stone, u, v)));
             pixels.push(to_unit_byte(roughness));
             // Metallic. Zero, and it is a statement rather than a placeholder: stone is a dielectric,
             // and a map saying otherwise would make the floor reflect like a mirror and lose its
@@ -304,6 +312,67 @@ fn render_surface(stone: &Stone) -> Vec<u8> {
     }
 
     pixels
+}
+
+/// How much of the sky a point can see, 0 fully enclosed and 1 fully open — the occlusion channel.
+///
+/// # Why this is not just `1 - mortar(u, v)`
+///
+/// Occlusion is not depth. A point at the *bottom* of a wide shallow scoop is barely occluded, and a
+/// point in a narrow crack is heavily occluded at the same depth — what matters is how much higher
+/// the surroundings are, not how low this point is. So this compares the height here against the
+/// average height of a ring around it, which is the cheap standard approximation and the one every
+/// bake tool reduces to when the ray budget runs out.
+///
+/// Sampling [`height`] rather than differencing an image keeps all three maps read off one function,
+/// which is the property this file exists to protect: colour, relief and occlusion that disagree give
+/// the eye three conflicting surfaces at once.
+fn cavity(stone: &Stone, u: f32, v: f32) -> f32 {
+    // A ring wide enough to span a joint and narrow enough to stay inside one slab. A radius smaller
+    // than the joint reads only the joint floor and returns "open" in the middle of it; one larger
+    // than a slab drags a whole neighbouring block into the average and darkens the faces.
+    const RADIUS: f32 = 0.012;
+    // How dark a point gets when the ring around it averages one full joint-depth above it.
+    //
+    // **Measured rather than reasoned, and the reasoning was wrong.** I estimated a joint floor
+    // would average 0.37 of a joint-depth below its ring, on the grounds that the ring straddles the
+    // joint; it averages **0.75**, because the joint is only about 0.0125 wide in uv and a 0.012
+    // radius puts most of the ring out on the faces at full height rather than on the joint's own
+    // ramp. At the first value that took the joint to 25/255 -- a near-black line rather than a
+    // shadow -- so this is the value that puts it at about 140, which is what a joint in raking light
+    // actually looks like. Probe it with `amadeo image row <surface>.png 64 118 140`.
+    const STRENGTH: f32 = 0.6;
+
+    let here = height(stone, u, v);
+
+    // Eight neighbours on a ring: four square, four diagonal at the same radius rather than at
+    // sqrt(2) times it, so no direction is weighted more heavily than another.
+    const DIAGONAL: f32 = std::f32::consts::FRAC_1_SQRT_2;
+    let offsets: [(f32, f32); 8] = [
+        (1.0, 0.0),
+        (-1.0, 0.0),
+        (0.0, 1.0),
+        (0.0, -1.0),
+        (DIAGONAL, DIAGONAL),
+        (DIAGONAL, -DIAGONAL),
+        (-DIAGONAL, DIAGONAL),
+        (-DIAGONAL, -DIAGONAL),
+    ];
+
+    let mut higher = 0.0;
+    for (du, dv) in offsets {
+        let around = height(
+            stone,
+            (u + du * RADIUS).rem_euclid(1.0),
+            (v + dv * RADIUS).rem_euclid(1.0),
+        );
+        // Only neighbours **above** this point block anything. One below is a drop, and a drop
+        // occludes nothing -- without this clamp a slab face beside a joint would be darkened by the
+        // joint next to it, which is backwards.
+        higher += (around - here).max(0.0);
+    }
+
+    (1.0 - (higher / offsets.len() as f32) * STRENGTH).clamp(0.0, 1.0)
 }
 
 /// A 0..1 value as a byte, with no transfer curve. For data maps.

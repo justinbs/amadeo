@@ -3273,3 +3273,114 @@ fn a_highlight_on_glass_beats_what_straight_alpha_could_produce() {
         "the blended pane should still be darker than the opaque one: {opaque:?} vs {blended:?}"
     );
 }
+
+/// A world from [`a_lit_box`] whose material wears an occlusion-metallic-roughness map.
+///
+/// `occlusion` is the map's **red** channel — 0 fully occluded, 255 fully open. Green and blue are
+/// written as the identity of their multiplies, so this map changes occlusion and nothing else.
+fn a_box_wearing_an_occlusion_map(occlusion: u8, strength: f32) -> World {
+    let mut world = a_lit_box([1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 2.0]);
+
+    let mut textures = amadeo_render::TextureCache::new();
+    textures.insert_decoded(
+        "orm",
+        TextureData {
+            width: 1,
+            height: 1,
+            // Linear: these are three numbers, not a colour. The sRGB curve would bend the
+            // occlusion figure — Q31's trap, and the reason a `.ama-meta` carries `color_space`.
+            format: amadeo_image::PixelFormat::Rgba8Unorm,
+            // Green 255 is roughness × 1 and blue 0 is metallic × 0, both identities of what the
+            // shader does with them, so nothing but red is under test.
+            pixels: vec![occlusion, 255, 0, 255],
+        },
+    );
+    world.insert_service(textures);
+
+    if let Some(materials) = world.service_mut::<MaterialCache>() {
+        materials.insert(
+            "paint",
+            Material {
+                // **A quarter grey, not white, and this is the trap session 21 wrote down.**
+                //
+                // A white box under a full-strength sun clips every lit pixel to 255, so an
+                // occluded capture and an open one come back byte-identical and the test passes or
+                // fails for a reason that has nothing to do with the code under test. That is
+                // exactly how a faceted sphere once compared equal to a smooth one. The whole
+                // comparison here has to sit inside the displayable range, so the surface is dark
+                // enough that the sun alone does not reach the top of it.
+                base_colour: [0.25, 0.25, 0.25, 1.0],
+                metallic_roughness_texture: "orm".to_string(),
+                occlusion_strength: strength,
+                ..Material::default()
+            },
+        );
+    }
+    world
+}
+
+#[test]
+fn an_occlusion_map_darkens_the_surface_without_extinguishing_it() {
+    // **ADR 0083, and the assertion that matters is the second one.**
+    //
+    // Red was documented as unused in this channel for two milestones. Reading it is easy; reading
+    // it *in the right place* is the whole decision. Occlusion multiplies the **ambient** term
+    // alone, so a fully occluded surface still receives every photon the sun sends it — it has
+    // simply stopped receiving the light bouncing in from the sky around it.
+    //
+    // A shader that multiplied the whole result instead would take a red of zero to **black**, and
+    // that is the mistake that makes ambient occlusion read as smeared grime rather than as shape.
+    // The bound below is what separates the two, and it is deliberately generous: anything above a
+    // third of the open reading proves the direct half survived.
+    //
+    // **Mutated once**: replacing the shader's `baked_occlusion` with a constant `1.0` fails this
+    // and leaves the companion test below passing, which is the split the two exist to make.
+    let mut open = a_box_wearing_an_occlusion_map(255, 1.0);
+    let Some(unoccluded) = capture(&mut open, 64, 64) else {
+        return;
+    };
+
+    let mut shut = a_box_wearing_an_occlusion_map(0, 1.0);
+    let Some(occluded) = capture(&mut shut, 64, 64) else {
+        return;
+    };
+
+    let lit = pixel_at(&unoccluded, 32, 32);
+    let dark = pixel_at(&occluded, 32, 32);
+
+    assert!(
+        dark[0] < lit[0],
+        "a fully occluded surface must be darker than an open one: got {dark:?} against {lit:?}. \
+         Equal values mean the shader never read the map's red channel, which is the state this \
+         engine shipped in for two milestones"
+    );
+    assert!(
+        dark[0] > lit[0] / 3,
+        "and it must stay lit — occlusion multiplies ambient only, so the sun still reaches it. \
+         Got {dark:?} against {lit:?}; a value near zero means occlusion was applied to the whole \
+         shaded result rather than to the ambient half"
+    );
+}
+
+#[test]
+fn occlusion_strength_zero_is_exactly_the_unoccluded_surface() {
+    // The dial, and the control for the test above. At strength zero the map is ignored however
+    // black its red channel is, so these must match byte for byte — which also proves the darkening
+    // above is attributable to the *channel* rather than to anything else about binding this
+    // texture. `normal_strength`'s companion test, one field along, for the same reason.
+    let mut open = a_box_wearing_an_occlusion_map(255, 1.0);
+    let Some(unoccluded) = capture(&mut open, 64, 64) else {
+        return;
+    };
+
+    let mut ignored = a_box_wearing_an_occlusion_map(0, 0.0);
+    let Some(dialled_out) = capture(&mut ignored, 64, 64) else {
+        return;
+    };
+
+    assert_eq!(
+        pixel_at(&unoccluded, 32, 32),
+        pixel_at(&dialled_out, 32, 32),
+        "occlusion_strength 0.0 must be byte-identical to a map that occludes nothing"
+    );
+}

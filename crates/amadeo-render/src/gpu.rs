@@ -102,7 +102,7 @@ struct GpuMeshInstance {
     /// Its own field rather than packed into the spare lanes of `emissive` and `surface`, which would
     /// have cost no bytes and put two halves of one number in two unrelated places.
     uv_scale: [f32; 4],
-    /// How this surface responds to light: `[metallic, roughness, normal_strength, unused]`.
+    /// How this surface responds to light: `[metallic, roughness, normal_strength, occlusion_strength]`.
     ///
     /// The scalar half of the material. A metallic-roughness *texture* multiplies into the first two
     /// per pixel, exactly as `base_colour_texture` multiplies into `base_colour` — which is what
@@ -4451,7 +4451,7 @@ fn batch_mesh_instances<'a>(
                 instance.material.metallic,
                 instance.material.roughness,
                 instance.material.normal_strength,
-                0.0,
+                instance.material.occlusion_strength,
             ],
         });
         let last = buffer.len() as u32;
