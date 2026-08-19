@@ -103,6 +103,23 @@ crates/
                      parallelism a pure speedup nothing downstream can observe), or **deliver into a
                      Service** that gameplay cannot see (ADR 0009). `pending()` is diagnostics only:
                      a count that depends on machine speed is what makes a replay diverge.
+✅ amadeo-texture     procedural surface textures (engine gate item 13): tiling gradient noise, a
+                     masonry lattice, height-to-normal, the cavity estimate behind ADR 0083's
+                     occlusion channel, and the sRGB encoder. Depends only on amadeo-image, and only
+                     for `TextureData` and the PNG encoder -- it knows about images and nothing about
+                     worlds, so it sits near the bottom of the graph where every game can reach it.
+                     **`Courses` is a description and `Wall` is the laid result**, because a course
+                     is placed relative to the one below it and that cannot be resolved per pixel.
+                     **`Bond::Broken` puts each joint over the MIDDLE of the stone below**, which
+                     makes the lap arithmetic rather than statistical -- the first attempt stepped
+                     each course on by a third to two thirds of a slab and two courses still came out
+                     0.0035 apart, because varied widths drift a joint away from where an offset put
+                     it. `Bond::Stack` is kept as the named control that must fail that test.
+                     It is the **third home** for the tiling-noise routine; `games/scarp` and
+                     `games/atrium` each held a copy and the second one's comment said so.
+                     It writes no files and knows nothing about assets: `Canvas::encode` hands back
+                     PNG bytes and stops, because deciding where a texture lives is a *tool's* job --
+                     `amadeo-gltf`'s division exactly.
 ✅ amadeo-noise       deterministic gradient noise (ADR 0044). No deps. **`sin`, `cos` and `powf` are
                      forbidden in anything that decides where the ground is** -- Rust documents their
                      precision as varying by platform, by version, and between two calls in one
