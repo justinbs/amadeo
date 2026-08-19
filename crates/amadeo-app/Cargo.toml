@@ -30,6 +30,11 @@ amadeo-scene.workspace = true
 amadeo-anim.workspace = true
 # `--snapshot` restores before the first tick, and `snapshot.take` captures.
 amadeo-snapshot.workspace = true
+# `render.capture --pitch/--yaw` aims the cameras and puts them back, which means writing a
+# `Transform` and re-deriving `GlobalTransform`. **This was a dev-dependency until then**, on a
+# comment saying it was not a real one -- which stopped being true the moment a protocol method
+# needed to move an entity. No new edge in the graph: `amadeo-render` already depends on it.
+amadeo-transform.workspace = true
 thiserror.workspace = true
 
 [features]
@@ -42,6 +47,3 @@ workspace = true
 
 [dev-dependencies]
 amadeo-input.workspace = true
-# The glTF load-path test places entities, which needs a Transform. Not a real dependency of this
-# crate: `amadeo-render` re-exports what the app itself touches.
-amadeo-transform.workspace = true

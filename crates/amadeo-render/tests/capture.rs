@@ -3008,3 +3008,85 @@ fn uv_scale_repeats_a_texture_and_one_is_the_untouched_control() {
          [0.5, 0.5] gave {plain}, [2.0, 2.0] gave {repeated}"
     );
 }
+
+#[test]
+fn the_sky_ambient_dial_moves_the_fill_and_leaves_the_backdrop_alone() {
+    // **ADR 0079's whole claim, as pixels.** An environment map is a picture and a light, and until
+    // `Environment::sky_ambient` existed one number was both — so the Atrium's map had to be scaled
+    // down until it lit the room correctly, which left the visible sky darker than the floor it was
+    // lighting. Unity, Unreal and Godot all ship this split independently.
+    //
+    // Two captures at two fill values. The **backdrop must be byte-identical** and the **surface must
+    // not be**, and it takes both halves: a field that changed nothing would pass the first assertion
+    // alone, and a field wired into the sky pass by mistake would pass the second.
+    //
+    // This is the shape of check that would have saved a session. The Atrium's dark band was
+    // diagnosed by recolouring the map and watching the band change colour — which proved nothing,
+    // because recolouring the map moves the backdrop *and* the fill together. That experiment cannot
+    // distinguish the two, and the conclusion drawn from it was wrong.
+    let shot = |fill: f32| -> Option<TextureData> {
+        let mut world = a_lit_box([0.8, 0.8, 0.8, 1.0], [2.0, 2.0, 2.0]);
+
+        let mut skies = amadeo_render::SkyCache::new();
+        skies.insert(
+            "overhead",
+            amadeo_render::EnvironmentMap::solid([0.3, 0.5, 0.9, 1.0]),
+        );
+        world.insert_service(skies);
+
+        let mut looks = EnvironmentCache::new();
+        looks.insert(
+            "outdoors",
+            Environment {
+                sky: "overhead".to_string(),
+                sky_ambient: fill,
+                ..Environment::default()
+            },
+        );
+        world.insert_service(looks);
+
+        for entity in world.entities() {
+            if world.get::<Camera>(entity).is_some() {
+                let mut camera = Camera::perspective(60.0);
+                camera.environment = "outdoors".to_string();
+                world.insert(entity, camera);
+            }
+            // Turned away from the sun, so the face the camera sees is lit by the environment and
+            // nothing else. Facing the light it saturates at both fill values and the comparison
+            // below is vacuous -- which is how this test first failed.
+            if world.get::<Mesh>(entity).is_some() {
+                let mut transform = Transform::at(0.0, 0.0);
+                transform.rotation = [0.0, 130.0, 0.0];
+                world.insert(entity, transform);
+            }
+        }
+        capture(&mut world, 64, 64)
+    };
+
+    let (Some(dim), Some(bright)) = (shot(0.2), shot(1.0)) else {
+        return;
+    };
+
+    // A corner, where the box is not: this is the sky pass and nothing else.
+    let corner_dim = pixel_at(&dim, 2, 2);
+    let corner_bright = pixel_at(&bright, 2, 2);
+    assert_eq!(
+        corner_dim, corner_bright,
+        "the drawn sky must not depend on the ambient dial: {corner_dim:?} then {corner_bright:?}"
+    );
+    // And it is actually the sky rather than a black corner both times, or the check above is
+    // vacuous — which is the failure mode two of this session's tests had.
+    assert!(
+        corner_bright[2] > 60,
+        "the corner should be sky, not an empty clear colour: {corner_bright:?}"
+    );
+
+    // The middle, where the box is: this is the fill, and it must move.
+    let face_dim = pixel_at(&dim, 32, 32);
+    let face_bright = pixel_at(&bright, 32, 32);
+    let lift = i32::from(face_bright[2]) - i32::from(face_dim[2]);
+    assert!(
+        lift > 5,
+        "more ambient must light the surface more: {face_dim:?} then {face_bright:?}"
+    );
+}

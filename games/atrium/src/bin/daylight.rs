@@ -62,11 +62,17 @@ const HORIZON: [f32; 3] = [0.72, 0.76, 0.80];
 /// with pitch-dark undersides. Warm and dim, like pale stone in daylight.
 const GROUND: [f32; 3] = [0.62, 0.56, 0.48];
 
-/// Overall multiplier.
+/// Overall multiplier on the sky's own colour.
 ///
-/// The one number to reach for if the room is too bright or too flat. Low, because this is *fill*:
-/// it is competing with a directional sun and its job is to lift the shadows, not to light the scene.
-const SCALE: f32 = 0.34;
+/// **1.0, and it is deliberately no longer the fill knob.** It was 0.34, because this one number was
+/// both the brightness of the visible sky and the strength of the ambient light it casts -- and those
+/// want different values. At 0.34 the daylight through the oculus was darker than the sunlit floor
+/// beneath it, which is a sky dimmer than a surface it is lighting.
+///
+/// The fill now lives on the look, as `Environment::sky_ambient`, which `atrium.environment` sets to
+/// 0.34 -- so the fill is exactly what it was and only the picture changed. **If the room is too
+/// bright or too flat, that is the number to reach for, not this one.** This is the sky's colour.
+const SCALE: f32 = 1.0;
 
 fn main() {
     let out = manifest_dir().join("assets/skies");

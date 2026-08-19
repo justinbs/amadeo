@@ -61,6 +61,11 @@ struct MeshView {
     fog_colour: vec4<f32>,
     // x = how far from the eye fog starts, in world units. yzw unused.
     fog_params: vec4<f32>,
+    // x = how much of the environment map reaches surfaces as ambient light. yzw unused.
+    //
+    // Read by `mesh.wgsl` and deliberately NOT by `sky.wgsl`: the backdrop draws the map as
+    // authored, and this scales only the fill. See `Environment::sky_ambient`.
+    ambient_params: vec4<f32>,
     // xyz = the camera's world position. Needed only since PBR: diffuse light looks the same from
     // everywhere, but a specular highlight is a reflection and moves with the viewer.
     eye: vec4<f32>,

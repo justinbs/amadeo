@@ -1,3 +1,4 @@
+| Separate the knob before believing the answer | an experiment on a shared control | which consumer actually responded |
 # 07 — Working With the Code
 
 > Justin's map into the codebase. Written for someone comfortable programming but still learning Rust.
@@ -1977,6 +1978,52 @@ the wrong reason, a model of the code was wrong in a way reasoning could not rea
 matched nothing. None is caught by care, and all three are caught by one extra step costing seconds.
 
 **When something matters, look at what changed rather than at what you did.**
+
+### A knob that feeds two consumers cannot tell them apart
+
+The fourth row of that table is a different shape from the other three and is worth its own entry,
+because the failure it names is not carelessness -- the experiment is run properly, the observation is
+accurate, and the conclusion is still wrong.
+
+`games/atrium` had a dark band across the top of the frame. The engine gate called it unlit ceiling.
+I argued it was the sky, and offered proof: **render the environment map magenta and capture.** The
+band went magenta. I wrote that conclusion into a commit message, a status file and a reply to the
+review.
+
+The experiment could not have told me anything. An environment map is drawn as the backdrop **and**
+integrated into the light every surface receives, so recolouring it turns both magenta. A magenta
+band is exactly what a magenta-lit *ceiling* looks like. The observation was real and it fitted both
+hypotheses equally -- which means it distinguished nothing, and I read a coin landing on its edge as
+a result.
+
+ADR 0079 split the two into separate numbers for unrelated reasons, and the same question then took
+one capture: set the ambient contribution to zero and leave the backdrop alone. The band went black.
+It is a surface. The review was right.
+
+**Before running an experiment, ask which hypotheses its outcome would separate.** If the control you
+are about to move feeds every candidate, the answer is none of them, and the confident result you get
+back is worth less than no result -- because no result prompts another look and a wrong one does not.
+The fix is to find a control that reaches one consumer, and if none exists, that absence is usually
+itself the defect worth fixing.
+
+### An ADR records a decision, not a measurement
+
+The decision records in `docs/adr/` do not rot -- their Context and Decision sections describe
+*reasoning*, and reasoning does not expire. **Consequences sections rot**, reliably, and always for
+one reason: they quote measurements of the repository at a moment.
+
+ADR 0078 is the worked example. Its consequences went stale when **its own amendment**, appended to
+the same file in the same session, deleted the two-material arrangement they described. They also
+carried "43 of 45" for a figure later split into three separate slots, and called a generator "the
+fourth" the day before a fifth was written. Context and Decision were untouched and remain true.
+
+So: **live numbers belong in `docs/13` §1**, which is the file whose job is to track them and which is
+reviewed every round. An ADR that wants to cite one points at it rather than copying it. That turns a
+recurring maintenance burden into a one-time convention, and it is the same move this codebase
+already makes for `collect_audio`/`describe_audio` and for the frustum: one copy of a fact, so two
+copies cannot disagree.
+
+ADR 0074's consequences are the next candidate; nobody has checked them.
 
 ### Mutate every capture assertion once, and say in the comment that you did
 

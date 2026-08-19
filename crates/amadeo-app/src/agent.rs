@@ -597,7 +597,11 @@ fn dispatch(
             let path = request.string_param("path")?;
             let width = request.optional_int_param("width")?.unwrap_or(1280);
             let height = request.optional_int_param("height")?.unwrap_or(720);
-            capture_to_png(app, path, width, height, request)
+            // Optional, and absent means "wherever the game is pointing" — which is what every
+            // capture before this one did.
+            let pitch = request.optional_number_param("pitch")?;
+            let yaw = request.optional_number_param("yaw")?;
+            capture_to_png(app, path, width, height, pitch, yaw, request)
         }
 
         "replay.status" => {
@@ -775,10 +779,21 @@ fn capture_to_png(
     path: &str,
     width: i64,
     height: i64,
+    pitch: Option<f64>,
+    yaw: Option<f64>,
     request: &Request,
 ) -> Result<Json, RpcError> {
     let width = u32::try_from(width.max(1)).unwrap_or(1280);
     let height = u32::try_from(height.max(1)).unwrap_or(720);
+
+    // **Aim the cameras somewhere other than where the game points them, then put them back.**
+    //
+    // This exists because a capture could only ever show the authored view, and the engine is judged
+    // almost entirely by capture. Checking a ceiling, a sky or anything behind the player meant
+    // editing the game's scene file, capturing, and reverting — which was done repeatedly, is
+    // error-prone, and twice left an edit behind. A reviewer looking at a feature should not have to
+    // modify the game to see it.
+    let posed = pose_cameras(app, pitch, yaw);
 
     let backend = amadeo_render::WgpuBackend::offscreen(width, height).map_err(|error| {
         request.bad_params(format!(
@@ -819,6 +834,12 @@ fn capture_to_png(
         .remove_service::<amadeo_render::Renderer>()
         .ok_or_else(|| request.bad_params("the capture renderer vanished".to_string()))?;
 
+    // Put the cameras back before anything can fail, so the world this method was asked about is the
+    // world it leaves behind — the promise the temporary renderer above is also keeping. Restoring
+    // after the `?` below would leave a game aimed at the ceiling whenever a capture failed, and the
+    // agent host outlives one request.
+    restore_cameras(app, posed);
+
     let image = renderer
         .capture()
         .map_err(|error| request.bad_params(format!("capture failed: {error}")))?;
@@ -843,6 +864,86 @@ fn capture_to_png(
     ]))
 }
 
+/// Aims every camera entity at an absolute pitch and yaw, returning what they held before.
+///
+/// # Absolute, not an offset
+///
+/// `pitch 40` means forty degrees above the horizon whatever the game had, rather than forty more
+/// than it. An offset would need the caller to know the current angle to predict the result, which
+/// is exactly the thing a capture is being used to find out.
+///
+/// An absent angle leaves that axis alone, so `--pitch` on its own turns the view up without also
+/// spinning it to face north. **Roll and position are never touched** — this aims a camera, it does
+/// not move one, so a follow camera stays at the end of its arm and a first-person one stays in its
+/// head.
+///
+/// Returns the previous [`Transform`] of each camera, for [`restore_cameras`].
+#[cfg(feature = "gpu")]
+fn pose_cameras(
+    app: &mut App,
+    pitch: Option<f64>,
+    yaw: Option<f64>,
+) -> Vec<(amadeo_ecs::Entity, amadeo_transform::Transform)> {
+    if pitch.is_none() && yaw.is_none() {
+        return Vec::new();
+    }
+
+    // Collected first because the query borrows the world and the writes below need it mutably.
+    let cameras: Vec<amadeo_ecs::Entity> = app
+        .world
+        .query::<(&amadeo_render::Camera,)>()
+        .map(|(entity, _)| entity)
+        .collect();
+
+    let mut previous = Vec::new();
+    for entity in cameras {
+        let Some(transform) = app
+            .world
+            .get::<amadeo_transform::Transform>(entity)
+            .copied()
+        else {
+            continue;
+        };
+        previous.push((entity, transform));
+
+        let mut aimed = transform;
+        // Rotation is Euler degrees, X then Y (ADR 0018): X is pitch, Y is yaw, Z is roll.
+        if let Some(pitch) = pitch {
+            aimed.rotation[0] = pitch as f32;
+        }
+        if let Some(yaw) = yaw {
+            aimed.rotation[1] = yaw as f32;
+        }
+        app.world.insert(entity, aimed);
+    }
+
+    // **`GlobalTransform` is what the renderer reads, and nothing recomputes it between here and the
+    // draw.** `propagate_transforms` runs in `PostSimulation`, which has already happened by the
+    // time a capture is being taken, so writing the local transform alone poses a camera that draws
+    // from exactly where it was before — a silent no-op, and the first thing this got wrong.
+    if !previous.is_empty() {
+        amadeo_transform::propagate_transforms(&mut app.world);
+    }
+    previous
+}
+
+/// Puts back what [`pose_cameras`] changed.
+#[cfg(feature = "gpu")]
+fn restore_cameras(
+    app: &mut App,
+    previous: Vec<(amadeo_ecs::Entity, amadeo_transform::Transform)>,
+) {
+    if previous.is_empty() {
+        return;
+    }
+    for (entity, transform) in previous {
+        app.world.insert(entity, transform);
+    }
+    // Re-derived for the same reason it was derived above: leaving a stale `GlobalTransform` behind
+    // would mean a capture changed where the *next* frame draws from.
+    amadeo_transform::propagate_transforms(&mut app.world);
+}
+
 /// The same method when the engine was built without a GPU.
 ///
 /// A clear refusal rather than a silent blank image, and it names the two ways forward: build with
@@ -853,6 +954,8 @@ fn capture_to_png(
     _path: &str,
     _width: i64,
     _height: i64,
+    _pitch: Option<f64>,
+    _yaw: Option<f64>,
     request: &Request,
 ) -> Result<Json, RpcError> {
     Err(request.bad_params(
@@ -1356,5 +1459,124 @@ mod tests {
             error.to_string().contains("60 per simulated second"),
             "got: {error}"
         );
+    }
+}
+
+/// Tests for `render.capture`'s pose override.
+///
+/// Behind `gpu` because the functions are: they exist only for the capture path, which needs a
+/// device. Nothing here opens one — aiming a camera and putting it back is ordinary world editing.
+#[cfg(all(test, feature = "gpu"))]
+mod pose_tests {
+    use super::*;
+    use amadeo_render::Camera;
+    use amadeo_transform::{GlobalTransform, Parent, Transform};
+
+    /// A camera parented to something, which is the arrangement every game here actually uses — a
+    /// follow camera or a first-person one is a child, never a loose entity.
+    fn app_with_a_parented_camera() -> (App, amadeo_ecs::Entity) {
+        let mut app = App::new();
+        let body = app.world.spawn();
+        app.world.insert(
+            body,
+            Transform {
+                translation: [0.0, 1.0, 0.0],
+                ..Transform::default()
+            },
+        );
+
+        let eye = app.world.spawn();
+        app.world.insert(
+            eye,
+            Transform {
+                translation: [0.0, 2.0, 4.0],
+                rotation: [-18.0, 0.0, 0.0],
+                ..Transform::default()
+            },
+        );
+        app.world.insert(eye, Parent(body));
+        app.world.insert(eye, Camera::perspective(60.0));
+        amadeo_transform::propagate_transforms(&mut app.world);
+        (app, eye)
+    }
+
+    #[test]
+    fn an_absent_angle_leaves_that_axis_alone() {
+        // `--pitch` on its own must not also spin the view to face north, or checking a ceiling
+        // would silently change which wall is in shot.
+        let (mut app, eye) = app_with_a_parented_camera();
+        let posed = pose_cameras(&mut app, Some(40.0), None);
+
+        let after = app
+            .world
+            .get::<Transform>(eye)
+            .copied()
+            .expect("still there");
+        assert_eq!(after.rotation[0], 40.0, "pitch is set");
+        assert_eq!(after.rotation[1], 0.0, "yaw is untouched");
+        assert_eq!(
+            after.translation,
+            [0.0, 2.0, 4.0],
+            "a pose aims a camera, it does not move one"
+        );
+        assert_eq!(posed.len(), 1);
+    }
+
+    #[test]
+    fn posing_updates_the_global_transform_the_renderer_actually_reads() {
+        // **The one that matters.** `propagate_transforms` runs in `PostSimulation`, which is over by
+        // the time a capture happens — so writing the local `Transform` alone poses a camera that
+        // still draws from exactly where it was. That is a silent no-op producing a plausible
+        // picture of the wrong thing, which is the worst possible failure for a tool whose entire
+        // job is to be believed.
+        let (mut app, eye) = app_with_a_parented_camera();
+        let before = *app.world.get::<GlobalTransform>(eye).expect("propagated");
+
+        pose_cameras(&mut app, Some(75.0), None);
+
+        let after = *app.world.get::<GlobalTransform>(eye).expect("propagated");
+        assert_ne!(
+            before.matrix, after.matrix,
+            "the composed matrix must reflect the new aim"
+        );
+    }
+
+    #[test]
+    fn a_capture_puts_the_cameras_back() {
+        // A capture answers a question about a world; it must not change it. The agent host outlives
+        // one request, so a camera left aimed at the ceiling would corrupt every later answer —
+        // including a state hash, once anything writes one from a posed frame.
+        let (mut app, eye) = app_with_a_parented_camera();
+        let before_local = *app.world.get::<Transform>(eye).expect("there");
+        let before_global = *app.world.get::<GlobalTransform>(eye).expect("propagated");
+
+        let posed = pose_cameras(&mut app, Some(75.0), Some(180.0));
+        restore_cameras(&mut app, posed);
+
+        assert_eq!(
+            *app.world.get::<Transform>(eye).expect("there"),
+            before_local
+        );
+        assert_eq!(
+            app.world
+                .get::<GlobalTransform>(eye)
+                .expect("propagated")
+                .matrix,
+            before_global.matrix,
+            "the derived transform has to be put back too, or the next frame draws from the pose"
+        );
+    }
+
+    #[test]
+    fn no_angles_touches_nothing_at_all() {
+        // Every capture taken before this feature existed goes down this path, so it has to be
+        // exactly the old behaviour rather than a pose that happens to be the current one.
+        let (mut app, eye) = app_with_a_parented_camera();
+        let before = *app.world.get::<Transform>(eye).expect("there");
+
+        let posed = pose_cameras(&mut app, None, None);
+
+        assert!(posed.is_empty(), "nothing was posed, so nothing to restore");
+        assert_eq!(*app.world.get::<Transform>(eye).expect("there"), before);
     }
 }

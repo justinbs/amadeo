@@ -254,6 +254,28 @@ impl Request {
         }
     }
 
+    /// An optional number argument, accepting a whole number as well as a fractional one.
+    ///
+    /// **A whole number is accepted deliberately**, and it is the same call `f32::from_value` makes
+    /// in the scene format: JSON has one number type but this encoder does not, so `--pitch 40`
+    /// arrives as `Int` and `--pitch 40.5` as `Float`. Rejecting the first would mean an angle that
+    /// works only when it is not a round one, which is the sort of rule nobody discovers on purpose.
+    ///
+    /// # Errors
+    ///
+    /// [`RpcError::BadParams`] if present but not a number. Absent is not an error.
+    pub fn optional_number_param(&self, name: &str) -> Result<Option<f64>, RpcError> {
+        match self.params.get(name) {
+            None | Some(Json::Null) => Ok(None),
+            Some(Json::Float(value)) => Ok(Some(*value)),
+            Some(Json::Int(value)) => Ok(Some(*value as f64)),
+            Some(other) => Err(self.bad_params(format!(
+                "`{name}` must be a number, found {}",
+                other.to_compact()
+            ))),
+        }
+    }
+
     /// A list-of-strings argument, defaulting to empty when absent.
     ///
     /// # Errors

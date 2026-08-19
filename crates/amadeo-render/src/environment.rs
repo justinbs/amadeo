@@ -273,6 +273,31 @@ pub struct Environment {
     /// files that name it.
     #[reflect(default = String::new())]
     pub sky: String,
+    /// How much of [`Environment::sky`] reaches surfaces as ambient light — and **only** that.
+    ///
+    /// The drawn backdrop is unaffected: the sky pass reads the map at full brightness whatever this
+    /// says. `1.0` is the map used as authored, so a scene that omits it is byte-identical.
+    ///
+    /// # Why the sky's two jobs are two numbers
+    ///
+    /// An environment map is a **picture** and a **light**, and until this field existed one scalar
+    /// was both. The Atrium is where that stopped working: the map had to be scaled to `0.34` to keep
+    /// it from washing the room out as fill, and at `0.34` the daylight visible through the oculus
+    /// was *darker than the sunlit floor beneath it* — a sky you are looking straight at, dimmer than
+    /// a surface it is lighting. Turning it up to fix the picture blew out the fill it was tuned for.
+    /// There is no value that is right for both, because they are not the same quantity.
+    ///
+    /// **Every comparable engine splits these, independently**, which is about as strong a signal as
+    /// engine design offers: Unity separates the skybox material's exposure from Environment
+    /// Lighting's *Intensity Multiplier*; Unreal separates the sky's brightness from the Sky Light's
+    /// *Intensity Scale*; Godot separates `sky_energy_multiplier` from `ambient_light_energy`.
+    ///
+    /// So the `.hdr` holds **the sky's real colour** and this holds how much of it bounces back in.
+    /// Baking the fill into the file instead is what makes a map unusable as a backdrop, and it is
+    /// what `games/scarp` and `games/warren` both still do — both left alone deliberately, since the
+    /// default is the identity and neither has a sky anyone can see.
+    #[reflect(min = 0.0, max = 100.0, default = 1.0)]
+    pub sky_ambient: f32,
 }
 
 impl Default for Environment {
@@ -291,6 +316,7 @@ impl Default for Environment {
             vignette: Vignette::default(),
             fog: Fog::default(),
             sky: String::new(),
+            sky_ambient: 1.0,
         }
     }
 }
@@ -451,6 +477,7 @@ mod tests {
                 start: 2.5,
             },
             sky: "overcast_afternoon".to_string(),
+            sky_ambient: 0.6,
         };
 
         let value = look.to_value();

@@ -78,6 +78,11 @@ enum Command {
         path: PathBuf,
         width: Option<i64>,
         height: Option<i64>,
+        /// Aim the cameras at this pitch in degrees before drawing, rather than wherever the
+        /// game points them. `None` leaves the axis alone.
+        pitch: Option<f64>,
+        /// The same for yaw.
+        yaw: Option<f64>,
     },
 }
 
@@ -190,9 +195,11 @@ fn run(command: Command, options: &Options) -> Result<()> {
         path,
         width,
         height,
+        pitch,
+        yaw,
     } = command
     {
-        return capture(&path, width, height, options);
+        return capture(&path, width, height, pitch, yaw, options);
     }
 
     let (method, params) = match &command {
@@ -1084,7 +1091,14 @@ fn ask_game(method: &str, params: Json, options: &Options) -> Result<Json> {
 ///
 /// That is why the path is made absolute first — the game is launched with its working directory at
 /// the project root, which is not necessarily where the command was typed.
-fn capture(path: &Path, width: Option<i64>, height: Option<i64>, options: &Options) -> Result<()> {
+fn capture(
+    path: &Path,
+    width: Option<i64>,
+    height: Option<i64>,
+    pitch: Option<f64>,
+    yaw: Option<f64>,
+    options: &Options,
+) -> Result<()> {
     let here = std::env::current_dir().context("could not read the current directory")?;
     let project = Project::discover(&here)?;
     let package = options.package.clone().unwrap_or(project.game);
@@ -1096,6 +1110,14 @@ fn capture(path: &Path, width: Option<i64>, height: Option<i64>, options: &Optio
     }
     if let Some(height) = height {
         params.push(("height", Json::Int(height)));
+    }
+    // Sent only when asked for, so an ordinary capture's request is byte-for-byte what it always
+    // was and the host takes its "leave the cameras alone" path.
+    if let Some(pitch) = pitch {
+        params.push(("pitch", Json::Float(pitch)));
+    }
+    if let Some(yaw) = yaw {
+        params.push(("yaw", Json::Float(yaw)));
     }
 
     let result = ask_once(
@@ -1217,6 +1239,8 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
     let mut assets_dir: Option<String> = None;
     let mut width: Option<i64> = None;
     let mut height: Option<i64> = None;
+    let mut pitch: Option<f64> = None;
+    let mut yaw: Option<f64> = None;
 
     let mut index = 0;
     while index < arguments.len() {
@@ -1291,6 +1315,22 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
                     value_after("--height")?
                         .parse()
                         .context("--height must be a whole number of pixels")?,
+                );
+                index += 2;
+            }
+            "--pitch" => {
+                pitch = Some(
+                    value_after("--pitch")?
+                        .parse()
+                        .context("--pitch must be a number of degrees, as in `--pitch 40`")?,
+                );
+                index += 2;
+            }
+            "--yaw" => {
+                yaw = Some(
+                    value_after("--yaw")?
+                        .parse()
+                        .context("--yaw must be a number of degrees, as in `--yaw 180`")?,
                 );
                 index += 2;
             }
@@ -1395,6 +1435,8 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
                 path: PathBuf::from(path),
                 width,
                 height,
+                pitch,
+                yaw,
             }
         }
         "snapshot" => {
@@ -1473,6 +1515,10 @@ RUNS IN THE GAME (launches it, asks, exits)
     capture <file>           render the world offscreen and write it as a PNG
         --width <n>          image width in pixels (default 1280)
         --height <n>         image height in pixels (default 720)
+        --pitch <deg>        aim the cameras up or down instead of where the game
+                             points them, so a ceiling or a sky can be checked
+                             without editing the scene. absolute, not an offset
+        --yaw <deg>          the same, around the vertical axis
     snapshot <file>          capture the world to a .snapshot file
     call <method>            any protocol method
         --params <json>      its arguments, as a JSON object

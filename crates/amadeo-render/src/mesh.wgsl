@@ -644,7 +644,11 @@ fn fs_main(
     let env_brdf = environment_brdf(n_dot_v, roughness);
     let ambient_specular = blurred * (f0 * env_brdf.x + vec3<f32>(env_brdf.y));
 
-    let ambient_light = ambient_diffuse + ambient_specular;
+    // **Scaled by the look's `sky_ambient`, and this is the only place it applies.** The sky pass
+    // draws the same map unscaled, because a backdrop is a picture and this is a light -- one number
+    // could not be right for both, which is what `Environment::sky_ambient` exists to record. `1.0`
+    // is the identity, so a scene that authors none renders byte-identically.
+    let ambient_light = (ambient_diffuse + ambient_specular) * view.ambient_params.x;
 
     // Emissive is added rather than multiplied, and is not affected by the light -- that is what
     // makes it emissive. Above 1.0 it pushes into the HDR range the post pass tonemaps (ADR 0034).

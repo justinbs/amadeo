@@ -196,6 +196,14 @@ struct GpuMeshView {
     fog_colour: [f32; 4],
     /// x = how far from the eye fog starts, in world units. yzw unused.
     fog_params: [f32; 4],
+    /// x = `Environment::sky_ambient`, scaling the ambient contribution only. yzw unused.
+    ///
+    /// **Its own vector rather than a spare lane of `fog_params`**, which had three free and would
+    /// have cost nothing. ADR 0078 §2 made the same call for the same reason: a field named for fog
+    /// carrying an unrelated number is exactly the cleverness `CLAUDE.md` §6 rules out, and this is a
+    /// per-*view* uniform written a handful of times a frame, where sixteen bytes is not a constraint
+    /// anybody can measure.
+    ambient_params: [f32; 4],
     /// The camera's world position, xyz. w unused.
     ///
     /// New with PBR (ADR 0048) and not needed before it: diffuse lighting looks the same from every
@@ -3564,6 +3572,10 @@ impl RenderBackend for WgpuBackend {
                     view.environment.fog.density,
                 ],
                 fog_params: [view.environment.fog.start, 0.0, 0.0, 0.0],
+                // Scales what surfaces receive from the environment. The sky *pass* never reads
+                // this, which is the whole point: the backdrop stays at the map's authored
+                // brightness while the fill is dialled independently.
+                ambient_params: [view.environment.sky_ambient, 0.0, 0.0, 0.0],
                 // The camera's world position is the translation column of its world transform —
                 // column 3. Taken from `eye_matrix` rather than from `View::eye`, which is the 2D
                 // path's two numbers and has no height in it.
