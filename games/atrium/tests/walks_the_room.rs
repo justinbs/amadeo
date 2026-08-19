@@ -107,11 +107,12 @@ fn the_room_loads_from_its_scene_file() {
 
     let meshes = app.world.query::<(&Mesh,)>().count();
     assert_eq!(
-        meshes, 27,
+        meshes, 29,
         "a floor, four walls, four pillars, a plinth, the player's body, the watcher, the brass \
          key on the plinth, three compound props — a table, a bolted generator and a lamp fitting \
-         — and the storey added in session 21: four gallery runs, a stair up to the west one, a \
-         screen wall breaking the east sightline, and a ledge"
+         — the storey added in session 21 (four gallery runs, a stair up to the west one, a screen \
+         wall breaking the east sightline, and a ledge), and the two fixtures session 22 hung on \
+         lights that used to come from nowhere: a pendant over the table and a lantern on a cord"
     );
     assert_eq!(app.world.query::<(&Camera,)>().count(), 1);
     assert_eq!(app.world.query::<(&DirectionalLight,)>().count(), 1);

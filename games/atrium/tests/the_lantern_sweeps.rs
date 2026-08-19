@@ -81,11 +81,18 @@ fn the_lantern_actually_turns() {
         .expect("still there")
         .rotation;
 
-    assert_ne!(start[0], later[0], "the pitch should have moved");
+    // **Roll, not pitch, since item 14 gave the lantern a body to hang from.**
+    //
+    // The clip used to swing the entity's *pitch* between −90° and −64°, because the entity carried
+    // the `SpotLight` and pitching it was how the beam swept. That entity now carries the lantern's
+    // **mesh** and hangs from the ceiling, with the light on a child three metres below it — so the
+    // motion is a pendulum about the cord, which is roll, and the beam sweeps because the child
+    // inherits it. Rotating the old axis would have laid the lantern on its side.
+    assert_ne!(start[2], later[2], "the lantern should have swung");
     // And only the axis the clip animates — the other two are part of the same three-number value,
-    // so a coercion that filled the first element and left the rest would pass the line above.
+    // so a coercion that filled one element and left the rest would pass the line above.
+    assert_eq!(start[0], later[0]);
     assert_eq!(start[1], later[1]);
-    assert_eq!(start[2], later[2]);
 }
 
 #[test]

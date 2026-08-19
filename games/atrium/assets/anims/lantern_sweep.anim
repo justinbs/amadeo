@@ -10,12 +10,12 @@ entity clip "Lantern sweep"
         interpolation Linear
         keys
           - time 0.0
-            value -90.0 0.0 0.0
+            value 0.0 0.0 -11.0
           - time 3.0
-            value -64.0 0.0 0.0
+            value 0.0 0.0 0.0
           - time 6.0
-            value -90.0 0.0 0.0
+            value 0.0 0.0 11.0
           - time 9.0
-            value -64.0 0.0 180.0
+            value 0.0 0.0 0.0
           - time 12.0
-            value -90.0 0.0 0.0
+            value 0.0 0.0 -11.0

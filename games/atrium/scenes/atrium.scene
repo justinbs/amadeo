@@ -16,12 +16,14 @@ assets
   generator
   glass
   glass_pane
+  hanging_lantern
   lamp_fitting
   lamp_flicker
   lamp_hum
   lantern_sweep
   ledge
   paving
+  pendant_lamp
   pillar
   plinth
   roof
@@ -463,14 +465,17 @@ entity lamp "Warm lamp"
     playing true
     sound "lamp_hum"
     spatial true
+  Mesh
+    material "amber"
+    mesh "pendant_lamp"
   PointLight
     colour 1.0 0.72 0.42
-    intensity 22.0
+    intensity 16.0
     range 9.0
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation -4.0 2.6 -3.0
+    translation -4.2 3.9 -2.6
 
 entity lantern "Hanging lantern"
   AnimationPlayer
@@ -479,19 +484,28 @@ entity lantern "Hanging lantern"
     playing true
     speed 1.0
     time 0.0
-  SpotLight
-    colour 0.86 0.92 1.0
-    inner_angle 26.0
-    intensity 38.0
-    outer_angle 38.0
-    range 14.0
-    shadow_bias 0.03
-    shadow_resolution 1024
-    shadows true
+  Mesh
+    material "amber"
+    mesh "hanging_lantern"
   Transform
-    rotation -90.0 0.0 0.0
+    rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 3.0 5.4 2.0
+    translation 3.0 8.0 2.0
+
+  entity lantern_light "The lantern's beam"
+    SpotLight
+      colour 0.86 0.92 1.0
+      inner_angle 26.0
+      intensity 30.0
+      outer_angle 38.0
+      range 14.0
+      shadow_bias 0.03
+      shadow_resolution 1024
+      shadows true
+    Transform
+      rotation -90.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 -3.0 0.0
 
 entity hud "Interface root"
   UiNode
@@ -959,12 +973,12 @@ entity vestibule "Vestibule beyond the doorway"
 entity vestibule_light "Vestibule daylight"
   PointLight
     colour 1.0 0.95 0.86
-    intensity 34.0
+    intensity 13.0
     range 11.0
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 2.6 -12.4
+    translation 0.0 3.6 -12.4
 
 entity gallery_north "Gallery along the north wall"
   Collider

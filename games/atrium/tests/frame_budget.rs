@@ -92,7 +92,17 @@ fn the_scene_complexity_the_budget_is_quoted_against() {
     // gallery is. Four runs of it (north, south, east, west), a stair up to the west one, a screen
     // wall breaking the east sightline, and a ledge: seven drawables for four walls that used to be
     // flat.
-    assert_eq!(meshes, 27, "drawn meshes");
+    // **Twenty-nine once every light had a fixture** (item 14, session 22). Review 12 measured that
+    // three of the five lights in this scene carried no `Mesh` at all — a `PointLight` at
+    // `intensity 22` blowing a pillar to clipped white from empty air 1.4 m away, a shadow-casting
+    // `SpotLight` sweeping the room from nowhere, and the vestibule's daylight. The first two are
+    // now a pendant over the table and a lantern on a cord, each one `CompoundMesh`; the third has
+    // no fixture on purpose, because it stands for the sky beyond an opening and the sky has none.
+    //
+    // The defect is worth remembering for its *shape*: it is a component that is **absent**, so
+    // reading the scene file top to bottom does not show it. What finds it is grepping for an entity
+    // with a light and no mesh, and for one with a mesh and no light.
+    assert_eq!(meshes, 29, "drawn meshes");
     // **Fourteen since the doorway**: the north wall's single collider became two pier colliders, so
     // the opening is walkable rather than a hole you can see through and not pass, and the roof got
     // one so the follow camera stops rising through it -- which it did, and the first capture of the

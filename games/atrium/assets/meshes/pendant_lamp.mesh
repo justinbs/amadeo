@@ -1,0 +1,38 @@
+scene pendant_lamp
+version 1
+
+entity mesh "Pendant lamp"
+  CompoundMesh
+    parts
+      - position 0.0 1.4 0.0
+        solid Cylinder
+          shape
+            capped false
+            height 2.8
+            radius 0.008
+            sides 6
+            top_radius 0.008
+      - position 0.0 0.06 0.0
+        solid Cylinder
+          shape
+            flat true
+            height 0.12
+            radius 0.045
+            sides 8
+            top_radius 0.03
+      - position 0.0 -0.14 0.0
+        solid Cylinder
+          shape
+            capped false
+            flat true
+            height 0.3
+            radius 0.34
+            sides 12
+            top_radius 0.09
+      - position 0.0 -0.3 0.0
+        solid Sphere
+          shape
+            flat true
+            radius 0.075
+            rings 6
+            segments 10
