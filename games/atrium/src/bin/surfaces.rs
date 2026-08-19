@@ -38,14 +38,15 @@
 use std::path::{Path, PathBuf};
 
 /// Texture size in pixels. A power of two, so mip generation halves cleanly.
-const SIZE: u32 = 256;
+const SIZE: u32 = 512;
 
 /// How many slabs across one tile of the image.
 ///
-/// Two, so that one repeat of the texture is a 2×2 block of slabs. Combined with a `uv_scale` chosen
-/// per surface this is what sets the real-world slab size, and keeping it small keeps the joint lines
-/// crisp at 256 pixels.
-const SLABS: u32 = 2;
+/// **Four, not two.** Two meant a 20 m wall showed the same pair of slabs five times over, which is
+/// the machine-grid read [`Stone::slab_variation`] exists to break — and it cannot break it when
+/// there are only four slabs in the whole image to vary. Sixteen per tile, at twice the resolution,
+/// keeps the joints crisp and doubles the texels per metre at the same `uv_scale`.
+const SLABS: u32 = 4;
 
 /// Whether an image holds colour or data, which decides its sidecar.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -141,15 +142,31 @@ fn main() {
 /// slab and discontinuous at the joint** — which is what "these are separate blocks of stone" looks
 /// like. Noise cannot produce that: it is continuous by construction.
 fn slab_tone(seed: u64, u: f32, v: f32) -> f32 {
-    let sx = (u * SLABS as f32).floor() as i32;
-    let sy = (v * SLABS as f32).floor() as i32;
-    let mut hash = 0xcbf2_9ce4_8422_2325_u64 ^ seed ^ 0x9E37_79B9;
-    for byte in sx.to_le_bytes().iter().chain(sy.to_le_bytes().iter()) {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100_0000_01b3);
-    }
-    // The top bits, which are the well-mixed ones in FNV-1a.
-    (((hash >> 40) & 0xFFFF) as f32 / 65535.0) * 2.0 - 1.0
+    let sx = (u * SLABS as f32).floor() as i64;
+    let sy = (v * SLABS as f32).floor() as i64;
+
+    // **This function used to deliver a hundredth of what it was asked for**, and the way it failed
+    // is worth keeping because nothing but a measurement could have found it. It fed
+    // `sx.to_le_bytes()` and `sy.to_le_bytes()` through FNV-1a — and with two slabs per axis those
+    // coordinates are only ever 0 or 1, so **six of the eight bytes were constant zero** and the two
+    // that moved differed in one bit. FNV-1a avalanches well over many bytes and barely at all over
+    // one low bit, so the four slabs came out within **0.2 of a byte on 190**: an authored 10%
+    // arriving as 0.1%, below the threshold of perception, in code that ran, was tested, and changed
+    // no pixel.
+    //
+    // splitmix64's finalizer instead. It is a bijection built to avalanche a *counter* — the exact
+    // case here, where the inputs are small consecutive integers — and every output bit depends on
+    // every input bit after the first shift-multiply.
+    let mut hash = (sx as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ (sy as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9)
+        ^ seed;
+    hash ^= hash >> 30;
+    hash = hash.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    hash ^= hash >> 27;
+    hash = hash.wrapping_mul(0x94D0_49BB_1331_11EB);
+    hash ^= hash >> 31;
+
+    ((hash >> 40) & 0xFFFF) as f32 / 65535.0 * 2.0 - 1.0
 }
 
 /// How deep in a joint a point is: 0 on a slab face, 1 in the middle of a joint.
@@ -165,8 +182,16 @@ fn mortar(u: f32, v: f32) -> f32 {
 }
 
 /// The stone's fine grain, roughly −1..1.
+///
+/// **Three octaves at co-prime lattices, not two at 8 and 32.** Two octaves an exact factor of four
+/// apart put their features on the same grid, and with only eight gradient directions — four of them
+/// diagonal — the result reads as a regular 45° cross-hatch. That is a woven or anti-slip pattern
+/// rather than stone, and it was most of why this material read as bathroom tile. Co-prime lattices
+/// do not line up, so the pattern has no period shorter than the tile.
 fn grain(seed: u64, u: f32, v: f32) -> f32 {
-    tiling_noise(seed, u, v, 8) * 0.6 + tiling_noise(seed ^ 0x2C1F, u, v, 32) * 0.4
+    tiling_noise(seed, u, v, 7) * 0.5
+        + tiling_noise(seed ^ 0x2C1F, u, v, 17) * 0.32
+        + tiling_noise(seed ^ 0x91B3, u, v, 43) * 0.18
 }
 
 /// **The single height field all three maps are read off.**
@@ -325,15 +350,27 @@ fn tiling_noise(seed: u64, u: f32, v: f32, lattice: i32) -> f32 {
 
 /// One of eight fixed gradients, chosen by hashing a lattice corner.
 fn gradient_at(seed: u64, x: i32, y: i32) -> [f32; 2] {
-    const GRADIENTS: [[f32; 2]; 8] = [
+    // **Sixteen directions, not eight.** Eight means every gradient is axis-aligned or exactly
+    // diagonal, and a field built from those has visible structure along those four lines — which,
+    // combined with two octaves an exact factor apart, is what made the first grain read as a woven
+    // cross-hatch. The odd multiples of 22.5° break that up for the cost of eight more constants.
+    const GRADIENTS: [[f32; 2]; 16] = [
         [1.0, 0.0],
         [-1.0, 0.0],
         [0.0, 1.0],
         [0.0, -1.0],
-        [0.707, 0.707],
-        [-0.707, 0.707],
-        [0.707, -0.707],
-        [-0.707, -0.707],
+        [0.707_106_8, 0.707_106_8],
+        [-0.707_106_8, 0.707_106_8],
+        [0.707_106_8, -0.707_106_8],
+        [-0.707_106_8, -0.707_106_8],
+        [0.923_879_5, 0.382_683_4],
+        [-0.923_879_5, 0.382_683_4],
+        [0.923_879_5, -0.382_683_4],
+        [-0.923_879_5, -0.382_683_4],
+        [0.382_683_4, 0.923_879_5],
+        [-0.382_683_4, 0.923_879_5],
+        [0.382_683_4, -0.923_879_5],
+        [-0.382_683_4, -0.923_879_5],
     ];
 
     // FNV-1a over the two coordinates and the seed. Integer arithmetic throughout, so it is identical
@@ -343,7 +380,7 @@ fn gradient_at(seed: u64, x: i32, y: i32) -> [f32; 2] {
         hash ^= u64::from(*byte);
         hash = hash.wrapping_mul(0x100_0000_01b3);
     }
-    GRADIENTS[(hash % 8) as usize]
+    GRADIENTS[(hash % 16) as usize]
 }
 
 fn write(path: &Path, id: &str, pixels: &[u8], space: ColourSpace) {
