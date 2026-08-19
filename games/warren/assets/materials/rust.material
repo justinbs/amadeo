@@ -3,6 +3,7 @@ version 1
 
 entity material "Rust"
   Material
+    alpha_mode Opaque
     base_colour 0.29 0.11 0.08 1.0
     base_colour_texture ""
     emissive 0.02 0.0 0.0
@@ -11,3 +12,4 @@ entity material "Rust"
     normal_strength 1.0
     normal_texture ""
     roughness 0.9
+    uv_scale 1.0 1.0

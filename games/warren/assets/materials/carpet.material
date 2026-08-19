@@ -3,6 +3,7 @@ version 1
 
 entity material "Sour carpet"
   Material
+    alpha_mode Opaque
     base_colour 0.28 0.26 0.16 1.0
     base_colour_texture ""
     emissive 0.0 0.0 0.0
@@ -11,3 +12,4 @@ entity material "Sour carpet"
     normal_strength 1.0
     normal_texture ""
     roughness 1.0
+    uv_scale 1.0 1.0

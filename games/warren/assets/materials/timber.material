@@ -3,6 +3,7 @@ version 1
 
 entity material "Timber"
   Material
+    alpha_mode Opaque
     base_colour 0.24 0.17 0.11 1.0
     base_colour_texture ""
     emissive 0.0 0.0 0.0
@@ -11,3 +12,4 @@ entity material "Timber"
     normal_strength 1.0
     normal_texture ""
     roughness 0.85
+    uv_scale 1.0 1.0
