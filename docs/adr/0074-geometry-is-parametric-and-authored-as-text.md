@@ -70,9 +70,15 @@ future tool an exit, without inviting anybody to hand-write a triangle soup into
 
 ## Consequences
 
-- **The generator pattern extends to geometry.** `pix` writes textures, `tone` and `sounds` write
-  audio, `sky` and `gloom` write environment maps — all from a readable table of numbers. Meshes
-  join that set, which is the property `docs/12` §3 says the engine must have.
+- **The generator pattern extends to geometry.** Textures, audio and environment maps are all
+  already written by small committed binaries from a readable table of numbers -- `pix`, `tone`,
+  `sounds`, `sky`, `gloom`, and others added since. Meshes join that set, which is the property
+  `docs/12` §3 says the engine must have.
+  *(Deliberately non-exhaustive. This bullet originally listed the five that existed the day it was
+  written, and `surfaces` and `daylight` made it wrong within two sessions -- an enumeration of the
+  repository is a measurement, and `docs/07` says an ADR records a decision rather than one. The
+  claim here is that the pattern exists and geometry joins it; how many instances there are is not
+  this document's business.)*
 - **`amadeo fmt`, `amadeo check`, prefab overrides, snapshots and the future editor all work on
   models for free**, because a model is now a scene document like everything else. That is I1 holding
   under geometry, and it is the same argument ADR 0071 makes for levels.

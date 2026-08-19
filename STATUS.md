@@ -49,7 +49,8 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > cannot tell them apart**, and an experiment that moves it returns a confident wrong answer rather
 > than no answer. The second rule: **an ADR records a decision, not a measurement** — Consequences
 > sections rot whenever they quote the repository at a moment, and live numbers belong in `docs/13` §1.
-> **ADR 0074's consequences are the next candidate and nobody has checked them.**
+> **ADR 0074 has since been checked: three of its four consequences are properties and
+> do not expire, and the fourth counted something. **The bullets that rot are the ones that count.**
 >
 > **Open, flagged, not fixed:** the bright ellipse on the roof underside (survives the sun at zero and
 > the brightest point light at zero, so the environment reflection at grazing incidence is what is

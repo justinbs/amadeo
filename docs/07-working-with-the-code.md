@@ -2023,7 +2023,11 @@ recurring maintenance burden into a one-time convention, and it is the same move
 already makes for `collect_audio`/`describe_audio` and for the frustum: one copy of a fact, so two
 copies cannot disagree.
 
-ADR 0074's consequences are the next candidate; nobody has checked them.
+**ADR 0074 has since been checked**, which is what this rule is for. Three of its four consequences
+are *properties* -- "it will never produce an organic shape", "backwards compatible" -- and properties
+do not expire. The fourth enumerated the generators that existed the day it was written, and two more
+were added within two sessions. That is the tell: **the bullets that rot are the ones that count
+something.** It now claims the pattern exists rather than how many instances it has.
 
 ### Mutate every capture assertion once, and say in the comment that you did
 
