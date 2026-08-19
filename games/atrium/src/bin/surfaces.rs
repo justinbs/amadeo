@@ -7,9 +7,9 @@
 //! # Why generated rather than authored
 //!
 //! `games/vault`'s `pix`, `games/scarp`'s `turf` and `games/atrium`'s own `tone` all make the same
-//! argument and this is the fourth instance of it: invariant I1 wants everything authorable and
-//! diffable, a PNG is neither, so the *source* has to be text. A sprite's source is a drawn grid of
-//! characters; ground and stone are formulas, and this file is one.
+//! argument: invariant I1 wants everything authorable and diffable, a PNG is neither, so the *source*
+//! has to be text. A sprite's source is a drawn grid of characters; ground and stone are formulas,
+//! and this file is one.
 //!
 //! It is also `docs/12-the-bar.md` §3's requirement in practice — **Claude can author this game's
 //! textures rather than asking Justin for them** — which is the half of the bar most likely to be
@@ -24,6 +24,16 @@
 //! are two metres across next to a plinth whose slabs are two metres across is either obviously right
 //! or obviously wrong at a glance. That is the whole failure the field exists to prevent, so the test
 //! image has to make it visible.
+//!
+//! # Three maps per stone, from one height field
+//!
+//! Base colour, a tangent-space normal map (ADR 0047) and a metallic-roughness map (ADR 0048). Both
+//! of those paths had been written, tested and exercised by **zero content** since session 14, which
+//! is two thirds of session 20's original finding about this engine.
+//!
+//! All three are read off one [`height`] function. The way a material set goes wrong is by drifting
+//! apart — a normal map whose bumps do not line up with the colour's is worse than no normal map at
+//! all, because the eye is given two conflicting surfaces at once.
 
 use std::path::{Path, PathBuf};
 
@@ -37,6 +47,38 @@ const SIZE: u32 = 256;
 /// crisp at 256 pixels.
 const SLABS: u32 = 2;
 
+/// Whether an image holds colour or data, which decides its sidecar.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ColourSpace {
+    /// Colour, read through the sRGB curve.
+    Srgb,
+    /// Data — directions, roughness — read as written.
+    Linear,
+}
+
+/// One stone: the numbers that make a slab pattern read as a particular material.
+struct Stone {
+    /// Asset id stem. `_normal` and `_surface` are appended for the other two maps.
+    id: &'static str,
+    seed: u64,
+    /// Linear RGB at the darkest and lightest of the grain.
+    low: [f32; 3],
+    /// The lighter end of the same.
+    high: [f32; 3],
+    /// Linear RGB of the joint between slabs.
+    joint: [f32; 3],
+    /// How much one slab may differ in tone from its neighbour, as a fraction.
+    ///
+    /// **This is what stops a floor reading as a machine grid.** Real paving is cut from different
+    /// blocks and no two match. Nothing else in the pattern varies at slab scale, so without it the
+    /// image is one slab repeated and looks it.
+    slab_variation: f32,
+    /// Roughness of a slab face.
+    face_roughness: f32,
+    /// Roughness of a joint, which is always higher — mortar is not polished.
+    joint_roughness: f32,
+}
+
 fn main() {
     let out = manifest_dir().join("assets/textures");
     if let Err(error) = std::fs::create_dir_all(&out) {
@@ -44,47 +86,116 @@ fn main() {
         std::process::exit(1);
     }
 
-    // The floor and the plinth share one image at different `uv_scale`s, which is precisely the
-    // demonstration: same slab size on a 20 m floor and a 3 m plinth.
-    write(
-        &out.join("stone_slab.png"),
-        "stone_slab",
-        &render(
-            0x51A9_3C7E,
-            [0.52, 0.51, 0.49],
-            [0.63, 0.62, 0.59],
-            [0.34, 0.33, 0.32],
-        ),
-    );
+    let stones = [
+        // The floor and the plinth share this at different `uv_scale`s, which is precisely the
+        // demonstration: the same slab size on a 20 m floor and a 3 m plinth.
+        Stone {
+            id: "stone_slab",
+            seed: 0x51A9_3C7E,
+            low: [0.52, 0.51, 0.49],
+            high: [0.63, 0.62, 0.59],
+            joint: [0.34, 0.33, 0.32],
+            slab_variation: 0.10,
+            face_roughness: 0.72,
+            joint_roughness: 0.95,
+        },
+        // The walls. **The largest surface in the game by a wide margin** — a capture facing a bare
+        // wall is most of a frame — so it is the one that most needs to not be a flat colour.
+        Stone {
+            id: "slate_course",
+            seed: 0x7C3E_1B45,
+            low: [0.26, 0.27, 0.30],
+            high: [0.34, 0.35, 0.38],
+            joint: [0.16, 0.17, 0.19],
+            slab_variation: 0.16,
+            face_roughness: 0.78,
+            joint_roughness: 0.96,
+        },
+    ];
+
+    for stone in &stones {
+        write(
+            &out.join(format!("{}.png", stone.id)),
+            stone.id,
+            &render_colour(stone),
+            ColourSpace::Srgb,
+        );
+        write(
+            &out.join(format!("{}_normal.png", stone.id)),
+            &format!("{}_normal", stone.id),
+            &render_normal(stone),
+            ColourSpace::Linear,
+        );
+        write(
+            &out.join(format!("{}_surface.png", stone.id)),
+            &format!("{}_surface", stone.id),
+            &render_surface(stone),
+            ColourSpace::Linear,
+        );
+    }
 }
 
-/// Renders a slab pattern: two greys blended by tiling noise, with a darker joint between slabs.
-fn render(seed: u64, low: [f32; 3], high: [f32; 3], joint: [f32; 3]) -> Vec<u8> {
+/// A stable per-slab number in −1..1.
+///
+/// Hashed from the slab's integer coordinates rather than taken from noise, so it is **flat across a
+/// slab and discontinuous at the joint** — which is what "these are separate blocks of stone" looks
+/// like. Noise cannot produce that: it is continuous by construction.
+fn slab_tone(seed: u64, u: f32, v: f32) -> f32 {
+    let sx = (u * SLABS as f32).floor() as i32;
+    let sy = (v * SLABS as f32).floor() as i32;
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64 ^ seed ^ 0x9E37_79B9;
+    for byte in sx.to_le_bytes().iter().chain(sy.to_le_bytes().iter()) {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100_0000_01b3);
+    }
+    // The top bits, which are the well-mixed ones in FNV-1a.
+    (((hash >> 40) & 0xFFFF) as f32 / 65535.0) * 2.0 - 1.0
+}
+
+/// How deep in a joint a point is: 0 on a slab face, 1 in the middle of a joint.
+fn mortar(u: f32, v: f32) -> f32 {
+    let edge_of = |coordinate: f32| {
+        let within = (coordinate * SLABS as f32).fract();
+        within.min(1.0 - within)
+    };
+    let edge = edge_of(u).min(edge_of(v));
+    // A joint about a fortieth of a slab wide, with a short ramp so it is not aliased into a hard
+    // stair at a grazing angle.
+    (1.0 - (edge / 0.025).clamp(0.0, 1.0)).clamp(0.0, 1.0)
+}
+
+/// The stone's fine grain, roughly −1..1.
+fn grain(seed: u64, u: f32, v: f32) -> f32 {
+    tiling_noise(seed, u, v, 8) * 0.6 + tiling_noise(seed ^ 0x2C1F, u, v, 32) * 0.4
+}
+
+/// **The single height field all three maps are read off.**
+///
+/// Units are arbitrary; only differences matter, since the normal map is its gradient.
+fn height(stone: &Stone, u: f32, v: f32) -> f32 {
+    // The joint is cut *into* the stone and is by far the largest feature — a couple of millimetres
+    // against a fraction of one for the grain.
+    grain(stone.seed, u, v) * 0.035 - mortar(u, v)
+}
+
+/// The base colour map, in sRGB.
+fn render_colour(stone: &Stone) -> Vec<u8> {
     let mut pixels = Vec::with_capacity((SIZE * SIZE * 4) as usize);
 
     for y in 0..SIZE {
         for x in 0..SIZE {
             let (u, v) = (x as f32 / SIZE as f32, y as f32 / SIZE as f32);
 
-            // The stone itself: two octaves of tiling noise between two greys.
-            let value =
-                tiling_noise(seed, u, v, 8) * 0.6 + tiling_noise(seed ^ 0x2C1F, u, v, 32) * 0.4;
-            let t = (value * 0.5 + 0.5).clamp(0.0, 1.0);
-
-            // How close this pixel is to a joint, in tile-local coordinates. `min` of the distance to
-            // each nearer edge, so a corner is dark from both directions at once.
-            let slab = |coordinate: f32| {
-                let within = (coordinate * SLABS as f32).fract();
-                within.min(1.0 - within)
-            };
-            let edge = slab(u).min(slab(v));
-            // A joint about a fortieth of a slab wide, with a short ramp so it is not aliased into a
-            // hard stair at a grazing angle.
-            let mortar = (1.0 - (edge / 0.025).clamp(0.0, 1.0)).clamp(0.0, 1.0);
+            let t = (grain(stone.seed, u, v) * 0.5 + 0.5).clamp(0.0, 1.0);
+            let tone = slab_tone(stone.seed, u, v) * stone.slab_variation;
+            let joint = mortar(u, v);
 
             for channel in 0..3 {
-                let stone = low[channel] + (high[channel] - low[channel]) * t;
-                let colour = stone + (joint[channel] - stone) * mortar;
+                let base = stone.low[channel] + (stone.high[channel] - stone.low[channel]) * t;
+                // Per-slab tone lifts or drops the whole block. Applied *before* the joint, so a
+                // joint stays a joint rather than picking up its slab's tint.
+                let varied = (base * (1.0 + tone)).clamp(0.0, 1.0);
+                let colour = varied + (stone.joint[channel] - varied) * joint;
                 // sRGB encode, because the texture is uploaded as `Rgba8UnormSrgb` and the GPU
                 // decodes it back to linear when sampling. Writing linear here comes out too dark.
                 pixels.push(to_srgb_byte(colour));
@@ -94,6 +205,93 @@ fn render(seed: u64, low: [f32; 3], high: [f32; 3], joint: [f32; 3]) -> Vec<u8> 
     }
 
     pixels
+}
+
+/// The tangent-space normal map, in **linear** bytes.
+///
+/// A central difference of [`height`] in each direction gives the surface gradient, and the
+/// tangent-space normal is `(-dh/du, -dh/dv, 1)` normalised.
+///
+/// **Sampling the height function rather than differencing the colour image matters.** Colour carries
+/// per-slab tone and the joint's darkening, neither of which is a shape — a normal map derived from
+/// it would emboss the tone variation, so every slab would read as a different height.
+fn render_normal(stone: &Stone) -> Vec<u8> {
+    let mut pixels = Vec::with_capacity((SIZE * SIZE * 4) as usize);
+    let step = 1.0 / SIZE as f32;
+    // How pronounced the relief is. Tuned so the joints read as cut rather than as canyons.
+    const RELIEF: f32 = 0.156;
+
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let (u, v) = (x as f32 / SIZE as f32, y as f32 / SIZE as f32);
+
+            // Wrapped, so the map tiles as seamlessly as the height it is taken from. `rem_euclid`
+            // rather than `%` because a negative coordinate must wrap to the far edge, not to itself.
+            let at = |du: f32, dv: f32| {
+                height(stone, (u + du).rem_euclid(1.0), (v + dv).rem_euclid(1.0))
+            };
+            let dhdu = (at(step, 0.0) - at(-step, 0.0)) * 0.5;
+            let dhdv = (at(0.0, step) - at(0.0, -step)) * 0.5;
+
+            let normal = normalise([-dhdu / RELIEF, -dhdv / RELIEF, 1.0]);
+            for component in normal {
+                // Straight to a byte with **no sRGB curve**: these are directions. Q31's trap is that
+                // nothing inside a PNG says which it is — the sidecar's `color_space = "linear"` is
+                // what does, and forgetting it bends every normal in the map with no visible error.
+                pixels.push(to_unit_byte(component * 0.5 + 0.5));
+            }
+            pixels.push(255);
+        }
+    }
+
+    pixels
+}
+
+/// The metallic-roughness map, in **linear** bytes.
+///
+/// glTF 2.0's packing, which the engine follows rather than invents: **green is roughness, blue is
+/// metallic**. Red is unused and written as zero.
+///
+/// Stone is a dielectric, so metallic is zero everywhere and this map earns its place through
+/// roughness alone — joints are rougher than faces and the grain jitters the faces, which is what
+/// stops a large flat surface reading as one sheet of the same plastic.
+fn render_surface(stone: &Stone) -> Vec<u8> {
+    let mut pixels = Vec::with_capacity((SIZE * SIZE * 4) as usize);
+
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let (u, v) = (x as f32 / SIZE as f32, y as f32 / SIZE as f32);
+
+            let joint = mortar(u, v);
+            let jitter = grain(stone.seed ^ 0x5B7D, u, v) * 0.06;
+            let roughness = stone.face_roughness
+                + (stone.joint_roughness - stone.face_roughness) * joint
+                + jitter;
+
+            pixels.push(0);
+            pixels.push(to_unit_byte(roughness));
+            // Metallic. Zero, and it is a statement rather than a placeholder: stone is a dielectric,
+            // and a map saying otherwise would make the floor reflect like a mirror and lose its
+            // colour entirely, which is what `metallic` means (ADR 0048).
+            pixels.push(0);
+            pixels.push(255);
+        }
+    }
+
+    pixels
+}
+
+/// A 0..1 value as a byte, with no transfer curve. For data maps.
+fn to_unit_byte(value: f32) -> u8 {
+    (value.clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
+fn normalise(v: [f32; 3]) -> [f32; 3] {
+    let length = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    if length <= f32::EPSILON {
+        return [0.0, 0.0, 1.0];
+    }
+    [v[0] / length, v[1] / length, v[2] / length]
 }
 
 /// Periodic gradient noise over the unit square, wrapping after `lattice` cells.
@@ -148,10 +346,13 @@ fn gradient_at(seed: u64, x: i32, y: i32) -> [f32; 2] {
     GRADIENTS[(hash % 8) as usize]
 }
 
-fn write(path: &Path, id: &str, pixels: &[u8]) {
+fn write(path: &Path, id: &str, pixels: &[u8], space: ColourSpace) {
     let image = amadeo_image::TextureData {
         width: SIZE,
         height: SIZE,
+        // The *file* is written the same way either way — a PNG has no colour-space field this
+        // engine reads. What decides how the bytes are interpreted is the sidecar below, which is
+        // exactly why Q31 calls this silent.
         format: amadeo_image::PixelFormat::Rgba8UnormSrgb,
         pixels: pixels.to_vec(),
     };
@@ -166,8 +367,12 @@ fn write(path: &Path, id: &str, pixels: &[u8]) {
         eprintln!("could not write {}: {error}", path.display());
         std::process::exit(1);
     }
+    let mut settings = format!("id = \"{id}\"\n");
+    if space == ColourSpace::Linear {
+        settings.push_str("color_space = \"linear\"\n");
+    }
     let sidecar = path.with_extension("png.ama-meta");
-    if let Err(error) = std::fs::write(&sidecar, format!("id = \"{id}\"\n")) {
+    if let Err(error) = std::fs::write(&sidecar, settings) {
         eprintln!("could not write {}: {error}", sidecar.display());
         std::process::exit(1);
     }

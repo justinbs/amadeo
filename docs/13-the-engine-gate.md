@@ -17,24 +17,29 @@
 **Gate verdict: NOT POLISHED.** **Phases A and B are both closed and passed** — A on review 4, items 8
 and 9 on review 5, item 11 on review 6, item 10 on review 7. Phase C is next and Phase D is untouched.
 
-**Two of the three tracked measurements have moved**, both for the first time since session 20:
-`games/atrium` holds the first meshes in any game here that are not axis-aligned boxes, and the first
-textured pixel this engine has ever drawn in a game.
+**Every content measurement has now moved, and all three texture paths have a user.** `games/atrium`
+holds the first meshes in any game here that are not axis-aligned boxes, the first textured pixel this
+engine has drawn in a game, and — since item 13a — the first normal-mapped and metallic-roughness
+surfaces, which closes the two thirds of session 20's original finding that were still untouched.
 
-The three measurements that define the problem, tracked across reviews so drift is visible:
+The measurements that define the problem, tracked across reviews so drift is visible:
 
 | Measurement | Review 1 (s20) | Review 2 (s21) | Now | Target |
 |---|---|---|---|---|
-| `.mesh` assets that are `BoxMesh` | 23 / 23 | 23 / 23 | **23 / 26** | a game whose meshes are not all boxes |
-| Material `base_colour_texture` empty | 15 / 15 | 15 / 15 | **13 / 15** | a game whose materials sample textures |
-| Material `normal_texture` empty | 15 / 15 | 15 / 15 | 15 / 15 | ADR 0047 is still exercised by no content |
-| Material `metallic_roughness_texture` empty | 15 / 15 | 15 / 15 | 15 / 15 | ADR 0048 is still exercised by no content |
+| `.mesh` assets that are `BoxMesh` | 23 / 23 | 23 / 23 | **23 / 31** | a game whose meshes are not all boxes |
+| Material `base_colour_texture` empty | 15 / 15 | 15 / 15 | **11 / 14** | a game whose materials sample textures |
+| Material `normal_texture` empty | 15 / 15 | 15 / 15 | **11 / 14** | ADR 0047 now has content |
+| Material `metallic_roughness_texture` empty | 15 / 15 | 15 / 15 | **11 / 14** | ADR 0048 now has content |
 | Mutating agent-protocol methods | 0 / 17 | 0 / 17 | 0 / 17 | deferred to M4 — see item 20 |
 
-**The three texture slots are tracked separately on purpose.** A single "43 of 45" reads as nearly
-finished; the honest state is that **one of three texture paths has a user**. Base colour is closed;
-normal mapping (ADR 0047) and metallic-roughness PBR (ADR 0048) are still exercised by zero content,
-which is two thirds of session 20's original finding untouched. Item 13a closes them.
+**The three texture slots are tracked separately on purpose.** A single "43 of 45" read as nearly
+finished when the honest state was that **one of three texture paths had a user**. All three have one
+now, and the three that remain empty are `amber`, `rust` and `glass` — a lamp filament, a painted
+metal box and a pane, none of which is stone and none of which would gain from a slab map.
+
+**The denominator fell from 15 to 14** because ADR 0078's amendment deleted `plinth_stone.material`:
+two materials for one stone, differing in one number, which was the evidence that texel density was
+only half solved.
 
 **The first measured payoff from ADR 0074 §2, recorded because it is evidence rather than an
 argument: three props, fourteen-plus primitives, three drawables.** The Atrium's table, generator and

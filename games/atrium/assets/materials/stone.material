@@ -4,12 +4,12 @@ version 1
 entity material "Pale stone"
   Material
     alpha_mode Opaque
-    base_colour 0.72 0.7 0.66 1.0
-    base_colour_texture ""
+    base_colour 1.0 1.0 1.0 1.0
+    base_colour_texture "stone_slab"
     emissive 0.0 0.0 0.0
     metallic 0.0
-    metallic_roughness_texture ""
+    metallic_roughness_texture "stone_slab_surface"
     normal_strength 1.0
-    normal_texture ""
+    normal_texture "stone_slab_normal"
     roughness 0.9
-    uv_scale 1.0 1.0
+    uv_scale 0.5 0.5

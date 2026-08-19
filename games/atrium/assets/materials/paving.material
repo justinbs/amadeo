@@ -4,12 +4,12 @@ version 1
 entity material "Slab paving"
   Material
     alpha_mode Opaque
-    base_colour 0.82 0.81 0.79 1.0
+    base_colour 1.0 1.0 1.0 1.0
     base_colour_texture "stone_slab"
     emissive 0.0 0.0 0.0
     metallic 0.0
-    metallic_roughness_texture ""
+    metallic_roughness_texture "stone_slab_surface"
     normal_strength 1.0
-    normal_texture ""
+    normal_texture "stone_slab_normal"
     roughness 0.85
     uv_scale 0.25 0.25

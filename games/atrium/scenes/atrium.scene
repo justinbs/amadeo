@@ -31,9 +31,14 @@ assets
   screen_wall
   signage
   slate
+  slate_course
+  slate_course_normal
+  slate_course_surface
   stair_bay
   stone
   stone_slab
+  stone_slab_normal
+  stone_slab_surface
   table
   vestibule
   wall_doorway
