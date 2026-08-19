@@ -16,7 +16,7 @@ entity look "Atrium"
       saturation 1.0
       tint 1.0 1.0 1.0
     sky "atrium_daylight"
-    sky_ambient 0.34
+    sky_ambient 0.68
     tonemap AcesFilmic
     vignette
       intensity 0.25

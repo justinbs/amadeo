@@ -5,15 +5,15 @@ entity mesh "Roof with an oculus"
   CompoundMesh
     parts
       - mirror false false true
-        position 0.0 0.0 -7.0
+        position 0.0 0.0 -7.25
         solid Box
           shape
-            size 20.0 0.4 6.0
+            size 21.0 0.4 6.5
       - mirror true false false
-        position 7.0 0.0 0.0
+        position 7.25 0.0 0.0
         solid Box
           shape
-            size 6.0 0.4 8.0
+            size 6.5 0.4 8.0
       - mirror false false true
         position 0.0 -0.35 -4.15
         solid Box

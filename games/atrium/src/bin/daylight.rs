@@ -72,7 +72,7 @@ const GROUND: [f32; 3] = [0.62, 0.56, 0.48];
 /// The fill now lives on the look, as `Environment::sky_ambient`, which `atrium.environment` sets to
 /// 0.34 -- so the fill is exactly what it was and only the picture changed. **If the room is too
 /// bright or too flat, that is the number to reach for, not this one.** This is the sky's colour.
-const SCALE: f32 = 1.0;
+const SCALE: f32 = 0.5;
 
 fn main() {
     let out = manifest_dir().join("assets/skies");

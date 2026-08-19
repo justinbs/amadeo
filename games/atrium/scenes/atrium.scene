@@ -301,8 +301,8 @@ entity sun "Sun"
   DirectionalLight
     colour 1.0 0.96 0.88
     intensity 1.0
-    shadow_bias 0.03
-    shadow_distance 30.0
+    shadow_bias 0.006
+    shadow_distance 24.0
     shadow_resolution 2048
     shadows Orthogonal
   Transform
@@ -934,7 +934,7 @@ entity roof "Roof with an oculus"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 8.2 0.0
+    translation 0.0 8.1 0.0
 
 entity vestibule "Vestibule beyond the doorway"
   Mesh
