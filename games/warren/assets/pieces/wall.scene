@@ -2,7 +2,10 @@ scene wall
 version 1
 
 assets
-  plaster
+  lining
+  ring_lining
+  ring_lining_normal
+  ring_lining_surface
   wall_full
 
 entity wall "Wall"
@@ -13,7 +16,7 @@ entity wall "Wall"
     shape Cuboid
       size 12.0 3.0 0.3
   Mesh
-    material "plaster"
+    material "lining"
     mesh "wall_full"
   RigidBody
     angular_damping 0.0

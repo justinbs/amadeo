@@ -125,7 +125,7 @@ fn ring_lining() -> Surface {
         joint_roughness: 0.96,
         metallic: 0.0,
         tone_variation: 0.05,
-        bolts: Some((9, 0.020, 0.55)),
+        bolts: Some((22, 0.009, 0.5)),
     }
 }
 
@@ -245,9 +245,11 @@ fn bolt(surface: &Surface, wall: &Wall, u: f32, v: f32) -> f32 {
         }
     }
 
-    // A little inside the joint rather than on it: a bolt through the middle of a joint would read
-    // as a rivet holding nothing.
-    let inset = radius * 2.2;
+    // Just inside the joint rather than on it: a bolt through the middle of a joint would read as a
+    // rivet holding nothing, and one far inside reads as a stud on a panel rather than as a fixing
+    // through a flange. **The first attempt used 2.2 radii and the bolts came out as domino pips**
+    // a quarter of the way into each segment.
+    let inset = radius * 1.25;
     let across_joint = (closest - inset).abs();
     if across_joint > radius {
         return 0.0;
@@ -310,8 +312,8 @@ fn worn(surface: &Surface, u: f32, v: f32) -> f32 {
     // What is wanted is most of the wall clean and a minority of it properly bare. So the patch
     // field is cut at a threshold and re-normalised over what is left, which makes the worn areas
     // rare *and* strong instead of universal and weak.
-    let patch = (noise::tiling(surface.seed ^ 0x9E11, u, v, 4) * 0.5 + 0.5).clamp(0.0, 1.0);
-    let patchy = ((patch - 0.62) / 0.28).clamp(0.0, 1.0);
+    let patch = (noise::tiling(surface.seed ^ 0x9E11, u, v, 7) * 0.5 + 0.5).clamp(0.0, 1.0);
+    let patchy = ((patch - 0.74) / 0.22).clamp(0.0, 1.0);
     // The fine grain breaks the patch's *edge* rather than dimming its middle — a hard-edged rust
     // patch reads as a sticker, and a uniformly dimmed one reads as a tint.
     let edge = (grain(surface.seed ^ 0x2C77, u, v) * 0.5 + 0.5).clamp(0.0, 1.0);

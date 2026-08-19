@@ -3,9 +3,12 @@ version 1
 
 assets
   brass
+  bulkhead
+  bulkhead_grey
+  bulkhead_grey_normal
+  bulkhead_grey_surface
   crate_box
   key
-  timber
 
 entity lost_key "A key left on a crate"
   Transform
@@ -21,7 +24,7 @@ entity lost_key "A key left on a crate"
       shape Cuboid
         size 0.9 0.9 0.9
     Mesh
-      material "timber"
+      material "bulkhead"
       mesh "crate_box"
     RigidBody
       angular_damping 0.0

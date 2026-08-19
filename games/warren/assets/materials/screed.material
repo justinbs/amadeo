@@ -1,0 +1,16 @@
+scene screed
+version 1
+
+entity material "Dust over concrete"
+  Material
+    alpha_mode Opaque
+    base_colour 1.0 1.0 1.0 1.0
+    base_colour_texture "shelter_floor"
+    emissive 0.0 0.0 0.0
+    metallic 0.0
+    metallic_roughness_texture "shelter_floor_surface"
+    normal_strength 1.0
+    normal_texture "shelter_floor_normal"
+    occlusion_strength 1.0
+    roughness 1.0
+    uv_scale 0.45 0.45

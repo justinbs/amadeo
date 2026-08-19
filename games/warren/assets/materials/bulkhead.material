@@ -1,0 +1,16 @@
+scene bulkhead
+version 1
+
+entity material "Lead-grey bulkhead"
+  Material
+    alpha_mode Opaque
+    base_colour 1.0 1.0 1.0 1.0
+    base_colour_texture "bulkhead_grey"
+    emissive 0.0 0.0 0.0
+    metallic 1.0
+    metallic_roughness_texture "bulkhead_grey_surface"
+    normal_strength 1.0
+    normal_texture "bulkhead_grey_normal"
+    occlusion_strength 1.0
+    roughness 1.0
+    uv_scale 0.8 0.8

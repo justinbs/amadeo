@@ -2,9 +2,15 @@ scene room_shell
 version 1
 
 assets
-  carpet
   cell_slab
-  plaster
+  lining
+  ring_lining
+  ring_lining_normal
+  ring_lining_surface
+  screed
+  shelter_floor
+  shelter_floor_normal
+  shelter_floor_surface
 
 entity shell "Room shell"
   Transform
@@ -20,7 +26,7 @@ entity shell "Room shell"
       shape Cuboid
         size 12.0 0.2 12.0
     Mesh
-      material "carpet"
+      material "screed"
       mesh "cell_slab"
     RigidBody
       angular_damping 0.0
@@ -41,7 +47,7 @@ entity shell "Room shell"
       shape Cuboid
         size 12.0 0.2 12.0
     Mesh
-      material "plaster"
+      material "lining"
       mesh "cell_slab"
     RigidBody
       angular_damping 0.0

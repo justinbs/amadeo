@@ -2,9 +2,15 @@ scene dropped_torch
 version 1
 
 assets
+  bulkhead
+  bulkhead_grey
+  bulkhead_grey_normal
+  bulkhead_grey_surface
   crate_box
-  steel
-  timber
+  fitting_steel
+  fitting_steel_normal
+  fitting_steel_surface
+  fittings
   torch
 
 entity dropped_torch "A torch left on a crate"
@@ -21,7 +27,7 @@ entity dropped_torch "A torch left on a crate"
       shape Cuboid
         size 0.9 0.9 0.9
     Mesh
-      material "timber"
+      material "bulkhead"
       mesh "crate_box"
     RigidBody
       angular_damping 0.0
@@ -49,7 +55,7 @@ entity dropped_torch "A torch left on a crate"
       kind "torch"
       max_stack 1
     Mesh
-      material "steel"
+      material "fittings"
       mesh "torch"
     RigidBody
       angular_damping 0.0

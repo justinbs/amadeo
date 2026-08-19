@@ -2,8 +2,11 @@ scene doorway
 version 1
 
 assets
+  lining
   lintel
-  plaster
+  ring_lining
+  ring_lining_normal
+  ring_lining_surface
   wall_half
 
 entity doorway "Doorway"
@@ -20,7 +23,7 @@ entity doorway "Doorway"
       shape Cuboid
         size 5.0 3.0 0.3
     Mesh
-      material "plaster"
+      material "lining"
       mesh "wall_half"
     RigidBody
       angular_damping 0.0
@@ -41,7 +44,7 @@ entity doorway "Doorway"
       shape Cuboid
         size 5.0 3.0 0.3
     Mesh
-      material "plaster"
+      material "lining"
       mesh "wall_half"
     RigidBody
       angular_damping 0.0
@@ -62,7 +65,7 @@ entity doorway "Doorway"
       shape Cuboid
         size 2.0 0.8 0.3
     Mesh
-      material "plaster"
+      material "lining"
       mesh "lintel"
     RigidBody
       angular_damping 0.0

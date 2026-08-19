@@ -3,15 +3,21 @@ version 1
 
 assets
   ambience
-  carpet
   ceiling
   dropped_torch
   floor
   hud
+  lining
   lost_key
-  plaster
   player_start
+  ring_lining
+  ring_lining_normal
+  ring_lining_surface
   room_lamp
+  screed
+  shelter_floor
+  shelter_floor_normal
+  shelter_floor_surface
   spill
   wall_end
   wall_long
@@ -26,7 +32,7 @@ entity floor "Floor"
     shape Cuboid
       size 12.0 0.2 16.0
   Mesh
-    material "carpet"
+    material "screed"
     mesh "floor"
   RigidBody
     angular_damping 0.0
@@ -47,7 +53,7 @@ entity ceiling "Ceiling"
     shape Cuboid
       size 12.0 0.2 16.0
   Mesh
-    material "plaster"
+    material "lining"
     mesh "ceiling"
   RigidBody
     angular_damping 0.0
@@ -68,7 +74,7 @@ entity wall_west "West wall"
     shape Cuboid
       size 0.3 3.0 16.0
   Mesh
-    material "plaster"
+    material "lining"
     mesh "wall_long"
   RigidBody
     angular_damping 0.0
@@ -89,7 +95,7 @@ entity wall_east "East wall"
     shape Cuboid
       size 0.3 3.0 16.0
   Mesh
-    material "plaster"
+    material "lining"
     mesh "wall_long"
   RigidBody
     angular_damping 0.0
@@ -110,7 +116,7 @@ entity wall_north "North wall"
     shape Cuboid
       size 12.0 3.0 0.3
   Mesh
-    material "plaster"
+    material "lining"
     mesh "wall_end"
   RigidBody
     angular_damping 0.0
@@ -131,7 +137,7 @@ entity wall_south "South wall"
     shape Cuboid
       size 12.0 3.0 0.3
   Mesh
-    material "plaster"
+    material "lining"
     mesh "wall_end"
   RigidBody
     angular_damping 0.0
