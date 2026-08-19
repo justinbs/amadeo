@@ -45,18 +45,31 @@ number into two unrelated fields would have cost nothing and been exactly the ki
 
 ## Consequences
 
-- **The second tracked measurement in `docs/13` moved.** Material texture slots that are `""` went
-  from **36 of 36** to **43 of 45** — `games/atrium`'s floor and plinth now sample a real image. That
-  is the first textured pixel ever drawn in a game in this engine: mipmaps in linear light, 16×
-  anisotropic filtering and the whole sampler path have been written and tested since session 14 and
-  had never reached a picture.
-- **`games/atrium` generates its own texture**, `--bin surfaces`, which is the fourth instance of the
-  `pix`/`tone`/`turf`/`gloom` pattern and is `docs/12-the-bar.md` §3 in practice: Claude authored the
-  game's texture rather than asking for one.
-- **The demonstration is the point and it is a slab pattern for a reason.** A 20 m floor at
-  `uv_scale 5` and a 3 m plinth at `uv_scale 0.75` both land on 2 m slabs. Noise at two densities
+> **Three statements in this section went stale when this ADR's own amendment landed, in the same
+> session, and are corrected in place below.** They are called out rather than silently rewritten
+> because `docs/07` records five instances of a true statement outliving what made it true, and this
+> is the sixth — in a decision record, invalidated by an amendment appended to the same file. If it
+> can happen at that distance it can happen anywhere.
+
+- **A tracked measurement in `docs/13` moved**, and it is *one* of three. `base_colour_texture`
+  slots that are `""` went from 15 of 15 to **13 of 15** — `games/atrium`'s floor and plinth sample a
+  real image. That is the first textured pixel ever drawn in a game in this engine: mipmaps in linear
+  light, 16× anisotropic filtering and the whole sampler path have been written and tested since
+  session 14 and had never reached a picture. **`normal_texture` and `metallic_roughness_texture` are
+  still 15 of 15**, so ADR 0047 and ADR 0048 remain exercised by zero content and item 13a is what
+  closes them. *(Originally written as "36 of 36 to 43 of 45", which reads as nearly finished and
+  hides that two of three paths still have no user.)*
+- **`games/atrium` generates its own texture**, `--bin surfaces` — one of five instances of the
+  `pix`/`tone`/`turf`/`gloom`/`daylight` pattern, and `docs/12-the-bar.md` §3 in practice: Claude
+  authored the game's texture rather than asking for one. *(Written as "the fourth" before `daylight`
+  existed.)*
+- **The demonstration is the point and it is a slab pattern for a reason.** `games/atrium` has **one**
+  stone material at `uv_scale 0.25` — a quarter of a repeat per metre, so a 4 m repeat of a two-slab
+  tile — and it lands on 2 m slabs on the 20 m floor and the 3 m plinth alike. Noise at two densities
   looks like noise; a grid is either obviously right or obviously wrong at a glance, which is what
-  makes the failure this ADR prevents visible at all.
+  makes the failure this ADR prevents visible at all. *(Originally "a 20 m floor at `uv_scale 5` and a
+  3 m plinth at `uv_scale 0.75`", which described the two-material version the amendment deleted —
+  and those two near-identical materials were the very evidence that the ADR was half-done.)*
 - **The tiling-noise routine now exists twice**, in `games/scarp`'s `turf` and `games/atrium`'s
   `surfaces`. That is deliberate and it is the moment *before* promotion: `amadeo_noise` is
   non-periodic by design, because a world wants a function over the whole plane and a tile wants a
