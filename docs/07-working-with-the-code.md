@@ -1,3 +1,4 @@
+| Check what an edit REPLACED, not only what it added | the new text being present | the line count and the heading list |
 | Separate the knob before believing the answer | an experiment on a shared control | which consumer actually responded |
 # 07 — Working With the Code
 
@@ -1978,6 +1979,24 @@ the wrong reason, a model of the code was wrong in a way reasoning could not rea
 matched nothing. None is caught by care, and all three are caught by one extra step costing seconds.
 
 **When something matters, look at what changed rather than at what you did.**
+
+### An insertion has two halves, and grepping only checks one
+
+`docs/13`'s title was missing for three commits. A perl substitution meant to insert three rows
+before an existing table row instead replaced the file's first two lines -- the `# 13 -- The engine
+gate` heading and the blank after it -- putting three table rows above the blockquote that explains
+what the file is. It was committed, and committed on top of, twice.
+
+The rule in the table above was followed. I grepped for the text I had added and found it. **That
+check cannot fail in this situation**, because the added text really was there; what it says nothing
+about is what the text landed on top of.
+
+So: **confirming the new text is present says nothing about what is no longer present.** For an edit
+that rewrites part of a file, the cheap second half is the **line count** and the **heading list** --
+232 lines whose first line is a table row is not a document, and either check would have shown it in
+one command. For a code file the equivalent is that it still compiles, which is why this class of
+mistake is mostly a prose-file problem: Markdown has no compiler and no test, so nothing else was
+ever going to notice.
 
 ### A knob that feeds two consumers cannot tell them apart
 
