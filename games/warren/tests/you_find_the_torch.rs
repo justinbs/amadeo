@@ -309,3 +309,75 @@ fn the_interactor_is_the_camera_so_the_sweep_follows_the_view() {
         "the module writes `Looking` onto the interactor every tick once one has run"
     );
 }
+
+/// Whether each piece of the reticle is currently drawn, as `(opens, visible)`.
+fn reticle(app: &App) -> Vec<(bool, bool)> {
+    let mut pieces: Vec<(bool, bool)> = app
+        .world
+        .query::<(&warren::Reticle, &amadeo_ui::UiNode)>()
+        .map(|(_, (reticle, node))| (reticle.opens, node.visible))
+        .collect();
+    pieces.sort_unstable();
+    pieces
+}
+
+#[test]
+fn the_reticle_opens_only_when_something_is_in_reach() {
+    // **`docs/11` §8's "usability failure at the core verb".** Interaction is a sphere swept along
+    // the camera's forward and nothing said where that pointed, so failing to reach a thing and
+    // failing to aim at it looked identical — which means the player cannot learn the verb by using
+    // it.
+    //
+    // Three states in one test, because the interesting claim is the *difference* between them and a
+    // test of any one alone passes for an implementation that never changes. **Mutated once**:
+    // dropping the write in `write_the_hud` leaves the authored defaults in place, which satisfies
+    // the closed state and fails the other two.
+    let mut app = room();
+    stand_before_the_torch(&mut app);
+
+    // Level, over the top of the crate: the dot is up, the ticks are not.
+    look_down(&mut app, 0.0, 6);
+    assert_eq!(
+        prompt(&app.world),
+        None,
+        "the setup is wrong if something is already in reach here"
+    );
+    let closed = reticle(&app);
+    assert!(
+        !closed.is_empty(),
+        "the HUD authors no reticle at all — five nodes carrying `Reticle` were expected"
+    );
+    assert!(
+        closed.iter().any(|(opens, visible)| !opens && *visible),
+        "the dot is always up while playing, so the player can see where they are aimed: {closed:?}"
+    );
+    assert!(
+        closed.iter().all(|(opens, visible)| !opens || !visible),
+        "nothing is in reach, so no tick may be showing: {closed:?}"
+    );
+
+    // Aimed down at the torch: the ticks open.
+    look_down(&mut app, 20.0, 6);
+    assert!(
+        prompt(&app.world).is_some(),
+        "the aim-down setup stopped working; see the test above"
+    );
+    let open = reticle(&app);
+    assert!(
+        open.iter().all(|(_, visible)| *visible),
+        "with something in reach every piece is up — that is the 'opening' the design asks for: \
+         {open:?}"
+    );
+
+    // And it goes away with the game. A reticle over a pause menu or an ending is a game that looks
+    // like it is still running.
+    if let Some(screen) = app.world.resource_mut::<warren::Screen>() {
+        *screen = warren::Screen::Paused;
+    }
+    app.run_ticks(1).expect("a tick runs");
+    let paused = reticle(&app);
+    assert!(
+        paused.iter().all(|(_, visible)| !*visible),
+        "nothing of the reticle survives leaving play: {paused:?}"
+    );
+}

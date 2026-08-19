@@ -274,6 +274,7 @@ pub fn build_from_scene(scene: &str) -> anyhow::Result<App> {
     app.register_component::<Warden>()?;
     app.register_component::<Socket>()?;
     app.register_component::<PromptLine>()?;
+    app.register_component::<Reticle>()?;
     app.register_component::<EndingLine>()?;
     app.insert_resource(Outcome::default());
 
@@ -1737,6 +1738,33 @@ pub struct EndingLine;
 
 impl Component for EndingLine {}
 
+/// Marks a piece of the reticle — `docs/11` §8.
+///
+/// # Why the game has one at all
+///
+/// Interaction is a sphere swept along the camera's forward (`amadeo-interaction`), and until this
+/// existed **nothing on screen said where that pointed**. A player who could not pick something up
+/// had no way to tell whether they were too far away or aimed five degrees off, which the design
+/// calls *"a usability failure at the core verb, not a polish item"* — and it is right: the failure
+/// and the success look identical, so the player cannot learn the verb by using it.
+///
+/// The specification is *"the smallest mark that reads — a single dim pixel cluster, opening
+/// slightly when something is in reach"*, so it is five nodes: a 3 × 3 dot that is always there, and
+/// four ticks that appear fourteen pixels out when [`Looking::at`] is `Some`. The ticks take the
+/// theme's `Accent`, which is safety orange — §5a reserves that colour for **things you can act on**,
+/// and something in reach is exactly that. The reticle therefore obeys the same rule as the world.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub struct Reticle {
+    /// Whether this piece appears only when something is in reach.
+    ///
+    /// `false` is the dot, which is always shown while playing. `true` is a tick, which is the
+    /// "opening" half.
+    #[reflect(default = false)]
+    pub opens: bool,
+}
+
+impl Component for Reticle {}
+
 /// The label [`write_the_hud`] is registered under.
 pub const WRITE_THE_HUD: &str = "write_the_hud";
 
@@ -1794,6 +1822,31 @@ pub fn write_the_hud(world: &mut World) {
             && text.content != wanted
         {
             text.content = wanted;
+        }
+    }
+
+    // **The reticle** — `docs/11` §8, and see [`Reticle`] for why the game has one.
+    //
+    // Here rather than in its own system because it is the same function of the same two facts the
+    // prompt is: a mark that says "you are aimed at something" and a line that says what that
+    // something would do are two spellings of one answer, and splitting them is how they drift into
+    // disagreeing — a prompt with no reticle under it, or the reverse.
+    //
+    // It reads the prompt *string* rather than asking `Looking` again, which makes that claim
+    // literal rather than a hope: there is exactly one place the answer comes from, so the two
+    // cannot disagree even in principle.
+    let in_reach = !prompt.is_empty();
+    let pieces: Vec<(Entity, bool)> = world
+        .query::<(&Reticle,)>()
+        .map(|(entity, (reticle,))| (entity, playing && (!reticle.opens || in_reach)))
+        .collect();
+    for (entity, wanted) in pieces {
+        // Compared before writing, for the prompt's reason one paragraph up: `UiNode::visible` is a
+        // hashed field, and writing the same value every tick moves the state hash for nothing.
+        if let Some(node) = world.get_mut::<UiNode>(entity)
+            && node.visible != wanted
+        {
+            node.visible = wanted;
         }
     }
 }

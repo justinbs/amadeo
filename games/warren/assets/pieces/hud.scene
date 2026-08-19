@@ -22,6 +22,121 @@ entity hud "HUD"
     size 0.0 0.0
     visible true
 
+  entity reticle_dot "Reticle"
+    Panel
+      order 10
+      paint Dim
+    Reticle
+      opens false
+    UiNode
+      align_children Centre
+      anchor
+        horizontal Centre
+        vertical Centre
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 3.0 3.0
+      visible true
+
+  entity reticle_left "Reticle tick, left"
+    Panel
+      order 10
+      paint Accent
+    Reticle
+      opens true
+    UiNode
+      align_children Centre
+      anchor
+        horizontal Centre
+        vertical Centre
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 14.0
+        top 0.0
+      padding None
+      size 1.0 5.0
+      visible false
+
+  entity reticle_right "Reticle tick, right"
+    Panel
+      order 10
+      paint Accent
+    Reticle
+      opens true
+    UiNode
+      align_children Centre
+      anchor
+        horizontal Centre
+        vertical Centre
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 14.0
+        right 0.0
+        top 0.0
+      padding None
+      size 1.0 5.0
+      visible false
+
+  entity reticle_top "Reticle tick, top"
+    Panel
+      order 10
+      paint Accent
+    Reticle
+      opens true
+    UiNode
+      align_children Centre
+      anchor
+        horizontal Centre
+        vertical Centre
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 14.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 5.0 1.0
+      visible false
+
+  entity reticle_bottom "Reticle tick, bottom"
+    Panel
+      order 10
+      paint Accent
+    Reticle
+      opens true
+    UiNode
+      align_children Centre
+      anchor
+        horizontal Centre
+        vertical Centre
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 14.0
+      padding None
+      size 5.0 1.0
+      visible false
+
   entity prompt_line "Prompt"
     PromptLine
     Text
