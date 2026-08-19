@@ -26,38 +26,53 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 ## 📬 For the next session — read this box first, then `docs/12-the-bar.md`
 
-> ### Where session 21 left off: reviews 9 and 10 of the engine gate
+> ### Where session 21 left off: the engine gate reached review 11
 >
-> **Review 9 returned NOT POLISHED on item 12c with four items. All four are done** (`4360c39`,
-> `453b2c9`, `ad99dde`) and review 10 was sent; its verdict had not arrived when the session ended.
+> **Reviews 9 and 10 both returned NOT POLISHED on item 12c; every item from both is
+> addressed and review 11 was sent.** `docs/13-the-engine-gate.md` is the authority — items
+> **12d** (the room's proportions) and **12e** (`capture --pitch/--yaw`) passed on review 10;
+> **12c** is held open behind the new **12f**, and **12g**/**12h** record what review 10 found.
 >
-> 1. **The sky's two jobs are now two numbers** — ADR 0079, `Environment::sky_ambient`. An
->    environment map is a backdrop *and* a light, and one scalar could not be right for both: the
->    Atrium's map was scaled to 0.34 as fill, which left the daylight darker than the floor it lit.
->    Unity, Unreal and Godot all ship this split independently. Default 1.0, so nothing else moved.
-> 2. **`amadeo capture --pitch/--yaw`** — a capture could only ever show the authored camera, and this
->    project judges nearly everything by capture.
-> 3. **The Atrium is 8 m high, not 4** — the camera sat 31 cm under the roof and the oculus was not
->    visible from anywhere a player can stand. The look-up view the reviewer called the best image
->    this project has produced was taken in a room nobody plays in.
-> 4. **Two documentation rules in `docs/07`** — see below.
+> **What landed:** ADR 0079 split the sky's two jobs (`Environment::sky_ambient`), the Atrium
+> went from 20 × 20 × 4 m to 8 m high, `amadeo capture` gained `--pitch/--yaw`, and a
+> shadow-map light leak at the roof-to-wall junction was traced and cut.
 >
-> **I was wrong about the ceiling and the way I was wrong is the useful part.** I had argued the dark
-> band was the sky, proving it by recolouring the map magenta and watching the band go magenta. That
-> experiment cannot distinguish the two hypotheses, because recolouring the map moves the backdrop
-> *and* the fill together. `docs/07` now carries the general form: **a knob feeding two consumers
-> cannot tell them apart**, and an experiment that moves it returns a confident wrong answer rather
-> than no answer. The second rule: **an ADR records a decision, not a measurement** — Consequences
-> sections rot whenever they quote the repository at a moment, and live numbers belong in `docs/13` §1.
-> **ADR 0074 has since been checked: three of its four consequences are properties and
-> do not expire, and the fourth counted something. **The bullets that rot are the ones that count.**
+> ### Two diagnoses were wrong this session and both were corrected by splitting a variable
 >
-> **Open, flagged, not fixed:** the bright ellipse on the roof underside (survives the sun at zero and
-> the brightest point light at zero, so the environment reflection at grazing incidence is what is
-> left — but the room's geometry changed in `ad99dde`, so check it still exists first). And
-> **ADR 0075 was wrong about `amadeo fmt` being a migration tool** — `format_scenes` is parse-then-write
-> with no registry and by ADR 0016 never will have one. Amended in place; the operative rule is that a
-> declared default is part of the format's contract rather than a tuning knob.
+> This is the thread worth carrying forward, and `docs/07` now has all of it.
+>
+> 1. **The dark band was not the sky.** I proved it was by recolouring the map magenta and
+>    watching the band go magenta — an experiment that cannot distinguish the two, because
+>    recolouring the map moves the backdrop *and* the fill together. **A knob feeding two
+>    consumers cannot tell them apart**, and moving it returns a confident wrong answer rather
+>    than no answer.
+> 2. **The ceiling seam was not z-fighting.** Review 10 measured it correctly (143 between a
+>    76 wall and an 81 ceiling) and diagnosed coplanar geometry. Sun to zero: the band
+>    vanishes. Shadows off: the whole wall reads 143. It was a shadow leak, caused by my own
+>    `shadow_distance` 22 → 30 — **a shadow bias is per-BOX, not just per-cascade, so resizing
+>    the box silently retunes it.** The "hole" offered as proof of depth precision was a
+>    pillar's shadow.
+> 3. **The glass is not a binding bug.** `draw_run` is one closure for both pipelines, and
+>    `metallic 1.0` moves the pane from (204,209,205) to (123,133,138) — the specular path
+>    works on blended surfaces. The real cause is that **the environment map is a featureless
+>    gradient, so there is nothing to reflect**. Item 12f: split the map's *content*, not just
+>    its intensity.
+>
+> **And two documentation rules came out of the same week.** *An ADR records a decision, not a
+> measurement* — Consequences rot whenever they count something, and ADR 0074 confirmed it
+> (three of its four consequences are properties and fine; the fourth counted generators).
+> *An insertion has two halves* — I grepped for text I had added, found it, and did not notice
+> it had replaced `docs/13`'s title, which was missing for three commits.
+>
+> **ADR 0075 was wrong about `amadeo fmt`, and wrong when written** — `format_scenes` is
+> parse-then-write with no registry and by ADR 0016 never will have one. Amended in place. It
+> had already cost something: `uv_scale` and `alpha_mode` were declared in **1 of 14**
+> `.material` files. All fourteen are complete now, capture byte-identical.
+>
+> **Open, flagged, not fixed:** the bright ellipse is **closed** — review 10 could not find it
+> and it did not survive the room change. Items 12f, 12g, 12h and 13a are open, and review 10
+> asked for 13a to be widened to `slate` as well as `stone`, since the walls are the largest
+> surface in the game.
 >
 > ### The plan is a file now. Read `docs/13-the-engine-gate.md` and work from it.
 >
