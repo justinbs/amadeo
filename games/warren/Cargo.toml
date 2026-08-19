@@ -24,6 +24,9 @@ amadeo-core.workspace = true
 amadeo-ecs.workspace = true
 amadeo-events.workspace = true
 amadeo-image.workspace = true
+# `surfaces` generates the lining, the floor and the fittings -- docs/11 section 5a. The machinery is
+# engine code (gate item 13); what is in this game is which numbers make a particular surface (I4).
+amadeo-texture.workspace = true
 amadeo-input.workspace = true
 # Looking at things and using them, with the interactor on the **camera** -- which is what gives the
 # sweep a runtime-driven pitch for free, the one thing an authored one cannot do.

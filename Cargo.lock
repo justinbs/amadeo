@@ -3153,6 +3153,7 @@ dependencies = [
  "amadeo-render",
  "amadeo-scene",
  "amadeo-snapshot",
+ "amadeo-texture",
  "amadeo-transform",
  "amadeo-ui",
  "anyhow",
