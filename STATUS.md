@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-18 (session 21)
+**Last updated:** 2026-08-19 (session 21)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE — all four exit gates met.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
@@ -26,6 +26,38 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 ## 📬 For the next session — read this box first, then `docs/12-the-bar.md`
 
+> ### Where session 21 left off: reviews 9 and 10 of the engine gate
+>
+> **Review 9 returned NOT POLISHED on item 12c with four items. All four are done** (`4360c39`,
+> `453b2c9`, `ad99dde`) and review 10 was sent; its verdict had not arrived when the session ended.
+>
+> 1. **The sky's two jobs are now two numbers** — ADR 0079, `Environment::sky_ambient`. An
+>    environment map is a backdrop *and* a light, and one scalar could not be right for both: the
+>    Atrium's map was scaled to 0.34 as fill, which left the daylight darker than the floor it lit.
+>    Unity, Unreal and Godot all ship this split independently. Default 1.0, so nothing else moved.
+> 2. **`amadeo capture --pitch/--yaw`** — a capture could only ever show the authored camera, and this
+>    project judges nearly everything by capture.
+> 3. **The Atrium is 8 m high, not 4** — the camera sat 31 cm under the roof and the oculus was not
+>    visible from anywhere a player can stand. The look-up view the reviewer called the best image
+>    this project has produced was taken in a room nobody plays in.
+> 4. **Two documentation rules in `docs/07`** — see below.
+>
+> **I was wrong about the ceiling and the way I was wrong is the useful part.** I had argued the dark
+> band was the sky, proving it by recolouring the map magenta and watching the band go magenta. That
+> experiment cannot distinguish the two hypotheses, because recolouring the map moves the backdrop
+> *and* the fill together. `docs/07` now carries the general form: **a knob feeding two consumers
+> cannot tell them apart**, and an experiment that moves it returns a confident wrong answer rather
+> than no answer. The second rule: **an ADR records a decision, not a measurement** — Consequences
+> sections rot whenever they quote the repository at a moment, and live numbers belong in `docs/13` §1.
+> **ADR 0074's consequences are the next candidate and nobody has checked them.**
+>
+> **Open, flagged, not fixed:** the bright ellipse on the roof underside (survives the sun at zero and
+> the brightest point light at zero, so the environment reflection at grazing incidence is what is
+> left — but the room's geometry changed in `ad99dde`, so check it still exists first). And
+> **ADR 0075 was wrong about `amadeo fmt` being a migration tool** — `format_scenes` is parse-then-write
+> with no registry and by ADR 0016 never will have one. Amended in place; the operative rule is that a
+> declared default is part of the format's contract rather than a tuning knob.
+>
 > ### The plan is a file now. Read `docs/13-the-engine-gate.md` and work from it.
 >
 > **The engine gate's plan used to live in a conversation, and that is exactly what `docs/12` was

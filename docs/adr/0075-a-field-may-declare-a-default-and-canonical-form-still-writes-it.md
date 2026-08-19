@@ -123,3 +123,48 @@ making every old file's behaviour hostage to a default nobody remembers changing
   component built from a file with an omitted field is byte-identical to one built from a file that
   spells it out. This is what makes the change safe to apply to existing types: no replay, golden or
   pinned hash moves.
+
+---
+
+## Amendment, session 21 — the title of this ADR is wrong about `amadeo fmt`
+
+**"Canonical form still writes every field, so `amadeo fmt` is the migration tool with no new flag"
+is false, and it was false when it was written rather than having gone stale.** Found while adding
+`Environment::sky_ambient` (ADR 0079): running `amadeo fmt` over the four `.environment` files in this
+repository did **not** add the new field to the three that omit it.
+
+`format_scenes` in `crates/amadeo-cli/src/main.rs` is `amadeo_scene::parse` followed by
+`amadeo_scene::to_text`. Both operate on the **document** — the text as parsed — and neither has a
+`TypeRegistry`. It cannot add a field it has never heard of, and by ADR 0016 it never will: `fmt` is
+the one command that is deliberately standalone and does not launch the game, which is exactly what
+makes it usable on a project whose game will not compile.
+
+### What is actually true
+
+"Canonical form writes every field" is a property of the **engine's** writer — the path
+`snapshot.take` and any future editor save take, where the text is generated from a `Value` built out
+of a live component, and a `Value` necessarily has every field in it. It has never been a property of
+reformatting a file that was hand-written.
+
+### What this costs, which is less than it sounds
+
+- **Nothing is broken and nothing is at risk.** A file omitting a field loads on the declared default,
+  produces a byte-identical component, and hashes identically. That is the whole point of ADR 0075
+  and it works.
+- **But this ADR's claim that "no file's meaning depends on the engine's defaults" does not hold for
+  a hand-written file.** If a default is ever changed, every file that omits that field changes
+  meaning silently. The mitigation that does exist is real: `describe --example` publishes the
+  declared default as authoring advice (`crates/amadeo-agent/src/example.rs`), so the value is
+  discoverable rather than buried in an attribute — which was the other half of why the default rides
+  in the schema.
+- **So the operative rule is: treat a declared default as part of the format's contract, not as a
+  tuning knob.** Changing one is a change to the meaning of every file that omits it, and there is no
+  tool that will tell you which files those are.
+
+### What was deliberately not built
+
+A `fmt --migrate` that launches the game and rewrites every file with a complete field list. It is a
+real option and it is the honest fix, but it is a new command shape rather than a flag — it would make
+`fmt` sometimes-standalone and sometimes-not, which is the property ADR 0016 chose it for. Recording
+the correct behaviour is worth more right now than a tool nothing yet needs; the moment a declared
+default has to *change*, this is the thing to build first.

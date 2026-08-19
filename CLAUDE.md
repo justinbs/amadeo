@@ -200,9 +200,16 @@ crates/
                      `default_value`, which would make a `.material` omitting `base_colour` load
                      transparent black. Q32 blocked this for six sessions on a tension that did not
                      survive checking: **`UnknownField` is what catches a typo**, not `MissingField`,
-                     and it is checked BEFORE any field is read. **Canonical form still writes every
-                     field**, so `amadeo fmt` is the migration tool with no new flag and no file's
-                     meaning depends on the engine's defaults. The default rides in the schema so
+                     and it is checked BEFORE any field is read. **ADR 0075 also claimed `amadeo fmt`
+                     migrates a file to a new field, and that was WRONG when written** -- its
+                     amendment corrects it. `format_scenes` is parse-then-write over the *document*
+                     and holds no registry, and by ADR 0016 it never will, because being standalone
+                     is what makes it usable on a project whose game will not compile. "Canonical
+                     form writes every field" is true of the ENGINE's writer (`snapshot.take`),
+                     never of reformatting hand-written text. **So a declared default is part of the
+                     format's contract, not a tuning knob**: changing one silently changes the
+                     meaning of every file that omits it, and no tool will tell you which. The
+                     default rides in the schema so
                      `describe` reports it — a rule living only in an attribute is one an agent
                      authoring an asset cannot discover (docs/12 §3). A default is written twice, in
                      the attribute and in a hand-written `Default` impl; one test per such type
