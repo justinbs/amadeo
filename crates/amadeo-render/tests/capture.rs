@@ -3090,3 +3090,186 @@ fn the_sky_ambient_dial_moves_the_fill_and_leaves_the_backdrop_alone() {
         "more ambient must light the surface more: {face_dim:?} then {face_bright:?}"
     );
 }
+
+/// One sRGB byte back to the linear light it encodes.
+///
+/// The blend happens in the HDR target, in linear light, and the capture comes back encoded — so an
+/// arithmetic claim about blending has to be checked in linear space or it is checking the transfer
+/// curve instead. `powf` is banned in anything deciding gameplay state (ADR 0044); this decides a
+/// test assertion about pixels, which is the same exemption `amadeo-image`'s mip chain has.
+fn srgb_to_linear(byte: u8) -> f32 {
+    let c = f32::from(byte) / 255.0;
+    if c <= 0.04045 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+/// A shiny pane over a black wall, lit head-on so its highlight reflects into the camera.
+///
+/// `alpha` below 1 with [`AlphaMode::Blend`] puts it on the transparent pipeline.
+#[cfg(feature = "gpu")]
+fn pane_with_a_highlight(alpha: f32, mode: AlphaMode) -> World {
+    let mut world = World::new();
+
+    let eye = world.spawn();
+    world.insert(
+        eye,
+        Transform {
+            translation: [0.0, 0.0, 3.0],
+            ..Transform::default()
+        },
+    );
+    world.insert(eye, Camera::perspective(45.0));
+
+    let mut meshes = MeshCache::new();
+    meshes.insert(
+        "wall",
+        BoxMesh {
+            size: [6.0, 6.0, 0.2],
+        }
+        .tessellate(),
+    );
+    // **A plane, not a box.** A box has a front and a back face, and the transparent pass does not
+    // write depth (ADR 0077) -- so both blend at the same pixel and the arithmetic below is against
+    // two blends rather than one. That is a real property of using a solid as glass, and it made the
+    // first version of this test report a blended pane BRIGHTER than the opaque one.
+    meshes.insert(
+        "pane",
+        amadeo_render::PlaneMesh { size: [2.0, 2.0] }.tessellate(),
+    );
+    world.insert_service(meshes);
+
+    let mut materials = MaterialCache::new();
+    materials.insert(
+        // Black, so the bound below is dominated by the pane rather than by what is behind it.
+        "wall",
+        Material {
+            base_colour: [0.0, 0.0, 0.0, 1.0],
+            roughness: 1.0,
+            ..Material::default()
+        },
+    );
+    materials.insert(
+        "pane",
+        Material {
+            base_colour: [0.05, 0.06, 0.07, alpha],
+            roughness: 0.38,
+            alpha_mode: mode,
+            ..Material::default()
+        },
+    );
+    world.insert_service(materials);
+
+    let wall = world.spawn();
+    world.insert(
+        wall,
+        Transform {
+            translation: [0.0, 0.0, -2.0],
+            ..Transform::default()
+        },
+    );
+    world.insert(wall, Mesh::new("wall", "wall"));
+
+    // Turned to face the camera: a plane is authored in XZ with its normal up, so a quarter turn
+    // about X stands it up facing +Z.
+    let pane = world.spawn();
+    world.insert(
+        pane,
+        Transform {
+            translation: [0.0, 0.0, 0.4],
+            rotation: [90.0, 0.0, 0.0],
+            ..Transform::default()
+        },
+    );
+    world.insert(pane, Mesh::new("pane", "pane"));
+
+    // **Unrotated on purpose.** A light travels along its own -Z, so this one comes from behind the
+    // camera and mirrors straight back off a pane facing +Z — which is what guarantees a highlight
+    // exists to measure rather than hoping one lands.
+    let sun = world.spawn();
+    world.insert(sun, Transform::default());
+    world.insert(
+        sun,
+        DirectionalLight {
+            intensity: 0.55,
+            ..DirectionalLight::default()
+        },
+    );
+
+    world
+}
+
+#[test]
+fn a_highlight_on_glass_beats_what_straight_alpha_could_produce() {
+    // **ADR 0080's close condition, stated as arithmetic rather than as a look.**
+    //
+    // Straight alpha blending is `src * a + dst * (1 - a)`, which scales the *whole* shader output by
+    // coverage — diffuse, specular and emissive together. So a pane at alpha 0.34 could contribute at
+    // most 34% of anything, and its pixel was bounded above by `0.34 * S + 0.66 * W`, where `S` is
+    // what the same material renders as when opaque and `W` is the wall behind it. No roughness, no
+    // sun and no environment could lift it past that line: a highlight on glass was arithmetically
+    // impossible, not merely dim.
+    //
+    // **The bound is measured, not assumed.** `S` and `W` come from two more renders of the same
+    // scene, so the test calibrates itself against whatever the shading model happens to do rather
+    // than against a number written here that would rot the moment the BRDF changed.
+    //
+    // Premultiplied output scales only the transmitted half, so the reflected half survives whole and
+    // the pixel lands above the line. That difference is the whole feature.
+    let centre_of = |mut world: World| -> Option<[u8; 4]> {
+        let image = capture(&mut world, 96, 96)?;
+        Some(pixel_at(&image, 48, 48))
+    };
+
+    let mut wall_only = pane_with_a_highlight(1.0, AlphaMode::Opaque);
+    // Drop the pane, leaving the wall, to measure what is behind the glass.
+    let pane_entity = wall_only
+        .entities()
+        .into_iter()
+        .find(|entity| {
+            wall_only
+                .get::<Transform>(*entity)
+                .is_some_and(|at| at.translation[2] > 0.0 && at.translation[2] < 1.0)
+        })
+        .expect("the pane is there");
+    wall_only.despawn(pane_entity);
+
+    let (Some(opaque), Some(blended), Some(behind)) = (
+        centre_of(pane_with_a_highlight(1.0, AlphaMode::Opaque)),
+        centre_of(pane_with_a_highlight(0.34, AlphaMode::Blend)),
+        centre_of(wall_only),
+    ) else {
+        return;
+    };
+
+    // **Nothing may be saturated.** A clipped pixel reads 255 whatever produced it, so a comparison
+    // between two clipped values proves nothing — and the first version of this test passed with
+    // both panes at 255, which is the vacuity `docs/07` says to check for rather than hope about.
+    assert!(
+        opaque.iter().take(3).all(|c| *c < 250) && blended.iter().take(3).all(|c| *c < 250),
+        "the light is too strong to measure against: opaque {opaque:?}, blended {blended:?}"
+    );
+
+    for channel in 0..3 {
+        let s = srgb_to_linear(opaque[channel]);
+        let w = srgb_to_linear(behind[channel]);
+        let b = srgb_to_linear(blended[channel]);
+        let straight_alpha_bound = 0.34 * s + 0.66 * w;
+
+        assert!(
+            b > straight_alpha_bound * 1.05,
+            "channel {channel}: a blended pane must exceed what straight alpha could produce. \
+             opaque {opaque:?}, wall {behind:?}, blended {blended:?} — linear {b:.4} against a \
+             bound of {straight_alpha_bound:.4}"
+        );
+    }
+
+    // And it is genuinely a highlight rather than the pane having gone opaque by accident: an opaque
+    // pane of the same material is still brighter, because it transmits none of the black wall.
+    assert!(
+        opaque[1] > blended[1],
+        "the blended pane should still be darker than the opaque one: {opaque:?} vs {blended:?}"
+    );
+}

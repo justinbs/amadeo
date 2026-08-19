@@ -2157,9 +2157,29 @@ impl WgpuBackend {
         // tuned: writing depth would make two blended surfaces hide each other in whichever order
         // they happened to arrive, which is the thing the back-to-front sort exists to decide. It
         // still *tests* depth, so glass behind a wall is correctly hidden by it.
+        // **Premultiplied, not straight alpha** (ADR 0080). `ALPHA_BLENDING` is
+        // `src * src.a + dst * (1 - src.a)`, which multiplies the *whole* shader output by coverage
+        // — diffuse, specular and emissive alike. That makes a highlight on glass arithmetically
+        // impossible: at alpha 0.34 the surface can contribute at most 34% of anything, so a perfect
+        // mirror over a wall is capped below what the wall beside it already reads.
+        //
+        // `One, OneMinusSrcAlpha` leaves the weighting to the shader, which premultiplies the
+        // diffuse term and leaves the reflected and emitted terms whole. Unity ships the same thing
+        // on its Alpha blend mode under the name "Preserve Specular Lighting".
         let transparent_pipeline = mesh_pipeline_for(
             "amadeo transparent mesh pipeline",
-            Some(wgpu::BlendState::ALPHA_BLENDING),
+            Some(wgpu::BlendState {
+                color: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::One,
+                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                    operation: wgpu::BlendOperation::Add,
+                },
+                alpha: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::One,
+                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                    operation: wgpu::BlendOperation::Add,
+                },
+            }),
             false,
         );
 

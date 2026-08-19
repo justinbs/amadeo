@@ -114,6 +114,18 @@ fn environment_brdf(n_dot_v: f32, roughness: f32) -> vec2<f32> {
 //
 // `radiance` is the light's colour already scaled by everything that attenuates it: the sun's shadow
 // factor, or a punctual light's distance falloff and cone.
+// One light's contribution, kept in two halves — ADR 0080.
+//
+// They used to be summed here and returned as one colour, which is right for an opaque surface and
+// wrong for a transparent one: light that scatters *through* a surface is scaled by how transparent
+// it is, and light that reflects *off* it is not. A window at 34% opacity still shows a full-strength
+// highlight. Summing first makes that distinction unrecoverable downstream, so the split starts here
+// and survives to the blend.
+struct LightPair {
+    diffuse: vec3<f32>,
+    specular: vec3<f32>,
+};
+
 fn direct_light(
     normal: vec3<f32>,
     towards_eye: vec3<f32>,
@@ -123,7 +135,7 @@ fn direct_light(
     diffuse_colour: vec3<f32>,
     f0: vec3<f32>,
     roughness: f32,
-) -> vec3<f32> {
+) -> LightPair {
     // max() rather than abs(): a surface facing away from this light is unlit by it, not lit from
     // behind.
     let lambert = max(dot(normal, towards_light), 0.0);
@@ -152,7 +164,13 @@ fn direct_light(
     // times the irradiance -- the light's units absorb the constant, which is what most real-time
     // renderers do. The *relative* weighting of diffuse against specular, which is what actually
     // decides whether a material reads correctly, is unaffected.
-    return (diffuse + specular) * radiance * lambert * PI;
+    // The common factor is applied to both halves, so summing them reproduces exactly what this
+    // function used to return — which is what keeps every opaque surface byte-identical.
+    let weight = radiance * lambert * PI;
+    var pair: LightPair;
+    pair.diffuse = diffuse * weight;
+    pair.specular = specular * weight;
+    return pair;
 }
 
 // How much of one spot light reaches this point: 1.0 lit, 0.0 fully shadowed — ADR 0058.
@@ -540,7 +558,7 @@ fn fs_main(
 
     // The sun. Its shadow multiplies its radiance rather than the whole result, because ambient is
     // deliberately outside the shadow — see above.
-    var direct = direct_light(
+    let sun = direct_light(
         normal,
         towards_eye,
         n_dot_v,
@@ -550,6 +568,8 @@ fn fs_main(
         f0,
         roughness,
     );
+    var direct_diffuse = sun.diffuse;
+    var direct_specular = sun.specular;
 
     // **Point and spot lights** (ADR 0057), summed on top. At most
     // `MAX_PUNCTUAL_LIGHTS` of them, nearest to the camera first, so a scene with more loses the
@@ -601,17 +621,18 @@ fn fs_main(
                 * spot_shadow_factor(in.world_position, slot, layer, light.shadow.y);
         }
 
-        direct = direct
-            + direct_light(
-                normal,
-                towards_eye,
-                n_dot_v,
-                to_light,
-                radiance,
-                diffuse_colour,
-                f0,
-                roughness,
-            );
+        let punctual = direct_light(
+            normal,
+            towards_eye,
+            n_dot_v,
+            to_light,
+            radiance,
+            diffuse_colour,
+            f0,
+            roughness,
+        );
+        direct_diffuse = direct_diffuse + punctual.diffuse;
+        direct_specular = direct_specular + punctual.specular;
     }
 
     // **The ambient half, and it now has two parts where it used to have none.**
@@ -648,16 +669,41 @@ fn fs_main(
     // draws the same map unscaled, because a backdrop is a picture and this is a light -- one number
     // could not be right for both, which is what `Environment::sky_ambient` exists to record. `1.0`
     // is the identity, so a scene that authors none renders byte-identically.
-    let ambient_light = (ambient_diffuse + ambient_specular) * view.ambient_params.x;
+    // Both halves scaled together, so the dial means the same thing it did when ambient was one sum.
+    let lit_diffuse = direct_diffuse + ambient_diffuse * view.ambient_params.x;
+    let lit_specular = direct_specular + ambient_specular * view.ambient_params.x;
 
-    // Emissive is added rather than multiplied, and is not affected by the light -- that is what
-    // makes it emissive. Above 1.0 it pushes into the HDR range the post pass tonemaps (ADR 0034).
-    let lit = direct + ambient_light + in.emissive;
+    // **Premultiplied output, and this is ADR 0080's whole point.**
+    //
+    // The colour written here is already multiplied by coverage, and the pipeline blends it with
+    // `One, OneMinusSrcAlpha` rather than `SrcAlpha, OneMinusSrcAlpha`. That lets the two halves be
+    // weighted differently, which is the thing straight alpha blending cannot express:
+    //
+    // - **Diffuse is scaled by alpha.** It is light that scattered *through* the surface, so a
+    //   surface you can see through transmits proportionally less of it.
+    // - **Specular is not.** It is light that bounced *off* the front face and never entered the
+    //   material at all. A window at 34% opacity reflects a highlight at full strength, which is
+    //   most of what makes glass read as glass rather than as a tinted hole.
+    // - **Emissive is not either**, for the same reason: something that glows does not glow less
+    //   because you can see through it.
+    //
+    // For an opaque surface `albedo.a` is 1 and this reduces to `diffuse + specular + emissive`, the
+    // exact sum this line used to compute — so every opaque pixel in every capture is unchanged, and
+    // that was verified rather than reasoned about.
+    let surface = lit_diffuse * albedo.a + lit_specular + in.emissive;
 
     // **Fog last, after everything else** (ADR 0073). Air between the eye and a surface adds its own
     // light and hides what is behind it, so it has to be applied to the finished colour -- fogging
     // the albedo instead would let a light brighten the haze, which is not how air works.
-    return vec4<f32>(fogged(lit, in.world_position), albedo.a);
+    //
+    // The target is `fog_colour * albedo.a`, not `fog_colour`: in a premultiplied frame the haze in
+    // front of a half-transparent surface covers only that surface's own share of the pixel, and
+    // whatever shows through behind it was fogged by its own fragment over its own longer distance.
+    // At alpha 1 this is identical to fogging the colour outright.
+    return vec4<f32>(
+        fogged_premultiplied(surface, albedo.a, in.world_position),
+        albedo.a,
+    );
 }
 
 /// Blends a lit colour towards the fog colour by how far away it is.
@@ -678,7 +724,7 @@ fn fs_main(
 /// At `density = 0` the exponent is zero, `exp(0)` is exactly `1`, the factor is exactly `0`, and
 /// `mix(colour, fog, 0.0)` returns `colour` bit for bit. That is what lets a scene which authored no
 /// fog produce a byte-identical capture, which `fog_off_changes_nothing` pins.
-fn fogged(colour: vec3<f32>, world_position: vec3<f32>) -> vec3<f32> {
+fn fogged_premultiplied(colour: vec3<f32>, alpha: f32, world_position: vec3<f32>) -> vec3<f32> {
     let density = view.fog_colour.w;
     if density <= 0.0 {
         return colour;
@@ -686,5 +732,7 @@ fn fogged(colour: vec3<f32>, world_position: vec3<f32>) -> vec3<f32> {
     let travelled = max(distance(view.eye.xyz, world_position) - view.fog_params.x, 0.0);
     let scaled = travelled * density;
     let factor = 1.0 - exp(-scaled * scaled);
-    return mix(colour, view.fog_colour.rgb, clamp(factor, 0.0, 1.0));
+    // `fog_colour * alpha` because the incoming colour is premultiplied (ADR 0080): the haze covers
+    // this surface's share of the pixel and no more. At alpha 1 this is the plain `mix` it replaced.
+    return mix(colour, view.fog_colour.rgb * alpha, clamp(factor, 0.0, 1.0));
 }
