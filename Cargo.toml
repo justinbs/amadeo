@@ -31,6 +31,11 @@ amadeo-jobs = { path = "crates/amadeo-jobs", version = "0.1.0" }
 # Deterministic gradient noise (ADR 0044). No deps, and its own crate rather than part of
 # amadeo-voxel so that a 2D game can have a heightmap without depending on a 3D mesher -- trap 9.
 amadeo-noise = { path = "crates/amadeo-noise", version = "0.1.0" }
+# Procedural surface textures: tiling noise, masonry lattices, and the three maps a PBR material
+# wants (engine gate item 13). Depends only on amadeo-image, and only for `TextureData` and the PNG
+# encoder -- it knows about images and nothing about worlds, rendering or assets, so it sits beside
+# amadeo-noise near the bottom of the graph where every game can reach it.
+amadeo-texture = { path = "crates/amadeo-texture", version = "0.1.0" }
 # Signed-distance fields and surface-nets meshing (ADR 0042). No deps: it is a function from a
 # field to a mesh and knows nothing about worlds, assets or rendering.
 amadeo-voxel = { path = "crates/amadeo-voxel", version = "0.1.0" }

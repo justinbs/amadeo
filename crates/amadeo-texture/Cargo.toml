@@ -1,0 +1,18 @@
+[package]
+name = "amadeo-texture"
+description = "Procedural surface textures: tiling noise, masonry lattices, and the three maps a PBR material wants."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# Only `amadeo-image`, and only for `TextureData` and the PNG encoder -- this crate's job ends at a
+# buffer of pixels, and writing one to disk is what a *tool* does. No engine deps beyond that, on
+# `amadeo-noise`'s reasoning: a texture generator knows about images and nothing about worlds,
+# rendering or assets, so it sits near the bottom of the graph where every game can reach it.
+[dependencies]
+amadeo-image.workspace = true
+
+[lints]
+workspace = true

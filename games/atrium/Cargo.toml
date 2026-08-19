@@ -24,6 +24,9 @@ amadeo-app = { workspace = true, features = ["gpu"] }
 amadeo-audio = { workspace = true, features = ["kira"] }
 amadeo-core.workspace = true
 amadeo-image.workspace = true
+# `surfaces` generates the stone. The machinery is engine code (gate item 13); what stays in this
+# game is which numbers make a particular stone, which is genre knowledge (I4).
+amadeo-texture.workspace = true
 amadeo-ecs.workspace = true
 # A footstep is an event, not a state (ADR 0059). This game is what sends them.
 amadeo-events.workspace = true

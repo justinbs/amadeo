@@ -360,6 +360,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "amadeo-texture"
+version = "0.1.0"
+dependencies = [
+ "amadeo-image",
+]
+
+[[package]]
 name = "amadeo-transform"
 version = "0.1.0"
 dependencies = [
@@ -499,6 +506,7 @@ dependencies = [
  "amadeo-render",
  "amadeo-scene",
  "amadeo-snapshot",
+ "amadeo-texture",
  "amadeo-transform",
  "amadeo-ui",
  "anyhow",
