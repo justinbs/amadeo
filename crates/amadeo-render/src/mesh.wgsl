@@ -280,6 +280,14 @@ fn shadow_factor(world: vec3<f32>, normal: vec3<f32>, lambert: f32) -> f32 {
     // Clip space is -1..1 across and 0..1 deep; the texture is 0..1 across with v running downward.
     var uv = projected.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5, 0.5);
 
+    // **A receiver-plane depth bias was written here and taken out again — ADR 0082.** It compiled
+    // through FXC, it was correct, and across three A/B captures it changed **not one pixel** once
+    // the actual cause of the junction artefact was found, which was the shadow pass culling front
+    // faces. Four derivative instructions and a 2×2 solve per fragment for a measured benefit of
+    // zero is this gate's own anti-pattern one level in, so it is recorded in the ADR rather than
+    // shipped. It is the right technique for a steep receiver under a low sun; bring it back when a
+    // scene measures a need for it.
+
     // Outside the shadow map's box there is no information, so nothing is shadowed. Treating
     // "outside" as shadowed would put a hard dark edge at the shadow distance, which reads as a wall
     // of darkness following the player around.

@@ -2010,12 +2010,30 @@ impl WgpuBackend {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                // **Front** faces are culled here where the mesh pass culls back ones, which is
-                // deliberate and is the cheapest fix for shadow acne there is: recording the far
-                // side of each object moves the stored depth away from the surface being lit, so the
-                // surface stops shadowing itself. It costs correctness only for geometry with no
-                // thickness, which is what `shadow_bias` is still there for.
-                cull_mode: Some(wgpu::Face::Front),
+                // **Nothing is culled, and this line used to cull front faces — ADR 0082.**
+                //
+                // Front-face culling is the cheap classic fix for shadow acne: record the far side of
+                // each object, so the stored depth is behind the surface being lit and the surface
+                // cannot shadow itself. The comment here used to say it "costs correctness only for
+                // geometry with no thickness".
+                //
+                // **That was wrong, and it cost correctness on every interior wall in the engine.**
+                // It also breaks whenever the surface being lit is the object's *front* face — which
+                // is exactly what a room is: you stand inside a box and the light falls on the faces
+                // pointing at you. Those faces were culled from the shadow map, so the nearest
+                // recorded depth at those texels was the wall's *outer* face half a metre further
+                // on, and every fragment of the inner face tested as nearer than its own occluder.
+                // The roof hid most of it — the roof's underside is nearer the light and wins the
+                // depth test — but along the junction the 3×3 filter straddles the texels where it
+                // does not, and those taps came back lit.
+                //
+                // That is the bright hairline that ran along every concave junction in
+                // `games/atrium`, and it is why **no depth bias could touch it**: nothing was wrong
+                // with the depths. Junction peak 74 against a 30 wall becomes 35, and the sunlit
+                // floor's mean and standard deviation are unchanged to two decimal places, so the
+                // acne this was guarding against did not arrive. See ADR 0082 for the four
+                // techniques that were tried first and did not work.
+                cull_mode: None,
                 polygon_mode: wgpu::PolygonMode::Fill,
                 unclipped_depth: false,
                 conservative: false,

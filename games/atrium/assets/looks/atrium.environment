@@ -6,7 +6,7 @@ entity look "Atrium"
     bloom
       intensity 0.3
       threshold 1.0
-    exposure 1.0
+    exposure 0.8
     fog
       colour 0.3 0.33 0.38
       density 0.016
@@ -16,7 +16,7 @@ entity look "Atrium"
       saturation 1.0
       tint 1.0 1.0 1.0
     sky "atrium_daylight"
-    sky_ambient 0.68
+    sky_ambient 0.25
     tonemap AcesFilmic
     vignette
       intensity 0.25
