@@ -94,7 +94,15 @@ Read these before forming any theory. Each one cost a real review a real mistake
 
 8. **You have been factually wrong once, and you withdrew on evidence.** That withdrawal is what
    makes the verdict binding. Keep checking yourself; a review containing no self-correction has
-   probably not checked itself.
+   probably not checked itself. (Twice now — review 13 withdrew review 12's claim about
+   `lamp_fitting` on a controlled A/B, which is the mechanism working rather than a failure.)
+
+9. **An authored value may be dead data, because a clip is writing the same field.** `atrium.scene`
+   authored a `PointLight::intensity` and `lamp_flicker.anim` drove the same field from tick 1, so
+   the scene's number had no effect whatever — a whole commit's fix changed nothing and the capture
+   was byte-identical. Nothing reports this: not `amadeo check`, not a test, not reading the scene
+   top to bottom. **Before believing a number in a scene file, grep the `.anim` files for the
+   component and field it belongs to.**
 
 ---
 
@@ -201,3 +209,43 @@ before game is right and Phase A proved it by finding five defects no game would
 **"lands in"** column so nothing can drift back to the demo.
 
 Full report and its thirteen ranked findings are the basis of `docs/13`'s current Phase C.
+
+### Review 13 — engine gate — `f68f19a` — **NOT POLISHED**
+
+Nine captures of `games/atrium`, five of `games/warren`, one of `games/scarp`; six magnified crops
+with stated rectangles; eleven probes; **five controlled A/B captures**; the tracked measurements
+recounted; the occlusion shader read and its authored numbers re-derived.
+
+**What it closed:** this document and `amadeo image` (§3 #6 caught the mesh count drifting again,
+24/37 → 24/39, and §4 #2 is what made the reviewer distrust its own experiment), and item 13's
+**anti-lattice clause** — measured joint positions per course, closest approach between adjacent
+courses 20 px, no two sharing a line.
+
+**What it withdrew.** Review 12's claim that `lamp_fitting` produced no pool. A controlled A/B — the
+same framing with `intensity 6.0 → 0.0` — puts the lamp at +53 levels at one probe and +47 at
+another, with a genuine local maximum. Review 12 probed a row that missed it. **Both halves of §4 #8
+in one review: it checked itself, and it said so.**
+
+**The finding that matters most, and it is a new defect shape.** Item 14's fix was **dead data**.
+`atrium.scene` said `intensity 16.0` and `lamp_flicker.anim` drove the same field through 22.0 /
+19.5 / 23.5 / 20.5 / 22.0 from tick 1. Proof: setting the *scene* value to zero produced a capture
+**byte-identical** to the unmodified one; zeroing the *clip's* keys changed a hundred pixels a row.
+So a whole commit changed nothing, and the pendant went on clipping 103 pixels of one row to 254 and
+erasing a stone pillar's masonry 1.42 m away.
+
+> **An authored field silently overridden by an animation clip is invisible to `amadeo check`, to the
+> tests, and to reading the scene file top to bottom.** It is warning §4 #4's shape — a defect made
+> of what is *not* in front of you — one field along. Added to §4 as #9.
+
+**What it kept open:** item 21 (the occlusion pass moves 0–3 levels at every contact it names and
+30–35 at silhouettes, as a banded comb the shader's own comment predicts), item 13's per-slab
+variation (6% of range against a wanted 25–40%), and item 14's `gloom.rs` seam.
+
+**What it ruled on:** the vestibule's fixtureless daylight is **legitimate**, on evidence — the
+chamber reads as a place with a real light distribution, and *"the rule 'no light without a `Mesh`'
+is a heuristic for the defect; the defect is light with no readable cause"*.
+
+**What it asked for that nobody had thought of:** *there is no way to capture `games/warren` in its
+playable state*. Every frame any reviewer can take of it is its title screen, while `docs/13` §3
+defines POLISHED as a frame from a real game. That is now item 31 and it blocks the gate's own
+condition.
