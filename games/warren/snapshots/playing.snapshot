@@ -1,0 +1,4147 @@
+amadeo-snapshot 2
+tick 120
+state-hash 794df2c0d1fbdaad
+schema-hash 4693a1747ee5ffbc
+
+schema
+  component AudioListener 1
+  component AudioSource 1
+  component Behaviour 1
+  component BehaviourMachine 1
+  component Camera 1
+  component CharacterController 1
+  component CharacterMotion 1
+  component Collider 1
+  component DirectionalLight 1
+  component EndingLine 1
+  component Facts 1
+  component FirstPersonCamera 1
+  component Focusable 1
+  component GlobalTransform 1
+  component Interactable 1
+  component Interactor 1
+  component Inventory 1
+  component Item 1
+  component Looking 1
+  component Menu 1
+  component MenuButton 1
+  component Mesh 1
+  component Panel 1
+  component Parent 1
+  component PointLight 1
+  component PromptLine 1
+  component Reticle 1
+  component RigidBody 1
+  component Socket 1
+  component SpotLight 1
+  component Text 1
+  component Transform 1
+  component UiNode 1
+  component Warden 1
+  component WayOut 1
+  resource EventClock 1
+  resource Focus 1
+  resource Gravity 1
+  resource InputState 1
+  resource Outcome 1
+  resource Paused 1
+  resource Requested 1
+  resource Screen 1
+  resource SimRng 1
+  resource Sounded 1
+  resource Stride 1
+  resource events<BehaviourChanged> 1
+  resource events<Interacted> 1
+  resource events<ItemDropped> 1
+  resource events<ItemStored> 1
+  resource events<SoundPlayed> 1
+  resource events<UiActivated> 1
+
+resources
+  EventClock
+    next 1
+  Focus
+    entity ()
+  Gravity
+    acceleration 0.0 -9.81 0.0
+  InputState
+    axes {}
+    buttons {}
+  Outcome Playing
+  Paused
+    paused false
+  Requested
+    load false
+    restart false
+    save false
+  Screen Playing
+  SimRng
+    increment 1
+    state 4869367348756282971
+  Sounded
+    outcome Playing
+  Stride
+    since_last 0.0
+  events<BehaviourChanged>
+    reading []
+    writing []
+  events<Interacted>
+    reading []
+    writing []
+  events<ItemDropped>
+    reading []
+    writing []
+  events<ItemStored>
+    reading []
+    writing []
+  events<SoundPlayed>
+    reading []
+    writing []
+  events<UiActivated>
+    reading []
+    writing []
+
+entities
+  0:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 0.0 0.0 0.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.0 0.0
+  1:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 -0.1 0.0 1.0
+    Mesh
+      material "carpet"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 0
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 -0.1 0.0
+  2:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 3.0 0.0 1.0
+    Mesh
+      material "plaster"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 0
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 3.0 0.0
+  3:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 0.0 0.0 -6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.0 -6.0
+  4:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 0.0 0.0 6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.0 6.0
+  5:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 -6.0 0.0 0.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation -6.0 0.0 0.0
+  6:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 0.0 0.0 0.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.0 0.0
+  7:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 2.6 0.0 1.0
+    Parent
+      generation 0
+      index 6
+    PointLight
+      colour 0.85 0.86 0.78
+      intensity 14.0
+      range 8.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  8:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 12.0 0.0 -24.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 12.0 0.0 -24.0
+  9:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 12.0 -0.1 -24.0 1.0
+    Mesh
+      material "carpet"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 8
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 -0.1 0.0
+  10:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 12.0 3.0 -24.0 1.0
+    Mesh
+      material "plaster"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 8
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 3.0 0.0
+  11:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 12.0 0.0 -30.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 12.0 0.0 -30.0
+  12:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 6.0 0.0 -24.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 6.0 0.0 -24.0
+  13:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 12.0 0.0 -24.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 12.0 0.0 -24.0
+  14:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 12.0 2.6 -24.0 1.0
+    Parent
+      generation 0
+      index 13
+    PointLight
+      colour 0.85 0.86 0.78
+      intensity 14.0
+      range 8.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  15:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 12.0 0.0 -12.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 12.0 0.0 -12.0
+  16:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 12.0 -0.1 -12.0 1.0
+    Mesh
+      material "carpet"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 15
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 -0.1 0.0
+  17:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 12.0 3.0 -12.0 1.0
+    Mesh
+      material "plaster"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 15
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 3.0 0.0
+  18:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 12.0 0.0 -18.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 12.0 0.0 -18.0
+  19:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 8.5 1.5 -18.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 18
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -3.5 1.5 0.0
+  20:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 15.5 1.5 -18.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 18
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 3.5 1.5 0.0
+  21:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 2.0 0.8 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 12.0 2.6 -18.0 1.0
+    Mesh
+      material "plaster"
+      mesh "lintel"
+    Parent
+      generation 0
+      index 18
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  22:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 12.0 1.1 -18.0 1.0
+    Parent
+      generation 0
+      index 18
+    Socket
+      kind "room"
+      open true
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.1 0.0
+  23:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 6.0 0.0 -12.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 6.0 0.0 -12.0
+  24:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 12.0 0.0 0.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 12.0 0.0 0.0
+  25:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 12.0 -0.1 0.0 1.0
+    Mesh
+      material "carpet"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 24
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 -0.1 0.0
+  26:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 12.0 3.0 0.0 1.0
+    Mesh
+      material "plaster"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 24
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 3.0 0.0
+  27:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 12.0 0.0 -6.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 12.0 0.0 -6.0
+  28:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 8.5 1.5 -6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 27
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -3.5 1.5 0.0
+  29:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 15.5 1.5 -6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 27
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 3.5 1.5 0.0
+  30:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 2.0 0.8 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 12.0 2.6 -6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "lintel"
+    Parent
+      generation 0
+      index 27
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  31:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 12.0 1.1 -6.0 1.0
+    Parent
+      generation 0
+      index 27
+    Socket
+      kind "room"
+      open true
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.1 0.0
+  32:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 12.0 0.0 6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 12.0 0.0 6.0
+  33:0
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 6.0 0.0 0.0 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 6.0 0.0 0.0
+  34:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 6.0 1.5 3.5 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 33
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -3.5 1.5 0.0
+  35:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 6.0 1.5 -3.5 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 33
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 3.5 1.5 0.0
+  36:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 2.0 0.8 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 6.0 2.6 0.0 1.0
+    Mesh
+      material "plaster"
+      mesh "lintel"
+    Parent
+      generation 0
+      index 33
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  37:0
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 6.0 1.1 0.0 1.0
+    Parent
+      generation 0
+      index 33
+    Socket
+      kind "room"
+      open true
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.1 0.0
+  38:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 24.0 0.0 -24.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 24.0 0.0 -24.0
+  39:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 24.0 -0.1 -24.0 1.0
+    Mesh
+      material "carpet"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 38
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 -0.1 0.0
+  40:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 24.0 3.0 -24.0 1.0
+    Mesh
+      material "plaster"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 38
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 3.0 0.0
+  41:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 24.0 0.0 -30.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 24.0 0.0 -30.0
+  42:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 30.0 0.0 -24.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 30.0 0.0 -24.0
+  43:0
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 18.0 0.0 -24.0 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 18.0 0.0 -24.0
+  44:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 18.0 1.5 -20.5 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 43
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -3.5 1.5 0.0
+  45:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 18.0 1.5 -27.5 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 43
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 3.5 1.5 0.0
+  46:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 2.0 0.8 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 18.0 2.6 -24.0 1.0
+    Mesh
+      material "plaster"
+      mesh "lintel"
+    Parent
+      generation 0
+      index 43
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  47:0
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 18.0 1.1 -24.0 1.0
+    Parent
+      generation 0
+      index 43
+    Socket
+      kind "room"
+      open true
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.1 0.0
+  48:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 24.0 0.0 -24.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 24.0 0.0 -24.0
+  49:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 24.0 2.6 -24.0 1.0
+    Parent
+      generation 0
+      index 48
+    PointLight
+      colour 0.85 0.86 0.78
+      intensity 14.0
+      range 8.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  50:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 24.0 0.0 -12.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 24.0 0.0 -12.0
+  51:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 24.0 -0.1 -12.0 1.0
+    Mesh
+      material "carpet"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 50
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 -0.1 0.0
+  52:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 24.0 3.0 -12.0 1.0
+    Mesh
+      material "plaster"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 50
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 3.0 0.0
+  53:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 24.0 0.0 -18.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 24.0 0.0 -18.0
+  54:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 20.5 1.5 -18.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 53
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -3.5 1.5 0.0
+  55:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 27.5 1.5 -18.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 53
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 3.5 1.5 0.0
+  56:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 2.0 0.8 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 24.0 2.6 -18.0 1.0
+    Mesh
+      material "plaster"
+      mesh "lintel"
+    Parent
+      generation 0
+      index 53
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  57:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 24.0 1.1 -18.0 1.0
+    Parent
+      generation 0
+      index 53
+    Socket
+      kind "room"
+      open true
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.1 0.0
+  58:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 30.0 0.0 -12.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 30.0 0.0 -12.0
+  59:0
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 18.0 0.0 -12.0 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 18.0 0.0 -12.0
+  60:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 18.0 1.5 -8.5 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 59
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -3.5 1.5 0.0
+  61:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 18.0 1.5 -15.5 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 59
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 3.5 1.5 0.0
+  62:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 2.0 0.8 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 18.0 2.6 -12.0 1.0
+    Mesh
+      material "plaster"
+      mesh "lintel"
+    Parent
+      generation 0
+      index 59
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  63:0
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 18.0 1.1 -12.0 1.0
+    Parent
+      generation 0
+      index 59
+    Socket
+      kind "room"
+      open true
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.1 0.0
+  64:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 24.0 0.0 0.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 24.0 0.0 0.0
+  65:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 24.0 -0.1 0.0 1.0
+    Mesh
+      material "carpet"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 64
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 -0.1 0.0
+  66:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 24.0 3.0 0.0 1.0
+    Mesh
+      material "plaster"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 64
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 3.0 0.0
+  67:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 24.0 0.0 -6.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 24.0 0.0 -6.0
+  68:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 20.5 1.5 -6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 67
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -3.5 1.5 0.0
+  69:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 27.5 1.5 -6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 67
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 3.5 1.5 0.0
+  70:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 2.0 0.8 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 24.0 2.6 -6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "lintel"
+    Parent
+      generation 0
+      index 67
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  71:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 24.0 1.1 -6.0 1.0
+    Parent
+      generation 0
+      index 67
+    Socket
+      kind "room"
+      open true
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.1 0.0
+  72:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 24.0 0.0 6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 24.0 0.0 6.0
+  73:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 18.0 0.0 0.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 18.0 0.0 0.0
+  74:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 24.0 0.0 0.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 24.0 0.0 0.0
+  75:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 24.0 2.6 0.0 1.0
+    Parent
+      generation 0
+      index 74
+    PointLight
+      colour 0.85 0.86 0.78
+      intensity 14.0
+      range 8.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  76:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 36.0 0.0 0.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 36.0 0.0 0.0
+  77:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 36.0 -0.1 0.0 1.0
+    Mesh
+      material "carpet"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 76
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 -0.1 0.0
+  78:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 36.0 3.0 0.0 1.0
+    Mesh
+      material "plaster"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 76
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 3.0 0.0
+  79:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 36.0 0.0 -6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 36.0 0.0 -6.0
+  80:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 36.0 0.0 6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 36.0 0.0 6.0
+  81:0
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 30.0 0.0 0.0 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 30.0 0.0 0.0
+  82:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 30.0 1.5 3.5 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 81
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -3.5 1.5 0.0
+  83:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 30.0 1.5 -3.5 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 81
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 3.5 1.5 0.0
+  84:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 2.0 0.8 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 30.0 2.6 0.0 1.0
+    Mesh
+      material "plaster"
+      mesh "lintel"
+    Parent
+      generation 0
+      index 81
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  85:0
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 30.0 1.1 0.0 1.0
+    Parent
+      generation 0
+      index 81
+    Socket
+      kind "room"
+      open true
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.1 0.0
+  86:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 36.0 0.0 0.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 36.0 0.0 0.0
+  87:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 36.0 2.6 0.0 1.0
+    Parent
+      generation 0
+      index 86
+    PointLight
+      colour 0.85 0.86 0.78
+      intensity 14.0
+      range 8.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  88:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 48.0 0.0 0.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 48.0 0.0 0.0
+  89:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 48.0 -0.1 0.0 1.0
+    Mesh
+      material "carpet"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 88
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 -0.1 0.0
+  90:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 48.0 3.0 0.0 1.0
+    Mesh
+      material "plaster"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 88
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 3.0 0.0
+  91:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 48.0 0.0 -6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 48.0 0.0 -6.0
+  92:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 48.0 0.0 6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 48.0 0.0 6.0
+  93:0
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 42.0 0.0 0.0 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 42.0 0.0 0.0
+  94:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 42.0 1.5 3.5 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 93
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -3.5 1.5 0.0
+  95:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 42.0 1.5 -3.5 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 93
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 3.5 1.5 0.0
+  96:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 2.0 0.8 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 42.0 2.6 0.0 1.0
+    Mesh
+      material "plaster"
+      mesh "lintel"
+    Parent
+      generation 0
+      index 93
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  97:0
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 42.0 1.1 0.0 1.0
+    Parent
+      generation 0
+      index 93
+    Socket
+      kind "room"
+      open true
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.1 0.0
+  98:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 60.0 0.0 0.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 60.0 0.0 0.0
+  99:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 -0.1 0.0 1.0
+    Mesh
+      material "carpet"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 98
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 -0.1 0.0
+  100:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 3.0 0.0 1.0
+    Mesh
+      material "plaster"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 98
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 3.0 0.0
+  101:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 60.0 0.0 -6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 60.0 0.0 -6.0
+  102:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 66.0 0.0 0.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 66.0 0.0 0.0
+  103:0
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 54.0 0.0 0.0 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 54.0 0.0 0.0
+  104:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 54.0 1.5 3.5 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 103
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -3.5 1.5 0.0
+  105:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 54.0 1.5 -3.5 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 103
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 3.5 1.5 0.0
+  106:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 2.0 0.8 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 54.0 2.6 0.0 1.0
+    Mesh
+      material "plaster"
+      mesh "lintel"
+    Parent
+      generation 0
+      index 103
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  107:0
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 54.0 1.1 0.0 1.0
+    Parent
+      generation 0
+      index 103
+    Socket
+      kind "room"
+      open true
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.1 0.0
+  108:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 60.0 0.0 0.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 60.0 0.0 0.0
+  109:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 2.6 0.0 1.0
+    Parent
+      generation 0
+      index 108
+    PointLight
+      colour 0.85 0.86 0.78
+      intensity 14.0
+      range 8.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  110:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 60.0 0.0 12.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 60.0 0.0 12.0
+  111:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 -0.1 12.0 1.0
+    Mesh
+      material "carpet"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 110
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 -0.1 0.0
+  112:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 3.0 12.0 1.0
+    Mesh
+      material "plaster"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 110
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 3.0 0.0
+  113:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 60.0 0.0 6.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 60.0 0.0 6.0
+  114:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 56.5 1.5 6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 113
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -3.5 1.5 0.0
+  115:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 63.5 1.5 6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 113
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 3.5 1.5 0.0
+  116:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 2.0 0.8 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 2.6 6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "lintel"
+    Parent
+      generation 0
+      index 113
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  117:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 1.1 6.0 1.0
+    Parent
+      generation 0
+      index 113
+    Socket
+      kind "room"
+      open true
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.1 0.0
+  118:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 54.0 0.0 12.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 54.0 0.0 12.0
+  119:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 60.0 0.0 24.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 60.0 0.0 24.0
+  120:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 -0.1 24.0 1.0
+    Mesh
+      material "carpet"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 119
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 -0.1 0.0
+  121:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 3.0 24.0 1.0
+    Mesh
+      material "plaster"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 119
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 3.0 0.0
+  122:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 60.0 0.0 18.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 60.0 0.0 18.0
+  123:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 60.0 0.0 30.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 60.0 0.0 30.0
+  124:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 54.0 0.0 24.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 54.0 0.0 24.0
+  125:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 72.0 0.0 12.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 72.0 0.0 12.0
+  126:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 72.0 -0.1 12.0 1.0
+    Mesh
+      material "carpet"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 125
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 -0.1 0.0
+  127:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 72.0 3.0 12.0 1.0
+    Mesh
+      material "plaster"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 125
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 3.0 0.0
+  128:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 72.0 0.0 6.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 72.0 0.0 6.0
+  129:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 78.0 0.0 12.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 78.0 0.0 12.0
+  130:0
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 66.0 0.0 12.0 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 66.0 0.0 12.0
+  131:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 66.0 1.5 15.5 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 130
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -3.5 1.5 0.0
+  132:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 66.0 1.5 8.5 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 130
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 3.5 1.5 0.0
+  133:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 2.0 0.8 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 66.0 2.6 12.0 1.0
+    Mesh
+      material "plaster"
+      mesh "lintel"
+    Parent
+      generation 0
+      index 130
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  134:0
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 66.0 1.1 12.0 1.0
+    Parent
+      generation 0
+      index 130
+    Socket
+      kind "room"
+      open true
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.1 0.0
+  135:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 72.0 0.0 24.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 72.0 0.0 24.0
+  136:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 72.0 -0.1 24.0 1.0
+    Mesh
+      material "carpet"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 135
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 -0.1 0.0
+  137:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 0.2 12.0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 72.0 3.0 24.0 1.0
+    Mesh
+      material "plaster"
+      mesh "cell_slab"
+    Parent
+      generation 0
+      index 135
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 3.0 0.0
+  138:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 72.0 0.0 18.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 72.0 0.0 18.0
+  139:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 68.5 1.5 18.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 138
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -3.5 1.5 0.0
+  140:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 75.5 1.5 18.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 138
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 3.5 1.5 0.0
+  141:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 2.0 0.8 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 72.0 2.6 18.0 1.0
+    Mesh
+      material "plaster"
+      mesh "lintel"
+    Parent
+      generation 0
+      index 138
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  142:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 72.0 1.1 18.0 1.0
+    Parent
+      generation 0
+      index 138
+    Socket
+      kind "room"
+      open true
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.1 0.0
+  143:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 78.0 0.0 24.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 78.0 0.0 24.0
+  144:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 12.0 3.0 0.3
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 72.0 0.0 30.0 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_full"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 72.0 0.0 30.0
+  145:0
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 -0.0 0.0 0.0 66.0 0.0 24.0 1.0
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 66.0 0.0 24.0
+  146:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 66.0 1.5 27.5 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 145
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -3.5 1.5 0.0
+  147:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 5.0 3.0 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 66.0 1.5 20.5 1.0
+    Mesh
+      material "plaster"
+      mesh "wall_half"
+    Parent
+      generation 0
+      index 145
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 3.5 1.5 0.0
+  148:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 2.0 0.8 0.3
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 66.0 2.6 24.0 1.0
+    Mesh
+      material "plaster"
+      mesh "lintel"
+    Parent
+      generation 0
+      index 145
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.6 0.0
+  149:0
+    GlobalTransform
+      matrix 0.0 0.0 -1.0 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 0.0 66.0 1.1 24.0 1.0
+    Parent
+      generation 0
+      index 145
+    Socket
+      kind "room"
+      open true
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.1 0.0
+  150:0
+    CharacterController
+      acceleration 40.0
+      jump_speed 0.0
+      max_slope_degrees 45.0
+      skin 0.02
+      snap_distance 0.2
+      speed 2.6
+      step_height 0.0
+      turn_speed 140.0
+    CharacterMotion
+      grounded true
+      velocity 0.0 0.0 0.0
+    Collider
+      friction 0.5
+      restitution 0.0
+      sensor false
+      shape Capsule
+        height 1.2
+        radius 0.35
+    GlobalTransform
+      matrix 0.0 0.0 1.0 0.0 -0.0 1.0 0.0 0.0 -1.0 -0.0 0.0 0.0 0.0 0.96999997 0.0 1.0
+    Inventory
+      slots 4
+    RigidBody
+      angular_damping 0.0
+      gravity true
+      kind Kinematic
+      linear_damping 0.0
+      mass 80.0
+    Transform
+      rotation -0.0 -90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.96999997 0.0
+  151:0
+    AudioListener ()
+    Camera
+      active true
+      environment "warren_look"
+      order 0
+      projection Perspective
+        far 120.0
+        fov 70.0
+        near 0.05
+      target ""
+      viewport 0.0 0.0 1.0 1.0
+    FirstPersonCamera
+      degrees_per_pixel 0.16
+      height 0.62
+      max_pitch 85.0
+      min_pitch -85.0
+    GlobalTransform
+      matrix 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 -1.0 0.0 0.0 0.0 0.0 1.5899999 0.0 1.0
+    Interactor
+      radius 0.22
+      reach 2.2
+    Looking
+      at ()
+      distance 0.0
+    Parent
+      generation 0
+      index 150
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.62 0.0
+  152:0
+    GlobalTransform
+      matrix 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 -1.0 0.0 0.0 0.0 0.0 1.49 0.12 1.0
+    Parent
+      generation 0
+      index 151
+    SpotLight
+      colour 1.0 0.95 0.86
+      inner_angle 11.0
+      intensity 0.0
+      outer_angle 26.0
+      range 18.0
+      shadow_bias 0.03
+      shadow_resolution 1024
+      shadows true
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.12 -0.1 0.0
+  153:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 8.8 0.0 -3.2 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 8.8 0.0 -3.2
+  154:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 0.9 0.9 0.9
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 8.8 0.45 -3.2 1.0
+    Mesh
+      material "timber"
+      mesh "crate_box"
+    Parent
+      generation 0
+      index 153
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.45 0.0
+  155:0
+    Collider
+      friction 0.6
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 0.07 0.07 0.24
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 8.8 1.02 -3.2 1.0
+    Interactable
+      enabled true
+      prompt "Take the torch"
+    Item
+      count 1
+      kind "torch"
+      max_stack 1
+    Mesh
+      material "steel"
+      mesh "torch"
+    Parent
+      generation 0
+      index 153
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.02 0.0
+  156:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 15.2 0.0 -20.8 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 15.2 0.0 -20.8
+  157:0
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 0.9 0.9 0.9
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 15.2 0.45 -20.8 1.0
+    Mesh
+      material "timber"
+      mesh "crate_box"
+    Parent
+      generation 0
+      index 156
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.45 0.0
+  158:0
+    Collider
+      friction 0.6
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 0.16 0.34 0.05
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 15.2 1.07 -20.8 1.0
+    Interactable
+      enabled true
+      prompt "Take the brass key"
+    Item
+      count 1
+      kind "key"
+      max_stack 1
+    Mesh
+      material "brass"
+      mesh "key"
+    Parent
+      generation 0
+      index 156
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.07 0.0
+  159:0
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 60.0 0.0 29.72 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 60.0 0.0 29.72
+  160:0
+    Collider
+      friction 0.6
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 1.6 2.4 0.16
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 1.2 29.72 1.0
+    Interactable
+      enabled true
+      prompt "The door is locked"
+    Mesh
+      material "timber"
+      mesh "door"
+    Parent
+      generation 0
+      index 159
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.2 0.0
+    WayOut ()
+  161:0
+    AudioSource
+      bus Effects
+      gain 1.0
+      looping true
+      pitch 1.0
+      playing true
+      sound "warden_breath"
+      spatial true
+    Behaviour
+      elapsed 1.9833322
+      state "idle"
+    BehaviourMachine
+      initial "idle"
+      states
+        -
+          name "idle"
+          transitions
+            -
+              after 0.0
+              to "pursue"
+              unless ""
+              when "sees_you"
+        -
+          name "pursue"
+          transitions
+            -
+              after 0.0
+              to "search"
+              unless "sees_you"
+              when ""
+        -
+          name "search"
+          transitions
+            -
+              after 0.0
+              to "pursue"
+              unless ""
+              when "sees_you"
+            -
+              after 5.0
+              to "idle"
+              unless ""
+              when ""
+    Facts
+      known
+        sees_you false
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 39.2 0.93 -3.2 1.0
+    Mesh
+      material "rust"
+      mesh "warden"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 39.2 0.93 -3.2
+    Warden ()
+  162:0
+    DirectionalLight
+      colour 0.72 0.76 0.85
+      intensity 0.06
+      shadow_bias 0.03
+      shadow_distance 22.0
+      shadow_resolution 1024
+      shadows Off
+    GlobalTransform
+      matrix 0.88294756 0.0 -0.46947157 0.0 -0.36994866 0.6156615 -0.6957722 0.0 0.2890356 0.7880108 0.5435968 0.0 0.0 0.0 0.0 1.0
+    Transform
+      rotation -52.0 28.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.0 0.0
+  163:0
+    AudioSource
+      bus Music
+      gain 1.0
+      looping true
+      pitch 1.0
+      playing true
+      sound "warren_tone"
+      spatial false
+    GlobalTransform
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 0.0 0.0 0.0 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.0 0.0
+  164:0
+    UiNode
+      align_children Centre
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible true
+  165:0
+    Panel
+      order 10
+      paint Dim
+    Parent
+      generation 0
+      index 164
+    Reticle
+      opens false
+    UiNode
+      align_children Centre
+      anchor
+        horizontal Centre
+        vertical Centre
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 3.0 3.0
+      visible true
+  166:0
+    Panel
+      order 10
+      paint Accent
+    Parent
+      generation 0
+      index 164
+    Reticle
+      opens true
+    UiNode
+      align_children Centre
+      anchor
+        horizontal Centre
+        vertical Centre
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 14.0
+        top 0.0
+      padding None
+      size 1.0 5.0
+      visible false
+  167:0
+    Panel
+      order 10
+      paint Accent
+    Parent
+      generation 0
+      index 164
+    Reticle
+      opens true
+    UiNode
+      align_children Centre
+      anchor
+        horizontal Centre
+        vertical Centre
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 14.0
+        right 0.0
+        top 0.0
+      padding None
+      size 1.0 5.0
+      visible false
+  168:0
+    Panel
+      order 10
+      paint Accent
+    Parent
+      generation 0
+      index 164
+    Reticle
+      opens true
+    UiNode
+      align_children Centre
+      anchor
+        horizontal Centre
+        vertical Centre
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 14.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 5.0 1.0
+      visible false
+  169:0
+    Panel
+      order 10
+      paint Accent
+    Parent
+      generation 0
+      index 164
+    Reticle
+      opens true
+    UiNode
+      align_children Centre
+      anchor
+        horizontal Centre
+        vertical Centre
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 14.0
+      padding None
+      size 5.0 1.0
+      visible false
+  170:0
+    Parent
+      generation 0
+      index 164
+    PromptLine ()
+    Text
+      content ""
+      font "BebasNeue-Regular"
+      order 10
+      paint Ink
+      scale Body
+      wrap false
+    UiNode
+      align_children Centre
+      anchor
+        horizontal Centre
+        vertical End
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 96.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 520.0 34.0
+      visible true
+  171:0
+    Menu
+      screen Title
+    Parent
+      generation 0
+      index 164
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible false
+  172:0
+    Panel
+      order 10
+      paint Raised
+    Parent
+      generation 0
+      index 171
+    UiNode
+      align_children Stretch
+      anchor
+        horizontal Centre
+        vertical Centre
+      flow Column
+      gap Snug
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding Normal
+      size 320.0 224.0
+      visible true
+  173:0
+    Parent
+      generation 0
+      index 172
+    Text
+      content "THE WARREN"
+      font "BebasNeue-Regular"
+      order 11
+      paint Accent
+      scale Title
+      wrap false
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Start
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 60.0
+      visible true
+  174:0
+    Focusable
+      enabled true
+      order 0
+    MenuButton
+      choice Begin
+    Panel
+      order 10
+      paint Surface
+    Parent
+      generation 0
+      index 172
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Start
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding Snug
+      size 0.0 36.0
+      visible true
+  175:0
+    Parent
+      generation 0
+      index 174
+    Text
+      content "BEGIN"
+      font "BebasNeue-Regular"
+      order 11
+      paint Ink
+      scale Body
+      wrap false
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible true
+  176:0
+    Focusable
+      enabled true
+      order 1
+    MenuButton
+      choice Load
+    Panel
+      order 10
+      paint Surface
+    Parent
+      generation 0
+      index 172
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Start
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding Snug
+      size 0.0 36.0
+      visible true
+  177:0
+    Parent
+      generation 0
+      index 176
+    Text
+      content "CONTINUE"
+      font "BebasNeue-Regular"
+      order 11
+      paint Ink
+      scale Body
+      wrap false
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible true
+  178:0
+    Focusable
+      enabled true
+      order 2
+    MenuButton
+      choice Quit
+    Panel
+      order 10
+      paint Surface
+    Parent
+      generation 0
+      index 172
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Start
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding Snug
+      size 0.0 36.0
+      visible true
+  179:0
+    Parent
+      generation 0
+      index 178
+    Text
+      content "QUIT"
+      font "BebasNeue-Regular"
+      order 11
+      paint Ink
+      scale Body
+      wrap false
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible true
+  180:0
+    Menu
+      screen Paused
+    Parent
+      generation 0
+      index 164
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible false
+  181:0
+    Panel
+      order 10
+      paint Raised
+    Parent
+      generation 0
+      index 180
+    UiNode
+      align_children Stretch
+      anchor
+        horizontal Centre
+        vertical Centre
+      flow Column
+      gap Snug
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding Normal
+      size 320.0 238.0
+      visible true
+  182:0
+    Parent
+      generation 0
+      index 181
+    Text
+      content "PAUSED"
+      font "BebasNeue-Regular"
+      order 11
+      paint Ink
+      scale Heading
+      wrap false
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Start
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 30.0
+      visible true
+  183:0
+    Focusable
+      enabled true
+      order 0
+    MenuButton
+      choice Resume
+    Panel
+      order 10
+      paint Surface
+    Parent
+      generation 0
+      index 181
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Start
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding Snug
+      size 0.0 36.0
+      visible true
+  184:0
+    Parent
+      generation 0
+      index 183
+    Text
+      content "RESUME"
+      font "BebasNeue-Regular"
+      order 11
+      paint Ink
+      scale Body
+      wrap false
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible true
+  185:0
+    Focusable
+      enabled true
+      order 1
+    MenuButton
+      choice Save
+    Panel
+      order 10
+      paint Surface
+    Parent
+      generation 0
+      index 181
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Start
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding Snug
+      size 0.0 36.0
+      visible true
+  186:0
+    Parent
+      generation 0
+      index 185
+    Text
+      content "SAVE"
+      font "BebasNeue-Regular"
+      order 11
+      paint Ink
+      scale Body
+      wrap false
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible true
+  187:0
+    Focusable
+      enabled true
+      order 2
+    MenuButton
+      choice Load
+    Panel
+      order 10
+      paint Surface
+    Parent
+      generation 0
+      index 181
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Start
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding Snug
+      size 0.0 36.0
+      visible true
+  188:0
+    Parent
+      generation 0
+      index 187
+    Text
+      content "LOAD"
+      font "BebasNeue-Regular"
+      order 11
+      paint Ink
+      scale Body
+      wrap false
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible true
+  189:0
+    Focusable
+      enabled true
+      order 3
+    MenuButton
+      choice Quit
+    Panel
+      order 10
+      paint Surface
+    Parent
+      generation 0
+      index 181
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Start
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding Snug
+      size 0.0 36.0
+      visible true
+  190:0
+    Parent
+      generation 0
+      index 189
+    Text
+      content "QUIT"
+      font "BebasNeue-Regular"
+      order 11
+      paint Ink
+      scale Body
+      wrap false
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible true
+  191:0
+    Menu
+      screen Ended
+    Parent
+      generation 0
+      index 164
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible false
+  192:0
+    Panel
+      order 10
+      paint Raised
+    Parent
+      generation 0
+      index 191
+    UiNode
+      align_children Stretch
+      anchor
+        horizontal Centre
+        vertical Centre
+      flow Column
+      gap Snug
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding Normal
+      size 320.0 180.0
+      visible true
+  193:0
+    EndingLine ()
+    Parent
+      generation 0
+      index 192
+    Text
+      content ""
+      font "BebasNeue-Regular"
+      order 11
+      paint Accent
+      scale Title
+      wrap false
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Start
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 60.0
+      visible true
+  194:0
+    Focusable
+      enabled true
+      order 0
+    MenuButton
+      choice TryAgain
+    Panel
+      order 10
+      paint Surface
+    Parent
+      generation 0
+      index 192
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Start
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding Snug
+      size 0.0 36.0
+      visible true
+  195:0
+    Parent
+      generation 0
+      index 194
+    Text
+      content "TRY AGAIN"
+      font "BebasNeue-Regular"
+      order 11
+      paint Ink
+      scale Body
+      wrap false
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible true
+  196:0
+    Focusable
+      enabled true
+      order 1
+    MenuButton
+      choice Quit
+    Panel
+      order 10
+      paint Surface
+    Parent
+      generation 0
+      index 192
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Start
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding Snug
+      size 0.0 36.0
+      visible true
+  197:0
+    Parent
+      generation 0
+      index 196
+    Text
+      content "QUIT"
+      font "BebasNeue-Regular"
+      order 11
+      paint Ink
+      scale Body
+      wrap false
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible true
