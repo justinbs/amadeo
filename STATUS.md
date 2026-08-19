@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-19 (session 21)
+**Last updated:** 2026-08-20 (session 22)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE — all four exit gates met.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
@@ -25,6 +25,73 @@ always on), **0041** (parallelism is deterministic by construction or absent —
    200-body complexity.
 
 ## 📬 For the next session — read this box first, then `docs/12-the-bar.md`
+
+> ### Where session 22 left off: review 12 gave thirteen ranked findings and four are built
+>
+> **The project changed hands between sessions** — the previous account hit its weekly limit
+> mid-stream, so session 22 opened by re-reading the documentation cold and sending a full
+> re-assessment to the critic rather than continuing from a plan in a transcript. That is
+> `docs/12`'s own argument working: the plan was in a *file*, so it survived.
+>
+> **Review 12 returned NOT POLISHED with thirteen ranked findings.** Its report and its ruling on
+> the gate order are in `docs/14-the-critic.md` §7; the plan it re-wrote is `docs/13` §2.
+>
+> **The one finding that changes what happens next**: every hour of Phase C had landed in
+> `games/atrium`, a demo with no premise, while `games/warren` — the milestone deliverable, the only
+> game here with a passed design — sat at **13 of 13 box meshes and 6 of 6 untextured materials,
+> exactly where review 1 left it in session 20**. Phase C's preamble routed the work there and said
+> why; that reason expired when `docs/11` passed three sessions ago and nothing re-routed it.
+> `docs/13` §2 has a **Lands in** column now, and it is `games/warren` for everything remaining.
+>
+> #### What landed
+>
+> - **`docs/14-the-critic.md`** — the critic's standing brief, which Justin asked for and review 12
+>   specified. §3 is the evidence a review must gather; **§6 reserves a ✅ to a review**, because
+>   item 13b was marked done with neither half of its condition ever captured.
+> - **`amadeo image`** — probe, row, col, crop, stats. Review 12 wrote a pixel probe from scratch;
+>   this is it, in the repo, standalone like `fmt`.
+> - **Ambient occlusion, both halves (ADR 0083).** The engine had none, and `mesh.wgsl` was
+>   discarding glTF's occlusion channel. It multiplies **ambient only** — never the sun, never a lamp
+>   — which is the whole difference between occlusion and grime. Contacts drop 30 levels, open floor
+>   is byte-identical, the frame mean moves 0.3. **Its cost is not measured; item 19 is where that
+>   number goes.**
+> - **Every light has a fixture** (item 14), except the vestibule's daylight, which stands for the
+>   sky and is flagged for the critic to rule on.
+> - **`crates/amadeo-texture`** (items 13 and 4) — the generator as engine code, fifteen tests, and
+>   the third home for a noise routine two games had copied. `Bond::Broken` places each joint over
+>   the middle of the stone below, so the lap is arithmetic rather than statistical.
+>
+> #### Three things worth not rediscovering
+>
+> 1. **A rejected render graph draws nothing, and the symptom is a black screen.** The depth prepass
+>    declared its target through `with_depth` and not in `writes`, and `compile` builds its writer
+>    table from `writes` alone — so the occlusion pass read something no pass wrote and the whole
+>    frame was refused. 1920 × 1080 of pure black with no other clue.
+> 2. **A wrong constant looks exactly like a wiring failure.** The occlusion estimator was normalised
+>    by `radius` on dimensional grounds, which throttled it to a few per cent, and the first capture
+>    with it on probed **byte-identical** to the one without. Three debug renders separated it: the
+>    depth was right, the normals reconstructed from it were right, and the estimator was returning
+>    one. Measure the intermediate rather than reason about the whole.
+> 3. **Read a design document against the engine, not against itself.** `docs/11` §10's asset budget
+>    rested on "there is no raw-geometry path and the only meshes are boxes, planes and arches",
+>    which ADR 0074 falsified in session 21 — and it had *cut content*: the trolley was struck out
+>    because "wheels are the one thing boxes cannot fake", and a wheel is a cylinder.
+>
+> **Everything is pushed through `c357bb6`**, and CI was green on Windows, determinism, docs and
+> clippy at the time of writing with the Ubuntu job still running. `gh` is not on PATH: prefix with
+> `$env:PATH = "C:Program FilesGitHub CLI;$env:PATH"`, and check per-job with
+> `gh run view <id> --json jobs` rather than waiting on the summary.
+>
+> #### What is next
+>
+> Review 13 was sent on the four items above. After it: the Warren gets the content (item 24), which
+> is the change review 12 said is worth more than any single item on its list. **Its materials are
+> still named `brass`, `carpet`, `plaster` and `timber`** — a Victorian interior, from before
+> `docs/11` §5a specified cast-iron rings, bone-white over rust, and one accent of safety orange.
+> The content predates its own design document.
+
+<details>
+<summary>Session 21's box, kept because its three lessons are still live</summary>
 
 > ### Where session 21 left off: the engine gate reached review 11
 >
@@ -194,6 +261,8 @@ not on PATH, so prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"
 29 minutes and `gh run view <id> --json jobs` shows five jobs separately, so check once at a plausible
 time and keep working. One historical red mark to ignore for ever: `6e56c0b`'s docs job, fixed by
 `f91229d`.
+</details>
+
 
 ### Session 21 in one paragraph
 
