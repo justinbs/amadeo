@@ -19,6 +19,7 @@
 //! privileged path, here or in the editor later.
 
 mod gltf_import;
+mod image;
 mod launch;
 mod project;
 
@@ -71,6 +72,11 @@ enum Command {
         out: Option<PathBuf>,
         dry_run: bool,
     },
+    /// Read a capture back at the pixel level: probe, row, col, crop, stats.
+    ///
+    /// Standalone like `fmt`. It exists because `docs/14-the-critic.md` §3 requires a number
+    /// behind every claim about a picture, and a reviewer was rebuilding this each time.
+    Image { path: PathBuf, op: image::Op },
     /// Capture the world to a `.snapshot` file.
     Snapshot { path: PathBuf },
     /// Render the world offscreen and write it as a PNG.
@@ -187,6 +193,12 @@ fn run(command: Command, options: &Options) -> Result<()> {
         return Ok(());
     }
 
+    // Standalone, like `fmt`: it reads a PNG the engine wrote and prints numbers, so it works on a
+    // capture from a project whose game no longer compiles.
+    if let Command::Image { path, op } = &command {
+        return image::run(path, op);
+    }
+
     if let Command::Snapshot { path } = command {
         return take_snapshot(&path, options);
     }
@@ -250,6 +262,7 @@ fn run(command: Command, options: &Options) -> Result<()> {
         | Command::Import { .. }
         | Command::ImportGltf { .. }
         | Command::Snapshot { .. }
+        | Command::Image { .. }
         | Command::Capture { .. } => {
             unreachable!("handled above")
         }
@@ -1439,6 +1452,7 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
                 yaw,
             }
         }
+        "image" => parse_image(rest)?,
         "snapshot" => {
             let Some(path) = rest.first() else {
                 bail!(
@@ -1481,6 +1495,72 @@ fn parse(arguments: &[String]) -> Result<(Command, Options)> {
     Ok((command, options))
 }
 
+/// `amadeo image <op> <file> [numbers...]`.
+///
+/// The operation comes before the file, unlike every other command here, because it reads as a
+/// sentence — `image row shot.png 600 300 900` — and because the trailing numbers mean different
+/// things per operation, so a fixed position for them would be a lie in four of five cases.
+fn parse_image(rest: &[String]) -> Result<Command> {
+    let usage = "`amadeo image` takes an operation and a file: probe, row, col, crop or stats.\n\
+                 For example `amadeo image row shot.png 600 300 900`. See `amadeo --help`.";
+    let (operation, tail) = rest.split_first().context(usage)?;
+    let (path, numbers) = tail.split_first().with_context(|| {
+        format!("`amadeo image {operation}` needs a PNG to read, as in `amadeo image {operation} shot.png ...`")
+    })?;
+
+    // Every operation's arguments are whole numbers of pixels, so they are read once here rather
+    // than five times below.
+    let number = |position: usize, name: &str| -> Result<u32> {
+        let raw = numbers.get(position).with_context(|| {
+            format!("`amadeo image {operation}` needs {name} — see `amadeo --help`")
+        })?;
+        raw.parse::<u32>()
+            .with_context(|| format!("`{raw}` is not a pixel count; {name} is a whole number"))
+    };
+
+    let op = match operation.as_str() {
+        "probe" => {
+            if numbers.is_empty() || numbers.len() % 2 != 0 {
+                bail!(
+                    "`amadeo image probe` takes x and y in pairs, as in `amadeo image probe shot.png 512 260 470 280`"
+                );
+            }
+            let mut points = Vec::with_capacity(numbers.len() / 2);
+            for pair in 0..numbers.len() / 2 {
+                points.push((number(pair * 2, "an x")?, number(pair * 2 + 1, "a y")?));
+            }
+            image::Op::Probe { points }
+        }
+        "row" => image::Op::Row {
+            y: number(0, "a y")?,
+            from: number(1, "a starting x")?,
+            to: number(2, "an ending x")?,
+        },
+        "col" | "column" => image::Op::Column {
+            x: number(0, "an x")?,
+            from: number(1, "a starting y")?,
+            to: number(2, "an ending y")?,
+        },
+        "crop" => image::Op::Crop {
+            x: number(0, "an x")?,
+            y: number(1, "a y")?,
+            width: number(2, "a width")?,
+            height: number(3, "a height")?,
+            scale: number(4, "a magnification")?,
+            out: PathBuf::from(numbers.get(5).context(
+                "`amadeo image crop` needs a file to write, as in `... 480 250 80 60 5 crop.png`",
+            )?),
+        },
+        "stats" => image::Op::Stats,
+        other => bail!("unknown image operation `{other}`. There is probe, row, col, crop, stats"),
+    };
+
+    Ok(Command::Image {
+        path: PathBuf::from(path),
+        op,
+    })
+}
+
 /// Written by hand rather than generated, so the two-column split ADR 0016 created is the first
 /// thing anyone reads.
 const USAGE: &str = "\
@@ -1492,6 +1572,12 @@ USAGE
 RUNS HERE (no game needed)
     fmt <file>...            rewrite scene files canonically
         --check              report unformatted files instead of fixing them
+    image <op> <file> ...    read a capture back at the pixel level
+        probe  <file> x y [x y]...        the colour at each named pixel
+        row    <file> y x0 x1             one scanline, as `x r g b luma`
+        col    <file> x y0 y1             the same down a column
+        crop   <file> x y w h scale out   magnify a rectangle, no filtering
+        stats  <file>                     a luminance histogram of the whole frame
 
 RUNS IN THE GAME (launches it, asks, exits)
     assets                   every asset id and the file behind it

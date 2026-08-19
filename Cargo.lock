@@ -180,6 +180,7 @@ dependencies = [
  "amadeo-agent",
  "amadeo-assets",
  "amadeo-gltf",
+ "amadeo-image",
  "amadeo-scene",
  "amadeo-transform",
  "anyhow",

@@ -22,6 +22,9 @@ amadeo-scene.workspace = true
 # (ADR 0039).
 amadeo-gltf.workspace = true
 amadeo-transform.workspace = true
+# `amadeo image` reads a capture back. Standalone like `fmt`, and here rather than in the engine for
+# the same reason the glTF importer is: it is a tool that looks at a file the engine wrote.
+amadeo-image.workspace = true
 
 # `anyhow` is allowed here and in games only (CLAUDE.md section 6). A CLI's errors are printed and
 # read, never matched on, so the typed-error discipline the library crates keep buys nothing here.
