@@ -1,0 +1,15 @@
+scene screen_wall
+version 1
+
+entity mesh "Screen wall with an opening"
+  CompoundMesh
+    parts
+      - mirror false false true
+        position 0.0 0.0 2.0
+        solid Box
+          shape
+            size 0.5 3.6 0.5
+      - position 0.0 2.1 0.0
+        solid Box
+          shape
+            size 0.5 0.6 4.5

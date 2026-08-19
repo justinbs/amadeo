@@ -84,12 +84,25 @@ fn the_scene_complexity_the_budget_is_quoted_against() {
     // north wall with a doorway, and a vestibule to look into. The engine gate's reasoning was that
     // a sky, textures and lighting are properties of a *space* -- so a showroom cannot answer the
     // questions Phase C asks, and light with no opening to come through has nothing to do.
-    assert_eq!(meshes, 20, "drawn meshes");
+    // **Twenty-seven since the room got a storey** (item 12g, session 21). `capture --pitch/--yaw`
+    // made it possible to look somewhere other than where the game points, and the first thing that
+    // showed was that three of the four directions were bare wall: every prop sat in one quadrant.
+    // The fix was not more props. The camera sits at y ≈ 4.35 in an 8 m room, so anything under 2 m
+    // never enters the frame — what the walls needed was content in the 3–5 m band, which is what a
+    // gallery is. Four runs of it (north, south, east, west), a stair up to the west one, a screen
+    // wall breaking the east sightline, and a ledge: seven drawables for four walls that used to be
+    // flat.
+    assert_eq!(meshes, 27, "drawn meshes");
     // **Fourteen since the doorway**: the north wall's single collider became two pier colliders, so
     // the opening is walkable rather than a hole you can see through and not pass, and the roof got
     // one so the follow camera stops rising through it -- which it did, and the first capture of the
     // roofed room was a picture of its top surface.
-    assert_eq!(bodies, 14, "bodies with a collider");
+    // **Twenty-two since the gallery.** Four gallery decks you can stand on, two screen-wall piers,
+    // a ledge, and the stair — which is one **ramp** rather than sixteen step colliders, because
+    // `CharacterController::step_height` is 0 in this game and a 0.25 m riser is therefore a wall.
+    // A 39.8° slope under the visible steps is inside the 45° `max_slope_degrees`, so the flight is
+    // genuinely climbable and the steps are what you see rather than what you stand on.
+    assert_eq!(bodies, 22, "bodies with a collider");
     assert_eq!(characters, 1, "characters");
     assert_eq!(casters, 1, "shadow-casting lights");
 }

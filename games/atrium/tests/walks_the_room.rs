@@ -107,16 +107,17 @@ fn the_room_loads_from_its_scene_file() {
 
     let meshes = app.world.query::<(&Mesh,)>().count();
     assert_eq!(
-        meshes, 20,
+        meshes, 27,
         "a floor, four walls, four pillars, a plinth, the player's body, the watcher, the brass \
-         key on the plinth, and three compound props — a table, a bolted generator and a lamp \
-         fitting, which are the first meshes in any game here that are not axis-aligned boxes"
+         key on the plinth, three compound props — a table, a bolted generator and a lamp fitting \
+         — and the storey added in session 21: four gallery runs, a stair up to the west one, a \
+         screen wall breaking the east sightline, and a ledge"
     );
     assert_eq!(app.world.query::<(&Camera,)>().count(), 1);
     assert_eq!(app.world.query::<(&DirectionalLight,)>().count(), 1);
     // Static geometry plus the character, all with a shape physics can use — and the brass key,
     // which needs one so the interactor's sweep has something to hit (ADR 0054).
-    assert_eq!(app.world.query::<(&RigidBody, &Collider)>().count(), 14);
+    assert_eq!(app.world.query::<(&RigidBody, &Collider)>().count(), 22);
 }
 
 #[test]
@@ -261,4 +262,41 @@ fn the_room_is_reproducible() {
         (app.world.state_hash(), position(&app, player))
     };
     assert_eq!(run(), run());
+}
+
+#[test]
+fn the_stair_can_actually_be_climbed() {
+    // **The room grew a storey in session 21 and this is what says it is real rather than scenery.**
+    //
+    // The flight is sixteen 0.25 m risers, and `CharacterController::step_height` in this game is
+    // **0** — so a rider is a wall and the visible steps are not what holds anybody up. What does is
+    // a single `Cuboid` ramp under them at 39.8°, inside the controller's 45° `max_slope_degrees`.
+    //
+    // That split is invisible in a capture and easy to get backwards: the ramp's pitch is authored as
+    // one signed number, and the wrong sign gives a slope descending into the floor, which reads as a
+    // stair you simply cannot climb. Nothing else in the suite would notice.
+    let mut app = room();
+    let player = player(&app);
+
+    // At the foot of the flight, which climbs toward -Z — the direction the wanderer already faces,
+    // so holding forward is the whole input.
+    let mut start = *app.world.get::<Transform>(player).expect("there");
+    start.translation = [-8.85, 1.0, 6.5];
+    app.world.insert(player, start);
+    app.run_ticks(30).expect("settle onto the ramp");
+
+    let before = position(&app, player);
+    hold(&mut app, MOVE_FORWARD, 1.0, 180);
+    let after = position(&app, player);
+
+    assert!(
+        after[1] > before[1] + 2.0,
+        "three seconds up a 4 m flight should gain most of its height; went from {before:?} to \
+         {after:?}"
+    );
+    assert!(
+        after[2] < before[2] - 2.0,
+        "and it should have travelled north while climbing, not risen on the spot: {before:?} then \
+         {after:?}"
+    );
 }

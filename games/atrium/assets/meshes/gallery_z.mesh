@@ -1,0 +1,14 @@
+scene gallery_z
+version 1
+
+entity mesh "Gallery run, along Z"
+  CompoundMesh
+    parts
+      - position 0.0 0.0 0.0
+        solid Box
+          shape
+            size 1.8 0.3 11.75
+      - position 0.8 0.6 0.0
+        solid Box
+          shape
+            size 0.2 0.9 11.75

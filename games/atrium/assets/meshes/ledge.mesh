@@ -1,0 +1,14 @@
+scene ledge
+version 1
+
+entity mesh "Wall ledge"
+  CompoundMesh
+    parts
+      - position 0.0 0.0 0.0
+        solid Box
+          shape
+            size 1.0 0.5 6.0
+      - position 0.25 0.35 0.0
+        solid Box
+          shape
+            size 0.5 0.2 6.0

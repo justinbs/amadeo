@@ -1,0 +1,13 @@
+scene stair_bay
+version 1
+
+entity mesh "Stair to the gallery"
+  CompoundMesh
+    parts
+      - position 0.0 0.0 0.0
+        solid Stair
+          shape
+            rise 0.25
+            run 0.3
+            steps 16
+            width 1.8

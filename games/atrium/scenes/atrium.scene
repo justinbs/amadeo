@@ -10,6 +10,9 @@ assets
   brass_key
   floor
   footstep
+  gallery_x
+  gallery_z
+  gallery_z_long
   generator
   glass
   glass_pane
@@ -17,6 +20,7 @@ assets
   lamp_flicker
   lamp_hum
   lantern_sweep
+  ledge
   paving
   pillar
   plinth
@@ -24,8 +28,10 @@ assets
   room_tone
   rust
   screen_frame
+  screen_wall
   signage
   slate
+  stair_bay
   stone
   stone_slab
   table
@@ -344,7 +350,7 @@ entity player "Wanderer"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 1.0 2.0
+    translation 0.0 1.0 -1.0
 
   entity eye "Follow camera"
     AudioListener
@@ -420,7 +426,7 @@ entity watcher "The watcher"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation -7.0 0.8 -7.0
+    translation -8.5 0.8 -9.0
   Watcher
 
 entity ambience "Room tone"
@@ -954,3 +960,180 @@ entity vestibule_light "Vestibule daylight"
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 0.0 2.6 -12.4
+
+entity gallery_north "Gallery along the north wall"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 15.9 0.3 1.8
+  Mesh
+    material "stone"
+    mesh "gallery_x"
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 3.85 -8.85
+
+entity gallery_west "Gallery along the west wall"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 1.8 0.3 11.75
+  Mesh
+    material "stone"
+    mesh "gallery_z"
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -8.85 3.85 -3.875
+
+entity gallery_east "Gallery along the east wall"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 1.8 0.3 17.7
+  Mesh
+    material "stone"
+    mesh "gallery_z_long"
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 8.85 3.85 -0.9
+
+entity stair_bay "Stair up to the west gallery"
+  Mesh
+    material "stone"
+    mesh "stair_bay"
+  Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation -8.85 0.0 6.8
+
+entity stair_ramp "The flight, as a slope the controller can climb"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 1.8 0.3 6.248
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 39.8 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -8.85 1.85 4.4
+
+entity screen_wall "Screen wall breaking the east sightline"
+  Mesh
+    material "slate"
+    mesh "screen_wall"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 5.5 1.8 1.0
+
+entity screen_pier_north "Screen wall's north pier"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 0.5 3.6 0.5
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 5.5 1.8 -1.0
+
+entity screen_pier_south "Screen wall's south pier"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 0.5 3.6 0.5
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 5.5 1.8 3.0
+
+entity ledge "Ledge along the east wall"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 1.0 0.5 6.0
+  Mesh
+    material "stone"
+    mesh "ledge"
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 9.25 0.25 -5.0
+
+entity gallery_south "Gallery along the south wall"
+  Collider
+    friction 0.8
+    restitution 0.0
+    sensor false
+    shape Cuboid
+      size 15.9 0.3 1.8
+  Mesh
+    material "stone"
+    mesh "gallery_x"
+  RigidBody
+    angular_damping 0.0
+    gravity true
+    kind Static
+    linear_damping 0.0
+    mass 1.0
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 3.85 8.85
