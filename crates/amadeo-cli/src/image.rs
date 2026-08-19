@@ -39,8 +39,18 @@ pub(crate) enum Op {
         scale: u32,
         out: std::path::PathBuf,
     },
-    /// A luminance histogram over the whole image.
-    Stats,
+    /// A luminance histogram, over the whole image or one rectangle of it.
+    Stats {
+        region: Option<(u32, u32, u32, u32)>,
+    },
+    /// Compare two captures: where they differ, by how much, and over what area.
+    ///
+    /// **The most-used operation in this job, and it was hand-rolled six times before it existed.**
+    /// `docs/14` §4 instructs a reviewer to split a variable and move one half of it, which makes
+    /// "how do these two frames differ" the question that follows almost every experiment. Review 13
+    /// asked for it by name and said the bounding box would have replaced twelve probes with one
+    /// command.
+    Diff { other: std::path::PathBuf },
 }
 
 /// Runs one operation and prints its answer.
@@ -142,36 +152,63 @@ pub(crate) fn run(path: &Path, op: &Op) -> Result<()> {
                 y
             );
         }
-        Op::Stats => {
+        Op::Stats { region } => {
+            let (rx, ry, rw, rh) = region.unwrap_or((0, 0, width, height));
+            inside(rx, ry)?;
+            let rw = rw.min(width - rx);
+            let rh = rh.min(height - ry);
+
             let buckets = 16usize;
             let mut histogram = vec![0u64; buckets];
             let mut lowest = 255u8;
             let mut highest = 0u8;
             let mut total = 0u64;
-            for y in 0..height {
-                for x in 0..width {
+            // **How many pixels are at the top of the range**, which the histogram's 240-255 bucket
+            // hides: a frame can be perfectly exposed and still have a blown highlight, and the
+            // difference between 250 and 255 is the difference between a bright surface and one
+            // with no detail left in it. Review 13 found a light erasing a stone pillar over a
+            // 200-row run and said this figure would have surfaced it in the first command.
+            let mut clipped = 0u64;
+            for y in ry..ry + rh {
+                for x in rx..rx + rw {
                     let (r, g, b, _) = at(x, y);
                     let luma = luminance(r, g, b);
                     histogram[(luma as usize * buckets) / 256] += 1;
                     lowest = lowest.min(luma);
                     highest = highest.max(luma);
                     total += u64::from(luma);
+                    if r >= 254 || g >= 254 || b >= 254 {
+                        clipped += 1;
+                    }
                 }
             }
-            let count = u64::from(width) * u64::from(height);
+            let count = (u64::from(rw) * u64::from(rh)).max(1);
             #[expect(
                 clippy::cast_precision_loss,
                 reason = "a mean over at most a few million pixels, printed to one decimal"
             )]
             let mean = total as f64 / count as f64;
-            println!("{width} x {height} — min {lowest}, max {highest}, mean {mean:.1}");
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "a percentage, printed to two decimals"
+            )]
+            let blown = clipped as f64 * 100.0 / count as f64;
+            if region.is_some() {
+                println!("{rw} x {rh} at ({rx},{ry}) of a {width} x {height} image");
+            } else {
+                println!("{width} x {height}");
+            }
+            println!("min {lowest}, max {highest}, mean {mean:.1}");
+            // Any channel, not luma: a clipped red on an orange surface is lost detail even where
+            // the luminance is nowhere near the top.
+            println!("clipped (any channel >= 254)  {clipped} px  {blown:.2}%");
             for (bucket, pixels) in histogram.iter().enumerate() {
                 #[expect(
                     clippy::cast_precision_loss,
                     reason = "a percentage, printed to one decimal"
                 )]
                 let share = *pixels as f64 * 100.0 / count as f64;
-                let bar = "#".repeat(usize::try_from(pixels * 40 / count.max(1)).unwrap_or(0));
+                let bar = "#".repeat(usize::try_from(pixels * 40 / count).unwrap_or(0));
                 println!(
                     "{:>3}-{:>3} {:>8} {share:>5.1}% {bar}",
                     bucket * 256 / buckets,
@@ -179,6 +216,72 @@ pub(crate) fn run(path: &Path, op: &Op) -> Result<()> {
                     pixels
                 );
             }
+        }
+        Op::Diff { other } => {
+            let other_bytes = std::fs::read(other)
+                .with_context(|| format!("could not read {}", other.display()))?;
+            let second = decode_png(&other_bytes, &other.display().to_string())
+                .with_context(|| format!("{} is not a PNG this can read", other.display()))?;
+            if second.width != width || second.height != height {
+                bail!(
+                    "the two images are different sizes: {width} x {height} against {} x {}",
+                    second.width,
+                    second.height
+                );
+            }
+
+            let mut worst = 0u8;
+            let mut worst_at = (0u32, 0u32);
+            let mut changed = 0u64;
+            // The bounding box of everything that moved, which is the figure that turns "something
+            // changed" into "*this* changed" — and the one review 13 said would have replaced
+            // twelve probes with one command.
+            let (mut left, mut top) = (u32::MAX, u32::MAX);
+            let (mut right, mut bottom) = (0u32, 0u32);
+
+            for y in 0..height {
+                for x in 0..width {
+                    let (r, g, b, _) = at(x, y);
+                    let index = (y as usize * width as usize + x as usize) * channels;
+                    let difference = r
+                        .abs_diff(second.pixels[index])
+                        .max(g.abs_diff(second.pixels[index + 1]))
+                        .max(b.abs_diff(second.pixels[index + 2]));
+                    if difference == 0 {
+                        continue;
+                    }
+                    changed += 1;
+                    if difference > worst {
+                        worst = difference;
+                        worst_at = (x, y);
+                    }
+                    left = left.min(x);
+                    top = top.min(y);
+                    right = right.max(x);
+                    bottom = bottom.max(y);
+                }
+            }
+
+            let count = (u64::from(width) * u64::from(height)).max(1);
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "a percentage, printed to two decimals"
+            )]
+            let share = changed as f64 * 100.0 / count as f64;
+            if changed == 0 {
+                println!("identical — every one of the {count} pixels matches");
+                return Ok(());
+            }
+            println!("changed        {changed} px of {count}  ({share:.2}%)");
+            println!(
+                "largest        {worst} levels at ({},{})",
+                worst_at.0, worst_at.1
+            );
+            println!(
+                "bounding box   x {left}..{right}, y {top}..{bottom}   ({} x {})",
+                right - left + 1,
+                bottom - top + 1
+            );
         }
     }
     Ok(())

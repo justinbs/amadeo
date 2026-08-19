@@ -346,3 +346,94 @@ fn simulation_cost_against_body_count() {
     }
     println!();
 }
+
+#[test]
+fn what_ambient_occlusion_costs_on_the_gpu() {
+    // **ADR 0083 landed without a number, and said so.** Review 12 was told the cost was unmeasured
+    // and that no claim was being made about it; this is the claim, made honestly.
+    //
+    // It is worth measuring rather than estimating because occlusion is the one effect in this
+    // engine that costs a **second pass over the geometry**. Bloom and post are full-screen passes
+    // whose cost is a function of resolution alone; a depth prepass scales with the scene, so
+    // reasoning about it from the other effects would be wrong in the direction that matters.
+    //
+    // The comparison is the same world twice, differing only in `intensity`, which is what makes it
+    // a measurement of the feature rather than of the room.
+    use amadeo_render::{Environment, EnvironmentCache, Renderer, WgpuBackend, render_quads};
+
+    /// One frame's GPU cost: which adapter drew it, how long the whole frame took, and the
+    /// per-pass breakdown.
+    type Timed = (
+        String,
+        std::time::Duration,
+        Vec<(String, std::time::Duration)>,
+    );
+
+    let measure = |occluded: bool| -> Option<Timed> {
+        let mut app = room();
+        // The look is an asset, so the switch is one field on the cached `Environment` rather than
+        // an edit to the scene file — which also means nothing on disk differs between the two runs.
+        if let Some(looks) = app.world.service_mut::<EnvironmentCache>() {
+            let ids: Vec<String> = looks.ids().map(str::to_string).collect();
+            for id in ids {
+                let mut changed: Environment = looks.get(&id);
+                changed.ambient_occlusion.intensity = if occluded { 0.7 } else { 0.0 };
+                looks.insert(&id, changed);
+            }
+        }
+
+        let mut backend = WgpuBackend::offscreen(1280, 720).ok()?;
+        if !backend.supports_gpu_timing() {
+            return None;
+        }
+        backend.set_gpu_timing(true);
+        let adapter = backend.adapter().name.clone();
+        app.world.insert_service(Renderer::new(Box::new(backend)));
+
+        app.run_ticks(WARM_UP).expect("warm-up runs");
+        // Several frames: the first uploads every mesh and texture, so its timing is about loading
+        // rather than about drawing, and the transient pool settles over the next few.
+        for _ in 0..8 {
+            render_quads(&mut app.world);
+        }
+
+        let renderer = app.world.service::<Renderer>()?;
+        let backend = renderer.backend_as::<WgpuBackend>()?;
+        let timing = backend.last_gpu_timing()?.clone();
+        Some((adapter, timing.total, timing.passes.clone()))
+    };
+
+    let (Some((adapter, without, _)), Some((_, with, passes))) = (measure(false), measure(true))
+    else {
+        println!("skipping: no offscreen device with timestamp queries on this machine");
+        return;
+    };
+
+    println!("\n--- games/atrium, ambient occlusion on the GPU, 1280x720 ---");
+    println!("adapter          {adapter}");
+    println!("frame, AO off    {without:?}");
+    println!("frame, AO on     {with:?}");
+    println!("passes with it on:");
+    for (label, cost) in &passes {
+        println!("  {label:<28} {cost:?}");
+    }
+
+    // **What holds on any machine**, and deliberately nothing tighter. A timing assertion with a
+    // real threshold in it fails on whatever runner is slowest rather than when the engine gets
+    // slower, which is how a performance test becomes something people learn to ignore
+    // (`docs/10` says this about itself).
+    assert!(
+        passes.iter().any(|(label, _)| label.starts_with("prepass")),
+        "occlusion is on and the depth prepass did not run: {passes:?}"
+    );
+    assert!(
+        passes
+            .iter()
+            .any(|(label, _)| label.starts_with("occlusion")),
+        "occlusion is on and neither occlusion pass ran: {passes:?}"
+    );
+    assert!(
+        with > std::time::Duration::ZERO && without > std::time::Duration::ZERO,
+        "the GPU reported zero time for a frame that drew a room"
+    );
+}

@@ -201,6 +201,49 @@ exactly what this one is: the GPU spends more time waiting to be given the next 
 > The breakdown summed to 27 µs of a 37 µs frame with nothing accounting for the difference. A
 > profiler that silently loses a pass is worse than one that reports only a total.
 
+## What ambient occlusion costs — measured in session 22
+
+ADR 0083 landed without a number and said so, which is the honest order but leaves a claim
+outstanding. This is it. `games/atrium`, **1280 × 720**, the same world twice differing only in
+`Environment::ambient_occlusion::intensity`, on an **RTX 4060 Ti**:
+
+| | GPU time |
+|---|---:|
+| Frame, occlusion off | 341 µs |
+| Frame, occlusion on | **616 µs** |
+| **What it costs** | **275 µs** |
+
+And where that goes:
+
+| Pass | GPU time |
+|---|---:|
+| `prepass 0` — lay down camera depth | 12 µs |
+| `occlusion measure 0` — the spiral | **204 µs** |
+| `occlusion blur 0` — average the noise away | 43 µs |
+
+**The second pass over the geometry is not the cost — the full-screen measurement is.** That is the
+opposite of what the ADR's own reasoning implies, and it is worth stating because it changes what to
+optimise. A depth prepass over 29 meshes is 12 µs, four per cent of the total; the spiral is 204,
+three quarters of it, and it is a full-resolution pass taking sixteen samples per pixel.
+
+**So the obvious saving is half resolution**, which is what Unity's URP and Godot both ship by
+default and what this engine's own bloom already does — occlusion is a low-frequency quantity
+smeared over half a metre, so there is nothing at full resolution for it to say. That would take the
+measure and blur passes to roughly a quarter of their cost and the whole feature to about 90 µs.
+**Not done, deliberately**: review 13 was mid-flight on the current version when this was measured,
+and changing the pixels underneath a review is how a report ends up describing a state nobody can
+reproduce.
+
+Against a 16.67 ms budget, 275 µs is **1.65%** at this scene complexity. That is affordable and it is
+also measured at 29 meshes; `docs/13` item 19 is where it gets measured at a complexity the target
+games imply.
+
+Regenerate with:
+
+```bash
+cargo test -p atrium --all-features --test frame_budget what_ambient -- --nocapture
+```
+
 ## What shadow cascades cost — measured in session 15
 
 Cascades (ADR 0055) draw the casters **four times** instead of once and add a selection to the mesh

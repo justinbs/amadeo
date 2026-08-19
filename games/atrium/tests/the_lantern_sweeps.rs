@@ -117,7 +117,15 @@ fn the_lamp_actually_flickers() {
     assert_ne!(start, later);
     // Within the range the clip authors, so this is animation rather than something else having
     // written the field.
-    assert!((19.0..=24.0).contains(&later), "got {later}");
+    //
+    // **8.0 to 9.6 since session 22, and the reason is worth knowing.** The clip used to run 19.5
+    // to 23.5, and at those values the lamp erased `pillar_nw`'s masonry 1.4 m away — 11% of a
+    // 200 × 300 crop clipped, with no detail left in it. What made that hard to find is that the
+    // scene file's own `PointLight::intensity` was edited from 22 to 16 to fix it and **the edit
+    // changed nothing**: a clip targeting the same field is the authority from tick 1, so the
+    // authored number is dead data. Nothing reports that — not `amadeo check`, not a test, not
+    // reading the scene top to bottom. The fix belongs in the clip.
+    assert!((7.5..=10.0).contains(&later), "got {later}");
 }
 
 #[test]

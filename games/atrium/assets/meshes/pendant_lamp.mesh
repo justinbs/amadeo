@@ -4,11 +4,11 @@ version 1
 entity mesh "Pendant lamp"
   CompoundMesh
     parts
-      - position 0.0 1.4 0.0
+      - position 0.0 3.02 0.0
         solid Cylinder
           shape
             capped false
-            height 2.8
+            height 6.05
             radius 0.008
             sides 6
             top_radius 0.008

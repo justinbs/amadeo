@@ -470,12 +470,12 @@ entity lamp "Warm lamp"
     mesh "pendant_lamp"
   PointLight
     colour 1.0 0.72 0.42
-    intensity 16.0
+    intensity 9.0
     range 9.0
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation -4.2 3.9 -2.6
+    translation -4.2 2.05 -2.6
 
 entity lantern "Hanging lantern"
   AnimationPlayer

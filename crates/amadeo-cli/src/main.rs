@@ -1551,8 +1551,27 @@ fn parse_image(rest: &[String]) -> Result<Command> {
                 "`amadeo image crop` needs a file to write, as in `... 480 250 80 60 5 crop.png`",
             )?),
         },
-        "stats" => image::Op::Stats,
-        other => bail!("unknown image operation `{other}`. There is probe, row, col, crop, stats"),
+        "stats" => image::Op::Stats {
+            // All four or none: a region with three numbers is a typo rather than a default.
+            region: if numbers.is_empty() {
+                None
+            } else {
+                Some((
+                    number(0, "an x")?,
+                    number(1, "a y")?,
+                    number(2, "a width")?,
+                    number(3, "a height")?,
+                ))
+            },
+        },
+        "diff" => image::Op::Diff {
+            other: PathBuf::from(numbers.first().context(
+                "`amadeo image diff` needs a second PNG, as in `amadeo image diff before.png after.png`",
+            )?),
+        },
+        other => {
+            bail!("unknown image operation `{other}`. There is probe, row, col, crop, stats, diff")
+        }
     };
 
     Ok(Command::Image {
@@ -1577,7 +1596,8 @@ RUNS HERE (no game needed)
         row    <file> y x0 x1             one scanline, as `x r g b luma`
         col    <file> x y0 y1             the same down a column
         crop   <file> x y w h scale out   magnify a rectangle, no filtering
-        stats  <file>                     a luminance histogram of the whole frame
+        stats  <file> [x y w h]           luminance histogram, clipped-pixel count
+        diff   <file> <other>             how two captures differ, and where
 
 RUNS IN THE GAME (launches it, asks, exits)
     assets                   every asset id and the file behind it

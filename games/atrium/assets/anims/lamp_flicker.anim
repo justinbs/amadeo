@@ -10,12 +10,12 @@ entity clip "Lamp flicker"
         interpolation Linear
         keys
           - time 0.0
-            value 22.0
+            value 9.0
           - time 0.7
-            value 19.5
+            value 8.0
           - time 1.1
-            value 23.5
+            value 9.6
           - time 1.6
-            value 20.5
+            value 8.4
           - time 2.6
-            value 22.0
+            value 9.0
