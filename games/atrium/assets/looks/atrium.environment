@@ -3,6 +3,10 @@ version 1
 
 entity look "Atrium"
   Environment
+    ambient_occlusion
+      bias 0.02
+      intensity 0.7
+      radius 0.5
     bloom
       intensity 0.3
       threshold 1.0

@@ -598,6 +598,31 @@ fn fs_main(
     // a material with no map is unoccluded at every strength.
     let baked_occlusion = mix(1.0, packed.r, clamp(in.occlusion_strength, 0.0, 1.0));
 
+    // **And the screen-space half** (ADR 0083), looked up by where this fragment is on screen rather
+    // than by where it is on its own surface — which is the whole difference between the two. The
+    // baked channel above knows the joint cut into this slab; this one knows the pillar standing on
+    // it, because the pillar is a different mesh with a different texture and neither one's UV space
+    // contains the other.
+    //
+    // `w` says whether what is bound is a real map or the 1x1 white placeholder. The placeholder
+    // would sample 1.0 and be harmless either way, so this is not a correctness guard — it is what
+    // lets a look with no occlusion be provably byte-identical rather than merely arithmetically so.
+    var contact_occlusion = 1.0;
+    if view.occlusion_params.w > 0.5 {
+        // `in.clip_position.xy` in a fragment shader is the pixel's own coordinate, so dividing by
+        // the target size gives exactly the texel the occlusion pass wrote for it. Under MSAA the
+        // scene is 4x and this map is 1x, so several samples of one pixel read the same texel —
+        // correct, because occlusion is a low-frequency quantity smeared over half a metre and there
+        // is nothing at the sub-pixel scale for it to say.
+        let screen = in.clip_position.xy / vec2<f32>(textureDimensions(occlusion_map));
+        contact_occlusion = textureSample(occlusion_map, occlusion_sampler, screen).r;
+    }
+
+    // The two multiply. They measure different things at different scales and neither is a
+    // correction to the other, so combining them any other way — a min, a blend — would be choosing
+    // which of two true statements to ignore.
+    let occlusion = baked_occlusion * contact_occlusion;
+
     // **What metallic actually means**, and it is two changes at once rather than a dial:
     //
     // A metal has no diffuse colour at all. Light either reflects off it or is absorbed; nothing
@@ -729,8 +754,8 @@ fn fs_main(
     // Both halves scaled together, so the dial means the same thing it did when ambient was one sum.
     // And both occluded together: a joint that sees less sky also reflects less of it, so applying
     // occlusion to the diffuse half alone would leave a specular sheen sitting in the recess.
-    let lit_diffuse = direct_diffuse + ambient_diffuse * view.ambient_params.x * baked_occlusion;
-    let lit_specular = direct_specular + ambient_specular * view.ambient_params.x * baked_occlusion;
+    let lit_diffuse = direct_diffuse + ambient_diffuse * view.ambient_params.x * occlusion;
+    let lit_specular = direct_specular + ambient_specular * view.ambient_params.x * occlusion;
 
     // **Premultiplied output, and this is ADR 0080's whole point.**
     //

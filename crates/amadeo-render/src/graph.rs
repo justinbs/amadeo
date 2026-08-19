@@ -164,6 +164,30 @@ pub(crate) enum TargetFormat {
     /// There is also no longer a *single*-sampled scene depth variant, because nothing declares one:
     /// anti-aliasing is unconditional. Turning it off would bring one back.
     Depth32Ms,
+    /// Depth from the camera, written by the prepass and **sampled** by the occlusion pass — ADR
+    /// 0083.
+    ///
+    /// # This is why ambient occlusion needs a second pass over the geometry
+    ///
+    /// Occlusion has to be known while a surface is being shaded, because it multiplies the ambient
+    /// term and nothing else (ADR 0083). The view pass writes depth and shades in the same pass, so
+    /// by the time [`Depth32Ms`](TargetFormat::Depth32Ms) exists the shading is already done. Depth
+    /// has to be laid down first, on its own, which is what a prepass is.
+    ///
+    /// # Single-sampled, where the scene's depth is multisampled
+    ///
+    /// Deliberate, and it is what makes this a separate variant rather than a usage flag. A
+    /// multisampled depth texture cannot be sampled without resolving, and wgpu has no depth resolve
+    /// — so a 4× prepass would be unreadable by the very pass it exists to feed. The occlusion
+    /// figure it produces is a low-frequency quantity smeared over half a metre, so anti-aliasing it
+    /// would buy nothing anyone could see.
+    Depth32Sampled,
+    /// A single channel, eight bits: how much ambient light reaches each pixel — ADR 0083.
+    ///
+    /// One channel because occlusion is one number, and eight bits because it is a smooth quantity
+    /// multiplied into an already-approximate term. Written by the occlusion pass, blurred by the
+    /// next, and sampled by the view pass at its own screen position.
+    Occlusion,
 }
 
 /// An image that exists only for the duration of one frame.
@@ -233,12 +257,49 @@ pub(crate) enum PassKind {
         /// something you can read rather than guess.
         layer: usize,
     },
+    /// Lay down depth from one camera and shade nothing — ADR 0083.
+    ///
+    /// A shadow pass by another name: no colour attachment, only a measurement. The difference is
+    /// whose eye it measures from, and what reads it — the camera's own, read by the occlusion pass
+    /// rather than by the mesh shader.
+    ///
+    /// **Opaque geometry only.** A transparent surface does not stop light arriving at what is
+    /// behind it, so putting one in this buffer would have a pane of glass cast the occlusion of a
+    /// wall.
+    DepthPrepass {
+        /// Which view, indexing [`FrameData::views`](crate::FrameData).
+        view: usize,
+    },
+    /// One step of ambient occlusion: measure it from depth, then blur the result — ADR 0083.
+    ///
+    /// Two passes for bloom's reason. The measurement samples a spiral around each pixel with a
+    /// rotation that differs per pixel, which trades banding for noise on purpose — and the noise
+    /// then has to be averaged away by a pass that can read a pixel's *neighbours*, which the pass
+    /// producing it cannot.
+    Occlusion {
+        /// Which view.
+        view: usize,
+        /// Which of the two steps.
+        step: OcclusionStep,
+    },
     /// Put a finished image onto the destination.
     ///
     /// A full-screen draw rather than a texture copy, because a surface texture is not guaranteed to
     /// accept a copy — and because this is where tonemapping goes when it arrives, so the pass has
     /// to be a shader either way.
     Present,
+}
+
+/// Which of ambient occlusion's two passes this is — ADR 0083.
+///
+/// [`BloomStep`]'s sibling and for its reason: the backend picks a pipeline by matching rather than
+/// by remembering what an index meant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OcclusionStep {
+    /// Measure occlusion from the prepass depth, spiralling around each pixel.
+    Measure,
+    /// Average away the noise that measuring deliberately introduced.
+    Blur,
 }
 
 /// Which of bloom's three passes this is.
@@ -742,11 +803,75 @@ pub(crate) fn frame_graph(frame: &crate::FrameData, width: u32, height: u32) -> 
                 }
             }
 
-            // Reading the shadow map is what orders this pass after the one that draws it.
-            let reads: Vec<&str> = match atlas {
-                Some(_) => vec![shadow_name.as_str()],
-                None => Vec::new(),
-            };
+            // **Ambient occlusion, when this view's look asks for it** (ADR 0083). Three passes and
+            // three transients, all of them absent when it does not — the rule the depth buffer, the
+            // shadow map and bloom all follow.
+            //
+            // It is declared here rather than beside bloom because it is **per view**: occlusion is
+            // measured from one camera's depth and consumed by that same camera's shading, where
+            // bloom is one look applied to the finished frame.
+            let occluded = matches!(
+                view.camera.projection,
+                crate::Projection::Perspective { .. }
+            ) && view.environment.wants_ambient_occlusion();
+            let prepass_name = format!("prepass {index}");
+            let measured_name = format!("occlusion raw {index}");
+            let occlusion_name = format!("occlusion {index}");
+            if occluded {
+                graph.transient(&prepass_name, width, height, TargetFormat::Depth32Sampled);
+                graph.transient(&measured_name, width, height, TargetFormat::Occlusion);
+                graph.transient(&occlusion_name, width, height, TargetFormat::Occlusion);
+
+                // **Declared as a write, and bound as a depth attachment** — the shadow pass's
+                // arrangement exactly, and it has to be this way round. `with_depth` alone puts the
+                // target in `depth`, which the compiler deliberately keeps out of the ordering
+                // rules; the occlusion pass that reads it would then be reading something no pass
+                // writes, and `compile` refuses the whole frame. It did: the first Atrium capture
+                // with occlusion on came back 1920 x 1080 of pure black, because a rejected graph
+                // draws nothing at all.
+                graph.pass(
+                    &format!("prepass {index}"),
+                    PassKind::DepthPrepass { view: index },
+                    &[],
+                    &[prepass_name.as_str()],
+                );
+
+                graph.pass(
+                    &format!("occlusion measure {index}"),
+                    PassKind::Occlusion {
+                        view: index,
+                        step: OcclusionStep::Measure,
+                    },
+                    &[prepass_name.as_str()],
+                    &[measured_name.as_str()],
+                );
+                // **Reads the prepass depth as well, which it does not use.** Both steps bind one
+                // group holding a depth texture and a colour one, because two layouts would mean two
+                // pipeline layouts and two shader modules for what is one file and two entry points.
+                // Declaring the read is what keeps the prepass texture alive to be bound — without
+                // it the transient pool is free to hand that memory to something else by now, since
+                // its last reader would be the pass before this one.
+                graph.pass(
+                    &format!("occlusion blur {index}"),
+                    PassKind::Occlusion {
+                        view: index,
+                        step: OcclusionStep::Blur,
+                    },
+                    &[measured_name.as_str(), prepass_name.as_str()],
+                    &[occlusion_name.as_str()],
+                );
+            }
+
+            // Reading the shadow map is what orders this pass after the one that draws it. The same
+            // holds for the occlusion map: the dependency is declared, and the order follows from it
+            // rather than from anyone remembering to put these in sequence.
+            let mut reads: Vec<&str> = Vec::new();
+            if atlas.is_some() {
+                reads.push(shadow_name.as_str());
+            }
+            if occluded {
+                reads.push(occlusion_name.as_str());
+            }
             graph.pass(
                 &format!("view {index}"),
                 PassKind::View {

@@ -196,6 +196,22 @@ struct GpuMeshView {
     fog_colour: [f32; 4],
     /// x = how far from the eye fog starts, in world units. yzw unused.
     fog_params: [f32; 4],
+    /// Ambient occlusion: `[intensity, radius, bias, 1 when an occlusion map is bound]` — ADR 0083.
+    ///
+    /// The fourth lane is `shadow_params.y`'s trick one field along: the mesh pipeline always has
+    /// *something* bound at the occlusion slot, because a pipeline declaring a binding cannot be
+    /// used with it empty. This is what tells the shader whether that something is real. The
+    /// placeholder is white and white is the identity of the multiply, so it would in fact be
+    /// harmless to sample — the flag is here because the occlusion *measure* pass shares this
+    /// uniform and needs the first three numbers regardless.
+    occlusion_params: [f32; 4],
+    /// `[near, far, 0, 0]` — the camera's clip planes, in world units.
+    ///
+    /// What turns a depth-buffer reading back into a distance. Only the occlusion pass needs it, and
+    /// it needs it because a depth buffer stores a hyperbolic function of distance rather than a
+    /// distance: `far·near / (z·(near − far) + far)` is the inverse of the projection this engine
+    /// builds, and it is written out in `occlusion.wgsl` rather than here.
+    clip_params: [f32; 4],
     /// x = `Environment::sky_ambient`, scaling the ambient contribution only. yzw unused.
     ///
     /// **Its own vector rather than a spare lane of `fog_params`**, which had three free and would
@@ -301,7 +317,11 @@ fn wgpu_format(format: TargetFormat) -> wgpu::TextureFormat {
         TargetFormat::Hdr16 => SCENE_FORMAT,
         // The same wgpu format as the scene depth buffer. What differs is the usage it is created
         // with and the layout it is bound through -- see `TargetFormat::ShadowMap32`.
-        TargetFormat::ShadowMap32 { .. } | TargetFormat::Depth32Ms => DEPTH_FORMAT,
+        TargetFormat::ShadowMap32 { .. }
+        | TargetFormat::Depth32Ms
+        | TargetFormat::Depth32Sampled => DEPTH_FORMAT,
+        // One channel, eight bits. Occlusion is one number and a smooth one (ADR 0083).
+        TargetFormat::Occlusion => wgpu::TextureFormat::R8Unorm,
     }
 }
 
@@ -601,6 +621,46 @@ struct GpuEnvironment {
 ///
 /// A world transform's first three columns are the directions its local x, y and z point in the
 /// world, which is exactly what turning a screen position into a view ray needs.
+/// The per-view bind group: the view uniform, and whichever occlusion map this view has.
+///
+/// A function rather than one stored group, because the occlusion texture differs per view and a
+/// pipeline cannot be used with a binding left empty (ADR 0083). Views are counted in single
+/// figures, so the groups this builds are cached by which transient they name rather than rebuilt
+/// per frame — see `occlusion_view_groups`.
+///
+/// The uniform keeps its **dynamic offset**, which is what lets one buffer hold every view's
+/// uniform and one group index into it.
+fn mesh_view_group(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    buffer: &wgpu::Buffer,
+    occlusion: &wgpu::TextureView,
+    sampler: &wgpu::Sampler,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("amadeo mesh view bind group"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer,
+                    offset: 0,
+                    size: wgpu::BufferSize::new(size_of::<GpuMeshView>() as u64),
+                }),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(occlusion),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Sampler(sampler),
+            },
+        ],
+    })
+}
+
 fn scaled_axis(matrix: &amadeo_transform::Mat4, axis: usize, by: f32) -> [f32; 4] {
     [
         matrix.columns[axis][0] * by,
@@ -986,6 +1046,18 @@ pub struct WgpuBackend {
     mesh_view_stride: u64,
     mesh_view_capacity: usize,
     mesh_view_layout: wgpu::BindGroupLayout,
+    /// The same group again, once per occlusion map a view might be carrying — ADR 0083.
+    ///
+    /// Keyed by pooled transient index rather than by view, because the transient is what the group
+    /// actually names and the pool is stable between frames. So a steady frame builds none of these,
+    /// and a resize — which drops the pool — clears the map with it.
+    occlusion_view_groups: BTreeMap<usize, wgpu::BindGroup>,
+    /// What the occlusion passes read: a depth texture and a colour one, in one group.
+    occlusion_input_layout: wgpu::BindGroupLayout,
+    /// Lays down camera depth and shades nothing, so occlusion can be measured before shading.
+    prepass_pipeline: wgpu::RenderPipeline,
+    occlusion_measure_pipeline: wgpu::RenderPipeline,
+    occlusion_blur_pipeline: wgpu::RenderPipeline,
     /// One aligned slot per (view, cascade), addressed by dynamic offset — ADR 0055.
     shadow_view_buffer: wgpu::Buffer,
     shadow_view_bind_group: wgpu::BindGroup,
@@ -1706,36 +1778,85 @@ impl WgpuBackend {
 
         let mesh_view_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("amadeo mesh view layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: true,
-                    min_binding_size: wgpu::BufferSize::new(size_of::<GpuMeshView>() as u64),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: true,
+                        min_binding_size: wgpu::BufferSize::new(size_of::<GpuMeshView>() as u64),
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                // The occlusion map this camera measured, or the white placeholder — ADR 0083.
+                // Here rather than beside the shadow map on group 1 because group 1's bind group is
+                // built from one transient that knows only about itself, and because four bind
+                // groups is the entire budget so there was no fifth.
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
         });
+
+        // What the occlusion passes read: the prepass depth, then their own previous output.
+        //
+        // One layout for both steps, with the entry each step does not use bound to the other's
+        // texture. Two layouts would mean two pipeline layouts and two shader modules for what is
+        // one file and two entry points.
+        let occlusion_input_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("amadeo occlusion input layout"),
+                entries: &[
+                    // Sampled with `textureLoad` rather than through a sampler: exact texels, no
+                    // filtering, and depth is not a quantity it makes sense to interpolate.
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Depth,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
 
         let mesh_view_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("amadeo mesh view uniforms"),
             size: mesh_view_stride * INITIAL_VIEW_CAPACITY as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
-        });
-
-        let mesh_view_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("amadeo mesh view bind group"),
-            layout: &mesh_view_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                    buffer: &mesh_view_buffer,
-                    offset: 0,
-                    size: wgpu::BufferSize::new(size_of::<GpuMeshView>() as u64),
-                }),
-            }],
         });
 
         // The shadow pass's own uniform: one matrix per (view, cascade). Mirrors the mesh view
@@ -1924,6 +2045,17 @@ impl WgpuBackend {
             [128, 128, 255, 255],
         );
 
+        // Built here rather than beside its buffer, because it binds the white placeholder above and
+        // so cannot exist before it does. This is the group every pass uses when no occlusion map is
+        // in play, which is every 2D pass, every look that authors none, and the sky.
+        let mesh_view_bind_group = mesh_view_group(
+            &device,
+            &mesh_view_layout,
+            &mesh_view_buffer,
+            &white_placeholder_view,
+            &sampler,
+        );
+
         // The environment a camera gets when it names no sky, or names one that has not prefiltered
         // yet. A uniform dim neutral, which is exactly the `0.12` constant that stood in for ambient
         // light before ADR 0049 — so a game that asks for nothing shades as it always did, rather
@@ -2049,6 +2181,138 @@ impl WgpuBackend {
             multiview_mask: None,
             cache: None,
         });
+
+        // The depth prepass — ADR 0083. Structurally the shadow pipeline with a different uniform:
+        // the same two vertex buffers, no fragment stage, one depth target.
+        //
+        // **A separate shader from `shadow.wgsl` rather than a second entry point in it**, because
+        // the two differ in the one thing a vertex shader does: which matrix takes a vertex to clip
+        // space. Sharing would mean a uniform that is sometimes a light and sometimes a camera, and
+        // `view.wgsl` exists because exactly that kind of sharing drifted once already.
+        let prepass_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("amadeo depth prepass shader"),
+            source: wgpu::ShaderSource::Wgsl(
+                format!(
+                    "{}\n{}",
+                    include_str!("view.wgsl"),
+                    include_str!("prepass.wgsl")
+                )
+                .into(),
+            ),
+        });
+        let prepass_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("amadeo depth prepass pipeline layout"),
+                bind_group_layouts: &[Some(&mesh_view_layout)],
+                immediate_size: 0,
+            });
+        let prepass_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("amadeo depth prepass pipeline"),
+            layout: Some(&prepass_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &prepass_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: size_of::<GpuVertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &wgpu::vertex_attr_array![
+                            0 => Float32x3,
+                            1 => Float32x3,
+                            2 => Float32x2,
+                        ],
+                    }),
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: size_of::<GpuMeshInstance>() as u64,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &wgpu::vertex_attr_array![
+                            3 => Float32x4,
+                            4 => Float32x4,
+                            5 => Float32x4,
+                            6 => Float32x4,
+                            7 => Float32x4,
+                            8 => Float32x4,
+                        ],
+                    }),
+                ],
+            },
+            fragment: None,
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                // Nothing is culled, matching the view pass exactly — ADR 0052. A prepass whose
+                // depths disagreed with the pass they describe would put occlusion on the wrong
+                // surfaces, and terrain has no underside to cull.
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            // **Single-sampled**, where the scene's depth is 4×. A multisampled depth texture cannot
+            // be sampled without a resolve and wgpu has none, so a 4× prepass would be unreadable by
+            // the pass it exists for.
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        // The two occlusion passes. One module, two entry points, two pipelines — bloom's shape.
+        let occlusion_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("amadeo occlusion shader"),
+            source: wgpu::ShaderSource::Wgsl(
+                format!(
+                    "{}\n{}",
+                    include_str!("view.wgsl"),
+                    include_str!("occlusion.wgsl")
+                )
+                .into(),
+            ),
+        });
+        let occlusion_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("amadeo occlusion pipeline layout"),
+                bind_group_layouts: &[Some(&mesh_view_layout), Some(&occlusion_input_layout)],
+                immediate_size: 0,
+            });
+        let occlusion_pipeline = |label: &str, entry: &'static str| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&occlusion_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &occlusion_shader,
+                    entry_point: Some("vs_main"),
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &occlusion_shader,
+                    entry_point: Some(entry),
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::R8Unorm,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let occlusion_measure_pipeline =
+            occlusion_pipeline("amadeo occlusion measure pipeline", "measure");
+        let occlusion_blur_pipeline = occlusion_pipeline("amadeo occlusion blur pipeline", "blur");
 
         let mesh_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("amadeo mesh pipeline layout"),
@@ -2493,6 +2757,11 @@ impl WgpuBackend {
             mesh_view_stride,
             mesh_view_capacity: INITIAL_VIEW_CAPACITY,
             mesh_view_layout,
+            occlusion_view_groups: BTreeMap::new(),
+            occlusion_input_layout,
+            prepass_pipeline,
+            occlusion_measure_pipeline,
+            occlusion_blur_pipeline,
             shadow_view_buffer,
             shadow_view_bind_group,
             shadow_view_stride,
@@ -2711,7 +2980,12 @@ impl WgpuBackend {
         // buffer deliberately does without.
         let usage = match format {
             TargetFormat::Depth32Ms => wgpu::TextureUsages::RENDER_ATTACHMENT,
-            TargetFormat::ShadowMap32 { .. } => {
+            // The depth prepass is the shadow map's case exactly: drawn into, then sampled.
+            TargetFormat::ShadowMap32 { .. } | TargetFormat::Depth32Sampled => {
+                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING
+            }
+            // No `COPY_SRC`: nothing captures an occlusion map, it is an intermediate.
+            TargetFormat::Occlusion => {
                 wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING
             }
             TargetFormat::Srgb8 | TargetFormat::Hdr16 => {
@@ -2798,6 +3072,14 @@ impl WgpuBackend {
                     ],
                 }))
             }
+            // The depth prepass and the raw occlusion map are read by the occlusion passes, which
+            // want them in **one** group together (ADR 0083) — so neither can build a group alone,
+            // and the pass composes one from both. Storing none here rather than a wrong one is the
+            // same decision `Depth32Ms` makes for a different reason.
+            //
+            // The *finished* occlusion map is read by the mesh pipeline on group 0, which is also
+            // composed elsewhere. So no occlusion target carries a group of its own.
+            TargetFormat::Depth32Sampled | TargetFormat::Occlusion => None,
             TargetFormat::Srgb8 | TargetFormat::Hdr16 => {
                 Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some("amadeo transient bind group"),
@@ -2906,6 +3188,84 @@ impl WgpuBackend {
         // The texture is ignored here on purpose: a shadow pass writes depth only, so what a surface
         // looks like cannot affect it. Only the geometry and where it sits matter.
         for (mesh_id, _texture_id, range) in draws {
+            let Some(mesh) = self.meshes.get(*mesh_id) else {
+                continue;
+            };
+            pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+            pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
+            pass.draw_indexed(0..mesh.index_count, 0, range.clone());
+        }
+    }
+
+    /// Draws one camera's opaque geometry into a depth texture and shades nothing — ADR 0083.
+    ///
+    /// [`run_shadow_pass`](Self::run_shadow_pass)'s sibling, and structurally the same thing: no
+    /// colour attachment, one depth target, a list of meshes. The two differ in whose eye they draw
+    /// from, so this binds the **mesh** view uniform where that one binds the shadow uniform, and
+    /// they cannot share a pipeline for exactly that reason.
+    ///
+    /// **Opaque only.** A transparent surface does not stop light reaching what is behind it, so a
+    /// pane of glass in this buffer would cast the occlusion of a wall.
+    fn run_depth_prepass(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        declared: &graph::Pass,
+        assigned: &BTreeMap<String, usize>,
+        draws: Option<&Vec<(&str, MaterialTextures, std::ops::Range<u32>)>>,
+        timestamp_writes: Option<wgpu::RenderPassTimestampWrites<'_>>,
+    ) {
+        let PassKind::DepthPrepass { view: view_index } = declared.kind else {
+            return;
+        };
+
+        // Declared in `writes` and bound as depth — the shadow pass's arrangement, and for its
+        // reason: `depth` is deliberately outside the compiler's ordering rules, so a target
+        // declared only there is one no pass writes and the occlusion pass reading it makes the
+        // whole graph invalid.
+        let Some(pooled) = declared.writes.first().and_then(|name| assigned.get(name)) else {
+            return;
+        };
+        let target = &self.transients[*pooled].view;
+
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some(declared.label.as_str()),
+            color_attachments: &[],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: target,
+                depth_ops: Some(wgpu::Operations {
+                    // The far plane, which the occlusion pass reads as "nothing was drawn here" and
+                    // treats as sky. Clearing to the near end would put a surface in front of the
+                    // camera everywhere nothing was drawn, and the whole frame would occlude itself.
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            multiview_mask: None,
+            timestamp_writes,
+            occlusion_query_set: None,
+        });
+
+        // After beginning the pass, for `run_shadow_pass`'s reason: a frame whose meshes have not
+        // uploaded still has to clear the buffer, or the occlusion pass reads last frame's depths.
+        let Some(draws) = draws else {
+            return;
+        };
+        if draws.is_empty() {
+            return;
+        }
+
+        pass.set_pipeline(&self.prepass_pipeline);
+        pass.set_bind_group(
+            0,
+            &self.mesh_view_bind_group,
+            &[view_index as u32 * self.mesh_view_stride as u32],
+        );
+        pass.set_vertex_buffer(1, self.mesh_instance_buffer.slice(..));
+
+        // The material is ignored, as in the shadow pass and for the same reason: this writes depth,
+        // and what a surface looks like cannot change how far away it is.
+        for (mesh_id, _textures, range) in draws {
             let Some(mesh) = self.meshes.get(*mesh_id) else {
                 continue;
             };
@@ -3097,6 +3457,12 @@ impl RenderBackend for WgpuBackend {
         // does not hold three full-screen images it will never use again; the next frame allocates
         // what it needs.
         self.transients.clear();
+        // **Cleared with the pool it indexes into, and this is the one hazard of caching by index.**
+        // These groups name a pooled texture by position; dropping the pool without dropping them
+        // would leave every entry pointing at a texture that no longer exists, and the next frame
+        // would bind an occlusion map of the previous window size to a view of the new one. The pool
+        // otherwise only ever grows, which is what makes the cache safe the rest of the time.
+        self.occlusion_view_groups.clear();
         self.capture_source = None;
         match &mut self.target {
             Target::Window { surface, config } => {
@@ -3610,6 +3976,25 @@ impl RenderBackend for WgpuBackend {
                     view.environment.fog.density,
                 ],
                 fog_params: [view.environment.fog.start, 0.0, 0.0, 0.0],
+                // Intensity zero is off, and both the measure pass and the mesh shader return early
+                // on it — so a look that authors no occlusion renders byte-identically and the three
+                // passes are never declared in the first place.
+                occlusion_params: [
+                    view.environment.ambient_occlusion.intensity,
+                    view.environment.ambient_occlusion.radius,
+                    view.environment.ambient_occlusion.bias,
+                    // Whether a real map is bound at the occlusion slot, `shadow_params.y`'s trick
+                    // one field along. **The same condition `frame_graph` uses to declare the
+                    // passes**, written out here rather than asked of the graph — the graph is
+                    // compiled from this same frame, so the two cannot disagree, and reaching into
+                    // it from the uniform upload would be a dependency in the wrong direction.
+                    if view.environment.wants_ambient_occlusion() {
+                        1.0
+                    } else {
+                        0.0
+                    },
+                ],
+                clip_params: [near, far, 0.0, 0.0],
                 // Scales what surfaces receive from the environment. The sky *pass* never reads
                 // this, which is the whole point: the backdrop stays at the map's authored
                 // brightness while the fill is dialled independently.
@@ -3832,6 +4217,92 @@ impl RenderBackend for WgpuBackend {
         // the order a reader wants to see a frame broken down.
         let mut timed: Vec<(usize, String)> = Vec::new();
 
+        // **The occlusion passes' inputs, composed before the loop rather than inside it** — ADR
+        // 0083. Both steps read one group holding a depth texture and a colour texture, and no
+        // single transient can build that group because it holds only itself. Composing one takes
+        // `&self.device` while the loop holds an encoder borrowing `self`, so it happens here.
+        //
+        // Keyed by pass label, which is unique by construction — the graph refuses a duplicate.
+        let mut occlusion_inputs: BTreeMap<String, wgpu::BindGroup> = BTreeMap::new();
+        for &pass_index in plan.order() {
+            let declared = &graph.passes()[pass_index];
+            if !matches!(declared.kind, PassKind::Occlusion { .. }) {
+                continue;
+            }
+            // The depth binding is the prepass for this view; the colour binding is the raw map the
+            // measure step wrote. A step that does not use one of them still binds something, since
+            // a pipeline declaring a binding cannot be used with it empty — the white placeholder
+            // for the colour, and the prepass depth for both steps, which is why the blur declares
+            // it as a read as well.
+            let depth = declared
+                .reads
+                .iter()
+                .filter_map(|name| assigned.get(name))
+                .find(|pooled| self.transients[**pooled].format == TargetFormat::Depth32Sampled)
+                .map(|pooled| &self.transients[*pooled].view);
+            let colour = declared
+                .reads
+                .iter()
+                .filter_map(|name| assigned.get(name))
+                .find(|pooled| self.transients[**pooled].format == TargetFormat::Occlusion)
+                .map_or(&self.white_placeholder_view, |pooled| {
+                    &self.transients[*pooled].view
+                });
+            let Some(depth) = depth else {
+                continue;
+            };
+            occlusion_inputs.insert(
+                declared.label.clone(),
+                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("amadeo occlusion input"),
+                    layout: &self.occlusion_input_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(depth),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(colour),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::Sampler(&self.sampler),
+                        },
+                    ],
+                }),
+            );
+        }
+
+        // And the per-view groups the mesh pipeline binds at 0, which differ only in which occlusion
+        // map they carry. Cached by pooled index, so a steady frame builds none of them.
+        for &pass_index in plan.order() {
+            let declared = &graph.passes()[pass_index];
+            let PassKind::View { index, .. } = declared.kind else {
+                continue;
+            };
+            let Some(pooled) = declared
+                .reads
+                .iter()
+                .filter_map(|name| assigned.get(name))
+                .find(|pooled| self.transients[**pooled].format == TargetFormat::Occlusion)
+                .copied()
+            else {
+                continue;
+            };
+            let _ = index;
+            if !self.occlusion_view_groups.contains_key(&pooled) {
+                let group = mesh_view_group(
+                    &self.device,
+                    &self.mesh_view_layout,
+                    &self.mesh_view_buffer,
+                    &self.transients[pooled].view,
+                    &self.sampler,
+                );
+                self.occlusion_view_groups.insert(pooled, group);
+            }
+        }
+
         for &pass_index in plan.order() {
             let declared = &graph.passes()[pass_index];
 
@@ -3865,6 +4336,26 @@ impl RenderBackend for WgpuBackend {
                 continue;
             }
 
+            // The depth prepass takes the same road, for the same reason: it writes no colour, so
+            // the generic path below — which starts by asking what image this pass writes — would
+            // skip it entirely. Fed the **opaque** draw list rather than the shadow one, because a
+            // shadow caster is culled to the light's volume and this needs what the camera sees.
+            if let PassKind::DepthPrepass { view: view_index } = declared.kind {
+                let slot = timed.len();
+                let writes = self.timing.as_ref().and_then(|timing| timing.writes(slot));
+                if writes.is_some() {
+                    timed.push((slot, declared.label.clone()));
+                }
+                self.run_depth_prepass(
+                    &mut encoder,
+                    declared,
+                    &assigned,
+                    mesh_draws.get(view_index),
+                    writes,
+                );
+                continue;
+            }
+
             // Every other pass this backend knows how to run writes exactly one image. A pass
             // writing none has nothing to attach and is skipped rather than being a special case
             // here — the graph would have to grow a compute pass before that is reachable.
@@ -3889,9 +4380,12 @@ impl RenderBackend for WgpuBackend {
                 // Every full-screen pass overwrites every pixel of its target, so what was there is
                 // irrelevant — but a load of undefined contents is worse than a clear on some
                 // backends, and a clear of something about to be fully written costs nothing.
-                PassKind::Post | PassKind::Present | PassKind::Bloom(_) => clear,
+                PassKind::Post
+                | PassKind::Present
+                | PassKind::Bloom(_)
+                | PassKind::Occlusion { .. } => clear,
                 // Returned above, before any colour attachment is chosen.
-                PassKind::Shadow { .. } => continue,
+                PassKind::Shadow { .. } | PassKind::DepthPrepass { .. } => continue,
             };
 
             // Only a 3D view pass declares one (see `Pass::depth`). Cleared to 1.0, the far plane,
@@ -3997,9 +4491,22 @@ impl RenderBackend for WgpuBackend {
                             return;
                         }
                         pass.set_pipeline(pipeline);
+                        // This view's occlusion map if it measured one, and the white placeholder
+                        // otherwise — ADR 0083. Selected by *format* rather than by position in
+                        // `reads`, because a view reads its shadow map from that list too and "the
+                        // first one" was already the wrong rule once the list held two things.
+                        let view_group = declared
+                            .reads
+                            .iter()
+                            .filter_map(|name| assigned.get(name))
+                            .find(|pooled| {
+                                self.transients[**pooled].format == TargetFormat::Occlusion
+                            })
+                            .and_then(|pooled| self.occlusion_view_groups.get(pooled))
+                            .unwrap_or(&self.mesh_view_bind_group);
                         pass.set_bind_group(
                             0,
-                            &self.mesh_view_bind_group,
+                            view_group,
                             &[index as u32 * self.mesh_view_stride as u32],
                         );
                         // The shadow map this view reads, or the 1×1 placeholder. Something must be
@@ -4170,10 +4677,34 @@ impl RenderBackend for WgpuBackend {
                     pass.draw(0..3, 0..1);
                 }
 
-                // Handled before this match, where it can be given a depth attachment and no colour
-                // one. Unreachable rather than ignored, so adding a pass kind here still has to
-                // think about it.
-                PassKind::Shadow { .. } => {}
+                // Ambient occlusion — ADR 0083. Its own arm rather than joining the full-screen
+                // group above, because what it binds is composed rather than owned by a transient:
+                // one group holding a depth texture and a colour one, built before this loop.
+                PassKind::Occlusion { view: index, step } => {
+                    let Some(inputs) = occlusion_inputs.get(&declared.label) else {
+                        continue;
+                    };
+                    pass.set_pipeline(match step {
+                        graph::OcclusionStep::Measure => &self.occlusion_measure_pipeline,
+                        graph::OcclusionStep::Blur => &self.occlusion_blur_pipeline,
+                    });
+                    // The camera's own uniform: the occlusion settings, the clip planes and the ray
+                    // basis that turns a depth back into a world position. The placeholder-bound
+                    // group, deliberately — this pass is *producing* the occlusion map and must not
+                    // be handed one to read.
+                    pass.set_bind_group(
+                        0,
+                        &self.mesh_view_bind_group,
+                        &[index as u32 * self.mesh_view_stride as u32],
+                    );
+                    pass.set_bind_group(1, inputs, &[]);
+                    pass.draw(0..3, 0..1);
+                }
+
+                // Handled before this match, where they can be given a depth attachment and no
+                // colour one. Unreachable rather than ignored, so adding a pass kind here still has
+                // to think about it.
+                PassKind::Shadow { .. } | PassKind::DepthPrepass { .. } => {}
             }
         }
 

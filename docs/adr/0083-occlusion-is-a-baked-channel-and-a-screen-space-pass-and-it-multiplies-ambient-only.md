@@ -92,8 +92,21 @@ sky itself. It is the shape that makes AO read as smeared grime.
   commit, because either change alone is a defect.
 - Occlusion is **presentation**, so ADR 0019 keeps it out of the state hash and ADR 0009's rule about
   services does not need invoking. No replay, snapshot or determinism test is affected.
-- The screen-space half declares its own transients and passes, which the render graph (ADR 0034)
-  already expresses. It is not built in this ADR's first landing.
+- The screen-space half is authored on the **look** — `Environment::ambient_occlusion`, with
+  intensity, radius in world units, and a self-occlusion bias. Zero intensity is off, and off means
+  the graph declares no transients and no passes at all, so a 2D game pays nothing and every capture
+  taken before this existed is byte-identical.
+- **It costs a second pass over the geometry.** Occlusion has to be known while a surface is being
+  shaded, and the view pass writes depth and shades at once — so depth must be laid down first, on
+  its own. That is a real cost and it is **not yet measured**; `docs/13` item 19 is where the
+  numbers go, and no claim about the cost should be made until they exist.
+- The prepass is single-sampled where the scene's depth is 4×, because a multisampled depth texture
+  cannot be sampled without a resolve and wgpu has none. Occlusion is smeared over half a metre, so
+  there is nothing at the sub-pixel scale for anti-aliasing it to say.
+- **Radius is in world units, not pixels**, so a room does not change shape when somebody resizes
+  the window.
+- The occlusion map is bound on **group 0**, the per-view group. Four bind groups is the whole
+  budget and all four were already spoken for, so there was no fifth to put it in.
 
 ## Alternatives rejected
 
@@ -113,3 +126,38 @@ the separation.
 fine detail a 512² map resolves and a half-resolution screen-space pass does not, and it leaves the
 red channel of every imported glTF material silently discarded — which is the state this ADR exists
 to end.
+
+**HBAO or GTAO for the screen-space half.** Both are better and both cost several times the samples.
+The Alchemy/SAO family reconstructs its normals from depth, so it needs no normal buffer and no
+second prepass target, and it is what a forward renderer can afford beside a shadow pass it is
+already paying for. `RenderBackend` isolates the whole thing, so upgrading is a local change.
+
+**A bilateral (depth-weighted) blur.** Would stop occlusion bleeding across a silhouette, at the cost
+of reading depth again per tap and a kernel that stops being separable. The bleed is a few pixels of
+an already soft quantity multiplied into ambient light alone. Revisit if a silhouette against a
+bright background shows a dark fringe.
+
+---
+
+## What building it cost, kept because two of the three were silent
+
+**The graph rejected the frame and the symptom was a black screen.** The prepass declared its target
+through `with_depth` and not in `writes`, and `compile` builds its writer table from `writes` alone —
+so the occlusion pass read something no pass wrote, `NeverWritten` came back, and `render` returned an
+error. A rejected graph draws *nothing*, so a 1920 × 1080 capture came back as pure black with no
+other clue. The shadow pass had already solved this by declaring its map in `writes` and binding it as
+depth; the fix was to copy it.
+
+**The estimator was wrong by about a factor of four and looked like a wiring failure.** Normalising by
+`radius` on dimensional grounds throttled the whole effect to a few per cent, and the first Atrium
+capture with occlusion on probed **byte-identical** to the one without. Three debug renders separated
+the possibilities — the prepass depth was right, the reconstructed normals were right, and the
+estimator was quietly returning almost exactly one. `docs/07`'s rule held: when a capture disagrees
+with your model of the code, measure the intermediate rather than reason about the whole.
+
+**A derivative cannot sit behind an early return.** `dpdx` asks what the neighbouring pixels in the
+same quad hold, so it is defined only where the whole quad reaches it. Both early returns the shader
+started with had to go — one moved below the derivative, one removed entirely in favour of letting
+intensity multiply through. FXC rejects this outright, which is the compiler Windows CI uses and the
+reason `CLAUDE.md` §4b has a fifth check.
+

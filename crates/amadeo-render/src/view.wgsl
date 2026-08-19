@@ -61,6 +61,15 @@ struct MeshView {
     fog_colour: vec4<f32>,
     // x = how far from the eye fog starts, in world units. yzw unused.
     fog_params: vec4<f32>,
+    // Ambient occlusion (ADR 0083). x = intensity, and zero is off exactly — both the measure pass
+    // and the mesh shader return early on it. y = radius in world units, z = the self-occlusion
+    // bias, w = 1 when a real occlusion map is bound rather than the 1x1 white placeholder.
+    occlusion_params: vec4<f32>,
+    // x = the camera's near plane, y = its far plane, in world units. zw unused.
+    //
+    // Only the occlusion pass reads these, and only to turn a depth-buffer reading back into a
+    // distance -- see `linear_depth` in `occlusion.wgsl`.
+    clip_params: vec4<f32>,
     // x = how much of the environment map reaches surfaces as ambient light. yzw unused.
     //
     // Read by `mesh.wgsl` and deliberately NOT by `sky.wgsl`: the backdrop draws the map as
@@ -89,3 +98,14 @@ struct MeshView {
 };
 
 @group(0) @binding(0) var<uniform> view: MeshView;
+
+// The occlusion map this camera measured, or a 1x1 white placeholder — ADR 0083.
+//
+// **On group 0 rather than beside the shadow map on group 1**, because group 0 is already the
+// per-view group and group 1's bind group is built from a transient that knows only about itself.
+// Four bind groups is the whole budget, so there was no fifth to put this in.
+//
+// Sampled by screen position rather than by a texture coordinate, which is what makes it
+// screen-space: a fragment looks up where it *is*, not where it is on its own surface.
+@group(0) @binding(1) var occlusion_map: texture_2d<f32>;
+@group(0) @binding(2) var occlusion_sampler: sampler;

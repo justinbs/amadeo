@@ -3384,3 +3384,202 @@ fn occlusion_strength_zero_is_exactly_the_unoccluded_surface() {
         "occlusion_strength 0.0 must be byte-identical to a map that occludes nothing"
     );
 }
+
+/// Two boxes meeting at a right angle, seen from in front of the join — ADR 0083.
+///
+/// A floor slab and a wall standing on it. **Two separate meshes with two separate materials**, which
+/// is the whole point: no baked occlusion channel can know about this contact, because neither one's
+/// texture space contains the other. It is exactly what a screen-space pass is for.
+fn a_wall_standing_on_a_floor() -> World {
+    let mut world = World::new();
+
+    let eye = world.spawn();
+    let mut placement = Transform::at(0.0, 0.0);
+    placement.translation = [0.0, 1.2, 4.0];
+    world.insert(eye, placement);
+    // **Names the look, and forgetting to was the first failure.** `capture_with` puts an
+    // `Environment` in the cache under `test_look`; a camera that does not ask for it by id gets
+    // `Environment::default()`, whose occlusion intensity is zero — so the graph declared no
+    // occlusion passes at all and the measured drop was exactly zero, in a scene built entirely to
+    // produce one.
+    world.insert(
+        eye,
+        Camera {
+            environment: "test_look".to_string(),
+            ..Camera::perspective(60.0)
+        },
+    );
+
+    // **A dim sun, and the whole test rests on it.**
+    //
+    // Occlusion multiplies the ambient term and nothing else (ADR 0083), so under a full-strength
+    // sun there is very little for it to act on — the first version of this scene used the default
+    // light and measured a drop of exactly zero, which looks like a broken effect and is in fact
+    // correct arithmetic. An interior lit mostly by the sky is both the case this feature is for and
+    // the only case where it can be measured.
+    let sun = world.spawn();
+    world.insert(sun, Transform::at(0.0, 0.0));
+    world.insert(
+        sun,
+        DirectionalLight {
+            intensity: 0.15,
+            ..DirectionalLight::default()
+        },
+    );
+
+    let mut meshes = MeshCache::new();
+    meshes.insert(
+        "floor",
+        BoxMesh {
+            size: [8.0, 0.2, 8.0],
+        }
+        .tessellate(),
+    );
+    meshes.insert(
+        "wall",
+        BoxMesh {
+            size: [8.0, 3.0, 0.2],
+        }
+        .tessellate(),
+    );
+    world.insert_service(meshes);
+
+    let mut materials = MaterialCache::new();
+    materials.insert(
+        "pale",
+        Material {
+            // Mid grey, so nothing clips at either end and there is room to measure a drop.
+            base_colour: [0.5, 0.5, 0.5, 1.0],
+            ..Material::default()
+        },
+    );
+    world.insert_service(materials);
+
+    let floor = world.spawn();
+    let mut at = Transform::at(0.0, 0.0);
+    at.translation = [0.0, -0.1, 0.0];
+    world.insert(floor, at);
+    world.insert(floor, Mesh::new("floor", "pale"));
+
+    let wall = world.spawn();
+    let mut against = Transform::at(0.0, 0.0);
+    against.translation = [0.0, 1.5, -1.5];
+    world.insert(wall, against);
+    world.insert(wall, Mesh::new("wall", "pale"));
+
+    world
+}
+
+/// A look asking for ambient occlusion at the given intensity, and nothing else.
+///
+/// `sky_ambient` is raised well above one so the neutral environment — a dim `0.12` grey, since this
+/// scene names no `.hdr` — actually lights the room. Together with the dim sun above, that makes the
+/// picture ambient-dominated, which is the only lighting in which occlusion has anything to occlude.
+fn occluding(intensity: f32) -> Environment {
+    Environment {
+        ambient_occlusion: amadeo_render::AmbientOcclusion {
+            intensity,
+            radius: 0.6,
+            bias: 0.02,
+        },
+        sky_ambient: 6.0,
+        ..Environment::default()
+    }
+}
+
+#[test]
+fn a_wall_darkens_the_floor_it_stands_on() {
+    // **The whole reason ADR 0083 has a screen-space half.** A baked occlusion map can darken a
+    // joint cut into one surface and can never darken this, because the floor's texture knows
+    // nothing about the wall — they are different meshes with different materials.
+    //
+    // Two captures of one scene, differing only in `intensity`, which is what makes this a test of
+    // the effect rather than of the lighting: everything else about the two frames is identical.
+    //
+    // **Mutated once**: dropping `contact_occlusion` from the shader's product fails this and leaves
+    // both companions below passing, which is exactly the split the three are for.
+    let mut plain = a_wall_standing_on_a_floor();
+    let Some(without) = capture_with(&mut plain, occluding(0.0), 128, 128) else {
+        return;
+    };
+
+    let mut occluded = a_wall_standing_on_a_floor();
+    let Some(with) = capture_with(&mut occluded, occluding(1.0), 128, 128) else {
+        return;
+    };
+
+    // Down the middle of the frame, through the join and out onto open floor in front of it. The
+    // scan is what makes the assertion structural: it finds the *largest* darkening and where it
+    // sits, rather than trusting a coordinate somebody eyeballed once.
+    let mut worst = 0i32;
+    let mut worst_row = 0;
+    for y in 0..128 {
+        let before = i32::from(pixel_at(&without, 64, y)[0]);
+        let after = i32::from(pixel_at(&with, 64, y)[0]);
+        if before - after > worst {
+            worst = before - after;
+            worst_row = y;
+        }
+    }
+
+    assert!(
+        worst > 10,
+        "the floor where the wall meets it should darken measurably; the largest drop anywhere down \
+         the middle of the frame was {worst} levels, at row {worst_row}. Zero means the occlusion \
+         map never reached the shader, or the estimator returned one everywhere — both of which \
+         happened while this was being written"
+    );
+}
+
+#[test]
+fn open_floor_away_from_anything_is_left_alone() {
+    // The control, and it is the assertion that separates ambient occlusion from a brightness knob.
+    // A point in the middle of an open floor is occluded by nothing, so it must come back **exactly**
+    // as it was. An implementation that dimmed the whole picture would pass the test above and fail
+    // this one, and dimming the whole picture is what a post-process occlusion pass does.
+    let mut plain = a_wall_standing_on_a_floor();
+    let Some(without) = capture_with(&mut plain, occluding(0.0), 128, 128) else {
+        return;
+    };
+
+    let mut occluded = a_wall_standing_on_a_floor();
+    let Some(with) = capture_with(&mut occluded, occluding(1.0), 128, 128) else {
+        return;
+    };
+
+    // Bottom of the frame: floor, close to the camera, with the wall well behind it and out of
+    // reach of a 0.6 m radius.
+    for x in [40, 64, 88] {
+        assert_eq!(
+            pixel_at(&without, x, 120),
+            pixel_at(&with, x, 120),
+            "open floor at ({x},120) must be untouched by occlusion"
+        );
+    }
+}
+
+#[test]
+fn a_look_that_asks_for_no_occlusion_is_byte_identical() {
+    // The property every effect in this engine is held to, and the one that makes it safe to add:
+    // bloom, fog and the shadow map all promise it. Here it also means three passes and three
+    // transients are never created at all — `frame_graph` declares none of them at zero intensity —
+    // so a 2D game and every capture taken before ADR 0083 existed are unaffected.
+    let mut asked = a_wall_standing_on_a_floor();
+    let Some(zeroed) = capture_with(&mut asked, occluding(0.0), 96, 96) else {
+        return;
+    };
+
+    let mut untouched = a_wall_standing_on_a_floor();
+    let unoccluded = Environment {
+        sky_ambient: 6.0,
+        ..Environment::default()
+    };
+    let Some(default) = capture_with(&mut untouched, unoccluded, 96, 96) else {
+        return;
+    };
+
+    assert_eq!(
+        zeroed.pixels, default.pixels,
+        "intensity 0.0 must be byte-identical to a look that never mentions occlusion"
+    );
+}

@@ -95,6 +95,60 @@ impl Default for Bloom {
     }
 }
 
+/// How strongly, and how far, surfaces darken each other where they meet — ADR 0083.
+///
+/// # What this buys that a baked occlusion map cannot
+///
+/// A map baked into a texture darkens a joint *within* one surface. It knows nothing about the
+/// pillar standing on the floor, because the two are separate meshes with separate textures and
+/// neither one's UV space contains the other. Every contact between two objects — a leg on a floor,
+/// a crate against a wall, a pillar meeting a ceiling — is invisible to a bake and is exactly what
+/// this sees.
+///
+/// # Why it is off by default
+///
+/// The same rule the depth buffer, the shadow map and bloom all follow: a look that asks for nothing
+/// allocates nothing and runs no extra passes. A 2D game pays for none of this, and every capture
+/// taken before it existed is still byte-identical.
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+pub struct AmbientOcclusion {
+    /// How much of the ambient light a fully occluded point loses. **Zero is off**, and is the
+    /// default.
+    ///
+    /// `1.0` takes a fully enclosed point to no ambient light at all. Values above about `0.8` start
+    /// to read as soot rather than as shape, because real corners are lit by the light bouncing
+    /// between the two surfaces — which is a thing this technique does not model and cannot.
+    #[reflect(min = 0.0, max = 2.0, default = 0.0)]
+    pub intensity: f32,
+    /// How far, **in world units**, a surface reaches to occlude another.
+    ///
+    /// World units rather than pixels, so the effect is a property of the scene rather than of the
+    /// window size — a room does not change shape when somebody resizes the game. Around half a
+    /// metre suits interiors: large enough to darken where a wall meets a floor, small enough that a
+    /// distant wall does not shade the one in front of it.
+    #[reflect(min = 0.01, max = 100.0, unit = "world units", default = 0.5)]
+    pub radius: f32,
+    /// How far, in world units, a sample must be in front of a surface before it counts as occluding
+    /// it.
+    ///
+    /// This is the self-occlusion guard, and it is what stops a flat wall shading itself into bands.
+    /// Depth is reconstructed per pixel and is not exact, so two samples on one flat surface differ
+    /// slightly; without a floor under that difference, the noise reads as occlusion. Too large and
+    /// genuine shallow contacts stop registering.
+    #[reflect(min = 0.0, max = 1.0, unit = "world units", default = 0.02)]
+    pub bias: f32,
+}
+
+impl Default for AmbientOcclusion {
+    fn default() -> Self {
+        Self {
+            intensity: 0.0,
+            radius: 0.5,
+            bias: 0.02,
+        }
+    }
+}
+
 /// Colour correction applied after tonemapping.
 ///
 /// The cheap, always-available half of "the renderer must not bake in a look" — the same picture
@@ -254,6 +308,14 @@ pub struct Environment {
     /// Off by default, so a scene that authors none is byte-identical.
     #[reflect(default = Fog::default())]
     pub fog: Fog,
+    /// Contact darkening where surfaces meet — ADR 0083's screen-space half.
+    ///
+    /// The second field here that is not a post-process, and for exactly fog's reason: it multiplies
+    /// the ambient term *during* shading, because a pass over the finished image cannot tell the
+    /// sun's contribution from the sky's. Off by default, so a scene that authors none is
+    /// byte-identical and runs no extra passes.
+    #[reflect(default = AmbientOcclusion::default())]
+    pub ambient_occlusion: AmbientOcclusion,
     /// Declared asset id of the `.hdr` environment map this look lights surfaces with (ADR 0049).
     /// **Empty means none**, and falls back to a plain neutral sky.
     ///
@@ -315,6 +377,7 @@ impl Default for Environment {
             grade: Grade::default(),
             vignette: Vignette::default(),
             fog: Fog::default(),
+            ambient_occlusion: AmbientOcclusion::default(),
             sky: String::new(),
             sky_ambient: 1.0,
         }
@@ -340,6 +403,16 @@ impl Environment {
     #[must_use]
     pub fn wants_bloom(&self) -> bool {
         self.bloom.intensity > 0.0
+    }
+
+    /// Whether the depth prepass and the occlusion passes need to run.
+    ///
+    /// [`Environment::wants_bloom`]'s sibling, and it costs more than bloom does: a **second pass
+    /// over the geometry** to lay down depth, then two full-screen passes. A look that does not ask
+    /// for it pays none of that, which is the whole reason zero is the default.
+    #[must_use]
+    pub fn wants_ambient_occlusion(&self) -> bool {
+        self.ambient_occlusion.intensity > 0.0
     }
 }
 
@@ -475,6 +548,11 @@ mod tests {
                 colour: [0.04, 0.05, 0.06],
                 density: 0.08,
                 start: 2.5,
+            },
+            ambient_occlusion: AmbientOcclusion {
+                intensity: 0.7,
+                radius: 0.4,
+                bias: 0.03,
             },
             sky: "overcast_afternoon".to_string(),
             sky_ambient: 0.6,
