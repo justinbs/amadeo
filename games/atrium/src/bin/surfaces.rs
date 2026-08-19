@@ -350,6 +350,10 @@ fn tiling_noise(seed: u64, u: f32, v: f32, lattice: i32) -> f32 {
 
 /// One of eight fixed gradients, chosen by hashing a lattice corner.
 fn gradient_at(seed: u64, x: i32, y: i32) -> [f32; 2] {
+    // The 45 degree ones, named so clippy does not read them as a fumbled `FRAC_1_SQRT_2` -- which is
+    // exactly what they are.
+    const DIAGONAL: f32 = std::f32::consts::FRAC_1_SQRT_2;
+
     // **Sixteen directions, not eight.** Eight means every gradient is axis-aligned or exactly
     // diagonal, and a field built from those has visible structure along those four lines — which,
     // combined with two octaves an exact factor apart, is what made the first grain read as a woven
@@ -359,10 +363,10 @@ fn gradient_at(seed: u64, x: i32, y: i32) -> [f32; 2] {
         [-1.0, 0.0],
         [0.0, 1.0],
         [0.0, -1.0],
-        [0.707_106_8, 0.707_106_8],
-        [-0.707_106_8, 0.707_106_8],
-        [0.707_106_8, -0.707_106_8],
-        [-0.707_106_8, -0.707_106_8],
+        [DIAGONAL, DIAGONAL],
+        [-DIAGONAL, DIAGONAL],
+        [DIAGONAL, -DIAGONAL],
+        [-DIAGONAL, -DIAGONAL],
         [0.923_879_5, 0.382_683_4],
         [-0.923_879_5, 0.382_683_4],
         [0.923_879_5, -0.382_683_4],
