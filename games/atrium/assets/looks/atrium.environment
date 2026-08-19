@@ -4,13 +4,13 @@ version 1
 entity look "Atrium"
   Environment
     bloom
-      intensity 0.0
+      intensity 0.3
       threshold 1.0
     exposure 1.0
     fog
-      colour 0.0 0.0 0.0
-      density 0.0
-      start 0.0
+      colour 0.3 0.33 0.38
+      density 0.016
+      start 3.0
     grade
       contrast 1.0
       saturation 1.0
