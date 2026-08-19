@@ -63,7 +63,7 @@ entity wall_north "North wall"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 2.0 -10.0
+    translation 0.0 4.0 -10.0
 
 entity door_pier_west "West door pier"
   Collider
@@ -71,7 +71,7 @@ entity door_pier_west "West door pier"
     restitution 0.0
     sensor false
     shape Cuboid
-      size 9.4 4.0 0.5
+      size 9.4 8.0 0.5
   RigidBody
     angular_damping 0.0
     gravity true
@@ -81,7 +81,7 @@ entity door_pier_west "West door pier"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation -5.3 2.0 -10.0
+    translation -5.3 4.0 -10.0
 
 entity door_pier_east "East door pier"
   Collider
@@ -89,7 +89,7 @@ entity door_pier_east "East door pier"
     restitution 0.0
     sensor false
     shape Cuboid
-      size 9.4 4.0 0.5
+      size 9.4 8.0 0.5
   RigidBody
     angular_damping 0.0
     gravity true
@@ -99,7 +99,7 @@ entity door_pier_east "East door pier"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 5.3 2.0 -10.0
+    translation 5.3 4.0 -10.0
 
 entity wall_south "South wall"
   Collider
@@ -107,7 +107,7 @@ entity wall_south "South wall"
     restitution 0.0
     sensor false
     shape Cuboid
-      size 20.0 4.0 0.5
+      size 20.0 8.0 0.5
   Mesh
     material "slate"
     mesh "wall_north"
@@ -120,7 +120,7 @@ entity wall_south "South wall"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 2.0 10.0
+    translation 0.0 4.0 10.0
 
 entity wall_east "East wall"
   Collider
@@ -128,7 +128,7 @@ entity wall_east "East wall"
     restitution 0.0
     sensor false
     shape Cuboid
-      size 0.5 4.0 20.0
+      size 0.5 8.0 20.0
   Mesh
     material "slate"
     mesh "wall_side"
@@ -141,7 +141,7 @@ entity wall_east "East wall"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 10.0 2.0 0.0
+    translation 10.0 4.0 0.0
 
 entity wall_west "West wall"
   Collider
@@ -149,7 +149,7 @@ entity wall_west "West wall"
     restitution 0.0
     sensor false
     shape Cuboid
-      size 0.5 4.0 20.0
+      size 0.5 8.0 20.0
   Mesh
     material "slate"
     mesh "wall_side"
@@ -162,7 +162,7 @@ entity wall_west "West wall"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation -10.0 2.0 0.0
+    translation -10.0 4.0 0.0
 
 entity pillar_nw "Pillar northwest"
   Collider
@@ -170,7 +170,7 @@ entity pillar_nw "Pillar northwest"
     restitution 0.0
     sensor false
     shape Cuboid
-      size 1.0 3.0 1.0
+      size 1.0 8.0 1.0
   Mesh
     material "stone"
     mesh "pillar"
@@ -183,7 +183,7 @@ entity pillar_nw "Pillar northwest"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation -4.0 1.5 -4.0
+    translation -4.0 4.0 -4.0
 
 entity pillar_ne "Pillar northeast"
   Collider
@@ -191,7 +191,7 @@ entity pillar_ne "Pillar northeast"
     restitution 0.0
     sensor false
     shape Cuboid
-      size 1.0 3.0 1.0
+      size 1.0 8.0 1.0
   Mesh
     material "stone"
     mesh "pillar"
@@ -204,7 +204,7 @@ entity pillar_ne "Pillar northeast"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 4.0 1.5 -4.0
+    translation 4.0 4.0 -4.0
 
 entity pillar_sw "Pillar southwest"
   Collider
@@ -212,7 +212,7 @@ entity pillar_sw "Pillar southwest"
     restitution 0.0
     sensor false
     shape Cuboid
-      size 1.0 3.0 1.0
+      size 1.0 8.0 1.0
   Mesh
     material "stone"
     mesh "pillar"
@@ -225,7 +225,7 @@ entity pillar_sw "Pillar southwest"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation -4.0 1.5 4.0
+    translation -4.0 4.0 4.0
 
 entity pillar_se "Pillar southeast"
   Collider
@@ -233,7 +233,7 @@ entity pillar_se "Pillar southeast"
     restitution 0.0
     sensor false
     shape Cuboid
-      size 1.0 3.0 1.0
+      size 1.0 8.0 1.0
   Mesh
     material "stone"
     mesh "pillar"
@@ -246,7 +246,7 @@ entity pillar_se "Pillar southeast"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 4.0 1.5 4.0
+    translation 4.0 4.0 4.0
 
 entity plinth "Plinth"
   Collider
@@ -302,7 +302,7 @@ entity sun "Sun"
     colour 1.0 0.96 0.88
     intensity 1.0
     shadow_bias 0.03
-    shadow_distance 22.0
+    shadow_distance 30.0
     shadow_resolution 2048
     shadows Orthogonal
   Transform
@@ -934,7 +934,7 @@ entity roof "Roof with an oculus"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 4.2 0.0
+    translation 0.0 8.2 0.0
 
 entity vestibule "Vestibule beyond the doorway"
   Mesh

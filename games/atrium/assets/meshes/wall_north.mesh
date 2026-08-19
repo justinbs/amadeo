@@ -3,4 +3,4 @@ version 1
 
 entity mesh "Long wall"
   BoxMesh
-    size 20.0 4.0 0.5
+    size 20.0 8.0 0.5
