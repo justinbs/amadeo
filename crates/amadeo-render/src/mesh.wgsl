@@ -236,7 +236,7 @@ fn cascade_for(distance: f32) -> i32 {
 }
 
 // How much light reaches this point: 1.0 in full light, 0.0 fully shadowed.
-fn shadow_factor(world: vec3<f32>, lambert: f32) -> f32 {
+fn shadow_factor(world: vec3<f32>, normal: vec3<f32>, lambert: f32) -> f32 {
     if view.shadow_params.y < 0.5 {
         return 1.0;
     }
@@ -248,7 +248,30 @@ fn shadow_factor(world: vec3<f32>, lambert: f32) -> f32 {
     let distance = length(world - view.eye.xyz);
     let cascade = cascade_for(distance);
 
-    let light_clip = view.light_view_projection[cascade] * vec4<f32>(world, 1.0);
+    // **Normal-offset bias — ADR 0081.** Before projecting, walk the sample point out along the
+    // surface's own normal by roughly one shadow-map texel.
+    //
+    // A depth bias asks "how much deeper than the recorded occluder is this fragment allowed to be",
+    // and one number cannot answer that for a floor facing the light and a wall backing away from it
+    // at the same time. Too little and a surface stipples itself dark; too much and its shadow
+    // detaches at the contact, which is the bright hairline that ran along every concave junction in
+    // this engine — wall to ceiling, wall to wall, and the underside of a roof beam.
+    //
+    // Moving *sideways* instead sidesteps the trade. One texel of the shadow map covers a real
+    // distance in the world, and a fragment within that distance of a corner is genuinely ambiguous;
+    // shifting the lookup out of the corner by that much resolves it without ever claiming the
+    // fragment is nearer the light than it is.
+    //
+    // The box spans twice the cascade's radius, so a texel is that over the resolution —
+    // `shadow_params.x` is already `1 / resolution`.
+    let texel_world = 2.0 * view.cascade_far[cascade] * view.shadow_params.x;
+    // Scaled by how edge-on the surface is to the light, because that is where a texel spans the
+    // most depth and the ambiguity is worst. The constant term keeps a face-on surface from getting
+    // none at all.
+    let along_normal = texel_world * (0.6 + 1.4 * clamp(1.0 - lambert, 0.0, 1.0));
+    let sample_at = world + normal * along_normal;
+
+    let light_clip = view.light_view_projection[cascade] * vec4<f32>(sample_at, 1.0);
     // The light's projection is orthographic, so w is always 1 and there is no perspective divide to
     // do. Dividing anyway would be harmless and would also imply this works for a spot light, which
     // it does not yet.
@@ -523,7 +546,14 @@ fn fs_main(
     // a normal map does not move a single triangle. Using the bumpy normal would vary the bias
     // pixel to pixel across a flat wall and speckle it with acne.
     let geometric_lambert = max(dot(normalize(in.normal) * facing, towards_light), 0.0);
-    let shadow = shadow_factor(in.world_position, geometric_lambert);
+    // The **geometric** normal, not the mapped one: the offset is about where this fragment sits on
+    // real geometry relative to the shadow map's texels, and a normal map describes bumps that are
+    // not in the depth buffer at all.
+    let shadow = shadow_factor(
+        in.world_position,
+        normalize(in.normal) * facing,
+        geometric_lambert,
+    );
 
     // The material's base colour times its texture. Multiplied rather than replaced, which is what
     // glTF's metallic-roughness model specifies and what ADR 0033 followed: the texture carries the
