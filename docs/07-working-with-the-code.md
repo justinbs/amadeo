@@ -2876,6 +2876,39 @@ so the two tools fight and neither result is reviewable, which is I2 gone for ge
 **If you write a file format by hand, assert that the canonical writer would write the same bytes.**
 It is two lines: parse your output, re-emit it, compare.
 
+### An authored value may be dead data, because a clip is writing the same field
+
+The Atrium's `atrium.scene` said `PointLight` `intensity 16.0`. It had no effect whatever. The same
+entity carried an `AnimationPlayer` for `lamp_flicker.anim`, which drives `PointLight.intensity`
+through five keys — and by ADR 0066 a clip reads the component, patches the field and writes it back
+**every tick**, starting at tick 1. So the authored number is overwritten before anybody sees it.
+
+A whole commit was spent "fixing" a light this way and changed nothing. What proved it was the
+cheapest possible experiment: set the *scene* value to zero and capture. The image came back
+**byte-identical**. Then zero the *clip's* keys and capture: a hundred pixels a row moved.
+
+**Nothing reports this.** `amadeo check` validates the field against the schema and the field is
+valid. The tests pass. Reading the scene file top to bottom shows a number that looks authoritative.
+It is the same shape as [a component that is *absent*](#hiding-a-subtree-hides-it--but-only-if-you-ask-its-ancestors):
+a defect made of something that is not in front of you.
+
+> **Before believing a number in a scene file, grep the `.anim` files for the component and field it
+> belongs to.** `grep -rn 'field "intensity"' games/*/assets/anims/`
+
+A schema-level fix is possible — `describe` could report which fields any loaded clip targets, or
+`amadeo check` could warn when a scene authors a field a clip on the same entity also drives — and
+neither exists. Worth doing when a second instance shows up.
+
+### Two binaries with the same name in one workspace break `cargo doc` and nothing else
+
+`games/atrium` had `src/bin/surfaces.rs` and `games/warren` gained one. They build, they run, the
+tests pass, clippy is clean — and `cargo doc --workspace` fails with `error: document output
+filename collision`, because rustdoc writes both to the same path.
+
+It is a failure only the **fourth** of `CLAUDE.md` §4b's checks can see, and only once both exist. So
+it is invisible to every fast check and appears in CI after a push, which is exactly what happened:
+run the doc check *before* pushing, not after. The Warren's is `finishes` now.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

@@ -811,6 +811,39 @@ whichever option wins has to run *before* `generate_tangents` rather than after.
 
 ---
 
+## Q42 · P2 · Nothing warns when a clip overrides a value a scene file authors
+
+**New in session 22, found by engine gate review 13, and it cost a whole commit before anyone
+noticed.**
+
+`games/atrium`'s scene authored `PointLight` `intensity 16.0`. The same entity carried an
+`AnimationPlayer` for a clip whose track is `PointLight.intensity`, and by ADR 0066 a clip reads the
+component, patches the field and writes it back **every tick** from tick 1. So the authored number
+had no effect whatever — and the "fix" that set it was proven inert only by setting it to zero and
+observing a **byte-identical capture**.
+
+**Nothing in the toolchain reports this.** `amadeo check` validates the field against the schema and
+the field is valid. The tests pass. `describe` reports the component's shape, not who writes it.
+Reading the scene file top to bottom shows a number that looks authoritative. It is the same shape
+as a component that is *absent*: a defect made of something that is not in front of you.
+
+The workaround is a grep, and it is in `docs/07` and `docs/14` §4 #9:
+
+```bash
+grep -rn 'field "intensity"' games/*/assets/anims/
+```
+
+**Two candidate fixes, neither built.** `describe` could report which fields any loaded clip targets,
+which is cheap and puts the answer where an agent already looks. Or `amadeo check` could warn when a
+scene authors a field that a clip on the same entity also drives — better, and blocked by the same
+layering Q31 records: `amadeo-scene` does not depend on `modules/amadeo-anim` and should not.
+
+**P2 rather than P1** because the grep works and one instance is not a pattern. Promote it the moment
+a second one turns up, because the cost is not the defect — it is that the fix for the defect looks
+like it worked.
+
+---
+
 ## Q31 · P2 · Nothing warns when a normal map forgets to declare itself linear
 
 **New in session 14, and named in ADR 0047 as the sharpest edge that feature ships with.**

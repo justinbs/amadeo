@@ -2,9 +2,11 @@
 
 > **This document is for two readers and nobody else: the critic agent, and Justin.**
 >
-> The critic reads §§1–5 at the start of every review, cold, before it looks at anything. Justin
-> reads §6 to see what has been ruled and what it cost. Whoever is implementing reads §4 to find out
-> what it is allowed to write in a status column, and otherwise stays out of this file.
+> The critic reads **§§1–7** at the start of every review, cold, before it looks at anything —
+> §7 is Justin's standing instruction in his own words, and it is the standard the rest of the file
+> serves. Justin reads **§7 and §8** to see what has been ruled and what it cost. Whoever is
+> implementing reads **§6** to find out what it may write in a status column, and otherwise stays
+> out of this file.
 >
 > It exists because `.claude/agents/critic.md` states the critic's *taste* and nothing states its
 > *procedure*, so eleven reviews were each as good as one cold agent's improvisation on the day.
@@ -27,8 +29,9 @@ So the critic is not a linter and not a second opinion. It is the only mechanism
 that looks at the thing a *player* meets and is allowed to say no.
 
 **Its verdict is binding** (`docs/12` §4). Where it disagrees, its changes are followed. Where it is
-factually wrong about the repository it is corrected with evidence — which has happened once, and it
-verified and withdrew. Both halves of that are load-bearing: take it seriously, and check it.
+factually wrong about the repository it is corrected with evidence — which has happened twice, and
+both times it verified and withdrew. Both halves of that are load-bearing: take it seriously, and
+check it.
 
 ---
 
@@ -138,12 +141,25 @@ cargo run -p amadeo-cli -- image row out.png 600 300 900
 cargo run -p amadeo-cli -- image col out.png 1017 200 400
 cargo run -p amadeo-cli -- image crop out.png 480 250 80 60 5 crop.png
 cargo run -p amadeo-cli -- image stats out.png
+cargo run -p amadeo-cli -- image stats out.png 400 150 200 300
+cargo run -p amadeo-cli -- image diff before.png after.png
 ```
 
-`probe` reads named pixels, `row` and `col` print a scanline as `x r g b`, `crop` magnifies a
-rectangle by an integer factor with no filtering — so a magnified crop shows the real texels rather
-than an interpolation of them — and `stats` gives a luminance histogram, which is how "65% of this
-frame is one gradient" gets said with a number.
+`probe` reads named pixels, and `row` and `col` print a scanline as `x r g b luma`.
+
+`crop` magnifies a rectangle by an integer factor **with no filtering** — so it shows the real texels
+rather than an interpolation of them, which matters because the defects worth finding are *made of*
+the texel grid.
+
+`stats` gives a luminance histogram and a **clipped-pixel count** (any channel ≥ 254), over the whole
+frame or over one rectangle. The clipped count is the figure that says "this highlight has no detail
+left in it": review 13 found a lamp erasing a stone pillar over a 200-row run, and said this number
+would have surfaced it in the first command rather than the twelfth.
+
+`diff` compares two captures and reports the changed-pixel count, the largest difference and where it
+is, and **a bounding box of everything that moved**. §4 #2 tells you to split a variable and move one
+half, which makes this the operation that follows almost every experiment — it was hand-rolled six
+times in one review before it existed.
 
 **Write captures to the scratchpad, never into the repository.**
 
@@ -181,7 +197,47 @@ right. It is also exactly the loop that produces a false POLISHED, and the rule 
 
 ---
 
-## 7. The ledger
+## 7. What Justin has instructed, in his own terms
+
+Kept here because the critic starts cold and because an instruction that lives in a conversation is
+one that quietly lapses — the same argument `docs/12` makes about the bar itself.
+
+**On what the engine is being held to:**
+
+> *"You the agent, are supposed to make sure this project is a game engine that is enough for a AA
+> Indie studio the likes of Hello Games the creator of No Man's Sky as well as Project Zomboid and
+> their studios. That's the level that passes, imagine you are presenting this engine to a game
+> developer conference."*
+
+**On the demo games:**
+
+> *"The demo games are supposed to be demo games the likes of UE5's Demo Game that isn't just a
+> showcase of a character, it feels like a game, and is actually a game. Obviously this won't be the
+> next UE5 but AA capability and level at the VERY LEAST."*
+
+**On the critic's authority, stated to the implementer:**
+
+> *"Only and only if the agent passes different portions of the engine that you're working on will
+> you move past that. You're not in charge of passing things, its the agent's… The Agent will
+> dictate whether progress is sufficient, whether planning is enough, whether implementation is
+> successful, not you."*
+
+> *"Do not pass unless it reaches AA level."*
+
+**And on this document:**
+
+> *"From now on there should be an agent documentation that's JUST FOR THE AGENT and MYSELF."*
+
+That is what this file is.
+
+**One thing the implementer owes the critic, which review 13 had to point out:** do not edit game
+content while a review is in flight. It opened its report by noting the working tree was not clean
+and declining to credit the work it found there. That is correct, and it is the implementer's fault
+when it happens.
+
+---
+
+## 8. The ledger
 
 Engine-gate reviews 1–11 are recorded in `docs/13-the-engine-gate.md` §4, where they were written;
 they stay there rather than being moved, because §6 rule 4 says verdicts are not edited. Reviews

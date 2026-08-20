@@ -24,71 +24,82 @@ always on), **0041** (parallelism is deterministic by construction or absent —
    8.3 µs per simulation tick, 125 µs of CPU-side frame preparation, and 2.7% of a frame at gate 3's
    200-body complexity.
 
-## 📬 For the next session — read this box first, then `docs/12-the-bar.md`
+## 📬 For the next session — read this box first, then `docs/14-the-critic.md` §6
 
-> ### Where session 22 left off: review 12 gave thirteen ranked findings and four are built
+> ### Session 22: the gate reached review 13, and the Warren finally has a look
 >
 > **The project changed hands between sessions** — the previous account hit its weekly limit
-> mid-stream, so session 22 opened by re-reading the documentation cold and sending a full
+> mid-stream — so session 22 opened by re-reading the documentation cold and sending a full
 > re-assessment to the critic rather than continuing from a plan in a transcript. That is
 > `docs/12`'s own argument working: the plan was in a *file*, so it survived.
 >
-> **Review 12 returned NOT POLISHED with thirteen ranked findings.** Its report and its ruling on
-> the gate order are in `docs/14-the-critic.md` §7; the plan it re-wrote is `docs/13` §2.
+> **Two reviews happened. Both returned NOT POLISHED.** Their records are in
+> `docs/14-the-critic.md` §8 and the plan they rewrote is `docs/13` §2. `docs/13` §1 now carries the
+> execution order review 13 set, and **that order is the answer to "what do I do next".**
 >
-> **The one finding that changes what happens next**: every hour of Phase C had landed in
-> `games/atrium`, a demo with no premise, while `games/warren` — the milestone deliverable, the only
-> game here with a passed design — sat at **13 of 13 box meshes and 6 of 6 untextured materials,
-> exactly where review 1 left it in session 20**. Phase C's preamble routed the work there and said
-> why; that reason expired when `docs/11` passed three sessions ago and nothing re-routed it.
-> `docs/13` §2 has a **Lands in** column now, and it is `games/warren` for everything remaining.
+> #### The one number that moved, after thirteen reviews of it not moving
+>
+> `games/warren` — the milestone deliverable, the only game here with a passed design — had sat at
+> **6 / 6 untextured materials and 13 / 13 box meshes since session 20**. Every hour of gate work had
+> been landing in `games/atrium`, a demo with no premise, because Phase C's preamble routed it there
+> while the Warren's design was unpassed. **That design passed in session 20 and nothing re-routed
+> the work.** `docs/13` §2 has a **Lands in** column now, and it is `games/warren` for everything
+> remaining.
+>
+> Its materials are `docs/11` §5a's palette at last: **6 / 6 → 2 / 6** on all three texture slots.
+> **Its meshes are still 13 / 13 boxes**, and that is the next job.
 >
 > #### What landed
 >
-> - **`docs/14-the-critic.md`** — the critic's standing brief, which Justin asked for and review 12
->   specified. §3 is the evidence a review must gather; **§6 reserves a ✅ to a review**, because
->   item 13b was marked done with neither half of its condition ever captured.
-> - **`amadeo image`** — probe, row, col, crop, stats. Review 12 wrote a pixel probe from scratch;
->   this is it, in the repo, standalone like `fmt`.
-> - **Ambient occlusion, both halves (ADR 0083).** The engine had none, and `mesh.wgsl` was
->   discarding glTF's occlusion channel. It multiplies **ambient only** — never the sun, never a lamp
->   — which is the whole difference between occlusion and grime. Contacts drop 30 levels, open floor
->   is byte-identical, the frame mean moves 0.3. **Its cost is not measured; item 19 is where that
->   number goes.**
-> - **Every light has a fixture** (item 14), except the vestibule's daylight, which stands for the
->   sky and is flagged for the critic to rule on.
-> - **`crates/amadeo-texture`** (items 13 and 4) — the generator as engine code, fifteen tests, and
->   the third home for a noise routine two games had copied. `Bond::Broken` places each joint over
->   the middle of the stone below, so the lap is arithmetic rather than statistical.
+> - **`docs/14-the-critic.md`** — the critic's standing brief, which Justin asked for. §3 is the
+>   evidence a review must gather; **§6 reserves a ✅ to a review**; §4 is nine things this
+>   repository has fooled a reviewer with. Review 13 said §3 and §4 changed how it worked.
+> - **`amadeo image`** — `probe` / `row` / `col` / `crop` / `stats` / `diff`. Standalone like `fmt`.
+> - **Ambient occlusion, both halves (ADR 0083)**, and its cost measured in `docs/10`: 275 µs of a
+>   616 µs frame, of which the depth prepass is 12 and the full-resolution spiral is 204.
+> - **`crates/amadeo-texture`** — the generator as engine code, 15 tests. `Bond::Broken` places each
+>   joint over the middle of the stone below, so the lap is arithmetic rather than statistical.
+> - **A way to photograph `games/warren` in play**, which had never existed.
+> - The Atrium's pendant, the Warren's palette and its reticle.
 >
-> #### Three things worth not rediscovering
+> #### Four things worth not rediscovering
 >
-> 1. **A rejected render graph draws nothing, and the symptom is a black screen.** The depth prepass
->    declared its target through `with_depth` and not in `writes`, and `compile` builds its writer
->    table from `writes` alone — so the occlusion pass read something no pass wrote and the whole
->    frame was refused. 1920 × 1080 of pure black with no other clue.
-> 2. **A wrong constant looks exactly like a wiring failure.** The occlusion estimator was normalised
+> 1. **An authored value may be dead data, because a clip is writing the same field.** `atrium.scene`
+>    authored a `PointLight::intensity`; `lamp_flicker.anim` drove the same field from tick 1, so a
+>    whole commit's "fix" changed nothing and the capture was **byte-identical**. Nothing reports
+>    this — not `amadeo check`, not a test, not reading the scene top to bottom. **Grep the `.anim`
+>    files before believing a number in a scene file.** (`docs/07`, `docs/14` §4 #9.)
+> 2. **A rejected render graph draws nothing, and the symptom is a black screen.** The depth prepass
+>    declared its target through `with_depth` and not in `writes`; `compile` builds its writer table
+>    from `writes` alone, so the occlusion pass read something no pass wrote and the whole frame was
+>    refused. 1920 × 1080 of pure black with no other clue.
+> 3. **A wrong constant looks exactly like a wiring failure.** The occlusion estimator was normalised
 >    by `radius` on dimensional grounds, which throttled it to a few per cent, and the first capture
->    with it on probed **byte-identical** to the one without. Three debug renders separated it: the
->    depth was right, the normals reconstructed from it were right, and the estimator was returning
->    one. Measure the intermediate rather than reason about the whole.
-> 3. **Read a design document against the engine, not against itself.** `docs/11` §10's asset budget
+>    with it on probed byte-identical to the one without. Three debug renders separated it: the depth
+>    was right, the normals were right, the estimator was returning one. **Measure the intermediate.**
+> 4. **Read a design document against the engine, not against itself.** `docs/11` §10's asset budget
 >    rested on "there is no raw-geometry path and the only meshes are boxes, planes and arches",
->    which ADR 0074 falsified in session 21 — and it had *cut content*: the trolley was struck out
+>    falsified by ADR 0074 a session earlier — and it had *cut content*: the trolley was struck out
 >    because "wheels are the one thing boxes cannot fake", and a wheel is a cylinder.
 >
-> **Everything is pushed through `c357bb6`**, and CI was green on Windows, determinism, docs and
-> clippy at the time of writing with the Ubuntu job still running. `gh` is not on PATH: prefix with
-> `$env:PATH = "C:Program FilesGitHub CLI;$env:PATH"`, and check per-job with
-> `gh run view <id> --json jobs` rather than waiting on the summary.
+> #### The process, which is not negotiable and is the reason any of this worked
 >
-> #### What is next
+> **The critic's verdict is binding** (`docs/12` §4). Nothing is done until it says so, **only a
+> review may write ✅ in `docs/13`**, and implementation writes 🟡 *built, awaiting verdict*. Where
+> the critic is factually wrong about the repository it is corrected with evidence — that has now
+> happened twice, and both times it verified and withdrew, which is the mechanism working rather
+> than failing.
 >
-> Review 13 was sent on the four items above. After it: the Warren gets the content (item 24), which
-> is the change review 12 said is worth more than any single item on its list. **Its materials are
-> still named `brass`, `carpet`, `plaster` and `timber`** — a Victorian interior, from before
-> `docs/11` §5a specified cast-iron rings, bone-white over rust, and one accent of safety orange.
-> The content predates its own design document.
+> Do not edit game content while a review is in flight. Review 13 opened its report by noting the
+> working tree was not clean, and it was right to.
+>
+> #### Housekeeping
+>
+> **Everything is pushed through `11ee7c1`.** `gh` is not on PATH: prefix with
+> `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`, and check per-job with
+> `gh run view <id> --json jobs` rather than waiting on the summary. **Run the fourth check
+> (`cargo doc`) before pushing, not after** — two binaries named `surfaces` collided in rustdoc and
+> nothing else noticed, so one push went out red.
 
 <details>
 <summary>Session 21's box, kept because its three lessons are still live</summary>
@@ -263,6 +274,40 @@ time and keep working. One historical red mark to ignore for ever: `6e56c0b`'s d
 `f91229d`.
 </details>
 
+
+### Session 22 in one paragraph
+
+**A cold takeover, two reviews, and the first session whose output landed in the game.** The project
+changed accounts mid-stream, so this one began by reading the documentation from scratch and asking
+the critic for a full re-assessment rather than resuming a plan nobody could see. Review 12 returned
+thirteen ranked findings; four were built and sent back; review 13 closed two of them, **corrected
+one of my fixes as dead data**, withdrew one of its own predecessor's claims, and found that the
+gate's own POLISHED condition — *a frame from a real game* — had been **unreachable for thirteen
+reviews**, because nobody could photograph `games/warren` in play at all.
+
+- **The engine gained ambient occlusion (ADR 0083)** — it had none of any kind, and `mesh.wgsl` was
+  discarding glTF's occlusion channel outright. It multiplies **ambient only**, which is the whole
+  difference between occlusion and grime, and is why it cannot be a post-process.
+- **And a texture generator as engine code** (`crates/amadeo-texture`), which is engine gate item 13
+  and `docs/12` §3's requirement that *Claude can author a game's assets*. It is also the third home
+  for a noise routine two games had copied, exactly as the second copy's own comment predicted.
+- **The Atrium's stone stopped being a 4 × 4 square lattice in stack bond** — the single biggest
+  machine-made tell in the project, on every surface at once.
+- **The Warren stopped wearing another game's palette.** Its materials were `plaster`, `carpet` and
+  `timber`, authored before `docs/11` existed and never revisited when it did.
+
+### The four things worth not rediscovering, session 22
+
+- **An authored value may be dead data, because a clip is writing the same field.** The proof was the
+  cheapest possible experiment and the conclusion was unarguable: zero the scene's value, capture,
+  and the image comes back byte-identical. Nothing in the toolchain reports this.
+- **A rejected render graph draws nothing**, so a graph-validation error and a catastrophic renderer
+  bug have the same symptom: a black frame.
+- **A wrong constant is indistinguishable from a wiring failure**, and the way through is to render
+  the intermediate rather than to reason about the whole. Three debug renders separated a bad
+  normalisation from four other candidates in ten minutes.
+- **Read a design document against the engine, not against itself.** `docs/11` §10 had *cut content*
+  on a constraint that expired a session earlier.
 
 ### Session 21 in one paragraph
 
