@@ -101,6 +101,19 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > springing and met the arch on a dead-straight seam; and `Condition` was an i.i.d. die roll, which
 > contradicts the very sentence it was written to satisfy.
 >
+> #### And fixing its first item found a gameplay bug that had no symptom
+>
+> Making the fittings spot lights meant `carry_the_torch` — which wrote **every `SpotLight` in the
+> world** — started driving them: picking the torch up blazed every fitting in the level to the
+> beam's intensity, and dropping it put them all out, in a game whose whole lighting design is a warm
+> lamp you carry against cold fittings you do not control. The test suite could not catch it because
+> the test helper had the same bug (`the first SpotLight`), so it was measuring a fitting too.
+>
+> It surfaced only as an A/B on the fittings' authored intensity coming back **byte-identical** — the
+> third instance in one session of an authored value silently overwritten at runtime. **Find things
+> by their place in the world, not by the type of component they carry**; "the only one" is a
+> property of today's content, not of the system. (`docs/07`.)
+>
 > #### What is next
 >
 > `docs/13` §1 still carries review 13's order. Items 31 and 24 are both 🟡 — **item 24 has now been

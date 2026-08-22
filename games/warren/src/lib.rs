@@ -196,8 +196,23 @@ pub fn carry_the_torch(world: &mut World) {
         .iter()
         .any(|carrier| amadeo_inventory::count_of(world, *carrier, TORCH) > 0);
 
+    // **The beam is the spot light on the camera, not "the spot lights".**
+    //
+    // This used to write every `SpotLight` in the world, which was correct for exactly as long as
+    // the torch was the only one. Session 23 made the emergency fittings spots — a point light 0.3 m
+    // off its own mounting wall clips it to white at any intensity, and a spot aimed down and away
+    // pools instead — and this system immediately started driving them too: every fitting in the
+    // level blazed to `BEAM_INTENSITY` when you picked the torch up and went out when you dropped it.
+    //
+    // It is `docs/14` §4 #9's shape a third time: an authored value silently overwritten at runtime,
+    // so the scene's number is dead data and an A/B on it changes nothing. It was found by an A/B
+    // that came back byte-identical for the *second* time in one session.
+    let Some(eyes) = eyes(world) else {
+        return;
+    };
     let beams: Vec<Entity> = world
-        .query::<(&SpotLight,)>()
+        .query::<(&SpotLight, &Parent)>()
+        .filter(|(_, (_, parent))| parent.0 == eyes)
         .map(|(entity, _)| entity)
         .collect();
     for beam in beams {

@@ -2954,6 +2954,25 @@ static collider in the instantiated level and checks nothing sits below the deck
 reaches the crown. It knows nothing about overrides and would catch the next thing that loses a
 height, whatever the mechanism.
 
+### A system that finds its target by component type will grab the next thing that has one
+
+`carry_the_torch` lit the Warren's hand lamp by writing **every `SpotLight` in the world**. That was
+correct for exactly as long as the beam was the only spot light. The moment session 23 made the
+emergency fittings spots, picking the torch up blazed every fitting in the level to the beam's
+intensity and dropping it put them all out — in a game whose entire lighting design is a warm lamp
+you carry against cold fittings you do not control.
+
+The same mistake was in the test helper (`beam()` returned "the first `SpotLight`") and so the test
+suite could not catch it — it was measuring the fitting too.
+
+**Find things by their place in the world, not by the type of component they carry.** The beam is the
+spot light whose `Parent` is the camera; that is one filter, it cannot be satisfied by accident, and
+it reads as what it means. A marker component would also do. What does not do is "the only one",
+which is a property of today's content rather than of the system.
+
+It surfaced as an A/B on the fittings coming back **byte-identical** — the third instance in one
+session of an authored value being overwritten at runtime, which is why `docs/14` §4 #9 exists.
+
 ### A `--from` capture does not see a scene edit, so an A/B through one proves nothing
 
 `amadeo capture --from <snapshot>` restores **components** (ADR 0028). A `PointLight`'s intensity in

@@ -266,6 +266,53 @@ fn taking_the_torch_lights_the_beam_and_takes_it_out_of_the_room() {
 }
 
 #[test]
+fn the_torch_lights_its_own_beam_and_nothing_else() {
+    // **The defect this pins is a gameplay one, and it was invisible for exactly as long as the beam
+    // was the only spot light in the world.** `carry_the_torch` wrote *every* `SpotLight`, so when
+    // session 23 made the emergency fittings spots — a point light 0.3 m off its own mounting wall
+    // clips to white at any intensity, and a spot aimed down and away pools instead — picking the
+    // torch up blazed every fitting in the level to `BEAM_INTENSITY`, and dropping it put them all
+    // out. The Warren's whole design is a warm hand lamp against cold fittings you do not control.
+    //
+    // It was found by an A/B on the fittings' authored intensity coming back **byte-identical**,
+    // which is `docs/14` §4 #9's shape: a number in a scene file that a system overwrites every tick.
+    let mut app = room();
+    let player = player(&app.world).expect("a character");
+    let torch = torch(&app);
+
+    let fittings = |app: &App| -> Vec<f32> {
+        let eyes = eyes(&app.world).expect("an interactor");
+        let mut found: Vec<f32> = app
+            .world
+            .query::<(&SpotLight, &amadeo_transform::Parent)>()
+            .filter(|(_, (_, parent))| parent.0 != eyes)
+            .map(|(_, (light, _))| light.intensity)
+            .collect();
+        found.sort_by(f32::total_cmp);
+        found
+    };
+
+    let before = fittings(&app);
+    assert!(
+        !before.is_empty(),
+        "the slice has fittings, or this test proves nothing"
+    );
+    assert!(
+        before.iter().all(|intensity| *intensity > 0.0),
+        "a fitting on the circuit is lit before anybody picks anything up: {before:?}"
+    );
+
+    amadeo_inventory::store(&mut app.world, torch, player).expect("the bag has room");
+    app.run_ticks(2).expect("ticks run");
+
+    assert_eq!(
+        fittings(&app),
+        before,
+        "picking up the torch must not touch the emergency circuit"
+    );
+}
+
+#[test]
 fn dropping_it_puts_the_room_back_in_the_dark() {
     // The half that is easy to leave out: a state written every tick from the inventory cannot get
     // stuck on, and this is what says so.

@@ -1,6 +1,6 @@
 amadeo-snapshot 2
 tick 126
-state-hash 41ad93ea1fba1626
+state-hash 3515e4b2bf1dc624
 schema-hash 7d19eb67110d6a91
 
 schema
@@ -534,7 +534,7 @@ entities
     SpotLight
       colour 0.58 0.78 0.68
       inner_angle 34.0
-      intensity 11.0
+      intensity 7.0
       outer_angle 68.0
       range 7.5
       shadow_bias 0.03
@@ -1139,7 +1139,7 @@ entities
     SpotLight
       colour 0.58 0.78 0.68
       inner_angle 34.0
-      intensity 11.0
+      intensity 7.0
       outer_angle 68.0
       range 7.5
       shadow_bias 0.03
@@ -2660,7 +2660,7 @@ entities
     SpotLight
       colour 0.58 0.78 0.68
       inner_angle 34.0
-      intensity 11.0
+      intensity 7.0
       outer_angle 68.0
       range 7.5
       shadow_bias 0.03
@@ -3734,7 +3734,7 @@ entities
     SpotLight
       colour 0.58 0.78 0.68
       inner_angle 34.0
-      intensity 11.0
+      intensity 7.0
       outer_angle 68.0
       range 7.5
       shadow_bias 0.03
@@ -4482,7 +4482,7 @@ entities
     SpotLight
       colour 0.58 0.78 0.68
       inner_angle 34.0
-      intensity 11.0
+      intensity 7.0
       outer_angle 68.0
       range 7.5
       shadow_bias 0.03
@@ -5783,7 +5783,7 @@ entities
     SpotLight
       colour 0.58 0.78 0.68
       inner_angle 34.0
-      intensity 11.0
+      intensity 7.0
       outer_angle 68.0
       range 7.5
       shadow_bias 0.03
