@@ -68,13 +68,13 @@ entity sign_0_0 "Section plate" from section_sign
     scale 1.0 1.0 1.0
     translation 2.4 0.0 3.2
 
-entity berth0_0_0 "Berth" from bunk_stripped
+entity berth0_0_0 "Berth" from bunk_made
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation -1.95 0.0 -2.4
 
-entity berth1_0_0 "Berth" from bunk_stripped
+entity berth1_0_0 "Berth" from bunk_made
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -110,17 +110,29 @@ entity head_north_1_n2 "Bulkhead" from bore_end
     scale 1.0 1.0 1.0
     translation 12.0 0.0 -29.875
 
+entity fitting_1_n2 "Fitting" from room_lamp
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 9.6 0.0 -27.0
+
 entity sign_1_n2 "Section plate" from section_sign
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 14.4 0.0 -20.8
 
-entity stores_1_n2 "Stores" from stores
+entity berth0_1_n2 "Berth" from bunk_stripped
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 13.95 0.0 -26.2
+    translation 13.95 0.0 -26.4
+
+entity berth1_1_n2 "Berth" from bunk_stripped
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 13.95 0.0 -23.4
 
 entity bore_1_n1 "Bore" from bore_section
   override Transform
@@ -146,29 +158,17 @@ entity wall_west_1_n1 "Wall" from bore_wall
     scale 1.0 1.0 1.0
     translation 9.6 0.0 -12.0
 
-entity fitting_1_n1 "Fitting" from room_lamp
-  override Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
-    translation 14.4 0.0 -15.0
-
 entity sign_1_n1 "Section plate" from section_sign
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 14.4 0.0 -8.8
 
-entity berth0_1_n1 "Berth" from bunk_stripped
+entity stores_1_n1 "Stores" from stores
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 10.05 0.0 -14.4
-
-entity berth1_1_n1 "Berth" from bunk_stripped
-  override Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
-    translation 10.05 0.0 -11.4
+    translation 10.05 0.0 -14.2
 
 entity bore_1_0 "Bore" from bore_section
   override Transform
@@ -200,25 +200,19 @@ entity head_south_1_0 "Bulkhead" from bore_end
     scale 1.0 1.0 1.0
     translation 12.0 0.0 5.875
 
-entity fitting_1_0 "Fitting" from room_lamp
-  override Transform
-    rotation 0.0 180.0 0.0
-    scale 1.0 1.0 1.0
-    translation 9.6 0.0 -3.0
-
 entity sign_1_0 "Section plate" from section_sign
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 14.4 0.0 3.2
 
-entity berth0_1_0 "Berth" from bunk_made
+entity berth0_1_0 "Berth" from bunk_stripped
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 13.95 0.0 -2.4
 
-entity berth1_1_0 "Berth" from bunk_made
+entity berth1_1_0 "Berth" from bunk_stripped
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -253,6 +247,12 @@ entity head_north_2_n2 "Bulkhead" from bore_end
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
     translation 24.0 0.0 -29.875
+
+entity fitting_2_n2 "Fitting" from room_lamp
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 26.4 0.0 -27.0
 
 entity sign_2_n2 "Section plate" from section_sign
   override Transform
@@ -344,23 +344,23 @@ entity head_south_2_0 "Bulkhead" from bore_end
     scale 1.0 1.0 1.0
     translation 24.0 0.0 5.875
 
+entity fitting_2_0 "Fitting" from room_lamp
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 26.4 0.0 -3.0
+
 entity sign_2_0 "Section plate" from section_sign
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 26.4 0.0 3.2
 
-entity berth0_2_0 "Berth" from bunk_made
+entity stores_2_0 "Stores" from stores
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 22.05 0.0 -2.4
-
-entity berth1_2_0 "Berth" from bunk_made
-  override Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
-    translation 22.05 0.0 0.6
+    translation 22.05 0.0 -2.2
 
 entity bore_3_0 "Bore" from bore_section
   override Transform
@@ -404,19 +404,25 @@ entity head_south_3_0 "Bulkhead" from bore_end
     scale 1.0 1.0 1.0
     translation 36.0 0.0 5.875
 
+entity fitting_3_0 "Fitting" from room_lamp
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 33.6 0.0 -3.0
+
 entity sign_3_0 "Section plate" from section_sign
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 38.4 0.0 3.2
 
-entity berth0_3_0 "Berth" from bunk_stripped
+entity berth0_3_0 "Berth" from bunk_made
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 37.95 0.0 -2.4
 
-entity berth1_3_0 "Berth" from bunk_stripped
+entity berth1_3_0 "Berth" from bunk_made
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -463,12 +469,6 @@ entity head_south_4_0 "Bulkhead" from bore_end
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 48.0 0.0 5.875
-
-entity fitting_4_0 "Fitting" from room_lamp
-  override Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
-    translation 50.4 0.0 -3.0
 
 entity sign_4_0 "Section plate" from section_sign
   override Transform
@@ -524,13 +524,13 @@ entity sign_5_0 "Section plate" from section_sign
     scale 1.0 1.0 1.0
     translation 62.4 0.0 3.2
 
-entity berth0_5_0 "Berth" from bunk_stripped
+entity berth0_5_0 "Berth" from bunk_made
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 61.95 0.0 -2.4
 
-entity berth1_5_0 "Berth" from bunk_stripped
+entity berth1_5_0 "Berth" from bunk_made
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -626,17 +626,11 @@ entity sign_5_2 "Section plate" from section_sign
     scale 1.0 1.0 1.0
     translation 62.4 0.0 27.2
 
-entity berth0_5_2 "Berth" from bunk_stripped
+entity stores_5_2 "Stores" from stores
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 61.95 0.0 21.6
-
-entity berth1_5_2 "Berth" from bunk_stripped
-  override Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
-    translation 61.95 0.0 24.6
+    translation 61.95 0.0 21.8
 
 entity bore_6_1 "Bore" from bore_section
   override Transform
@@ -674,11 +668,17 @@ entity sign_6_1 "Section plate" from section_sign
     scale 1.0 1.0 1.0
     translation 74.4 0.0 15.2
 
-entity stores_6_1 "Stores" from stores
+entity berth0_6_1 "Berth" from bunk_made
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 73.95 0.0 9.8
+    translation 73.95 0.0 9.6
+
+entity berth1_6_1 "Berth" from bunk_made
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 73.95 0.0 12.6
 
 entity bore_6_2 "Bore" from bore_section
   override Transform
@@ -710,23 +710,23 @@ entity head_south_6_2 "Bulkhead" from bore_end
     scale 1.0 1.0 1.0
     translation 72.0 0.0 29.875
 
-entity fitting_6_2 "Fitting" from room_lamp
-  override Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
-    translation 74.4 0.0 21.0
-
 entity sign_6_2 "Section plate" from section_sign
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 74.4 0.0 27.2
 
-entity stores_6_2 "Stores" from stores
+entity berth0_6_2 "Berth" from bunk_stripped
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 70.05 0.0 21.8
+    translation 70.05 0.0 21.6
+
+entity berth1_6_2 "Berth" from bunk_stripped
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 70.05 0.0 24.6
 
 entity you "You" from player_start
   override Transform

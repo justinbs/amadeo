@@ -50,9 +50,18 @@ fn torch(app: &App) -> Entity {
         .expect("the scene puts a torch in the room")
 }
 
+/// The torch beam, found by **what it is attached to** rather than by being the only spot light.
+///
+/// It used to be `the first SpotLight in the world`, which was true while the beam was the only one.
+/// Session 23 made the emergency fittings spots too — a point light 0.3 m off its own mounting wall
+/// clips it to white whatever its intensity, and a spot aimed down and away pools instead — and this
+/// silently started answering about a fitting. The symptom was `the_beam_starts_dark` reporting an
+/// intensity of 7.0, which reads as "the torch is on before you pick it up" and is not what broke.
 fn beam(app: &App) -> Entity {
+    let eyes = eyes(&app.world).expect("an interactor");
     app.world
-        .query::<(&SpotLight,)>()
+        .query::<(&SpotLight, &amadeo_transform::Parent)>()
+        .filter(|(_, (_, parent))| parent.0 == eyes)
         .map(|(entity, _)| entity)
         .next()
         .expect("the scene puts a beam on the camera")
@@ -124,11 +133,11 @@ fn the_room_loads_and_the_player_is_first_person() {
         "and the camera is the first-person rig, which no game had used before this one"
     );
     // Two bore sections (deck + crown), four side walls, two bulkheads, a cross-passage and its
-    // blind cap, two fittings (shade + tube each), a section plate, two bunk frames with two
-    // mattresses on one of them, two crates, the torch, the key, the door, the warden and the lamp
-    // it carries. The lights themselves are not geometry, and the player has no body mesh -- in
-    // first person you would be standing inside it.
-    assert_eq!(app.world.query::<(&amadeo_render::Mesh,)>().count(), 28);
+    // blind cap, two fittings (shade + tube each), a section plate in four parts (surround, plate,
+    // rule, letter), two bunk frames with two mattresses on one of them, two crates, the torch, the
+    // key, the door, the warden and the lamp it carries. The lights themselves are not geometry, and
+    // the player has no body mesh -- in first person you would be standing inside it.
+    assert_eq!(app.world.query::<(&amadeo_render::Mesh,)>().count(), 31);
 }
 
 #[test]

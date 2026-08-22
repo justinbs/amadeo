@@ -391,3 +391,43 @@ promise motion the engine cannot deliver — to a non-articulated greatcoat silh
 lamp.
 
 Its full ten are the basis of what session 23 built; `docs/13` item 24 records which of them landed.
+
+### Review 15 — engine gate — `af98989` — item 24, geometry half — **NOT POLISHED**
+
+Seven frames at 1920 × 1080 plus all four other games, six crops, ~40 probes, four row/column
+profiles, the measurements recounted, the fog term re-derived from `mesh.wgsl`, and one controlled
+A/B on the `Environment` — which §4 #11 permits through `--from` because an environment is an asset.
+
+**What it credited.** *"It is a tunnel"* — answering the question it was asked directly, and calling
+the pitch-up frame the best this project has produced. It confirmed both measurements (0 / 18 and
+2 / 7), re-derived the crown geometry independently (radius 3.0, headroom 2.0 m at the wall, crown
+3.2 m) and noted that the fog is now doing real work: `1 − exp(−((d − 1.5) · 0.055)²)` gives 5.9% at
+6 m, 28.4% at 12 m and 78.4% at 24 m, against the 7%-across-a-room review 12 rejected.
+
+**Three of the close condition's five clauses failed on measurement.**
+
+- **The pool was a hole.** 27,659 clipped pixels; row 500 of the yaw-90 frame ran 242–254
+  *continuously* for 252 px. Cause: a `PointLight` 0.3 m off 0.6-albedo plate — irradiance ∝ 3.2/0.09
+  — and halving exposure still clipped 10,385 px, so it was the lamp rather than the grade. It also
+  inverted the read: an emissive tube cannot out-brighten a wall already at 254, so the fixture
+  rendered as a shadow.
+- **The grade cancelled the palette the design asks for.** Hand lamp R−B = +12 at luma 164; fitting
+  pool R−B = −10. Both read white. At `saturation 1.0` the fitting comes back at G−R = +20. The same
+  grade put safety orange at **(107, 0, 0)** with G and B clamped to exactly zero, against
+  (199, 81, 34) for the identical orange in the UI — so the walls and the interface, which `docs/11`
+  §2 calls the luckiest coincidence in the project, were two different colours.
+- **The props were not there.** Bunk frames at literally `RGB(0,0,0)` — 222 consecutive zero pixels —
+  because `metallic 1.0` has no diffuse term and §5a specifies this surface by its *base colour*.
+  Both mattresses wore `screed`, the floor material. So the section conditions were built in
+  `lay_out` and invisible on screen, *"which for my purposes is not built"*.
+
+**And two more:** black fog can only subtract, so nothing can emerge from it; and the lining stopped
+at the springing, meeting the arch on a dead-straight horizontal seam — *"the residue of corridor
+with a lid"*.
+
+**On the sign** it measured a crisp black `⊢` where the texture holds a clean `H`, and ruled out
+filtering by finding single-pixel edges. The three diagnostics that followed — a ten-band ruler, a
+ramp, then a bold `F` — showed the plate sampling about half of `u`. The letter is geometry now
+rather than a picture; see `finishes.rs`'s `sign_colour` for why that is a retreat and not a fix.
+
+Item 24 stays 🟡. Its eight ordered changes are what session 23's second half built.

@@ -77,11 +77,39 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 >    because the crown *looked* wrong; opening the PNG settled it in one glance and the original was
 >    right. `docs/14` §4 #2 in miniature.
 >
+> #### Then review 15 judged the built thing, and failed it on what was laid over the geometry
+>
+> It credited the geometry without reservation — *"it is a tunnel"*, and the pitched-up frame *"the
+> best frame this project has produced"* — confirmed both measurements, and re-derived the crown
+> independently. Then it failed three of the close condition's five clauses on measurement, and all
+> eight of its ordered changes landed in the same session:
+>
+> - **The pool was a hole.** 27,659 clipped pixels; one row ran 242–254 for 252 px unbroken. A
+>   `PointLight` 0.3 m off 0.6-albedo plate cannot be dimmed out of that, and it inverted the read —
+>   an emissive tube cannot out-brighten a wall already at 254, so the fixture rendered as a shadow.
+>   It is a **spot aimed down and away** now, and the frame clips **0 pixels**.
+> - **The grade was cancelling the palette.** Hand lamp R−B = +12, fitting pool R−B = −10: both read
+>   white. Safety orange measured **(107, 0, 0)** with two channels clamped to exactly zero, against
+>   (199, 81, 34) for the same orange in the UI — so the walls and the interface, which `docs/11` §2
+>   calls the luckiest coincidence in the project, were two different colours.
+> - **The props were not there.** Bunk frames at literally `RGB(0,0,0)`, because `metallic 1.0` has no
+>   diffuse term and §5a specifies that surface *by its base colour*. Both mattresses wore `screed`,
+>   the floor material — so the section conditions were computed and invisible, which the review
+>   correctly called not built.
+>
+> Also: black fog can only subtract, so nothing could emerge from it; the lining stopped at the
+> springing and met the arch on a dead-straight seam; and `Condition` was an i.i.d. die roll, which
+> contradicts the very sentence it was written to satisfy.
+>
 > #### What is next
 >
-> `docs/13` §1 still carries review 13's order. Items 31 and 24 are both 🟡; the next three are
-> **item 21**'s screen-space occlusion half, **item 22**'s shadow-edge dithering, and **item 15**'s
-> title screen.
+> `docs/13` §1 still carries review 13's order. Items 31 and 24 are both 🟡 — **item 24 has now been
+> through two reviews and has not passed**; a third is the next thing to send. After it: **item 21**'s
+> screen-space occlusion half, **item 22**'s shadow-edge dithering, and **item 15**'s title screen.
+>
+> **One thing review 15 declined to credit and was right to:** the warden was kept out of the
+> submitted frames because it still walks through walls, so its change stays open on that basis
+> rather than on any finding. Put it in a frame next time, or constrain it to the cell graph first.
 >
 > `gh` is not on PATH: prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`. **Run the
 > fourth check (`cargo doc`) before pushing, not after.**

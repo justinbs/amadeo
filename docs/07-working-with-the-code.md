@@ -2909,6 +2909,25 @@ It is a failure only the **fourth** of `CLAUDE.md` §4b's checks can see, and on
 it is invisible to every fast check and appears in CI after a push, which is exactly what happened:
 run the doc check *before* pushing, not after. The Warren's is `finishes` now.
 
+### A material that is `metallic 1.0` has no colour of its own, and renders as a hole
+
+The Warren's bunk frames were `fittings`, a surface authored `metallic: 0.85` on the reasoning that
+steel takes its colour from what it reflects. That is true of *bare* steel and wrong twice here.
+
+A full metal has **no diffuse term at all** — its albedo becomes the tint of its specular reflection
+and nothing else. With only a deliberately dim environment map to reflect, the frames rendered as
+literally `RGB(0, 0, 0)`: engine gate review 15 measured 222 consecutive zero pixels across one row,
+with no rim, edge or highlight anywhere on the object. A silhouette in a horror game still carries a
+specular edge off the nearest practical; that edge is the difference between "steel" and "a hole in
+the picture".
+
+And `docs/11` §5a specifies that surface **by its base colour** — "cold grey-green" — which is a
+quantity a metal cannot show. Institutional steel is painted, and paint is a dielectric.
+
+**The rule**: reach for `metallic 1.0` only for bare, polished metal in a scene with something worth
+reflecting. Painted metal, anodised metal, dirty metal and almost every prop is `metallic 0.0` with a
+real albedo. If a surface has an authored *colour* in the design document, it is not a metal.
+
 ### An override replaces a component, so a piece must not author its height on its own root
 
 ADR 0029 says an override is a *patch that reaches the instance root*, and the word doing the damage

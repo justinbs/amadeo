@@ -35,11 +35,16 @@ entity room_lamp "A fitting still on the circuit"
       translation -0.26 2.08 0.0
 
   entity bulb "What it throws"
-    PointLight
+    SpotLight
       colour 0.58 0.78 0.68
-      intensity 3.2
-      range 6.5
+      inner_angle 34.0
+      intensity 7.0
+      outer_angle 68.0
+      range 7.5
+      shadow_bias 0.03
+      shadow_resolution 1024
+      shadows false
     Transform
-      rotation 0.0 0.0 0.0
+      rotation -52.0 90.0 0.0
       scale 1.0 1.0 1.0
-      translation -0.32 2.05 0.0
+      translation -0.3 1.98 0.0

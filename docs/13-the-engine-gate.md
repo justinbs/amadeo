@@ -63,36 +63,42 @@ rather than copying them forward** — the row marked ⚠ was wrong in this file
 
 | Measurement | Review 1 (s20) | Review 11 claimed | Review 12 | Review 13 / s22 | **End of s23** | Target |
 |---|---|---|---|---|---|---|
-| `.mesh` assets that are box-only | 23 / 23 | ⚠ 23 / 31 | 24 / 37 | 24 / 39 | **11 / 44** | a game whose meshes are not all boxes |
+| `.mesh` assets that are box-only | 23 / 23 | ⚠ 23 / 31 | 24 / 37 | 24 / 39 | **11 / 47** | a game whose meshes are not all boxes |
 | — of which `games/atrium` | — | — | 9 / 22 | 9 / 24 | 9 / 24 | (a demo; does not satisfy the target) |
-| — of which **`games/warren`** | 13 / 13 | — | 13 / 13 | 13 / 13 ⚠ | **0 / 18** 🟡 | **this is the number that matters** |
-| Material `base_colour_texture` empty | 15 / 15 | 11 / 14 | 11 / 14 | 7 / 14 | **7 / 15** | a game whose materials sample textures |
-| — of which **`games/warren`** | 6 / 6 | — | 6 / 6 | 2 / 6 ✅ | **2 / 7** | **this is the number that matters** |
-| Material `normal_texture` empty | 15 / 15 | 11 / 14 | 11 / 14 | 7 / 14 | **7 / 15** | ADR 0047 has content in two games now |
-| Material `metallic_roughness_texture` empty | 15 / 15 | 11 / 14 | 11 / 14 | 7 / 14 | **7 / 15** | ADR 0048, likewise |
+| — of which **`games/warren`** | 13 / 13 | — | 13 / 13 | 13 / 13 ⚠ | **0 / 21** 🟡 | **this is the number that matters** |
+| Material `base_colour_texture` empty | 15 / 15 | 11 / 14 | 11 / 14 | 7 / 14 | **7 / 18** | a game whose materials sample textures |
+| — of which **`games/warren`** | 6 / 6 | — | 6 / 6 | 2 / 6 ✅ | **2 / 10** | **this is the number that matters** |
+| Material `normal_texture` empty | 15 / 15 | 11 / 14 | 11 / 14 | 7 / 14 | **7 / 18** | ADR 0047 has content in two games now |
+| Material `metallic_roughness_texture` empty | 15 / 15 | 11 / 14 | 11 / 14 | 7 / 14 | **7 / 18** | ADR 0048, likewise |
 | Mutating agent-protocol methods | 0 / 17 | 0 / 17 | 0 / 17 | 0 / 17 | 0 / 17 | deferred to M4 — see item 20 |
 
+**Review 15 confirmed both `games/warren` rows independently.** It also credited the geometry in terms
+worth keeping -- *"it is a tunnel"*, and the pitched-up frame *"the best frame this project has
+produced"* -- and then failed the item on what was laid over it: a fitting clipping 27,659 pixels, a
+colour grade cancelling the palette, and props that were literally `RGB(0,0,0)`. Session 23's second
+half is its eight ordered changes; `docs/14` §8 has the measurements.
+
 **Session 23 moved the mesh row for the first time in thirteen reviews.** `games/warren` is
-**0 / 18**: the thirteen boxes are deleted and eighteen `CompoundMesh` assets replace them — the bore
+**0 / 21**: the thirteen boxes are deleted and twenty-one `CompoundMesh` assets replace them — the bore
 crown with its modelled flange rings, the deck, side walls solid and open, bulkhead heads, the
 cross-passage and its blind cap, the haunch fitting and its tube, a two-tier bunk frame and a
 mattress, a battened crate, an enamel section plate, a dogged bulkhead door, the hand lamp, the brass
 key, and the warden as a non-articulated greatcoat silhouette with the lamp it carries.
 
-**The material denominator moved 6 → 7 rather than staying put**, and the two figures are not the
-same two: `rust` is gone (the warden wears `bulkhead` now, which is textured), `signage` is new and
-textured, and `glow` is new and deliberately not — it is a 4 cm fluorescent tube whose whole job is
-`emissive`, which is `games/atrium`'s `amber` argument exactly.
+**The material denominator moved 6 → 10 rather than staying put**, and the two figures are not the
+same two: `rust` is gone (the warden wears `bulkhead` now, which is textured), and `signage`,
+`accent`, `lining_wall` and `ticking` are all new and all textured. The one new untextured material is
+`glow` — a 4 cm fluorescent tube whose whole job is `emissive`, which is `games/atrium`'s `amber`
+argument exactly.
+
+<details>
+<summary>Session 22's note on the material row, kept for its reasoning</summary>
 
 **Session 22 moved the row that matters, for the first time in thirteen reviews.** `games/warren`'s
 materials went **6 / 6 → 2 / 6** on all three slots: its palette was `plaster`, `carpet`, `timber` —
 a Victorian interior authored before `docs/11` existed — and is now §5a's cast-iron ring lining, dust
 over concrete, institutional steel and lead-grey bulkheads, each sampling three generated maps. The
 two left are the brass key and the warden's post, both small props.
-
-**The mesh row is still 13 / 13 and it is the half of item 24 that remains.** The design wants arched
-ring sections, which means the *level generator* emits different pieces — a larger job than a
-material swap and the next one.
 
 **The three texture slots are tracked separately on purpose.** A single "43 of 45" read as nearly
 finished when the honest state was that **one of three texture paths had a user**. All three have one
@@ -102,6 +108,8 @@ a lamp filament, a painted metal box and a pane, none of which would gain from a
 **The denominator fell from 15 to 14** because ADR 0078's amendment deleted `plinth_stone.material`:
 two materials for one stone, differing in one number, which was the evidence that texel density was
 only half solved.
+
+</details>
 
 ### One number in this file was silently voided, and the commit that did it said nothing
 
@@ -220,7 +228,7 @@ The authoring surface, which both reviews identify as the actual cause of how th
 | 12f | 7 | **The glass does not read as glass, and the sky has no picture — one generator change closes both.** Part one landed (ADR 0080): `ALPHA_BLENDING` multiplies the whole shader output by coverage, so at alpha 0.34 a highlight was bounded above by `0.34·S + 0.66·W` and was **arithmetically impossible rather than dim**; premultiplied output took the pane from 1 level brighter than the wall beside it to 10, opaque byte-identical. Part two is that `daylight.rs:137` is `fn sky_colour(up: f32)` — **a function of elevation alone**, with no sun disc, no cloud and no azimuthal content whatever, so a reflection in it cannot move when the camera yaws and the pane shows a flat wedge ending in a hard diagonal where the reflected ray crosses the gradient's horizon. The same fact is why 65% of the best up-view is a bare ramp. The fix is ADR 0079's shape one level down: **structure and a sun disc into the specular chain, excluded from the irradiance convolution**, which is what keeping an analytic light out of the ambient probe means in every comparable engine | engine, then both games | The pane shows a specular sheet or Fresnel rim that **moves between two captures at different yaws**, and the sky occupying a capture is not a single monotonic ramp | 🟡 **part one done (ADR 0080); part two open** |
 | 12c | — | **A sky for `games/atrium`.** `sky ""` blocked four things at once and the two existing `.hdr` generators were the precedent. The map is real and ADR 0079 split its two jobs (`Environment::sky_ambient`) | atrium | The Atrium names a real environment map, and the lamp, the glass and the wall gradient each read as themselves in a capture | 🟡 **built; held open behind 12f and 14** — review 12: the wall gradient reads (pass), the glass does not (12f), and the lamp reads as a glowing object but not as a light source (item 14). **Two of three.** Balance is now `SCALE 0.5` / `sky_ambient 0.25` / `exposure 0.8` — corrected here after `c5697e7` moved two of those silently, voiding the evidence this row used to cite. Review 12 adds a clause: **12c cannot close while the sky is a bare elevation ramp**, because it is the majority of every frame it appears in |
 | 31 | r13-3 | **There is no way to capture `games/warren` in its playable state, and that blocks the gate's own condition.** Every frame any reviewer can take of it is its **title screen**: `--yaw` and `--pitch` aim the camera but cannot dismiss a menu, the protocol has 0 mutating methods, and no snapshot is committed. `docs/13` §3 defines POLISHED as *a frame from a real game* — **and nobody can currently take one.** Found by review 13 while trying to. `capture --from <snapshot>` already exists, so committing a `playing.snapshot` closes it; `capture --input <replay>` is the fuller answer. **Do this BEFORE item 24**, or item 24 cannot be judged | warren | A reviewer can capture `games/warren` mid-run without editing the game, and the route is one documented command | 🟡 **built, awaiting verdict** (s22) — `cargo run -p warren --bin moment` writes `snapshots/playing.snapshot` and `capture --from` photographs it, which needed no engine work because ADR 0028 already restores before drawing. The snapshot is **text**, 4147 lines, so a person can read where the player was standing. Documented in `docs/14` §5 |
-| 24 | 3 | **`games/warren` stops being boxes.** The vehicle change made concrete: 13 of 13 box meshes and 6 of 6 untextured materials, unchanged across eleven reviews, in the game with the passed design, the fiction, the objective and the milestone attached to it. Everything above lands here once it exists. `docs/11` supplies the direction rather than taste — cast-iron rings, safety orange, warm hand-lamp against cold fittings, pooled light with real dark between | warren | `games/warren`'s tracked measurements move off 13 / 13 and 6 / 6, and a 1920 × 1080 capture of it shows a cast-iron-lined tunnel with pooled cold fittings, real dark between them, a warm hand lamp doing the near work, and a prop that implies somebody was here | 🟡 **built, awaiting verdict (s23) — geometry, conditions, signage, warden and lighting all landed.** The cell stopped being a 12 m room and became a length of **4.8 m arched bore** (`docs/11` §5.2): every bore runs north-south, an east or west door is a low square **cross-passage** through the 3.6 m of ground between two tubes, and a north or south end without a door is closed by a **bulkhead**. Review 14 ruled the alternative -- an arched lid over the rooms -- out by arithmetic: at `width 12, height 3` `ArchMesh` takes its segmental branch, and headroom falls below the player's 1.95 m beyond `|x| = 3.93`, making 34% of every floor unwalkable. **Crown at 3.2 m above the deck**, inside review 14's 3.4 m ceiling, from a segmental arc on 2.0 m walls -- so a 2 m opening sits entirely in flat panel and nothing needs a hole cut in a curve. **Flange rings are solid `Box` ribs**, review 14's named fallback, taken in preference to the zero-thickness `ArchMesh` band the plan proposed. **13 / 13 → 0 / 18 box meshes.** `docs/11` §5.2's *"no two may be in the same condition"* is a `Condition` drawn per room in `lay_out` -- slept-in, stripped, stores -- expressed as prop placement only. Fittings are **haunch-mounted on alternating sides**, cold green against the warm beam. A section plate carries the orange rule and a stencilled `H` at every junction. The warden is a **non-articulated greatcoat silhouette** carrying its own lamp, not the limbed figure the plan listed |
+| 24 | 3 | **`games/warren` stops being boxes.** The vehicle change made concrete: 13 of 13 box meshes and 6 of 6 untextured materials, unchanged across eleven reviews, in the game with the passed design, the fiction, the objective and the milestone attached to it. Everything above lands here once it exists. `docs/11` supplies the direction rather than taste — cast-iron rings, safety orange, warm hand-lamp against cold fittings, pooled light with real dark between | warren | `games/warren`'s tracked measurements move off 13 / 13 and 6 / 6, and a 1920 × 1080 capture of it shows a cast-iron-lined tunnel with pooled cold fittings, real dark between them, a warm hand lamp doing the near work, and a prop that implies somebody was here | 🟡 **built, awaiting verdict — geometry passed review 15's eye, its lighting and materials did not, and both halves were rebuilt (s23).** The cell stopped being a 12 m room and became a **4.8 m arched bore** with a segmental crown **3.2 m** above the deck (`docs/11` §5.2); an east or west door is a low square **cross-passage**, an end without a door is a **bulkhead**. Review 14 refuted the cheap alternative by arithmetic -- an arched lid over a 12 m room puts headroom below 1.95 m beyond `|x| = 3.93`, making 34% of every floor unwalkable -- and review 15 confirmed the built geometry independently and called it a tunnel. **13 / 13 → 0 / 21 box meshes.** Review 15 then failed the item on what was laid over it, and all eight of its ordered changes landed: the fitting became a **spot aimed down and away** (a point light 0.3 m off 0.6-albedo plate clipped 27,659 px and could not be dimmed out of it -- **now 0 clipped**, and the emissive tube out-brightens the wall so the fixture reads as the source); `fittings` went **metallic → dielectric**, which turned 222 px of `RGB(0,0,0)` into visible steel; the grade's `saturation 0.72` and blue `tint` were cancelling the warm/cold split the design is built on and are now 0.95 and neutral; the mattresses got **their own ticking material** instead of the floor's, so the section conditions are visible rather than merely computed; the fog went from black to a dim grey-green so a distant lamp can be walked towards; the side walls got a **transposed lining** so the ring joints run unbroken from crown to deck instead of meeting the arch on a dead-straight seam; and `Condition` is now drawn **by rule rather than by die** -- no two adjacent sections share one, pinned by a test over 48 seeds. The section letter left the texture and became **geometry** after three diagnostics showed the plate sampling about half of `u`; a sign's job is to be legible, and legibility should not rest on a UV convention |
 | 11b | — | **Alpha cutout**, moved here from Phase B because discarding below a threshold needs something to sample: with every `base_colour_texture` empty a cutout material cuts out a rectangle. Cheapest route to a non-box silhouette *once item 13 exists* — grating, cobweb, hanging cloth, foliage | warren | A cutout material draws its shape rather than its quad, against a generated foliage or grating texture | ⬜ **gated on 13** |
 | 12 | — | **Particles.** Nothing in `crates/` or `modules/` mentions one. Dust is most of what makes an interior read as air rather than vacuum; it is also NMS's atmospheres, Zomboid's rain and Schedule I's smoke. ADR 0067's named-field list items are already the right format for an emitter's stages | engine, then warren | An emitter is authored in a `.scene`, it is deterministic under the fixed tick, and a capture shows lit motes drifting in front of a dark surface | ⬜ |
 | 12b | — | **Volumetric light shafts.** Named by `STATUS.md` and ADR 0073 as the next visual step and by neither plan as an item, which is how it went unscheduled. Raymarches through exactly the fog ADR 0073 added, and is what makes a torch beam visible in the air rather than only on the surfaces it lands on. **Follows item 12** rather than leading it | engine, then warren | A dark interior shows a cone of light in the air from a spot light, and off is byte-identical to before it existed | ⬜ |

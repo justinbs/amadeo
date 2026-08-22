@@ -13,6 +13,6 @@ entity mesh "A mattress and a rolled blanket"
         solid Cylinder
           shape
             height 0.56
-            radius 0.11
+            radius 0.075
             sides 10
-            top_radius 0.11
+            top_radius 0.075

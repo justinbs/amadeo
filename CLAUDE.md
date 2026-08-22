@@ -266,16 +266,17 @@ crates/
                      it owns instead of a window, and RenderBackend::capture reads it back -- which
                      is what `render.capture` uses and what gave the GPU path its first tests
                      (tests/capture.rs).
-                     **⚠ EVERY TEXTURED PATH BELOW IS EXERCISED BY ZERO CONTENT.** Session 20's
-                     engine review checked: **12 of 12 `.material` files in this repository have
-                     `base_colour_texture ""`, `normal_texture ""` and `metallic_roughness_texture
-                     ""`.** `games/scarp` generates `turf_grass.png`, declares it in its scene so it
-                     is loaded, and then no material samples it -- it is decoded into `TextureCache`
-                     and thrown away. So mipmaps, 16x aniso, normal mapping and metallic-roughness
-                     are all *written and tested* and have never drawn a textured pixel in a game.
-                     Read the rest of this entry as a description of the code, not of any picture
-                     anybody has seen. Same for meshes: **23 of 23 `.mesh` assets are `BoxMesh`**;
-                     `PlaneMesh`, `ArchMesh` and `GltfPart` are used by no game.
+                     **⚠ This paragraph used to say every textured path was exercised by zero
+                     content, and it is out of date -- kept, corrected, because the going-stale is
+                     the lesson.** Session 20's engine review counted **12 of 12 materials untextured
+                     and 23 of 23 meshes `BoxMesh`**, and that stayed true for thirteen more reviews
+                     while the engine grew features nothing used. **As of session 23 it is 7 of 15
+                     materials and 11 of 44 meshes**, and `games/warren` -- the game the milestone is
+                     attached to -- is **0 of 18 boxes** and 2 of 7 untextured. Mipmaps, 16x aniso,
+                     normal mapping, metallic-roughness and the ORM occlusion channel all draw real
+                     pixels in a real game now. `docs/13` §1 tracks these per game and per review;
+                     **recount rather than copying a number out of this file**, which is what the
+                     tracked table exists to stop.
                      **Textures on materials landed in session 13**: `Material::base_colour_texture`
                      had existed since ADR 0033 and was read by *nothing*. Surfaces get their own
                      **repeating, filtered, 16x-anisotropic** sampler and a second bind group per

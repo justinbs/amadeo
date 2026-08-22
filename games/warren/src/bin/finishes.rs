@@ -60,9 +60,12 @@ fn main() {
     }
 
     write_set(&out, "ring_lining", &ring_lining());
+    write_set(&out, "ring_lining_wall", &wall_lining());
     write_set(&out, "shelter_floor", &shelter_floor());
     write_set(&out, "fitting_steel", &fitting_steel());
     write_set(&out, "bulkhead_grey", &bulkhead_grey());
+    write_set(&out, "enamel_orange", &enamel_orange());
+    write_set(&out, "bunk_ticking", &bunk_ticking());
     write_signage(&out);
 }
 
@@ -82,13 +85,15 @@ fn main() {
 /// tile, and its features are placed by hand rather than hashed — so it shares the encoder and the
 /// sidecar rule and nothing else.
 ///
-/// # The letter is three rectangles, and that is a real constraint
+/// # The letter is not here — it is a mesh
 ///
-/// There is no glyph rasteriser reachable from a texture generator (`amadeo-ui`'s `FontCache` is
-/// four crates above this one and needs a font file, a database and a shaper). So the section letter
-/// is drawn from rectangles, which means the alphabet available here is the rectilinear one — H, I,
-/// E, L, T, F. `HOWE` is a First Sea Lord and the deep shelters are named after naval figures, so
-/// the constraint costs nothing: the sections take names that begin with letters a stencil can cut.
+/// This draws the enamel **field** and nothing else: bone, grime, and where the enamel has chipped
+/// off to bare plate. The section letter and the orange rule are `letter_h.mesh` and
+/// `sign_rule.mesh`, which is a deliberate retreat — see [`sign_colour`] for what review 15
+/// measured and why legibility should not depend on a UV convention.
+///
+/// Everything left in this picture is **noise**, so it does not care where on the plate it lands.
+/// That is the property that makes it safe to keep as a texture.
 fn write_signage(out: &Path) {
     let mut colour = Canvas::new(SIZE, Space::Srgb);
     colour.fill(|u, v| {
@@ -144,48 +149,30 @@ fn sign_chip(u: f32, v: f32) -> f32 {
     ((speckle - 0.46 - 0.48 * margin) * 5.0).clamp(0.0, 1.0)
 }
 
-/// `1.0` inside the black section letter, `0.0` outside it.
-///
-/// An `H` at two thirds of the plate's height, on the left, in the proportions a stencil cuts:
-/// two stiles and a bar a shade above centre, which is what stops a capital H reading as upside
-/// down.
-fn sign_letter(u: f32, v: f32) -> f32 {
-    let (left, right) = (0.10, 0.33);
-    let (top, bottom) = (0.34, 0.86);
-    // **The plate is twice as wide as it is tall and the texture is square**, so one unit of `u` is
-    // half a unit of `v` on the wall. A stroke of equal *drawn* width therefore has to be twice as
-    // thick in `v` as in `u`, or the H comes out with hairline stiles and a slab of a crossbar.
-    let stile = 0.045;
-    let bar = stile * 2.0;
-    let inside = u >= left && u <= right && v >= top && v <= bottom;
-    if !inside {
-        return 0.0;
-    }
-    let on_stile = u <= left + stile || u >= right - stile;
-    let middle = (top + bottom) / 2.0;
-    let on_bar = v >= middle - bar / 2.0 && v <= middle + bar / 2.0;
-    f32::from(on_stile || on_bar)
-}
-
 /// The plate's colour at a point, in linear RGB.
+///
+/// # The letter and the rule used to be drawn here, and they are geometry now
+///
+/// Engine gate review 15 measured what actually reached the wall: a crisp black `⊢` where the
+/// texture holds a clean `H`, with single-pixel edges that rule out filtering as the cause. The
+/// diagnostics that followed — a ten-band ruler, then a ramp, then a bold `F` — showed the plate
+/// sampling **about half of `u`** where the arithmetic says one full copy, and a face whose texture
+/// axes do not run the way its sides do.
+///
+/// It could have been chased to the bottom. It was not worth it: a sign's whole job is to be
+/// **legible**, and hanging legibility on getting a UV convention exactly right for one mesh in one
+/// orientation is hanging it on the fragile thing. So the plate keeps the part of the picture that
+/// does not care where it lands — the enamel field, its grime and its chipping, all noise — and the
+/// **letter and the rule became boxes** (`letter_h.mesh`, `sign_rule.mesh`). Geometry cannot be
+/// mapped wrong, it is legible from any angle, and a second section is a second small `.mesh`
+/// rather than a second 512² picture.
 fn sign_colour(u: f32, v: f32) -> [f32; 3] {
-    // §5a: signage enamel is bone "with the section letter in black", and it *matches the interface
-    // exactly* — so these are the theme's own numbers rather than a second bone invented here.
+    // §5a: signage enamel is bone, and it *matches the interface exactly* — so this is the theme's
+    // own number rather than a second bone invented here.
     let bone = [0.62, 0.60, 0.55];
-    let ink = [0.022, 0.021, 0.020];
-    // The one accent in the game, and the only thing allowed to carry it (§5a).
-    let orange = [0.72, 0.19, 0.02];
     let plate = [0.11, 0.055, 0.03];
 
-    let mut colour = bone;
-    // The rule runs across the top of the plate, above the letter, the way a shelter sign carries
-    // its band.
-    if (0.115..=0.205).contains(&v) {
-        colour = orange;
-    }
-    if sign_letter(u, v) > 0.5 {
-        colour = ink;
-    }
+    let colour = bone;
 
     // Grime settles in the lower half and in the corners; the plate under the chips is rusted.
     let dirt = 0.10 * (noise::tiling(0x51_6E_A6_E2, u, v, 5) * 0.5 + 0.5) * v;
@@ -234,6 +221,28 @@ struct Surface {
     /// **the bolts are most of what says "tunnel" rather than "corridor"** — they are also, per
     /// §5a, what gives the normal map something to be.
     bolts: Option<(u32, f32, f32)>,
+    /// Read the whole surface with `u` and `v` exchanged.
+    ///
+    /// # One lining, two orientations, and the seam that needs it
+    ///
+    /// `ArchMesh` runs `u` **around** the section and `v` **along** it, so the crown gets its ring
+    /// joints as circles around the bore -- correct, and matching the modelled flange ribs. A box face
+    /// runs `u` along its longer side, so the same picture on a 12 m side wall lays those joints
+    /// **along** the tunnel instead. The two meet at the springing at right angles, which engine gate
+    /// review 15 read exactly as it looks: *"a different material system meeting the arch on a
+    /// dead-straight horizontal seam"*.
+    ///
+    /// So the wall gets the same lining transposed. **Check the PNGs, not a render** -- a previous
+    /// session transposed the crown on the strength of a capture that *looked* wrong, and the two
+    /// images side by side settle it in one glance where the render does not (`docs/14` §4 #2).
+    transposed: bool,
+}
+
+impl Surface {
+    /// The lattice coordinate for a texture coordinate.
+    fn axes(&self, u: f32, v: f32) -> (f32, f32) {
+        if self.transposed { (v, u) } else { (u, v) }
+    }
 }
 
 // **A note on which way this lattice lies, because it was got wrong once on an impression.**
@@ -288,6 +297,17 @@ fn ring_lining() -> Surface {
         metallic: 0.0,
         tone_variation: 0.05,
         bolts: Some((30, 0.0026, 0.3)),
+        transposed: false,
+    }
+}
+
+/// The same lining, laid for a flat side wall instead of for the arch.
+///
+/// One number different from [`ring_lining`], and it is the whole point: see [`Surface::transposed`].
+fn wall_lining() -> Surface {
+    Surface {
+        transposed: true,
+        ..ring_lining()
     }
 }
 
@@ -310,27 +330,101 @@ fn shelter_floor() -> Surface {
         metallic: 0.0,
         tone_variation: 0.0,
         bolts: None,
+        transposed: false,
     }
 }
 
 /// The institution's cold grey-green — §5a's bunk and racking steel.
 ///
-/// Metallic, so it takes its colour from what it reflects rather than from its albedo. That is what
-/// makes it read cold beside the warm lamp without being painted green.
+/// # It was metallic, and that is why the bunks rendered as holes
+///
+/// The first version set `metallic: 0.85` on the argument that steel takes its colour from what it
+/// reflects. True of *bare* steel, and wrong twice over here. A full metal has **no diffuse term at
+/// all**, so with nothing but a dim environment map to reflect, engine gate review 15 measured the
+/// bunk frames at literally `RGB(0, 0, 0)` — 222 consecutive zero pixels across one row, with not
+/// one pixel of rim or edge anywhere on the frame. And §5a's own table gives this surface a *base
+/// colour*, "cold grey-green", which is a quantity a metal cannot show.
+///
+/// Institutional steel is **painted**, and paint is a dielectric. So it is `metallic: 0.0` with a
+/// real albedo, which is both what the design says and what makes a silhouette read as steel rather
+/// than as a hole in the picture.
 fn fitting_steel() -> Surface {
     Surface {
         wall: None,
         seed: 0x33A2_71BE,
         relief: 260.0,
-        low: [0.20, 0.23, 0.21],
-        high: [0.27, 0.30, 0.27],
+        low: [0.24, 0.28, 0.25],
+        high: [0.33, 0.38, 0.34],
         beneath: [0.24, 0.10, 0.05],
         wear: 0.45,
         face_roughness: 0.68,
         joint_roughness: 0.85,
-        metallic: 0.85,
+        metallic: 0.0,
         tone_variation: 0.0,
         bolts: None,
+        transposed: false,
+    }
+}
+
+/// Mattress ticking — striped cotton, and the cheapest environmental storytelling in the game.
+///
+/// `docs/11` §1's own quote: *"a made-up bunk implies someone slept in it"*. Engine gate review 15
+/// found both berths wearing `screed`, the floor material, and ruled that the section conditions were
+/// therefore built in `lay_out` and invisible on screen — which for a critic's purposes is not built.
+///
+/// The stripes are a `Courses` lattice with **one course**, so the "joints" are the ticking's stripes
+/// running the length of the bed. Rough and entirely non-metallic: this is the one soft thing in the
+/// Warren and it has to read as cloth beside four hard surfaces.
+fn bunk_ticking() -> Surface {
+    Surface {
+        wall: Some(
+            Courses {
+                seed: 0x71_CC_1A_60,
+                rows: 1,
+                across: 9,
+                variation: 0.02,
+                joint: 0.055,
+                bond: Bond::Stack,
+            }
+            .lay(),
+        ),
+        seed: 0x71_CC_1A_60,
+        relief: 420.0,
+        low: [0.21, 0.20, 0.18],
+        high: [0.30, 0.29, 0.26],
+        // The blue stripe, and the stain of a shelter nobody aired.
+        beneath: [0.13, 0.16, 0.24],
+        wear: 0.65,
+        face_roughness: 0.95,
+        joint_roughness: 0.92,
+        metallic: 0.0,
+        tone_variation: 0.06,
+        bolts: None,
+        transposed: false,
+    }
+}
+
+/// Safety orange, fired as enamel — §5a's one accent, and nothing else in the world may carry it.
+///
+/// A surface rather than a flat colour so the rule on a sign is the same *material* as the plate it
+/// sits on: same grain, same wear, same roughness, one hue apart. A plain orange would read as a
+/// decal stuck to a photograph.
+fn enamel_orange() -> Surface {
+    Surface {
+        wall: None,
+        seed: 0x0A_CC_E4_71,
+        relief: 700.0,
+        low: [0.55, 0.135, 0.012],
+        high: [0.78, 0.215, 0.022],
+        // Bare rusted plate under a chip, exactly as the bone enamel has.
+        beneath: [0.11, 0.055, 0.03],
+        wear: 0.7,
+        face_roughness: 0.32,
+        joint_roughness: 0.8,
+        metallic: 0.0,
+        tone_variation: 0.0,
+        bolts: None,
+        transposed: false,
     }
 }
 
@@ -363,6 +457,7 @@ fn bulkhead_grey() -> Surface {
         metallic: 0.25,
         tone_variation: 0.03,
         bolts: None,
+        transposed: false,
     }
 }
 
@@ -493,6 +588,7 @@ fn worn(surface: &Surface, u: f32, v: f32) -> f32 {
 fn render_colour(surface: &Surface) -> Canvas {
     let mut canvas = Canvas::new(SIZE, Space::Srgb);
     canvas.fill(|u, v| {
+        let (u, v) = surface.axes(u, v);
         let t = (grain(surface.seed, u, v) * 0.5 + 0.5).clamp(0.0, 1.0);
         let drift = macro_tint(surface.seed, u, v) * 0.14;
         let tone = surface.wall.as_ref().map_or(0.0, |wall| {
@@ -519,7 +615,10 @@ fn render_normal(surface: &Surface) -> Canvas {
     let mut canvas = Canvas::new(SIZE, Space::Linear);
     let step = 1.0 / f32::from(u16::try_from(SIZE).unwrap_or(512));
     canvas.fill(|u, v| {
-        let field = |x: f32, y: f32| height(surface, x, y);
+        let field = |x: f32, y: f32| {
+            let (x, y) = surface.axes(x, y);
+            height(surface, x, y)
+        };
         maps::encode_normal(maps::normal_from_height(&field, u, v, step, surface.relief))
     });
     canvas
@@ -536,9 +635,13 @@ fn render_surface_map(surface: &Surface) -> Canvas {
     const STRENGTH: f32 = 0.6;
 
     canvas.fill(|u, v| {
-        let field = |x: f32, y: f32| height(surface, x, y);
+        let field = |x: f32, y: f32| {
+            let (x, y) = surface.axes(x, y);
+            height(surface, x, y)
+        };
         let occlusion = maps::cavity_from_height(&field, u, v, RADIUS, STRENGTH);
 
+        let (u, v) = surface.axes(u, v);
         let joint = surface
             .wall
             .as_ref()

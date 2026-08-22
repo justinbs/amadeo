@@ -7,10 +7,10 @@ entity material "Institutional steel"
     base_colour 1.0 1.0 1.0 1.0
     base_colour_texture "fitting_steel"
     emissive 0.0 0.0 0.0
-    metallic 1.0
+    metallic 0.0
     metallic_roughness_texture "fitting_steel_surface"
     normal_strength 1.0
     normal_texture "fitting_steel_normal"
     occlusion_strength 1.0
-    roughness 1.0
+    roughness 0.85
     uv_scale 1.2 1.2

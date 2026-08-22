@@ -1,0 +1,16 @@
+scene accent
+version 1
+
+entity material "Safety orange, fired as enamel"
+  Material
+    alpha_mode Opaque
+    base_colour 1.0 1.0 1.0 1.0
+    base_colour_texture "enamel_orange"
+    emissive 0.0 0.0 0.0
+    metallic 0.0
+    metallic_roughness_texture "enamel_orange_surface"
+    normal_strength 1.0
+    normal_texture "enamel_orange_normal"
+    occlusion_strength 1.0
+    roughness 1.0
+    uv_scale 3.0 3.0

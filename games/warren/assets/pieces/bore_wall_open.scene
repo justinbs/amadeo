@@ -3,10 +3,10 @@ version 1
 
 assets
   bore_side_open
-  lining
-  ring_lining
-  ring_lining_normal
-  ring_lining_surface
+  lining_wall
+  ring_lining_wall
+  ring_lining_wall_normal
+  ring_lining_wall_surface
 
 entity wall "A side wall with a cross-passage through it"
   Transform
@@ -16,7 +16,7 @@ entity wall "A side wall with a cross-passage through it"
 
   entity panel "Jambs"
     Mesh
-      material "lining"
+      material "lining_wall"
       mesh "bore_side_open"
     Transform
       rotation 0.0 0.0 0.0

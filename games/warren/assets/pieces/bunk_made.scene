@@ -3,15 +3,15 @@ version 1
 
 assets
   bunk_frame
+  bunk_ticking
+  bunk_ticking_normal
+  bunk_ticking_surface
   fitting_steel
   fitting_steel_normal
   fitting_steel_surface
   fittings
   mattress
-  screed
-  shelter_floor
-  shelter_floor_normal
-  shelter_floor_surface
+  ticking
 
 entity bunk_made "A bunk somebody slept in"
   Transform
@@ -48,7 +48,7 @@ entity bunk_made "A bunk somebody slept in"
 
   entity lower "Lower berth"
     Mesh
-      material "screed"
+      material "ticking"
       mesh "mattress"
     Transform
       rotation 0.0 0.0 0.0
@@ -57,7 +57,7 @@ entity bunk_made "A bunk somebody slept in"
 
   entity upper "Upper berth"
     Mesh
-      material "screed"
+      material "ticking"
       mesh "mattress"
     Transform
       rotation 0.0 0.0 0.0

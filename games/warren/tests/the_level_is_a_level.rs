@@ -282,6 +282,51 @@ fn some_rooms_are_dark_and_some_are_not() {
     assert!(lit > 0 && dark > 0, "{lit} lit and {dark} dark");
 }
 
+#[test]
+fn no_two_sections_next_to_each_other_are_in_the_same_condition() {
+    // **`docs/11` §5.2's binding rule, and it is the half a die roll cannot give you.** *"Rooms may
+    // repeat. No two may be in the same condition."* The first implementation drew `rng.below_u32(3)`
+    // independently per room, which puts two of the same state side by side about a third of the
+    // time — and in a tube, where several sections are visible down the length in one frame, adjacent
+    // repeats are exactly what reads as machine-made. Engine gate review 15 caught the contradiction
+    // between the code and the sentence it was written to satisfy.
+    //
+    // Checked across many seeds, because one lucky layout proves nothing about a placement rule.
+    for seed in 0..48u64 {
+        let layout = lay_out(seed, 14);
+        for room in &layout.rooms {
+            for side in Side::ALL {
+                let Some(neighbour) = layout.at(side.step(room.cell)) else {
+                    continue;
+                };
+                assert_ne!(
+                    room.condition, neighbour.condition,
+                    "seed {seed}: {:?} and {:?} are both {:?}",
+                    room.cell, neighbour.cell, room.condition
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn every_condition_is_used_somewhere() {
+    // The control for the test above, which a generator that gave every room a *different* condition
+    // by cycling blindly would also pass — and which one that only ever used two would pass as well,
+    // producing a level with a third of its dressing missing and no failure anywhere.
+    let layout = shipped();
+    for wanted in [
+        warren::Condition::SleptIn,
+        warren::Condition::Stripped,
+        warren::Condition::Stores,
+    ] {
+        assert!(
+            layout.rooms.iter().any(|room| room.condition == wanted),
+            "the shipped level has no {wanted:?} section"
+        );
+    }
+}
+
 // --- The door is in a wall ----------------------------------------------------------------------
 
 #[test]

@@ -1,0 +1,15 @@
+scene letter_h
+version 1
+
+entity mesh "The section letter H, cut as a stencil"
+  CompoundMesh
+    parts
+      - mirror true false false
+        position 0.062 0.0 0.0
+        solid Box
+          shape
+            size 0.038 0.2 0.007
+      - position 0.0 0.0 0.0
+        solid Box
+          shape
+            size 0.086 0.038 0.007

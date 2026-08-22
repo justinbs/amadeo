@@ -1215,7 +1215,7 @@ pub fn lay_out(seed: u64, count: usize) -> Layout {
         }
     }
 
-    let rooms: Vec<PlacedRoom> = cells
+    let mut rooms: Vec<PlacedRoom> = cells
         .iter()
         .map(|&cell| {
             let mut open: Vec<Side> = Side::ALL
@@ -1231,16 +1231,13 @@ pub fn lay_out(seed: u64, count: usize) -> Layout {
                 // cannot tell the game has started. `cells` is sorted before this runs, so the
                 // sequence of draws is the same on every machine (I3).
                 lit: cell == START || rng.chance(LAMPS_WORKING),
-                // Drawn here for `lit`'s reason, and drawn **after** it so adding this did not
-                // renumber the lamp draws and change which sections are lit.
-                condition: match rng.below_u32(3) {
-                    0 => Condition::SleptIn,
-                    1 => Condition::Stripped,
-                    _ => Condition::Stores,
-                },
+                // Filled in below, once every room's neighbours are known.
+                condition: Condition::SleptIn,
             }
         })
         .collect();
+
+    assign_conditions(&mut rooms);
 
     let landmarks = choose_landmarks(&rooms);
     Layout {
@@ -1260,6 +1257,63 @@ pub const START: (i32, i32) = (0, 0);
 /// not, rather than everywhere being dimly lit, because a dark room next to a working one reads as
 /// lighting that has failed in patches — which is a *place*. Uniform gloom reads as a setting.
 pub const LAMPS_WORKING: f32 = 0.45;
+
+/// Gives every section a condition, **by rule rather than by die** — `docs/11` §5.2.
+///
+/// # A die roll is what makes a generator look like a generator
+///
+/// The first version was `rng.below_u32(3)`, three ways, independent per room. Engine gate review 15
+/// pointed out that this contradicts the very sentence it was built to satisfy: *"Rooms may repeat.
+/// No two may be in the same condition."* An i.i.d. draw over fourteen rooms puts two of the same
+/// state next to each other about a third of the time, and a run of three is not rare — and in a
+/// tube, where you see several sections down the length in one frame, adjacent repeats are exactly
+/// what reads as machine-made.
+///
+/// So the rule is: **walk the rooms in cell order and give each one a condition none of its already-
+/// placed neighbours has.** Ties break towards the least-used condition so far, which spreads the
+/// three evenly without counting anything twice. No randomness at all, which also means this cannot
+/// disturb `lit`'s draws — the sequence a seeded `Rng` produces is part of a level's identity (I3).
+///
+/// It is not the mission-first generator `docs/11` §5.1 asks for; that is §10's item 3 and a larger
+/// job. It is the property that section asked for, at the cost of one pass over a sorted list.
+fn assign_conditions(rooms: &mut [PlacedRoom]) {
+    const ORDER: [Condition; 3] = [Condition::SleptIn, Condition::Stripped, Condition::Stores];
+
+    // How many rooms already carry each condition, so ties go to the one used least.
+    let mut used = [0usize; 3];
+
+    for index in 0..rooms.len() {
+        let cell = rooms[index].cell;
+
+        // What the neighbours already decided. Only rooms *before* this one in cell order have been
+        // assigned, which is what makes one pass enough.
+        let mut taken = [false; 3];
+        for side in Side::ALL {
+            let at = side.step(cell);
+            if let Some(neighbour) = rooms[..index].iter().find(|room| room.cell == at) {
+                let which = ORDER
+                    .iter()
+                    .position(|candidate| *candidate == neighbour.condition)
+                    .unwrap_or(0);
+                taken[which] = true;
+            }
+        }
+
+        // The least-used condition no neighbour has; if a room is boxed in by all three, the
+        // least-used one regardless, because a level is better than a panic.
+        let pick = (0..3)
+            .filter(|which| !taken[*which])
+            .min_by_key(|which| (used[*which], *which))
+            .unwrap_or_else(|| {
+                (0..3)
+                    .min_by_key(|which| (used[*which], *which))
+                    .unwrap_or(0)
+            });
+
+        rooms[index].condition = ORDER[pick];
+        used[pick] += 1;
+    }
+}
 
 /// The room at a cell, in a list that may not be a finished [`Layout`] yet.
 fn room_at(rooms: &[PlacedRoom], cell: (i32, i32)) -> Option<&PlacedRoom> {

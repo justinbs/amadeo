@@ -13,4 +13,4 @@ entity material "Vitreous enamel signage"
     normal_texture "sign_enamel_normal"
     occlusion_strength 1.0
     roughness 1.0
-    uv_scale 1.0417 2.0833
+    uv_scale 1.6667 1.6667

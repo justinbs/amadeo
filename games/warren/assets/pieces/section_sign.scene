@@ -2,10 +2,21 @@ scene section_sign
 version 1
 
 assets
+  accent
+  bulkhead
+  bulkhead_grey
+  bulkhead_grey_normal
+  bulkhead_grey_surface
+  enamel_orange
+  enamel_orange_normal
+  enamel_orange_surface
+  letter_h
   sign_enamel
   sign_enamel_normal
   sign_enamel_surface
+  sign_frame
   sign_plate
+  sign_rule
   signage
 
 entity section_sign "The section plate"
@@ -14,6 +25,15 @@ entity section_sign "The section plate"
     scale 1.0 1.0 1.0
     translation 0.0 0.0 0.0
 
+  entity surround "Surround"
+    Mesh
+      material "bulkhead"
+      mesh "sign_frame"
+    Transform
+      rotation 0.0 -90.0 0.0
+      scale 1.0 1.0 1.0
+      translation -0.03 1.68 0.0
+
   entity plate "Plate"
     Mesh
       material "signage"
@@ -21,4 +41,22 @@ entity section_sign "The section plate"
     Transform
       rotation 0.0 -90.0 0.0
       scale 1.0 1.0 1.0
-      translation -0.03 1.65 0.0
+      translation -0.03 1.68 0.0
+
+  entity rule "The orange rule"
+    Mesh
+      material "accent"
+      mesh "sign_rule"
+    Transform
+      rotation 0.0 -90.0 0.0
+      scale 1.0 1.0 1.0
+      translation -0.042 1.83 0.0
+
+  entity letter "The section letter"
+    Mesh
+      material "bulkhead"
+      mesh "letter_h"
+    Transform
+      rotation 0.0 -90.0 0.0
+      scale 1.0 1.0 1.0
+      translation -0.042 1.63 0.0
