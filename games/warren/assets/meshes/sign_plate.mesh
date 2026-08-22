@@ -1,0 +1,29 @@
+scene sign_plate
+version 1
+
+entity mesh "An enamel section plate"
+  CompoundMesh
+    parts
+      - position 0.0 0.0 0.0
+        solid Box
+          shape
+            size 0.96 0.48 0.02
+      - mirror false true false
+        position 0.0 0.245 0.005
+        solid Box
+          shape
+            size 1.0 0.03 0.03
+      - mirror true false false
+        position 0.485 0.0 0.005
+        solid Box
+          shape
+            size 0.03 0.52 0.03
+      - mirror true true false
+        position 0.42 0.18 -0.025
+        rotation 90.0 0.0 0.0
+        solid Cylinder
+          shape
+            height 0.03
+            radius 0.022
+            sides 6
+            top_radius 0.018

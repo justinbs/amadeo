@@ -1,0 +1,24 @@
+scene section_sign
+version 1
+
+assets
+  sign_enamel
+  sign_enamel_normal
+  sign_enamel_surface
+  sign_plate
+  signage
+
+entity section_sign "The section plate"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+  entity plate "Plate"
+    Mesh
+      material "signage"
+      mesh "sign_plate"
+    Transform
+      rotation 0.0 -90.0 0.0
+      scale 1.0 1.0 1.0
+      translation -0.03 1.65 0.0

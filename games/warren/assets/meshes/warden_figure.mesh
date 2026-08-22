@@ -1,0 +1,42 @@
+scene warden_figure
+version 1
+
+entity mesh "The warden, as a silhouette and nothing more"
+  CompoundMesh
+    parts
+      - position 0.0 -0.22 0.0
+        solid Cylinder
+          shape
+            flat true
+            height 1.42
+            radius 0.4
+            sides 10
+            top_radius 0.24
+      - position 0.0 0.57 0.0
+        solid Cylinder
+          shape
+            flat true
+            height 0.18
+            radius 0.27
+            sides 10
+            top_radius 0.19
+      - position 0.0 0.77 0.0
+        solid Cylinder
+          shape
+            flat true
+            height 0.24
+            radius 0.115
+            sides 10
+            top_radius 0.115
+      - position 0.0 0.925 0.0
+        solid Cylinder
+          shape
+            flat true
+            height 0.08
+            radius 0.16
+            sides 10
+            top_radius 0.135
+      - position 0.0 0.895 -0.15
+        solid Box
+          shape
+            size 0.24 0.02 0.16

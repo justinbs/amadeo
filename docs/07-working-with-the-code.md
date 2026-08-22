@@ -2909,6 +2909,49 @@ It is a failure only the **fourth** of `CLAUDE.md` §4b's checks can see, and on
 it is invisible to every fast check and appears in CI after a push, which is exactly what happened:
 run the doc check *before* pushing, not after. The Warren's is `finishes` now.
 
+### An override replaces a component, so a piece must not author its height on its own root
+
+ADR 0029 says an override is a *patch that reaches the instance root*, and the word doing the damage
+is **replace**: `override Transform` supplies a whole `Transform`, so whatever the prefab's root
+authored is gone. A generator that writes `place(x, 0.0, z)` therefore silently discards any `y` the
+piece put on its own root entity.
+
+`games/warren`'s `wall.scene` did exactly that — the wall's box sat on the root at `translation
+0 1.5 0` — so **every wall in the shipped generated level stood from −1.5 m to +1.5 m instead of 0 to
+3**, and the top 1.5 m of every bay was open to the sky map. It survived three sessions because the
+*collider* sank with the mesh and a 1.5 m wall still stops a 1.9 m capsule: `amadeo check` passed,
+`amadeo fmt` was clean, every test was green, and nothing about walking around was wrong.
+
+**The rule**: a piece a generator places puts its root at the floor and authors every height in a
+**child**. `doorway.scene` did this and was unaffected, which is why the level's wall heights ended
+up *mixed* rather than uniformly wrong — a stronger tell than either, and still nothing noticed.
+
+The tempting test — *"no placeable piece has a non-zero root translation"* — is wrong: `player_start`
+is authored at 1.0 and `warden_post` at 0.93, both deliberately, because the character controller and
+the warden's distance checks need them unparented. A test that exempts two pieces by name goes stale.
+Assert the **geometry** instead:
+`the_level_is_a_level.rs::nothing_in_the_level_is_buried_and_every_wall_reaches_the_crown` walks every
+static collider in the instantiated level and checks nothing sits below the deck and every wall
+reaches the crown. It knows nothing about overrides and would catch the next thing that loses a
+height, whatever the mechanism.
+
+### A `--from` capture does not see a scene edit, so an A/B through one proves nothing
+
+`amadeo capture --from <snapshot>` restores **components** (ADR 0028). A `PointLight`'s intensity in
+`playing.snapshot` is whatever it was when the snapshot was taken, so editing `room_lamp.scene` and
+recapturing produces a **byte-identical** image — and the obvious conclusion, that the light
+contributes nothing, is false.
+
+Session 23 reached that wrong conclusion twice in ten minutes, about the Warren's fittings and about
+its `spill` directional, and acted on one of them. Rebuilt properly — `cargo run -p warren --bin
+moment` **between** the edit and the capture — the fittings move 73% of pixels by up to 234 levels
+and `spill` moves 12.5% by up to 52.
+
+Editing the snapshot text instead fails loudly rather than silently, which is the one piece of luck:
+`restore` compares the recorded state hash and refuses. **Materials, meshes and the `Environment` are
+re-read from disk**, so an A/B on those *is* valid through `--from`. The rule: anything that is a
+component needs the snapshot rebuilt; anything that is an asset does not.
+
 *(More entries land as the engine takes shape: asset handles.)*
 
 ---

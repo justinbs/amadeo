@@ -3,10 +3,10 @@ version 1
 
 assets
   bulkhead
+  bulkhead_door
   bulkhead_grey
   bulkhead_grey_normal
   bulkhead_grey_surface
-  door
 
 entity way_out "The way out"
   Transform
@@ -20,13 +20,13 @@ entity way_out "The way out"
       restitution 0.0
       sensor false
       shape Cuboid
-        size 1.6 2.4 0.16
+        size 1.74 2.34 0.2
     Interactable
       enabled true
       prompt "The door is locked"
     Mesh
       material "bulkhead"
-      mesh "door"
+      mesh "bulkhead_door"
     RigidBody
       angular_damping 0.0
       gravity false

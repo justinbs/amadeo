@@ -91,7 +91,6 @@ fn it_places_exactly_one_of_each_thing_a_run_needs() {
     assert_eq!(count(warren::TORCH_PIECE), 1, "something to see by");
     assert_eq!(count(warren::WARDEN_PIECE), 1, "something to run from");
     assert_eq!(count(warren::HUD_PIECE), 1, "words on the screen");
-    assert_eq!(count(warren::SPILL_PIECE), 1, "light from elsewhere");
 
     // And at least one working lamp, because the start room's is not optional.
     assert!(count(warren::LAMP_PIECE) >= 1, "a room that is lit");
@@ -342,6 +341,70 @@ fn level() -> App {
         *screen = warren::Screen::Playing;
     }
     app
+}
+
+#[test]
+fn nothing_in_the_level_is_buried_and_every_wall_reaches_the_crown() {
+    // **The test the sunk-wall defect needed, written the way it would have been caught.**
+    //
+    // Session 23 found that every wall in the shipped level stood from -1.5 m to +1.5 m instead of
+    // 0 to 3: `wall.scene` authored its height on the prefab **root**, and ADR 0029's override
+    // *replaces* the root's `Transform`, so the generator's `place(x, 0.0, z)` threw the 1.5 away.
+    // The top 1.5 m of every bay was open to the sky map. Nothing noticed for three sessions --
+    // `amadeo check` passed, `amadeo fmt` was clean, and the whole suite was green, because the
+    // collider sank with the mesh and a 1.5 m wall still stops a 1.9 m capsule.
+    //
+    // **Asserted about the level rather than about the file format**, deliberately. The obvious
+    // structural test -- "no placeable piece has a non-zero root translation" -- fails on day one:
+    // `player_start` is authored at 1.0 and `warden_post` at 0.93, both on purpose, and the
+    // generator writes `PLAYER_STAND` and `WARDEN_STAND` over them. A test that has to exempt two
+    // pieces by name is a test that goes stale. This one knows nothing about the mechanism and
+    // would catch the next thing that discards a height, whatever that turns out to be.
+    let app = level();
+
+    // How deep anything is allowed to sit. The deck slab is 0.24 m thick and hangs below the
+    // walking surface, so that plus a little is the floor of what is legitimate.
+    const DEEPEST: f32 = -0.4;
+
+    let mut walls_reaching = 0usize;
+    for (entity, (collider, at)) in app
+        .world
+        .query::<(&amadeo_physics::Collider, &GlobalTransform)>()
+    {
+        let amadeo_physics::Shape::Cuboid { size } = collider.shape else {
+            continue;
+        };
+        // A `GlobalTransform` is a column-major 4x4, so the translation is elements 12..15.
+        let centre = at.matrix[13];
+        let (bottom, top) = (centre - size[1] / 2.0, centre + size[1] / 2.0);
+
+        assert!(
+            bottom >= DEEPEST,
+            "{entity:?} has its bottom at {bottom:.2} m, which is below the deck -- something \
+             placed it without the height its piece authored"
+        );
+
+        // The side walls are the one shape tall enough to reach the springing and the crown above
+        // it, and they are what the defect sank. Counted rather than merely checked, so a level
+        // that lost its walls entirely cannot pass by having none to check.
+        if (size[1] - 3.4).abs() < 0.01 {
+            assert!(
+                top >= 3.35,
+                "a side wall reaches only {top:.2} m; the crown springs at 2.0 and closes at 3.2"
+            );
+            walls_reaching += 1;
+        }
+    }
+
+    // At least two per bore. Not exactly two: a wall with a cross-passage through it is two jamb
+    // colliders rather than one, so the count is a floor rather than an equality -- and it is here
+    // at all so that a level which lost its walls entirely cannot pass by having none to check.
+    let rooms = shipped().rooms.len();
+    assert!(
+        walls_reaching >= rooms * 2,
+        "{rooms} bores need at least {} walls reaching the crown, and {walls_reaching} do",
+        rooms * 2
+    );
 }
 
 /// The one entity marked as the way out.

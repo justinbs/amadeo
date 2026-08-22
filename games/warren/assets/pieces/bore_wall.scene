@@ -1,0 +1,42 @@
+scene bore_wall
+version 1
+
+assets
+  bore_side
+  lining
+  ring_lining
+  ring_lining_normal
+  ring_lining_surface
+
+entity wall "A side wall, floor to springing"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+  entity panel "Panel"
+    Mesh
+      material "lining"
+      mesh "bore_side"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.0 0.0
+
+  entity solid "What keeps you in the bore"
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 0.3 3.4 12.0
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.15 1.7 0.0

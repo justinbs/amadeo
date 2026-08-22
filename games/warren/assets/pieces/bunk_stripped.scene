@@ -1,0 +1,42 @@
+scene bunk_stripped
+version 1
+
+assets
+  bunk_frame
+  fitting_steel
+  fitting_steel_normal
+  fitting_steel_surface
+  fittings
+
+entity bunk_stripped "A bunk somebody took the bedding from"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+  entity frame "Frame"
+    Mesh
+      material "fittings"
+      mesh "bunk_frame"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.0 0.0
+
+  entity solid "What you cannot walk through"
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 0.74 1.6 1.9
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.8 0.0

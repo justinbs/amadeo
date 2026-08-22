@@ -136,8 +136,8 @@ fn the_door_is_locked_until_you_have_the_key() {
     banish_the_warden(&mut app);
     let player = player(&app.world).expect("a character");
 
-    // In front of the door, which sits in the north wall at x = -4.
-    stand_at(&mut app, [-4.0, 1.0, -6.4]);
+    // In front of the door, which is set into the bulkhead closing the far end of the bore.
+    stand_at(&mut app, [0.0, 1.0, -10.5]);
     tap_use(&mut app);
 
     assert_eq!(
@@ -162,7 +162,7 @@ fn with_the_key_the_same_door_lets_you_out() {
     let key = thing_of_kind(&app, KEY);
 
     amadeo_inventory::store(&mut app.world, key, player).expect("the bag has room");
-    stand_at(&mut app, [-4.0, 1.0, -6.4]);
+    stand_at(&mut app, [0.0, 1.0, -10.5]);
 
     // The prompt has to change, or a player holding the key has no way to know it worked.
     assert_eq!(
@@ -182,7 +182,7 @@ fn escaping_twice_is_still_escaping() {
     let player = player(&app.world).expect("a character");
     let key = thing_of_kind(&app, KEY);
     amadeo_inventory::store(&mut app.world, key, player).expect("room");
-    stand_at(&mut app, [-4.0, 1.0, -6.4]);
+    stand_at(&mut app, [0.0, 1.0, -10.5]);
     tap_use(&mut app);
     assert_eq!(outcome(&app.world), Outcome::Escaped);
 
@@ -318,7 +318,7 @@ fn the_prompt_line_says_what_you_are_looking_at() {
         "nothing in reach, nothing to say"
     );
 
-    stand_at(&mut app, [-4.0, 1.0, -6.4]);
+    stand_at(&mut app, [0.0, 1.0, -10.5]);
     assert_eq!(line_says::<warren::PromptLine>(&app), "The door is locked");
 }
 
@@ -331,7 +331,7 @@ fn the_ending_line_stays_empty_until_the_run_ends() {
     let player = player(&app.world).expect("a character");
     let key = thing_of_kind(&app, KEY);
     amadeo_inventory::store(&mut app.world, key, player).expect("room");
-    stand_at(&mut app, [-4.0, 1.0, -6.4]);
+    stand_at(&mut app, [0.0, 1.0, -10.5]);
     tap_use(&mut app);
 
     assert_eq!(line_says::<warren::EndingLine>(&app), "YOU GOT OUT");
@@ -371,8 +371,14 @@ fn a_socket_is_a_component_a_scene_can_author() {
     // something a generator infers from a bounding box.
     let mut app = room();
 
-    // The Warren is one handcrafted room and authors none yet, which is the honest starting state.
-    assert!(warren::open_sockets(&app.world).is_empty());
+    // **The handcrafted slice authors one**, on the wall the cross-passage goes through — which is
+    // what changed when the rooms became bores. It used to author none, and asserting "none" here
+    // was reading the level rather than the mechanism, so the count is taken rather than assumed.
+    let authored = warren::open_sockets(&app.world).len();
+    assert_eq!(
+        authored, 1,
+        "the slice has one cross-passage, so it has one socket"
+    );
 
     // A piece declares a doorway by putting one on a child entity. Placed and aimed by that
     // entity's own `Transform`, which is why `Socket` carries neither.
@@ -381,16 +387,19 @@ fn a_socket_is_a_component_a_scene_can_author() {
     app.world.insert(doorway, warren::Socket::new("corridor"));
 
     let found = warren::open_sockets(&app.world);
-    assert_eq!(found.len(), 1);
-    assert_eq!(found[0].1.kind, "corridor");
-    assert!(found[0].1.open);
+    assert_eq!(found.len(), authored + 1);
+    let corridor = found
+        .iter()
+        .find(|(_, socket)| socket.kind == "corridor")
+        .expect("the one just spawned");
+    assert!(corridor.1.open);
 
     // A used socket stays visible rather than being removed, so a layout that came out wrong can
     // still be read back with `amadeo query`.
     if let Some(socket) = app.world.get_mut::<warren::Socket>(doorway) {
         socket.open = false;
     }
-    assert!(warren::open_sockets(&app.world).is_empty());
+    assert_eq!(warren::open_sockets(&app.world).len(), authored);
     assert!(app.world.get::<warren::Socket>(doorway).is_some());
 }
 

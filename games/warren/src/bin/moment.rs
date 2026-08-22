@@ -68,6 +68,21 @@ fn main() {
         std::process::exit(1);
     }
 
+    // **With the torch in hand, because a frame of this game without it is a frame of a different
+    // game.** The Warren's whole lighting design is a warm hand lamp against cold fittings
+    // (`docs/11` §5a), and engine gate item 24's close condition names it. A snapshot taken at the
+    // start line has the beam at `intensity 0.0` and shows only what the emergency circuit lights,
+    // which is half the picture and the wrong half.
+    //
+    // Done through the game's own path rather than by writing the beam: `store` is what
+    // `take_what_you_used` calls, `carry_the_torch` reads the bag and lights the beam, and the torch
+    // loses its `Transform` on the way in (ADR 0070) so it stops being on its crate. Setting the
+    // light directly would produce a state the game cannot reach.
+    if let Err(error) = pick_up_the_torch(&mut app) {
+        eprintln!("could not put the torch in the player's hand: {error}");
+        std::process::exit(1);
+    }
+
     let out = manifest_dir().join("snapshots");
     if let Err(error) = std::fs::create_dir_all(&out) {
         eprintln!("could not create {}: {error}", out.display());
@@ -94,6 +109,26 @@ fn main() {
     println!(
         "\nphotograph it with:\n  amadeo capture -p warren --from games/warren/snapshots/playing.snapshot --ticks 5 shot.png"
     );
+}
+
+/// Puts the torch in the player's bag and lets the beam come up.
+///
+/// The extra ticks are not padding: `carry_the_torch` runs in `Simulation` and the beam's intensity
+/// is read by the collection pass in `Render`, so a snapshot taken on the same tick as the pickup
+/// would record a lit bag and a dark beam.
+fn pick_up_the_torch(app: &mut amadeo_app::App) -> anyhow::Result<()> {
+    let you = warren::player(&app.world).ok_or_else(|| anyhow::anyhow!("there is no character"))?;
+    let torch = app
+        .world
+        .query::<(&amadeo_inventory::Item,)>()
+        .find(|(_, (item,))| item.kind == warren::TORCH)
+        .map(|(entity, _)| entity)
+        .ok_or_else(|| anyhow::anyhow!("this level has no torch in it"))?;
+
+    amadeo_inventory::store(&mut app.world, torch, you)
+        .map_err(|error| anyhow::anyhow!("the bag would not take it: {error}"))?;
+    app.run_ticks(6)?;
+    Ok(())
 }
 
 /// Where the player ended up, printed because a snapshot nobody can locate is one nobody trusts.

@@ -42,7 +42,11 @@
 //! drifting apart — a normal map whose bumps do not line up with its colour gives the eye two
 //! conflicting surfaces at once.
 
-use amadeo_texture::{Bond, Canvas, Courses, Space, Wall, maps, noise};
+use amadeo_texture::{
+    Bond, Canvas, Courses, Space, Wall, maps,
+    maps::{encode_normal, normal_from_height, pack_orm},
+    noise,
+};
 use std::path::{Path, PathBuf};
 
 /// Texture size in pixels. A power of two, so mip generation halves cleanly.
@@ -59,6 +63,144 @@ fn main() {
     write_set(&out, "shelter_floor", &shelter_floor());
     write_set(&out, "fitting_steel", &fitting_steel());
     write_set(&out, "bulkhead_grey", &bulkhead_grey());
+    write_signage(&out);
+}
+
+/// Vitreous enamel signage — §5a's last row, and the one surface that is not made of noise.
+///
+/// # It is here because a bore with nothing to read is not a place
+///
+/// `docs/11` §5.4 makes the section plate the whole of the wayfinding system and §8 makes it the
+/// reason the interface is signage: the walls and the menus are made by the same institution, in the
+/// same typeface, on the same bone-and-orange. A tunnel repeated down its own length with nothing to
+/// fix the eye on has no orientation and no author.
+///
+/// # Why it does not go through [`Surface`]
+///
+/// Everything above is a *material*: a field of grain with a lattice over it, tiling in both
+/// directions, identical wherever it lands. A sign is a **picture**. It is drawn once, it does not
+/// tile, and its features are placed by hand rather than hashed — so it shares the encoder and the
+/// sidecar rule and nothing else.
+///
+/// # The letter is three rectangles, and that is a real constraint
+///
+/// There is no glyph rasteriser reachable from a texture generator (`amadeo-ui`'s `FontCache` is
+/// four crates above this one and needs a font file, a database and a shaper). So the section letter
+/// is drawn from rectangles, which means the alphabet available here is the rectilinear one — H, I,
+/// E, L, T, F. `HOWE` is a First Sea Lord and the deep shelters are named after naval figures, so
+/// the constraint costs nothing: the sections take names that begin with letters a stencil can cut.
+fn write_signage(out: &Path) {
+    let mut colour = Canvas::new(SIZE, Space::Srgb);
+    colour.fill(|u, v| {
+        let [r, g, b] = sign_colour(u, v);
+        [r, g, b, 1.0]
+    });
+    write(
+        &out.join("sign_enamel.png"),
+        "sign_enamel",
+        colour,
+        Space::Srgb,
+    );
+
+    let mut normal = Canvas::new(SIZE, Space::Linear);
+    let step = 1.0 / SIZE as f32;
+    normal.fill(|u, v| encode_normal(normal_from_height(&sign_height, u, v, step, 900.0)));
+    write(
+        &out.join("sign_enamel_normal.png"),
+        "sign_enamel_normal",
+        normal,
+        Space::Linear,
+    );
+
+    let mut surface = Canvas::new(SIZE, Space::Linear);
+    surface.fill(|u, v| {
+        // Enamel is fired glass on steel: smooth where it is sound, and rough where it has chipped
+        // off and left bare rusted plate. The roughness is therefore the *chip* mask, not noise.
+        let chipped = sign_chip(u, v);
+        let roughness = 0.28 + 0.62 * chipped;
+        pack_orm(1.0 - 0.35 * chipped, roughness, 0.15 * chipped)
+    });
+    write(
+        &out.join("sign_enamel_surface.png"),
+        "sign_enamel_surface",
+        surface,
+        Space::Linear,
+    );
+}
+
+/// Where the enamel has come off, `0.0` sound and `1.0` bare plate.
+///
+/// Concentrated at the edges, because that is where a plate is handled, knocked and screwed down.
+fn sign_chip(u: f32, v: f32) -> f32 {
+    // How far inside the plate this point is, as a fraction of the way to the middle. Rectangular
+    // rather than radial: a plate chips along its **edges**, and a radial falloff spreads the
+    // damage across the whole face, which reads as dirt rather than as damage.
+    let inset = (u.min(1.0 - u) * 2.0).min(v.min(1.0 - v) * 2.0);
+    let margin = (inset / 0.11).clamp(0.0, 1.0);
+    // Two low lattices, so a chip is a **clump** a few millimetres across. Higher frequencies gave
+    // a dust of single texels, which at any distance averages back to a flat grey and looks like
+    // sensor noise.
+    let speckle = noise::octaves(0x51_6E_A6_E1, u, v, &[(6, 0.65), (13, 0.35)]) * 0.5 + 0.5;
+    ((speckle - 0.46 - 0.48 * margin) * 5.0).clamp(0.0, 1.0)
+}
+
+/// `1.0` inside the black section letter, `0.0` outside it.
+///
+/// An `H` at two thirds of the plate's height, on the left, in the proportions a stencil cuts:
+/// two stiles and a bar a shade above centre, which is what stops a capital H reading as upside
+/// down.
+fn sign_letter(u: f32, v: f32) -> f32 {
+    let (left, right) = (0.10, 0.33);
+    let (top, bottom) = (0.34, 0.86);
+    // **The plate is twice as wide as it is tall and the texture is square**, so one unit of `u` is
+    // half a unit of `v` on the wall. A stroke of equal *drawn* width therefore has to be twice as
+    // thick in `v` as in `u`, or the H comes out with hairline stiles and a slab of a crossbar.
+    let stile = 0.045;
+    let bar = stile * 2.0;
+    let inside = u >= left && u <= right && v >= top && v <= bottom;
+    if !inside {
+        return 0.0;
+    }
+    let on_stile = u <= left + stile || u >= right - stile;
+    let middle = (top + bottom) / 2.0;
+    let on_bar = v >= middle - bar / 2.0 && v <= middle + bar / 2.0;
+    f32::from(on_stile || on_bar)
+}
+
+/// The plate's colour at a point, in linear RGB.
+fn sign_colour(u: f32, v: f32) -> [f32; 3] {
+    // §5a: signage enamel is bone "with the section letter in black", and it *matches the interface
+    // exactly* — so these are the theme's own numbers rather than a second bone invented here.
+    let bone = [0.62, 0.60, 0.55];
+    let ink = [0.022, 0.021, 0.020];
+    // The one accent in the game, and the only thing allowed to carry it (§5a).
+    let orange = [0.72, 0.19, 0.02];
+    let plate = [0.11, 0.055, 0.03];
+
+    let mut colour = bone;
+    // The rule runs across the top of the plate, above the letter, the way a shelter sign carries
+    // its band.
+    if (0.115..=0.205).contains(&v) {
+        colour = orange;
+    }
+    if sign_letter(u, v) > 0.5 {
+        colour = ink;
+    }
+
+    // Grime settles in the lower half and in the corners; the plate under the chips is rusted.
+    let dirt = 0.10 * (noise::tiling(0x51_6E_A6_E2, u, v, 5) * 0.5 + 0.5) * v;
+    let chipped = sign_chip(u, v);
+    [
+        (colour[0] * (1.0 - dirt)) * (1.0 - chipped) + plate[0] * chipped,
+        (colour[1] * (1.0 - dirt)) * (1.0 - chipped) + plate[1] * chipped,
+        (colour[2] * (1.0 - dirt)) * (1.0 - chipped) + plate[2] * chipped,
+    ]
+}
+
+/// The plate's relief: the enamel stands slightly proud of where it has chipped away.
+fn sign_height(u: f32, v: f32) -> f32 {
+    let grain = noise::tiling(0x51_6E_A6_E3, u, v, 41) * 0.06;
+    grain - 0.5 * sign_chip(u, v)
 }
 
 /// Everything needed to render one surface's three maps.
@@ -93,6 +235,18 @@ struct Surface {
     /// §5a, what gives the normal map something to be.
     bolts: Option<(u32, f32, f32)>,
 }
+
+// **A note on which way this lattice lies, because it was got wrong once on an impression.**
+//
+// `Courses` runs its continuous course joints along **v** and staggers the short ones along **u**;
+// `ArchMesh` runs `u` **around** the section and `v` **along** it. Composed, the continuous joints
+// come out as circles around the bore, spaced along it — which is what a tunnel built of stacked
+// rings actually is, and which lines up with the modelled flange ribs on `bore_crown`.
+//
+// That is already right and needs no transposition. A whole pass was spent adding one, on the
+// strength of a render that *looked* longitudinal at a glance; the texture PNG settles it in one
+// look and the render does not. `docs/14` §4 #2 in miniature: the thing to move was the picture of
+// the texture, not the texture.
 
 /// Cast-iron segmental rings, painted lead-white over rust — §5a's lining.
 ///
@@ -133,7 +287,7 @@ fn ring_lining() -> Surface {
         joint_roughness: 0.96,
         metallic: 0.0,
         tone_variation: 0.05,
-        bolts: Some((22, 0.009, 0.5)),
+        bolts: Some((30, 0.0026, 0.3)),
     }
 }
 

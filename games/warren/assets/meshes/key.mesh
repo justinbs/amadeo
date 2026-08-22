@@ -1,6 +1,0 @@
-scene key
-version 1
-
-entity mesh "Key"
-  BoxMesh
-    size 0.16 0.34 0.05

@@ -1,0 +1,18 @@
+scene mattress
+version 1
+
+entity mesh "A mattress and a rolled blanket"
+  CompoundMesh
+    parts
+      - position 0.0 0.05 0.0
+        solid Box
+          shape
+            size 0.62 0.1 1.72
+      - position 0.0 0.16 0.6
+        rotation 0.0 0.0 90.0
+        solid Cylinder
+          shape
+            height 0.56
+            radius 0.11
+            sides 10
+            top_radius 0.11

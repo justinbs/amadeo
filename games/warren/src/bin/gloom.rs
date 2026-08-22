@@ -18,12 +18,19 @@
 //! the underside of every crate and the inside of every doorway unlit, and it cannot be tinted by
 //! what the room is made of.
 //!
+//! **`spill` is gone as of session 23**, which is this paragraph's argument finally cashed. Engine
+//! gate review 14 asked what a directional light called *"Spill from somewhere"* is doing a hundred
+//! feet underground once the bore is sealed at both ends by bulkheads, and the honest answer is
+//! nothing a player could name. Measured before removing it rather than after: with it, 12.5% of
+//! pixels change by up to 52 levels — real, but it was buying a slightly brighter gloom by putting a
+//! sun in a shelter. This map does the same job with a cause.
+//!
 //! # Why it is not simply a constant
 //!
 //! Because a constant is what ADR 0049 replaced, and Q28 is closed. A flat number lights every
 //! surface identically whichever way it faces, which is exactly what makes untextured geometry read
 //! as cardboard. This has **direction**: a little more from above, where the corridor lights are,
-//! and a warm bounce from below, where the carpet is. Surfaces facing up read cool and surfaces
+//! and a warm bounce from below, where the screed and the duckboards are. Surfaces facing up read cool and surfaces
 //! facing down read warm, for nothing at runtime.
 //!
 //! # It is deliberately, awkwardly dim
@@ -46,7 +53,7 @@ const WIDTH: u32 = 128;
 /// The colour of the air above, in linear light — cool, because the corridor lamps are.
 const ABOVE: [f32; 3] = [0.030, 0.032, 0.038];
 
-/// The colour of the bounce from below — warmer and dimmer, because it is carpet.
+/// The colour of the bounce from below — warmer and dimmer, because it is dust over concrete.
 const BELOW: [f32; 3] = [0.020, 0.016, 0.012];
 
 /// What the whole thing is multiplied by.

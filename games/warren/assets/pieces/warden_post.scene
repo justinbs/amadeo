@@ -2,9 +2,17 @@ scene warden_post
 version 1
 
 assets
-  rust
-  warden
+  bulkhead
+  bulkhead_grey
+  bulkhead_grey_normal
+  bulkhead_grey_surface
+  fitting_steel
+  fitting_steel_normal
+  fitting_steel_surface
+  fittings
   warden_breath
+  warden_figure
+  warden_lamp
 
 entity warden "The warden"
   AudioSource
@@ -46,10 +54,29 @@ entity warden "The warden"
   Facts
     known {}
   Mesh
-    material "rust"
-    mesh "warden"
+    material "bulkhead"
+    mesh "warden_figure"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 0.0 0.93 0.0
   Warden
+
+  entity lamp "The lamp it carries"
+    Mesh
+      material "fittings"
+      mesh "warden_lamp"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.34 -0.28 -0.14
+
+  entity glow "What the lamp throws"
+    PointLight
+      colour 0.5 0.72 0.62
+      intensity 3.2
+      range 5.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.34 -0.24 -0.14

@@ -1,0 +1,31 @@
+scene warden_lamp
+version 1
+
+entity mesh "The lamp the warden carries"
+  CompoundMesh
+    parts
+      - position 0.0 0.0 0.0
+        solid Cylinder
+          shape
+            capped false
+            height 0.16
+            radius 0.055
+            sides 10
+            top_radius 0.055
+      - mirror false true false
+        position 0.0 0.09 0.0
+        solid Cylinder
+          shape
+            height 0.02
+            radius 0.06
+            sides 10
+            top_radius 0.045
+      - position 0.0 0.145 0.0
+        rotation 0.0 0.0 90.0
+        solid Cylinder
+          shape
+            capped false
+            height 0.09
+            radius 0.05
+            sides 10
+            top_radius 0.05

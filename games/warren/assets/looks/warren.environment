@@ -6,7 +6,7 @@ entity look "The Warren"
     bloom
       intensity 0.5
       threshold 1.1
-    exposure 1.15
+    exposure 1.0
     fog
       colour 0.006 0.008 0.011
       density 0.055

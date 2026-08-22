@@ -1,0 +1,14 @@
+scene fitting_tube
+version 1
+
+entity mesh "The tube inside a fitting"
+  CompoundMesh
+    parts
+      - position 0.0 0.0 0.0
+        rotation 90.0 0.0 0.0
+        solid Cylinder
+          shape
+            height 0.54
+            radius 0.042
+            sides 10
+            top_radius 0.042

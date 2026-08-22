@@ -160,27 +160,56 @@ fn the_generated_scene_parses() {
     amadeo_scene::parse(&scene).expect("a generated level has to be a scene the engine can read");
 }
 
+/// How many entities in a document instance a given piece.
+fn instances(document: &amadeo_scene::SceneDocument, piece: &str) -> usize {
+    document
+        .entities
+        .iter()
+        .filter(|entity| entity.prefab.as_deref() == Some(piece))
+        .count()
+}
+
+/// How many of a layout's doors run east-west, and how many north-south.
+///
+/// The split is what the architecture is made of: every bore runs north-south, so a north or south
+/// door is the tube carrying on and an east or west door is a cross-passage cut through the ground
+/// between two tubes. The two are counted differently everywhere below.
+fn doors_by_axis(layout: &warren::Layout) -> (usize, usize) {
+    let mut across = 0usize;
+    let mut along = 0usize;
+    for room in &layout.rooms {
+        for &side in &room.doors {
+            match side {
+                warren::Side::East | warren::Side::West => across += 1,
+                warren::Side::North | warren::Side::South => along += 1,
+            }
+        }
+    }
+    // Each door is seen from both of its rooms.
+    (across / 2, along / 2)
+}
+
 #[test]
-fn it_writes_a_room_per_cell_and_a_doorway_per_door() {
+fn it_writes_a_bore_per_cell_and_two_side_walls_with_it() {
     let layout = lay_out(11, 12);
     let scene = warren::to_scene(&layout);
     let document = amadeo_scene::parse(&scene).expect("parses");
 
-    let rooms = document
-        .entities
-        .iter()
-        .filter(|entity| entity.prefab.as_deref() == Some(warren::ROOM_PIECE))
-        .count();
-    let doorways = document
-        .entities
-        .iter()
-        .filter(|entity| entity.prefab.as_deref() == Some(warren::DOORWAY_PIECE))
-        .count();
+    assert_eq!(instances(&document, warren::ROOM_PIECE), layout.rooms.len());
 
-    assert_eq!(rooms, layout.rooms.len());
-    // **Once per door, not once per side.** Emitting from both rooms would put two doorways in one
-    // wall, which reads as a doubled frame rather than as a bug.
-    assert_eq!(doorways, layout.door_count());
+    // **Two side walls per cell, always.** A bore has an east side and a west side whatever its
+    // doors are; what the doors change is *which* piece goes there, not whether one does. That is
+    // the difference from the old shell, where a side with no wall was a room open to the void.
+    let solid = instances(&document, warren::WALL_PIECE);
+    let open = instances(&document, warren::DOORWAY_PIECE);
+    assert_eq!(solid + open, layout.rooms.len() * 2);
+
+    // **Twice per east-west door, not once.** A cross-passage is written from both ends — each cell
+    // puts the 3.6 m from its own wall to the boundary — so both cells need an opening in their
+    // wall. The old rule emitted a shared side once, and it does not apply to a passage.
+    let (across, _) = doors_by_axis(&layout);
+    assert_eq!(open, across * 2);
+    assert_eq!(instances(&document, warren::PASSAGE_PIECE), across * 2);
 }
 
 #[test]
@@ -234,61 +263,51 @@ fn the_pieces_it_needs_are_declared() {
 }
 
 #[test]
-fn every_side_of_every_room_is_closed_by_something() {
-    // **The property additive geometry forces.** A doorway cannot cut a hole in a wall, so a wall is
-    // something a side *has* rather than something a shell comes with — which means a side with
-    // neither piece is a room open to the void, and nothing else would notice.
+fn every_end_of_every_bore_is_capped_unless_the_next_one_carries_on() {
+    // **The property additive geometry forces, in its new shape.** A bore's north and south ends are
+    // open by construction — `ArchMesh` has no end caps — so an end that is not a door has to be
+    // closed by a piece, and an end nothing closes is a level open to the void along its own axis.
+    // That is exactly the defect this suite missed for three sessions in the old shells, where the
+    // symptom was a band of sky map above every wall.
     //
-    // Counted rather than inspected: every side is either shared (written once, by one of its two
-    // rooms) or outer (written by its only room), so the total is exactly the sum of both.
+    // **Both cells cap a shared end**, unlike a shared wall: two bores that do not join need a
+    // bulkhead each, which is why `HEAD_INSET` exists to keep the two plates off one plane.
     let layout = lay_out(21, 12);
     let document = amadeo_scene::parse(&warren::to_scene(&layout)).expect("parses");
 
-    // Walked plainly rather than folded: every room's four sides are either shared with a
-    // neighbour or on the outside, and a shared one is seen twice.
-    let mut shared_seen = 0usize;
-    let mut outer = 0usize;
+    let mut wanted = 0usize;
     for room in &layout.rooms {
-        for side in warren::Side::ALL {
-            if layout.at(side.step(room.cell)).is_some() {
-                shared_seen += 1;
-            } else {
-                outer += 1;
+        for side in [warren::Side::North, warren::Side::South] {
+            if !room.doors.contains(&side) {
+                wanted += 1;
             }
         }
     }
-    let shared = shared_seen / 2;
-
-    let placed = document
-        .entities
-        .iter()
-        .filter(|entity| {
-            matches!(
-                entity.prefab.as_deref(),
-                Some(warren::WALL_PIECE) | Some(warren::DOORWAY_PIECE)
-            )
-        })
-        .count();
 
     assert_eq!(
-        placed,
-        shared + outer,
-        "every shared side once and every outer side once"
+        instances(&document, warren::HEAD_PIECE),
+        wanted,
+        "every north or south side without a door needs a bulkhead across it"
     );
+
+    // And the other half of the same property: a north-south door means the next bore carries on,
+    // so it must NOT be capped. Two ends per cell, minus the ones that are doors.
+    let (_, along) = doors_by_axis(&layout);
+    assert_eq!(wanted, layout.rooms.len() * 2 - along * 2);
 }
 
 #[test]
-fn a_doorway_goes_where_there_is_a_door_and_a_wall_where_there_is_not() {
+fn a_passage_goes_where_there_is_a_cross_door_and_a_blank_wall_where_there_is_not() {
     let layout = lay_out(31, 10);
     let document = amadeo_scene::parse(&warren::to_scene(&layout)).expect("parses");
 
-    let doorways = document
-        .entities
-        .iter()
-        .filter(|entity| entity.prefab.as_deref() == Some(warren::DOORWAY_PIECE))
-        .count();
+    let (across, _) = doors_by_axis(&layout);
+    let open = instances(&document, warren::DOORWAY_PIECE);
 
-    // One per door, still — a doorway is a shared side by definition, so the dedupe rule applies.
-    assert_eq!(doorways, layout.door_count());
-    assert!(doorways > 0, "a layout with a loop has doors");
+    assert_eq!(open, across * 2, "one opening at each end of each passage");
+    assert_eq!(
+        instances(&document, warren::WALL_PIECE),
+        layout.rooms.len() * 2 - open,
+        "every side that is not an opening is a blank wall"
+    );
 }

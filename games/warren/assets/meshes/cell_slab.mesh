@@ -1,6 +1,0 @@
-scene cell_slab
-version 1
-
-entity mesh "Cell slab"
-  BoxMesh
-    size 12.0 0.2 12.0

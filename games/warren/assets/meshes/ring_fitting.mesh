@@ -1,0 +1,36 @@
+scene ring_fitting
+version 1
+
+entity mesh "An emergency fitting on the haunch"
+  CompoundMesh
+    parts
+      - position -0.03 0.0 0.0
+        solid Box
+          shape
+            size 0.06 0.3 0.54
+      - position -0.13 0.0 0.0
+        rotation 0.0 0.0 90.0
+        solid Cylinder
+          shape
+            height 0.2
+            radius 0.028
+            sides 6
+            top_radius 0.028
+      - position -0.26 0.16 0.0
+        rotation 90.0 0.0 0.0
+        solid Cylinder
+          shape
+            capped false
+            height 0.62
+            radius 0.1
+            sides 12
+            top_radius 0.1
+      - mirror false false true
+        position -0.26 0.16 0.31
+        rotation 90.0 0.0 0.0
+        solid Cylinder
+          shape
+            height 0.03
+            radius 0.105
+            sides 12
+            top_radius 0.105

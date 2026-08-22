@@ -1,0 +1,69 @@
+scene bore_head
+version 1
+
+entity mesh "A bulkhead closing the bore"
+  CompoundMesh
+    parts
+      - position 0.0 0.0 0.0
+        solid Box
+          shape
+            size 5.7 3.6 0.25
+      - mirror false true false
+        position 0.0 1.5 -0.175
+        solid Box
+          shape
+            size 5.2 0.16 0.1
+      - mirror true false false
+        position 2.5 0.0 -0.175
+        solid Box
+          shape
+            size 0.16 3.0 0.1
+      - mirror true false false
+        position 2.5 1.2 -0.155
+        repeat
+          - count 7
+            step 0.0 -0.4 0.0
+        rotation 90.0 0.0 0.0
+        solid Cylinder
+          shape
+            height 0.06
+            radius 0.05
+            sides 8
+            top_radius 0.042
+      - position 0.0 -0.75 -0.165
+        solid Box
+          shape
+            size 0.9 1.1 0.08
+      - position 0.0 -0.75 -0.225
+        rotation 90.0 0.0 0.0
+        solid Cylinder
+          shape
+            height 0.05
+            radius 0.17
+            sides 16
+            top_radius 0.17
+      - position 0.0 -0.75 -0.245
+        rotation 90.0 0.0 0.0
+        solid Cylinder
+          shape
+            height 0.09
+            radius 0.05
+            sides 8
+            top_radius 0.05
+      - mirror true false false
+        position 0.09 -0.75 -0.225
+        solid Box
+          shape
+            size 0.18 0.035 0.035
+      - mirror true false false
+        position 0.045 -0.673 -0.225
+        rotation 0.0 0.0 60.0
+        solid Box
+          shape
+            size 0.18 0.035 0.035
+      - mirror true false false
+        position 0.045 -0.827 -0.225
+        rotation 0.0 0.0 -60.0
+        solid Box
+          shape
+            size 0.18 0.035 0.035

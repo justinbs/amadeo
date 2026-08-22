@@ -1,6 +1,0 @@
-scene wall_half
-version 1
-
-entity mesh "Half wall"
-  BoxMesh
-    size 5.0 3.0 0.3

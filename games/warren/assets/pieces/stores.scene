@@ -1,0 +1,78 @@
+scene stores
+version 1
+
+assets
+  bulkhead
+  bulkhead_grey
+  bulkhead_grey_normal
+  bulkhead_grey_surface
+  supply_crate
+
+entity stores "A section cleared out and used for stores"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+  entity lower "Crate"
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 0.9 0.9 0.9
+    Mesh
+      material "bulkhead"
+      mesh "supply_crate"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.45 0.0
+
+  entity beside "Another, shoved against it"
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 0.9 0.9 0.9
+    Mesh
+      material "bulkhead"
+      mesh "supply_crate"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 14.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.12 0.45 1.02
+
+  entity stacked "And one on top"
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 0.9 0.9 0.9
+    Mesh
+      material "bulkhead"
+      mesh "supply_crate"
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 -6.0 0.0
+      scale 1.0 1.0 1.0
+      translation -0.05 1.35 0.06

@@ -1,0 +1,41 @@
+scene bunk_frame
+version 1
+
+entity mesh "A two-tier shelter bunk, in steel"
+  CompoundMesh
+    parts
+      - mirror true false true
+        position 0.31 0.775 0.88
+        solid Cylinder
+          shape
+            height 1.55
+            radius 0.028
+            sides 8
+            top_radius 0.028
+      - mirror true false false
+        position 0.31 0.42 0.0
+        repeat
+          - count 2
+            step 0.0 0.86 0.0
+        solid Box
+          shape
+            size 0.05 0.05 1.86
+      - position 0.0 0.44 -0.855
+        repeat
+          - count 10
+            step 0.0 0.0 0.19
+          - count 2
+            step 0.0 0.86 0.0
+        solid Box
+          shape
+            size 0.66 0.02 0.09
+      - mirror false false true
+        position 0.0 1.5 0.9
+        solid Box
+          shape
+            size 0.68 0.07 0.04
+      - mirror false false true
+        position 0.0 0.86 0.9
+        solid Box
+          shape
+            size 0.68 0.05 0.04

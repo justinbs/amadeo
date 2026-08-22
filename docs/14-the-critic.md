@@ -107,6 +107,36 @@ Read these before forming any theory. Each one cost a real review a real mistake
    top to bottom. **Before believing a number in a scene file, grep the `.anim` files for the
    component and field it belongs to.**
 
+10. **A prefab-instance override silently discards a root offset.** ADR 0029 makes an override
+    *replace* the root's component, so a piece that authors its height on its own root loses it the
+    moment a generator places it. `wall.scene` was the one piece in `games/warren` that did — every
+    generated wall was half underground and the top 1.5 m of every room was open to the sky map, in
+    the shipped level, for three sessions. Invisible to `amadeo check`, to `amadeo fmt` and to the
+    whole suite, because the collider sinks with the mesh and a 1.5 m wall still stops a 1.9 m
+    capsule. The generator's own `PLAYER_STAND` doc comment states the rule this violated. **Check a
+    piece's root translation against what the generator writes over it.** Found and verified in
+    review 14; `nothing_in_the_level_is_buried_and_every_wall_reaches_the_crown` is the geometric
+    test that now catches it without knowing the mechanism.
+
+11. **A `capture --from <snapshot>` does not see an edit to a scene or a piece, so every A/B on
+    `games/warren` through that route is invalid unless the snapshot is rebuilt.** A snapshot
+    restores *components* (ADR 0028), so a `PointLight` in `playing.snapshot` carries the intensity
+    it had when the snapshot was taken; editing `room_lamp.scene` and re-capturing changes nothing,
+    and the diff comes back **byte-identical for a reason that has nothing to do with the light**.
+    This is the review procedure's own §4 #2 turned on the reviewer: the experiment could not
+    distinguish "contributes nothing" from "was never applied".
+
+    Session 23 produced two confident wrong findings this way in ten minutes — that the Warren's
+    fittings and its `spill` directional were both dead data — and both were false. Rebuilt properly
+    (`cargo run -p warren --bin moment` between the edit and the capture), the fittings move **73% of
+    pixels by up to 234 levels** and `spill` moves **12.5% by up to 52**.
+
+    **Editing the snapshot text instead does not work either, and fails loudly**, which is the one
+    piece of luck here: `restore` checks the recorded state hash and refuses. Materials, meshes and
+    the `Environment` *are* re-read from disk, so an A/B on those is valid through `--from`. The rule
+    is: **anything that is a component needs the snapshot rebuilt; anything that is an asset does
+    not.**
+
 ---
 
 ## 5. Tools
@@ -317,3 +347,47 @@ is a heuristic for the defect; the defect is light with no readable cause"*.
 playable state*. Every frame any reviewer can take of it is its title screen, while `docs/13` §3
 defines POLISHED as a frame from a real game. That is now item 31 and it blocks the gate's own
 condition.
+
+### Review 14 — engine gate — `8c81dca` — **planning review** — **NOT POLISHED**
+
+The first review of a *plan* rather than of built work, taken before any code was written and with
+the working tree verified clean. Seven frames of `games/warren` through the snapshot route, three
+magnified crops, eleven probes, the tracked measurements recounted from the filesystem, and one
+authored number re-derived from `Mat4::perspective`.
+
+**What it settled, so it does not have to be guessed again:**
+
+- **Room-becomes-tunnel is the right reading of item 24**, and the cheap alternative — an arched lid
+  over the existing 12 m rooms — is refuted by arithmetic rather than by taste. `ArchMesh` takes its
+  segmental branch at `width 12, height 3`, giving radius 7.5 m and headroom
+  `−4.5 + √(56.25 − x²)`; that falls below the player's 1.95 m beyond `|x| = 3.93`, so **34% of every
+  room's floor would be unwalkable**. It is also a Nissen hut, which is a surface shelter, where
+  `docs/11` §2 is about a bored deep-level tunnel.
+- **The slice is judged separately**, upholding `docs/11` §10 item 1 — but cut down to four artefacts
+  and three sentences rather than a full §3 pass.
+
+**What it prescribed as a number rather than as a construction:** the crown must not exceed about
+**3.4 m** above the deck. The plan's 4.7 m — forced by its own "openings only in flat wall" rule,
+since a semicircular crown makes `crown = springing + width/2` — is a running tunnel rather than a
+shelter deck, hangs the fittings 4.5 m up where they wash instead of pooling, and builds
+claustrophobia out of a space you could drive a lorry through.
+
+**What it verified independently and strengthened.** The half-sunk-wall defect: confirmed on the
+file, on the pixels, and by re-deriving the screen offset from the projection matrix
+(`360 · cot 35° · Δy/d = 514.1 · Δy/d`, giving −7.7 px for a 1.5 m wall top against +120.8 px for a
+3.0 m one, measured −8). It added three things the report had not: `doorway.scene` does **not** have
+the bug, so the level's wall heights were *mixed*; the sky band is **16.7% of the frame at mean
+103.5** against a whole-frame 67.8; and it reaches the authored 1920 × 1080 frame item 24 is defined
+on. It also rejected the proposed structural test — "no placeable piece has a non-zero root
+translation" fails immediately on `player_start` and `warden_post`, both deliberate — and specified a
+geometric one instead.
+
+**Ten ordered changes**, of which the first four are: add `docs/11` §5.2's **section conditions** to
+the plan, or fourteen identical bores read as *more* machine-made than the fourteen rooms they
+replace; bring the crown down; put one legible institutional landmark in the frame, because item 24's
+*"a prop that implies somebody was here"* is better served by a sign than by furniture; and change
+the warden from a limbed humanoid — *"strictly worse than the box it replaces"*, because limbs
+promise motion the engine cannot deliver — to a non-articulated greatcoat silhouette with its own
+lamp.
+
+Its full ten are the basis of what session 23 built; `docs/13` item 24 records which of them landed.

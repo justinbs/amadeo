@@ -3,190 +3,135 @@ version 1
 
 assets
   ambience
-  ceiling
+  bore_end
+  bore_section
+  bore_wall
+  bore_wall_open
+  bunk_made
+  bunk_stripped
+  cross_passage
   dropped_torch
-  floor
   hud
-  lining
   lost_key
   player_start
-  ring_lining
-  ring_lining_normal
-  ring_lining_surface
   room_lamp
-  screed
-  shelter_floor
-  shelter_floor_normal
-  shelter_floor_surface
-  spill
-  wall_end
-  wall_long
+  section_sign
   warden_post
   way_out
 
-entity floor "Floor"
-  Collider
-    friction 0.9
-    restitution 0.0
-    sensor false
-    shape Cuboid
-      size 12.0 0.2 16.0
-  Mesh
-    material "screed"
-    mesh "floor"
-  RigidBody
-    angular_damping 0.0
-    gravity false
-    kind Static
-    linear_damping 0.0
-    mass 1.0
-  Transform
+entity section_near "The near section" from bore_section
+  override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 -0.1 0.0
+    translation 0.0 0.0 6.0
 
-entity ceiling "Ceiling"
-  Collider
-    friction 0.9
-    restitution 0.0
-    sensor false
-    shape Cuboid
-      size 12.0 0.2 16.0
-  Mesh
-    material "lining"
-    mesh "ceiling"
-  RigidBody
-    angular_damping 0.0
-    gravity false
-    kind Static
-    linear_damping 0.0
-    mass 1.0
-  Transform
+entity section_far "The far section" from bore_section
+  override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 3.0 0.0
+    translation 0.0 0.0 -6.0
 
-entity wall_west "West wall"
-  Collider
-    friction 0.9
-    restitution 0.0
-    sensor false
-    shape Cuboid
-      size 0.3 3.0 16.0
-  Mesh
-    material "lining"
-    mesh "wall_long"
-  RigidBody
-    angular_damping 0.0
-    gravity false
-    kind Static
-    linear_damping 0.0
-    mass 1.0
-  Transform
+entity wall_near_east "Near section, east side" from bore_wall
+  override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation -6.0 1.5 0.0
+    translation 2.4 0.0 6.0
 
-entity wall_east "East wall"
-  Collider
-    friction 0.9
-    restitution 0.0
-    sensor false
-    shape Cuboid
-      size 0.3 3.0 16.0
-  Mesh
-    material "lining"
-    mesh "wall_long"
-  RigidBody
-    angular_damping 0.0
-    gravity false
-    kind Static
-    linear_damping 0.0
-    mass 1.0
-  Transform
-    rotation 0.0 0.0 0.0
+entity wall_near_west "Near section, west side" from bore_wall
+  override Transform
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 6.0 1.5 0.0
+    translation -2.4 0.0 6.0
 
-entity wall_north "North wall"
-  Collider
-    friction 0.9
-    restitution 0.0
-    sensor false
-    shape Cuboid
-      size 12.0 3.0 0.3
-  Mesh
-    material "lining"
-    mesh "wall_end"
-  RigidBody
-    angular_damping 0.0
-    gravity false
-    kind Static
-    linear_damping 0.0
-    mass 1.0
-  Transform
+entity wall_far_east "Far section, east side, where the passage goes" from bore_wall_open
+  override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 1.5 -8.0
+    translation 2.4 0.0 -6.0
 
-entity wall_south "South wall"
-  Collider
-    friction 0.9
-    restitution 0.0
-    sensor false
-    shape Cuboid
-      size 12.0 3.0 0.3
-  Mesh
-    material "lining"
-    mesh "wall_end"
-  RigidBody
-    angular_damping 0.0
-    gravity false
-    kind Static
-    linear_damping 0.0
-    mass 1.0
-  Transform
+entity wall_far_west "Far section, west side" from bore_wall
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation -2.4 0.0 -6.0
+
+entity head_behind "The bulkhead behind you" from bore_end
+  override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 1.5 8.0
+    translation 0.0 0.0 12.0
+
+entity head_ahead "The bulkhead at the far end" from bore_end
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 -12.0
+
+entity passage "The cross-passage" from cross_passage
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 2.4 0.0 -6.0
+
+entity fitting_near "A fitting still on the circuit" from room_lamp
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation -2.4 0.0 8.0
+
+entity fitting_far "Another, on the other side" from room_lamp
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 2.4 0.0 -3.2
+
+entity sign "The section plate" from section_sign
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 2.4 0.0 -4.4
+
+entity bunk_slept_in "A bay somebody slept in" from bunk_made
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -2.0 0.0 4.5
+
+entity bunk_taken "A bay somebody stripped" from bunk_stripped
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 2.0 0.0 7.4
 
 entity torch "Torch on a crate" from dropped_torch
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation -3.4 0.0 -2.0
+    translation -1.6 0.0 1.0
 
 entity key "Key on a crate" from lost_key
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 3.9 0.0 -5.2
-
-entity spill "Spill from somewhere" from spill
-
-entity ceiling_lamp "The one working lamp" from room_lamp
-  override Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
-    translation 0.0 0.0 2.0
+    translation 1.5 0.0 -8.5
 
 entity you "You" from player_start
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 1.0 6.0
+    translation 0.0 1.0 10.5
 
 entity way_out "The way out" from way_out
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation -4.0 0.0 -7.85
+    translation 0.0 0.0 -11.85
 
 entity warden "The warden" from warden_post
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 4.6 0.93 -7.0
+    translation 1.2 0.93 -10.2
 
 entity ambience "The Warren itself" from ambience
 

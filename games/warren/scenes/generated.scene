@@ -3,375 +3,730 @@ version 1
 
 assets
   ambience
-  doorway
+  bore_end
+  bore_section
+  bore_wall
+  bore_wall_open
+  bunk_made
+  bunk_stripped
+  cross_passage_open
   dropped_torch
   hud
   lost_key
   player_start
   room_lamp
-  room_shell
-  spill
-  wall
+  section_sign
+  stores
+  warden_post
+  way_out
 
-entity room_0_0 "Room" from room_shell
+entity bore_0_0 "Bore" from bore_section
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 0.0 0.0 0.0
 
-entity wall_north_0_0 "Wall" from wall
+entity wall_east_0_0 "Wall with a passage" from bore_wall_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 0.0 -6.0
+    translation 2.4 0.0 0.0
 
-entity wall_south_0_0 "Wall" from wall
+entity passage_east_0_0 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 0.0 6.0
+    translation 2.4 0.0 0.0
 
-entity wall_west_0_0 "Wall" from wall
+entity wall_west_0_0 "Wall" from bore_wall
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation -6.0 0.0 0.0
+    translation -2.4 0.0 0.0
 
-entity lamp_0_0 "Lamp" from room_lamp
+entity head_north_0_0 "Bulkhead" from bore_end
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 -5.875
+
+entity head_south_0_0 "Bulkhead" from bore_end
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.0 0.0 0.0
+    translation 0.0 0.0 5.875
 
-entity room_1_n2 "Room" from room_shell
+entity fitting_0_0 "Fitting" from room_lamp
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 2.4 0.0 -3.0
+
+entity sign_0_0 "Section plate" from section_sign
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 2.4 0.0 3.2
+
+entity berth0_0_0 "Berth" from bunk_stripped
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -1.95 0.0 -2.4
+
+entity berth1_0_0 "Berth" from bunk_stripped
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation -1.95 0.0 0.6
+
+entity bore_1_n2 "Bore" from bore_section
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 12.0 0.0 -24.0
 
-entity wall_north_1_n2 "Wall" from wall
+entity wall_east_1_n2 "Wall with a passage" from bore_wall_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 12.0 0.0 -30.0
+    translation 14.4 0.0 -24.0
 
-entity wall_west_1_n2 "Wall" from wall
-  override Transform
-    rotation 0.0 90.0 0.0
-    scale 1.0 1.0 1.0
-    translation 6.0 0.0 -24.0
-
-entity lamp_1_n2 "Lamp" from room_lamp
+entity passage_east_1_n2 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 12.0 0.0 -24.0
+    translation 14.4 0.0 -24.0
 
-entity room_1_n1 "Room" from room_shell
+entity wall_west_1_n2 "Wall" from bore_wall
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 9.6 0.0 -24.0
+
+entity head_north_1_n2 "Bulkhead" from bore_end
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 12.0 0.0 -29.875
+
+entity sign_1_n2 "Section plate" from section_sign
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 14.4 0.0 -20.8
+
+entity stores_1_n2 "Stores" from stores
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 13.95 0.0 -26.2
+
+entity bore_1_n1 "Bore" from bore_section
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 12.0 0.0 -12.0
 
-entity doorway_north_1_n1 "Doorway" from doorway
+entity wall_east_1_n1 "Wall with a passage" from bore_wall_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 12.0 0.0 -18.0
+    translation 14.4 0.0 -12.0
 
-entity wall_west_1_n1 "Wall" from wall
+entity passage_east_1_n1 "Cross-passage" from cross_passage_open
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 6.0 0.0 -12.0
+    translation 14.4 0.0 -12.0
 
-entity room_1_0 "Room" from room_shell
+entity wall_west_1_n1 "Wall" from bore_wall
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 9.6 0.0 -12.0
+
+entity fitting_1_n1 "Fitting" from room_lamp
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 14.4 0.0 -15.0
+
+entity sign_1_n1 "Section plate" from section_sign
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 14.4 0.0 -8.8
+
+entity berth0_1_n1 "Berth" from bunk_stripped
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 10.05 0.0 -14.4
+
+entity berth1_1_n1 "Berth" from bunk_stripped
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 10.05 0.0 -11.4
+
+entity bore_1_0 "Bore" from bore_section
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 12.0 0.0 0.0
 
-entity doorway_north_1_0 "Doorway" from doorway
+entity wall_east_1_0 "Wall" from bore_wall
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 12.0 0.0 -6.0
+    translation 14.4 0.0 0.0
 
-entity wall_south_1_0 "Wall" from wall
+entity wall_west_1_0 "Wall with a passage" from bore_wall_open
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 9.6 0.0 0.0
+
+entity passage_west_1_0 "Cross-passage" from cross_passage_open
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 9.6 0.0 0.0
+
+entity head_south_1_0 "Bulkhead" from bore_end
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 12.0 0.0 6.0
+    translation 12.0 0.0 5.875
 
-entity doorway_west_1_0 "Doorway" from doorway
+entity fitting_1_0 "Fitting" from room_lamp
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 6.0 0.0 0.0
+    translation 9.6 0.0 -3.0
 
-entity room_2_n2 "Room" from room_shell
+entity sign_1_0 "Section plate" from section_sign
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 14.4 0.0 3.2
+
+entity berth0_1_0 "Berth" from bunk_made
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 13.95 0.0 -2.4
+
+entity berth1_1_0 "Berth" from bunk_made
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 13.95 0.0 0.6
+
+entity bore_2_n2 "Bore" from bore_section
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 24.0 0.0 -24.0
 
-entity wall_north_2_n2 "Wall" from wall
+entity wall_east_2_n2 "Wall" from bore_wall
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 24.0 0.0 -30.0
+    translation 26.4 0.0 -24.0
 
-entity wall_east_2_n2 "Wall" from wall
+entity wall_west_2_n2 "Wall with a passage" from bore_wall_open
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 30.0 0.0 -24.0
+    translation 21.6 0.0 -24.0
 
-entity doorway_west_2_n2 "Doorway" from doorway
+entity passage_west_2_n2 "Cross-passage" from cross_passage_open
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 18.0 0.0 -24.0
+    translation 21.6 0.0 -24.0
 
-entity lamp_2_n2 "Lamp" from room_lamp
+entity head_north_2_n2 "Bulkhead" from bore_end
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 24.0 0.0 -29.875
+
+entity sign_2_n2 "Section plate" from section_sign
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 24.0 0.0 -24.0
+    translation 26.4 0.0 -20.8
 
-entity room_2_n1 "Room" from room_shell
+entity berth0_2_n2 "Berth" from bunk_made
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 22.05 0.0 -26.4
+
+entity berth1_2_n2 "Berth" from bunk_made
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 22.05 0.0 -23.4
+
+entity bore_2_n1 "Bore" from bore_section
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 24.0 0.0 -12.0
 
-entity doorway_north_2_n1 "Doorway" from doorway
+entity wall_east_2_n1 "Wall" from bore_wall
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 24.0 0.0 -18.0
+    translation 26.4 0.0 -12.0
 
-entity wall_east_2_n1 "Wall" from wall
+entity wall_west_2_n1 "Wall with a passage" from bore_wall_open
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 30.0 0.0 -12.0
+    translation 21.6 0.0 -12.0
 
-entity doorway_west_2_n1 "Doorway" from doorway
+entity passage_west_2_n1 "Cross-passage" from cross_passage_open
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 18.0 0.0 -12.0
+    translation 21.6 0.0 -12.0
 
-entity room_2_0 "Room" from room_shell
-  override Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
-    translation 24.0 0.0 0.0
-
-entity doorway_north_2_0 "Doorway" from doorway
+entity sign_2_n1 "Section plate" from section_sign
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 24.0 0.0 -6.0
+    translation 26.4 0.0 -8.8
 
-entity wall_south_2_0 "Wall" from wall
+entity berth0_2_n1 "Berth" from bunk_stripped
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 24.0 0.0 6.0
+    translation 25.95 0.0 -14.4
 
-entity wall_west_2_0 "Wall" from wall
+entity berth1_2_n1 "Berth" from bunk_stripped
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 18.0 0.0 0.0
+    translation 25.95 0.0 -11.4
 
-entity lamp_2_0 "Lamp" from room_lamp
+entity bore_2_0 "Bore" from bore_section
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 24.0 0.0 0.0
 
-entity room_3_0 "Room" from room_shell
+entity wall_east_2_0 "Wall with a passage" from bore_wall_open
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 26.4 0.0 0.0
+
+entity passage_east_2_0 "Cross-passage" from cross_passage_open
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 26.4 0.0 0.0
+
+entity wall_west_2_0 "Wall" from bore_wall
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 21.6 0.0 0.0
+
+entity head_south_2_0 "Bulkhead" from bore_end
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 24.0 0.0 5.875
+
+entity sign_2_0 "Section plate" from section_sign
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 26.4 0.0 3.2
+
+entity berth0_2_0 "Berth" from bunk_made
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 22.05 0.0 -2.4
+
+entity berth1_2_0 "Berth" from bunk_made
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 22.05 0.0 0.6
+
+entity bore_3_0 "Bore" from bore_section
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 36.0 0.0 0.0
 
-entity wall_north_3_0 "Wall" from wall
+entity wall_east_3_0 "Wall with a passage" from bore_wall_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 36.0 0.0 -6.0
+    translation 38.4 0.0 0.0
 
-entity wall_south_3_0 "Wall" from wall
+entity passage_east_3_0 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 36.0 0.0 6.0
+    translation 38.4 0.0 0.0
 
-entity doorway_west_3_0 "Doorway" from doorway
+entity wall_west_3_0 "Wall with a passage" from bore_wall_open
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 30.0 0.0 0.0
+    translation 33.6 0.0 0.0
 
-entity lamp_3_0 "Lamp" from room_lamp
+entity passage_west_3_0 "Cross-passage" from cross_passage_open
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 33.6 0.0 0.0
+
+entity head_north_3_0 "Bulkhead" from bore_end
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 36.0 0.0 -5.875
+
+entity head_south_3_0 "Bulkhead" from bore_end
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 36.0 0.0 0.0
+    translation 36.0 0.0 5.875
 
-entity room_4_0 "Room" from room_shell
+entity sign_3_0 "Section plate" from section_sign
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 38.4 0.0 3.2
+
+entity berth0_3_0 "Berth" from bunk_stripped
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 37.95 0.0 -2.4
+
+entity berth1_3_0 "Berth" from bunk_stripped
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 37.95 0.0 0.6
+
+entity bore_4_0 "Bore" from bore_section
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 48.0 0.0 0.0
 
-entity wall_north_4_0 "Wall" from wall
+entity wall_east_4_0 "Wall with a passage" from bore_wall_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 48.0 0.0 -6.0
+    translation 50.4 0.0 0.0
 
-entity wall_south_4_0 "Wall" from wall
+entity passage_east_4_0 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 48.0 0.0 6.0
+    translation 50.4 0.0 0.0
 
-entity doorway_west_4_0 "Doorway" from doorway
+entity wall_west_4_0 "Wall with a passage" from bore_wall_open
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 42.0 0.0 0.0
+    translation 45.6 0.0 0.0
 
-entity room_5_0 "Room" from room_shell
+entity passage_west_4_0 "Cross-passage" from cross_passage_open
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 45.6 0.0 0.0
+
+entity head_north_4_0 "Bulkhead" from bore_end
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 48.0 0.0 -5.875
+
+entity head_south_4_0 "Bulkhead" from bore_end
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 48.0 0.0 5.875
+
+entity fitting_4_0 "Fitting" from room_lamp
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 50.4 0.0 -3.0
+
+entity sign_4_0 "Section plate" from section_sign
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 50.4 0.0 3.2
+
+entity stores_4_0 "Stores" from stores
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 46.05 0.0 -2.2
+
+entity bore_5_0 "Bore" from bore_section
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 60.0 0.0 0.0
 
-entity wall_north_5_0 "Wall" from wall
+entity wall_east_5_0 "Wall" from bore_wall
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 60.0 0.0 -6.0
+    translation 62.4 0.0 0.0
 
-entity wall_east_5_0 "Wall" from wall
+entity wall_west_5_0 "Wall with a passage" from bore_wall_open
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 66.0 0.0 0.0
+    translation 57.6 0.0 0.0
 
-entity doorway_west_5_0 "Doorway" from doorway
+entity passage_west_5_0 "Cross-passage" from cross_passage_open
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 54.0 0.0 0.0
+    translation 57.6 0.0 0.0
 
-entity lamp_5_0 "Lamp" from room_lamp
+entity head_north_5_0 "Bulkhead" from bore_end
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 60.0 0.0 -5.875
+
+entity fitting_5_0 "Fitting" from room_lamp
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 57.6 0.0 -3.0
+
+entity sign_5_0 "Section plate" from section_sign
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 60.0 0.0 0.0
+    translation 62.4 0.0 3.2
 
-entity room_5_1 "Room" from room_shell
+entity berth0_5_0 "Berth" from bunk_stripped
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 61.95 0.0 -2.4
+
+entity berth1_5_0 "Berth" from bunk_stripped
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 61.95 0.0 0.6
+
+entity bore_5_1 "Bore" from bore_section
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 60.0 0.0 12.0
 
-entity doorway_north_5_1 "Doorway" from doorway
+entity wall_east_5_1 "Wall with a passage" from bore_wall_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 60.0 0.0 6.0
+    translation 62.4 0.0 12.0
 
-entity wall_west_5_1 "Wall" from wall
+entity passage_east_5_1 "Cross-passage" from cross_passage_open
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 54.0 0.0 12.0
+    translation 62.4 0.0 12.0
 
-entity room_5_2 "Room" from room_shell
+entity wall_west_5_1 "Wall" from bore_wall
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 57.6 0.0 12.0
+
+entity head_south_5_1 "Bulkhead" from bore_end
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 60.0 0.0 17.875
+
+entity sign_5_1 "Section plate" from section_sign
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 62.4 0.0 15.2
+
+entity berth0_5_1 "Berth" from bunk_stripped
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 58.05 0.0 9.6
+
+entity berth1_5_1 "Berth" from bunk_stripped
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 58.05 0.0 12.6
+
+entity bore_5_2 "Bore" from bore_section
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 60.0 0.0 24.0
 
-entity wall_north_5_2 "Wall" from wall
+entity wall_east_5_2 "Wall with a passage" from bore_wall_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 60.0 0.0 18.0
+    translation 62.4 0.0 24.0
 
-entity wall_south_5_2 "Wall" from wall
+entity passage_east_5_2 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 60.0 0.0 30.0
+    translation 62.4 0.0 24.0
 
-entity wall_west_5_2 "Wall" from wall
+entity wall_west_5_2 "Wall" from bore_wall
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 54.0 0.0 24.0
+    translation 57.6 0.0 24.0
 
-entity room_6_1 "Room" from room_shell
+entity head_north_5_2 "Bulkhead" from bore_end
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 60.0 0.0 18.125
+
+entity head_south_5_2 "Bulkhead" from bore_end
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 60.0 0.0 29.875
+
+entity sign_5_2 "Section plate" from section_sign
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 62.4 0.0 27.2
+
+entity berth0_5_2 "Berth" from bunk_stripped
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 61.95 0.0 21.6
+
+entity berth1_5_2 "Berth" from bunk_stripped
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 61.95 0.0 24.6
+
+entity bore_6_1 "Bore" from bore_section
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 72.0 0.0 12.0
 
-entity wall_north_6_1 "Wall" from wall
+entity wall_east_6_1 "Wall" from bore_wall
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 72.0 0.0 6.0
+    translation 74.4 0.0 12.0
 
-entity wall_east_6_1 "Wall" from wall
+entity wall_west_6_1 "Wall with a passage" from bore_wall_open
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 78.0 0.0 12.0
+    translation 69.6 0.0 12.0
 
-entity doorway_west_6_1 "Doorway" from doorway
+entity passage_west_6_1 "Cross-passage" from cross_passage_open
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 66.0 0.0 12.0
+    translation 69.6 0.0 12.0
 
-entity room_6_2 "Room" from room_shell
+entity head_north_6_1 "Bulkhead" from bore_end
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 72.0 0.0 6.125
+
+entity sign_6_1 "Section plate" from section_sign
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 74.4 0.0 15.2
+
+entity stores_6_1 "Stores" from stores
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 73.95 0.0 9.8
+
+entity bore_6_2 "Bore" from bore_section
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 72.0 0.0 24.0
 
-entity doorway_north_6_2 "Doorway" from doorway
+entity wall_east_6_2 "Wall" from bore_wall
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 72.0 0.0 18.0
+    translation 74.4 0.0 24.0
 
-entity wall_east_6_2 "Wall" from wall
+entity wall_west_6_2 "Wall with a passage" from bore_wall_open
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 78.0 0.0 24.0
+    translation 69.6 0.0 24.0
 
-entity wall_south_6_2 "Wall" from wall
+entity passage_west_6_2 "Cross-passage" from cross_passage_open
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 69.6 0.0 24.0
+
+entity head_south_6_2 "Bulkhead" from bore_end
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 72.0 0.0 30.0
+    translation 72.0 0.0 29.875
 
-entity doorway_west_6_2 "Doorway" from doorway
+entity fitting_6_2 "Fitting" from room_lamp
   override Transform
-    rotation 0.0 90.0 0.0
+    rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 66.0 0.0 24.0
+    translation 74.4 0.0 21.0
+
+entity sign_6_2 "Section plate" from section_sign
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 74.4 0.0 27.2
+
+entity stores_6_2 "Stores" from stores
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 70.05 0.0 21.8
 
 entity you "You" from player_start
   override Transform
@@ -383,27 +738,25 @@ entity torch "Torch" from dropped_torch
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 8.8 0.0 -3.2
+    translation 10.5 0.0 -3.4
 
 entity key "Key" from lost_key
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 15.2 0.0 -20.8
+    translation 13.5 0.0 -20.6
 
 entity way_out "The way out" from way_out
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 60.0 0.0 29.72
+    translation 60.0 0.0 29.595
 
 entity warden "The warden" from warden_post
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 39.2 0.93 -3.2
-
-entity spill "Spill from somewhere" from spill
+    translation 37.5 0.93 -3.4
 
 entity ambience "The Warren itself" from ambience
 

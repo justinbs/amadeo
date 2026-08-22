@@ -1,6 +1,0 @@
-scene lintel
-version 1
-
-entity mesh "Lintel"
-  BoxMesh
-    size 2.0 0.8 0.3

@@ -123,10 +123,12 @@ fn the_room_loads_and_the_player_is_first_person() {
         app.world.get::<FirstPersonCamera>(eyes).is_some(),
         "and the camera is the first-person rig, which no game had used before this one"
     );
-    // Floor, ceiling, four walls, two crates, the torch, the key, the door, the warden. The lamp
-    // and the beam are lights rather than geometry, and the player has no body mesh -- in first
-    // person you would be standing inside it.
-    assert_eq!(app.world.query::<(&amadeo_render::Mesh,)>().count(), 12);
+    // Two bore sections (deck + crown), four side walls, two bulkheads, a cross-passage and its
+    // blind cap, two fittings (shade + tube each), a section plate, two bunk frames with two
+    // mattresses on one of them, two crates, the torch, the key, the door, the warden and the lamp
+    // it carries. The lights themselves are not geometry, and the player has no body mesh -- in
+    // first person you would be standing inside it.
+    assert_eq!(app.world.query::<(&amadeo_render::Mesh,)>().count(), 28);
 }
 
 #[test]
@@ -189,8 +191,8 @@ fn the_walls_keep_you_in_the_room() {
 fn stand_before_the_torch(app: &mut App) {
     let player = player(&app.world).expect("a character");
     if let Some(transform) = app.world.get_mut::<Transform>(player) {
-        // The crate is at x = -3.4, z = -2.0. Facing -Z, which is forward at yaw zero.
-        transform.translation = [-3.4, 1.0, -0.4];
+        // The crate is at x = -1.6, z = 1.0. Facing -Z, which is forward at yaw zero.
+        transform.translation = [-1.6, 1.0, 2.6];
     }
     app.run_ticks(1).expect("a tick runs");
 }

@@ -1,0 +1,16 @@
+scene glow
+version 1
+
+entity material "A lit fluorescent tube"
+  Material
+    alpha_mode Opaque
+    base_colour 0.08 0.09 0.085 1.0
+    base_colour_texture ""
+    emissive 1.55 2.05 1.75
+    metallic 0.0
+    metallic_roughness_texture ""
+    normal_strength 1.0
+    normal_texture ""
+    occlusion_strength 1.0
+    roughness 0.5
+    uv_scale 1.0 1.0

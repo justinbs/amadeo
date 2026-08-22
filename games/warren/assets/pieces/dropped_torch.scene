@@ -6,12 +6,12 @@ assets
   bulkhead_grey
   bulkhead_grey_normal
   bulkhead_grey_surface
-  crate_box
   fitting_steel
   fitting_steel_normal
   fitting_steel_surface
   fittings
-  torch
+  hand_lamp
+  supply_crate
 
 entity dropped_torch "A torch left on a crate"
   Transform
@@ -28,7 +28,7 @@ entity dropped_torch "A torch left on a crate"
         size 0.9 0.9 0.9
     Mesh
       material "bulkhead"
-      mesh "crate_box"
+      mesh "supply_crate"
     RigidBody
       angular_damping 0.0
       gravity false
@@ -46,7 +46,7 @@ entity dropped_torch "A torch left on a crate"
       restitution 0.0
       sensor false
       shape Cuboid
-        size 0.07 0.07 0.24
+        size 0.16 0.36 0.16
     Interactable
       enabled true
       prompt "Take the torch"
@@ -56,7 +56,7 @@ entity dropped_torch "A torch left on a crate"
       max_stack 1
     Mesh
       material "fittings"
-      mesh "torch"
+      mesh "hand_lamp"
     RigidBody
       angular_damping 0.0
       gravity false
@@ -66,4 +66,4 @@ entity dropped_torch "A torch left on a crate"
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.0 1.02 0.0
+      translation 0.0 1.05 0.0

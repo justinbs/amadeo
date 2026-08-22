@@ -1,0 +1,74 @@
+scene bore_section
+version 1
+
+assets
+  bore_crown
+  bore_deck
+  lining
+  ring_lining
+  ring_lining_normal
+  ring_lining_surface
+  screed
+  shelter_floor
+  shelter_floor_normal
+  shelter_floor_surface
+
+entity section "Twelve metres of bore"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+  entity deck "Deck"
+    Mesh
+      material "screed"
+      mesh "bore_deck"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.0 0.0
+
+  entity slab "What you stand on"
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 4.8 0.24 12.0
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 -0.12 0.0
+
+  entity crown "Crown"
+    Mesh
+      material "lining"
+      mesh "bore_crown"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.0 0.0
+
+  entity soffit "What stops you walking up the haunch"
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 4.8 0.2 12.0
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 3.3 0.0

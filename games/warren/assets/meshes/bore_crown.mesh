@@ -1,0 +1,62 @@
+scene bore_crown
+version 1
+
+entity mesh "Twelve metres of segmental ring lining"
+  CompoundMesh
+    parts
+      - position 0.0 0.0 0.0
+        solid Arch
+          shape
+            floor false
+            height 1.2
+            length 12.0
+            segments 20
+            width 4.8
+      - mirror true false false
+        position 2.36 -0.06 0.0
+        solid Box
+          shape
+            size 0.08 0.12 12.0
+      - position 0.0 1.155 -5.4
+        repeat
+          - count 20
+            step 0.0 0.0 0.6
+        solid Box
+          shape
+            size 0.78 0.09 0.16
+      - mirror true false false
+        position 0.679 1.076 -5.4
+        repeat
+          - count 20
+            step 0.0 0.0 0.6
+        rotation 0.0 0.0 -13.2825
+        solid Box
+          shape
+            size 0.78 0.09 0.16
+      - mirror true false false
+        position 1.3215 0.843 -5.4
+        repeat
+          - count 20
+            step 0.0 0.0 0.6
+        rotation 0.0 0.0 -26.565
+        solid Box
+          shape
+            size 0.78 0.09 0.16
+      - mirror true false false
+        position 1.8929 0.4691 -5.4
+        repeat
+          - count 20
+            step 0.0 0.0 0.6
+        rotation 0.0 0.0 -39.8475
+        solid Box
+          shape
+            size 0.78 0.09 0.16
+      - mirror true false false
+        position 2.364 -0.0269 -5.4
+        repeat
+          - count 20
+            step 0.0 0.0 0.6
+        rotation 0.0 0.0 -53.13
+        solid Box
+          shape
+            size 0.78 0.09 0.16

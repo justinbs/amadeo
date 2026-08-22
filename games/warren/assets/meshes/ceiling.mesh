@@ -1,6 +1,0 @@
-scene ceiling
-version 1
-
-entity mesh "Ceiling"
-  BoxMesh
-    size 12.0 0.2 16.0

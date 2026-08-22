@@ -1,0 +1,42 @@
+scene hand_lamp
+version 1
+
+entity mesh "A shelter-issue hand lamp"
+  CompoundMesh
+    parts
+      - position 0.0 -0.04 0.0
+        solid Cylinder
+          shape
+            height 0.17
+            radius 0.038
+            sides 10
+            top_radius 0.034
+      - position 0.0 0.09 0.0
+        solid Cylinder
+          shape
+            height 0.09
+            radius 0.05
+            sides 12
+            top_radius 0.075
+      - position 0.0 0.142 0.0
+        solid Sphere
+          shape
+            radius 0.055
+            rings 5
+            segments 12
+      - position 0.0 -0.13 0.0
+        solid Cylinder
+          shape
+            height 0.03
+            radius 0.045
+            sides 10
+            top_radius 0.045
+      - mirror true false false
+        position 0.055 0.0 0.0
+        rotation 0.0 0.0 8.0
+        solid Cylinder
+          shape
+            height 0.14
+            radius 0.008
+            sides 6
+            top_radius 0.008

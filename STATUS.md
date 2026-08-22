@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-20 (session 22)
+**Last updated:** 2026-08-22 (session 23)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE — all four exit gates met.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
@@ -25,6 +25,69 @@ always on), **0041** (parallelism is deterministic by construction or absent —
    200-body complexity.
 
 ## 📬 For the next session — read this box first, then `docs/14-the-critic.md` §6
+
+> ### Session 23: the Warren stops being boxes, and a planning review happened first
+>
+> **Review 14 was the first review of a *plan* rather than of built work.** It returned NOT POLISHED
+> with ten ordered changes, and session 23 built the revised plan. Its record is `docs/14` §8; the
+> work it produced is `docs/13` item 24, now 🟡 **built, awaiting verdict**.
+>
+> #### The number that had not moved in thirteen reviews
+>
+> `games/warren` went from **13 / 13 box meshes to 0 / 18**. A cell is no longer a room: it is
+> **12 m of 4.8 m-wide arched bore** with a segmental cast-iron crown 3.2 m above the deck, every
+> bore runs north–south, an east or west door is a **cross-passage** through the ground between two
+> tubes, and any end without a door is closed by a **bulkhead** — `docs/11` §5.2, realised out of the
+> room graph that was already there rather than by rewriting `lay_out`.
+>
+> Review 14 ruled out the cheap alternative — an arched lid over the existing 12 m rooms — by
+> arithmetic rather than by taste: `ArchMesh` takes its segmental branch at `width 12, height 3`, and
+> headroom falls below the player's 1.95 m beyond `|x| = 3.93`, so **34% of every floor would be
+> unwalkable**. It also set the crown height as a number (≤ 3.4 m), because a 4.8 m tube with 4.7 m
+> of headroom is a running tunnel rather than a shelter deck.
+>
+> #### What else landed
+>
+> - **`docs/11` §5.2's binding rule** — *"Rooms may repeat. No two may be in the same condition"* — as
+>   a `Condition` drawn per room in `lay_out`: slept-in, stripped, stores. Dressing only, so it cost
+>   no geometry and no change to the room graph.
+> - **A section plate at every junction**, with the orange rule and a stencilled `H`, from a fifth
+>   generated surface in `finishes.rs`. There is no glyph rasteriser a texture generator can reach, so
+>   the alphabet is the rectilinear one — which is why the sections take naval names whose initials a
+>   stencil can cut.
+> - **The warden stopped being a box and did not become a person**: a non-articulated greatcoat
+>   silhouette carrying its own lamp. Review 14's ruling, and it is right — limbs promise motion this
+>   engine cannot deliver, so a limbed figure would have been *worse* than the box.
+> - **`spill` is deleted.** A `DirectionalLight` called *"Spill from somewhere"* a hundred feet
+>   underground is light with no readable cause, and `gloom.rs` had already taken over its job.
+>
+> #### Three things worth not rediscovering
+>
+> 1. **A `capture --from <snapshot>` does not see a scene edit.** A snapshot restores *components*, so
+>    editing a `.scene` and re-capturing gives a byte-identical frame — and "this light contributes
+>    nothing" is the wrong conclusion. It produced two confident false findings here in ten minutes,
+>    and one of them was acted on before being caught. Re-run `--bin moment` **between** the edit and
+>    the capture. Materials, meshes and the `Environment` *are* re-read from disk, so an A/B on those
+>    is valid. (`docs/07`, `docs/14` §4 #11.)
+> 2. **A prefab override replaces the root's component, so a piece must not author its height on its
+>    own root.** Every wall in the shipped level had been half underground since session 20, with the
+>    top 1.5 m of every bay open to the sky map. `amadeo check` passed, `fmt` was clean, the suite was
+>    green and walking around felt right, because the collider sank with the mesh. (`docs/14` §4 #10.)
+> 3. **Do not diagnose a texture from a render.** A pass was spent transposing the lining's lattice
+>    because the crown *looked* wrong; opening the PNG settled it in one glance and the original was
+>    right. `docs/14` §4 #2 in miniature.
+>
+> #### What is next
+>
+> `docs/13` §1 still carries review 13's order. Items 31 and 24 are both 🟡; the next three are
+> **item 21**'s screen-space occlusion half, **item 22**'s shadow-edge dithering, and **item 15**'s
+> title screen.
+>
+> `gh` is not on PATH: prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`. **Run the
+> fourth check (`cargo doc`) before pushing, not after.**
+
+<details>
+<summary>Session 22's box, kept because its four lessons are still live</summary>
 
 > ### Session 22: the gate reached review 13, and the Warren finally has a look
 >
@@ -100,6 +163,8 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > `gh run view <id> --json jobs` rather than waiting on the summary. **Run the fourth check
 > (`cargo doc`) before pushing, not after** — two binaries named `surfaces` collided in rustdoc and
 > nothing else noticed, so one push went out red.
+
+</details>
 
 <details>
 <summary>Session 21's box, kept because its three lessons are still live</summary>

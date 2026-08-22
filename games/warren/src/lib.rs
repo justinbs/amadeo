@@ -124,7 +124,7 @@ pub const TORCH: &str = "torch";
 /// **An eyeball number**, and the one that decides whether the room reads as dark-but-navigable or
 /// as a black screen with a white circle in it. The scene authors `intensity 0.0` and this replaces
 /// it, so "off" and "on" are one number in one place rather than two lights.
-pub const BEAM_INTENSITY: f32 = 30.0;
+pub const BEAM_INTENSITY: f32 = 11.0;
 
 /// The label [`carry_the_torch`] is registered under.
 pub const CARRY_THE_TORCH: &str = "carry_the_torch";
@@ -909,6 +909,32 @@ pub struct PlacedRoom {
     /// the whole level. A writer that rolled its own dice would make "the same layout writes the
     /// same bytes" a property of nothing.
     pub lit: bool,
+    /// What state this length of bore was left in.
+    pub condition: Condition,
+}
+
+/// What was done to a length of bore before you got here — `docs/11` §5.2's binding rule.
+///
+/// > **Rooms may repeat. No two may be in the same condition.**
+///
+/// That sentence replaces the withdrawn "no two spaces the same size", and it is the thing that
+/// stops a repeated piece reading as machine-made. It matters *more* in a tube than it did in rooms:
+/// a room's repetition is only visible across a playthrough, and a bore's repetition is visible down
+/// its own length in a single frame.
+///
+/// **Deliberately cheap.** A condition is dressing and nothing else — which props stand in a section
+/// — so it costs no new geometry, no new topology and no change to the room graph. §5.2 names seven;
+/// three are drawn here, and the two that need more than dressing (flooded needs a second floor
+/// material, burnt out needs soot) wait until they can be done properly rather than being faked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Condition {
+    /// Bunks still made up, bedding on them. Somebody was living here when it stopped.
+    #[default]
+    SleptIn,
+    /// The frames are here and the bedding is gone. Somebody left, and took what was worth taking.
+    Stripped,
+    /// Cleared out entirely and used for storage. Crates, no bunks.
+    Stores,
 }
 
 /// The handful of places in an interior that mean something.
@@ -1205,6 +1231,13 @@ pub fn lay_out(seed: u64, count: usize) -> Layout {
                 // cannot tell the game has started. `cells` is sorted before this runs, so the
                 // sequence of draws is the same on every machine (I3).
                 lit: cell == START || rng.chance(LAMPS_WORKING),
+                // Drawn here for `lit`'s reason, and drawn **after** it so adding this did not
+                // renumber the lamp draws and change which sections are lit.
+                condition: match rng.below_u32(3) {
+                    0 => Condition::SleptIn,
+                    1 => Condition::Stripped,
+                    _ => Condition::Stores,
+                },
             }
         })
         .collect();
@@ -1381,14 +1414,52 @@ fn choose_landmarks(rooms: &[PlacedRoom]) -> Landmarks {
 /// which is a content decision rather than a generator one.
 pub const CELL: f32 = 12.0;
 
-/// The prefab a room's shell comes from.
-pub const ROOM_PIECE: &str = "room_shell";
+/// Half the width of the bore, in world units — so the side walls stand this far off the centreline.
+///
+/// **The bore does not fill its cell, and that is the architecture.** A cell is 12 m and the tube is
+/// 4.8 m, which leaves 3.6 m of ground either side; a door on an east or west side is therefore not
+/// an opening between two rooms but a **cross-passage** through that ground, which is exactly what
+/// `docs/11` §5.2 asks for and could not be had while a room filled its cell.
+pub const BORE_HALF_WIDTH: f32 = 2.4;
 
-/// The prefab a doorway comes from.
-pub const DOORWAY_PIECE: &str = "doorway";
+/// How far a head sits inside the end of its own bore.
+///
+/// **Not zero, and the reason is two rooms with a wall between them.** Each bore caps its own end, so
+/// two cells that do not share a door put a head on either side of the same plane. Coincident plates
+/// z-fight; inset by half a plate's thickness they sit back to back, which is also what a real pair
+/// of bulkheads does.
+const HEAD_INSET: f32 = 0.125;
 
-/// The prefab a blank wall comes from.
-pub const WALL_PIECE: &str = "wall";
+/// The prefab twelve metres of bore comes from — deck and crown, no sides.
+pub const ROOM_PIECE: &str = "bore_section";
+
+/// The prefab a side wall with a cross-passage through it comes from.
+pub const DOORWAY_PIECE: &str = "bore_wall_open";
+
+/// The prefab a blank side wall comes from.
+pub const WALL_PIECE: &str = "bore_wall";
+
+/// The prefab a bulkhead closing the end of a bore comes from.
+pub const HEAD_PIECE: &str = "bore_end";
+
+/// The prefab half a cross-passage comes from.
+///
+/// **Half**, because a passage between two cells is written by both of them: each writes the 3.6 m
+/// from its own wall to the boundary. That is the same rule the old shells used for a shared side,
+/// turned inside out — a shared *wall* is written once, a shared *passage* is written from both ends.
+pub const PASSAGE_PIECE: &str = "cross_passage_open";
+
+/// The prefab an enamel section plate comes from.
+pub const SIGN_PIECE: &str = "section_sign";
+
+/// The prefab a bunk that was slept in comes from.
+pub const BUNK_MADE_PIECE: &str = "bunk_made";
+
+/// The prefab a section cleared out for storage comes from.
+pub const STORES_PIECE: &str = "stores";
+
+/// The prefab a bunk that was stripped comes from.
+pub const BUNK_STRIPPED_PIECE: &str = "bunk_stripped";
 
 /// The prefab the player, the camera and the torch beam come from.
 pub const PLAYER_PIECE: &str = "player_start";
@@ -1408,9 +1479,6 @@ pub const LAMP_PIECE: &str = "room_lamp";
 /// The prefab the warden comes from.
 pub const WARDEN_PIECE: &str = "warden_post";
 
-/// The prefab the dim light leaking in from elsewhere comes from.
-pub const SPILL_PIECE: &str = "spill";
-
 /// The prefab the two HUD lines come from.
 pub const HUD_PIECE: &str = "hud";
 
@@ -1423,17 +1491,24 @@ pub const AMBIENCE_PIECE: &str = "ambience";
 /// here: the two orders are not the same, and hand-maintaining a sorted list of ids whose names are
 /// spelled differently from their constants is exactly the sort of thing that goes quietly wrong.
 /// `amadeo fmt --check` on the output is what would have caught it, and did.
-pub const PIECES: [&str; 10] = [
+pub const PIECES: [&str; 17] = [
     AMBIENCE_PIECE,
+    BUNK_MADE_PIECE,
+    BUNK_STRIPPED_PIECE,
     DOORWAY_PIECE,
+    HEAD_PIECE,
     HUD_PIECE,
     KEY_PIECE,
     LAMP_PIECE,
+    PASSAGE_PIECE,
     PLAYER_PIECE,
     ROOM_PIECE,
-    SPILL_PIECE,
+    SIGN_PIECE,
+    STORES_PIECE,
     TORCH_PIECE,
     WALL_PIECE,
+    EXIT_PIECE,
+    WARDEN_PIECE,
 ];
 
 /// How high off the floor the player's body sits when placed.
@@ -1453,10 +1528,36 @@ pub const PLAYER_STAND: f32 = 1.0;
 /// so both have to be unparented roots or those distances are measured in different spaces.
 pub const WARDEN_STAND: f32 = 0.93;
 
-/// How far from a room's centre a prop stands, in world units.
+/// How far from a bore's centre a prop stands, **along** the bore, in world units.
 ///
-/// Well inside the twelve-metre cell, so a crate never clips a wall whichever sides that room has.
-const PROP_OFFSET: f32 = 3.2;
+/// Along rather than across, because the bore is only 4.8 m wide and 12 m long: a prop pushed
+/// sideways ends up in the lining, and one pushed along the length is out of the way of the passage
+/// opening, which is centred.
+const PROP_OFFSET: f32 = 3.4;
+
+/// How far off the centreline a prop stands, in world units.
+///
+/// Enough to be against a wall rather than in the middle of the floor — nobody leaves a crate where
+/// people walk — and not so far that a 0.9 m crate meets the 2.4 m lining.
+const PROP_SIDE: f32 = 1.5;
+
+/// How far along the bore, from its centre, a fitting sits.
+///
+/// Clear of the cross-passage opening, which is 2 m wide and centred on the cell.
+const FITTING_OFFSET: f32 = 3.0;
+
+/// How far along the bore, from its centre, a section plate sits.
+///
+/// The other side of the opening from the fitting, so a junction reads as *lit sign* rather than as
+/// a lamp and a plate stacked on each other.
+const SIGN_OFFSET: f32 = 3.2;
+
+/// How far a bunk's centreline stands off the bore's, in world units.
+///
+/// A bunk is 0.72 m across and the lining is at 2.4 m, so this puts its outer upright a hand's width
+/// off the wall and leaves 3.3 m of clear deck to walk down — which is what a shelter berth looks
+/// like and what keeps the middle of the tube walkable.
+const BUNK_SIDE: f32 = 1.95;
 
 /// How far in from a wall's plane the door out sits.
 ///
@@ -1530,56 +1631,101 @@ pub fn to_scene(layout: &Layout) -> String {
     for room in &layout.rooms {
         let (x, z) = (room.cell.0 as f32 * CELL, room.cell.1 as f32 * CELL);
         out.push_str(&format!(
-            "entity {} \"Room\" from {ROOM_PIECE}\n",
-            cell_id("room", room.cell)
+            "entity {} \"Bore\" from {ROOM_PIECE}\n",
+            cell_id("bore", room.cell)
         ));
         out.push_str(&place(x, 0.0, z, 0.0));
 
-        for side in Side::ALL {
-            // A shared side is written by whichever room sees it as north or west; an outer side is
-            // seen by one room and is always written. See this function's docs for why getting the
-            // second half backwards leaves the level open to the void along half its boundary.
-            let shared = layout.at(side.step(room.cell)).is_some();
-            if shared && !matches!(side, Side::North | Side::West) {
-                continue;
-            }
-
-            let half = CELL / 2.0;
-            let (dx, dz) = match side {
-                Side::North => (x, z - half),
-                Side::South => (x, z + half),
-                Side::West => (x - half, z),
-                Side::East => (x + half, z),
-            };
-            // A side wall is the same piece turned a quarter turn.
-            let turn = if matches!(side, Side::East | Side::West) {
-                90.0
-            } else {
-                0.0
-            };
-
-            let (piece, label) = if room.doors.contains(&side) {
-                (DOORWAY_PIECE, "Doorway")
+        // **Every bore runs north-south**, so the level is parallel tubes joined by cross-passages
+        // rather than a grid of rooms — `docs/11` §5.2's architecture, out of the graph that was
+        // already there. It is one rule rather than a per-cell choice for a reason: with a mixed
+        // grain, a door between a north-south bore and an east-west one meets a 4.8 m opening with a
+        // 2 m passage and leaves the level open around it, which needs a piece nothing else wants.
+        for side in [Side::East, Side::West] {
+            let open = room.doors.contains(&side);
+            let (piece, label) = if open {
+                (DOORWAY_PIECE, "Wall with a passage")
             } else {
                 (WALL_PIECE, "Wall")
             };
-            let prefix = format!("{}_{}", label.to_lowercase(), side_name(side));
+            // The east wall faces the bore across its own +X; the west wall is the same piece
+            // turned about, which is what puts its ribs and its skirting on the inside.
+            let (dx, turn) = match side {
+                Side::East => (x + BORE_HALF_WIDTH, 0.0),
+                _ => (x - BORE_HALF_WIDTH, 180.0),
+            };
             out.push_str(&format!(
                 "entity {} \"{label}\" from {piece}\n",
-                cell_id(&prefix, room.cell)
+                cell_id(&format!("wall_{}", side_name(side)), room.cell)
             ));
-            out.push_str(&place(dx, 0.0, dz, turn));
+            out.push_str(&place(dx, 0.0, z, turn));
+
+            // **Half a cross-passage, from this bore's wall to the cell boundary.** The room on the
+            // other side writes the other half from its own wall, so a door between two cells is
+            // 7.2 m of low square passage and neither cell has to know how wide the other one is.
+            if open {
+                out.push_str(&format!(
+                    "entity {} \"Cross-passage\" from {PASSAGE_PIECE}\n",
+                    cell_id(&format!("passage_{}", side_name(side)), room.cell)
+                ));
+                out.push_str(&place(dx, 0.0, z, turn));
+            }
         }
 
-        // The lamp goes in with its room rather than in a pass of its own, so a room's geometry and
-        // its light sit next to each other in the file a person has to read.
-        if room.lit {
+        // A bore's two ends. A door means the next bore carries straight on, so there is nothing to
+        // write; anything else is capped, including the level's outer boundary — which is what
+        // stops a Warren a hundred feet down being open to the sky.
+        for side in [Side::North, Side::South] {
+            if room.doors.contains(&side) {
+                continue;
+            }
+            let (dz, turn) = match side {
+                Side::North => (z - CELL / 2.0 + HEAD_INSET, 180.0),
+                _ => (z + CELL / 2.0 - HEAD_INSET, 0.0),
+            };
             out.push_str(&format!(
-                "entity {} \"Lamp\" from {LAMP_PIECE}\n",
-                cell_id("lamp", room.cell)
+                "entity {} \"Bulkhead\" from {HEAD_PIECE}\n",
+                cell_id(&format!("head_{}", side_name(side)), room.cell)
             ));
-            out.push_str(&place(x, 0.0, z, 0.0));
+            out.push_str(&place(x, 0.0, dz, turn));
         }
+
+        // The fitting goes in with its bore rather than in a pass of its own, so a section's
+        // geometry and its light sit next to each other in the file a person has to read.
+        //
+        // **On a haunch, and on alternating sides.** Overhead at the crown it would be 4 m up and
+        // wash rather than pool; and a light down the middle of a long tube is the most symmetrical
+        // composition available, which is exactly the machine-made read `docs/11` §6 is trying to
+        // avoid. `FITTING_OFFSET` keeps it clear of the passage opening, which is centred.
+        if room.lit {
+            let east = (room.cell.0 + room.cell.1).rem_euclid(2) == 0;
+            let (dx, turn) = if east {
+                (x + BORE_HALF_WIDTH, 0.0)
+            } else {
+                (x - BORE_HALF_WIDTH, 180.0)
+            };
+            out.push_str(&format!(
+                "entity {} \"Fitting\" from {LAMP_PIECE}\n",
+                cell_id("fitting", room.cell)
+            ));
+            out.push_str(&place(dx, 0.0, z - FITTING_OFFSET, turn));
+        }
+
+        // A plate at every junction, which is `docs/11` §5.4's rule. A section with no passage off
+        // it is not a junction and does not get one — a sign in every bay is signage nobody reads.
+        if room
+            .doors
+            .iter()
+            .any(|side| matches!(side, Side::East | Side::West))
+        {
+            out.push_str(&format!(
+                "entity {} \"Section plate\" from {SIGN_PIECE}\n",
+                cell_id("sign", room.cell)
+            ));
+            out.push_str(&place(x + BORE_HALF_WIDTH, 0.0, z + SIGN_OFFSET, 0.0));
+        }
+
+        write_condition(&mut out, room, x, z);
     }
 
     write_contents(&mut out, layout);
@@ -1589,6 +1735,47 @@ pub fn to_scene(layout: &Layout) -> String {
     // `write_contents` cannot reintroduce it. `amadeo fmt --check` on the output is what noticed.
     let trimmed = out.trim_end().to_string();
     format!("{trimmed}\n")
+}
+
+/// Writes what a section was left full of — `docs/11` §5.2's *"no two may be in the same
+/// condition"*.
+///
+/// # Dressing only, and that is the point
+///
+/// Every branch here places existing pieces at different places. Nothing generates geometry, nothing
+/// touches the room graph, and nothing needs a second material. That is what makes the rule
+/// affordable: the expensive-sounding half of §5.2 turns out to be a `match` in the writer.
+///
+/// The bunks stand against **alternating** walls with the fitting, so a lit section lights its own
+/// berths from across the tube rather than from directly overhead. Two per section, offset along the
+/// bore rather than across it, because the bore is 4.8 m wide and 12 m long.
+fn write_condition(out: &mut String, room: &PlacedRoom, x: f32, z: f32) {
+    // Bunks go on the side the fitting is *not* on, which is the same parity read the other way.
+    let east = (room.cell.0 + room.cell.1).rem_euclid(2) == 0;
+    let side = if east { -BUNK_SIDE } else { BUNK_SIDE };
+
+    let piece = match room.condition {
+        Condition::SleptIn => BUNK_MADE_PIECE,
+        Condition::Stripped => BUNK_STRIPPED_PIECE,
+        // Cleared out for storage: no berths at all, which is a bigger difference than any pair of
+        // bunk variants and costs one fewer entity.
+        Condition::Stores => {
+            out.push_str(&format!(
+                "entity {} \"Stores\" from {STORES_PIECE}\n",
+                cell_id("stores", room.cell)
+            ));
+            out.push_str(&place(x + side, 0.0, z - 2.2, 0.0));
+            return;
+        }
+    };
+
+    for (index, along) in [-2.4_f32, 0.6].into_iter().enumerate() {
+        out.push_str(&format!(
+            "entity {} \"Berth\" from {piece}\n",
+            cell_id(&format!("berth{index}"), room.cell)
+        ));
+        out.push_str(&place(x + side, 0.0, z + along, 0.0));
+    }
 }
 
 /// Writes the things that make a shape into a level: a player, a torch, a key, a door, a warden.
@@ -1610,18 +1797,24 @@ fn write_contents(out: &mut String, layout: &Layout) {
     out.push_str(&format!("entity you \"You\" from {PLAYER_PIECE}\n"));
     out.push_str(&place(sx, PLAYER_STAND, sz, look));
 
+    // **Across the bore is `PROP_SIDE` and along it is `PROP_OFFSET`, and they are different
+    // numbers now.** One offset used on both axes put a crate 3.2 m off the centreline of a tube
+    // that is 2.4 m to its wall — inside the lining, invisible, and reported by nothing.
     let (tx, tz) = centre(marks.torch);
     out.push_str(&format!("entity torch \"Torch\" from {TORCH_PIECE}\n"));
-    out.push_str(&place(tx - PROP_OFFSET, 0.0, tz - PROP_OFFSET, 0.0));
+    out.push_str(&place(tx - PROP_SIDE, 0.0, tz - PROP_OFFSET, 0.0));
 
     let (kx, kz) = centre(marks.key);
     out.push_str(&format!("entity key \"Key\" from {KEY_PIECE}\n"));
-    out.push_str(&place(kx + PROP_OFFSET, 0.0, kz + PROP_OFFSET, 0.0));
+    out.push_str(&place(kx + PROP_SIDE, 0.0, kz + PROP_OFFSET, 0.0));
 
-    // The door goes **in a wall**, not in the middle of a room, so a side has to be chosen for it.
+    // **The way out is set into a bulkhead**, not into a side wall, which is why `exit_side` now
+    // answers north or south. A side wall is 2.3 m to the springing and the door is 2.34 m in its
+    // frame, so a door in one would stand through the haunch; a head is 3.6 m of flat plate and is
+    // what a shelter's exit actually is.
     let side = exit_side(layout);
     let (ex, ez) = centre(marks.exit);
-    let inset = CELL / 2.0 - DOOR_INSET;
+    let inset = CELL / 2.0 - HEAD_INSET - DOOR_INSET;
     let (dx, dz) = match side {
         Side::North => (ex, ez - inset),
         Side::South => (ex, ez + inset),
@@ -1643,14 +1836,9 @@ fn write_contents(out: &mut String, layout: &Layout) {
     out.push_str(&format!(
         "entity warden \"The warden\" from {WARDEN_PIECE}\n"
     ));
-    out.push_str(&place(
-        wx + PROP_OFFSET,
-        WARDEN_STAND,
-        wz - PROP_OFFSET,
-        0.0,
-    ));
+    out.push_str(&place(wx + PROP_SIDE, WARDEN_STAND, wz - PROP_OFFSET, 0.0));
 
-    // **None of these three is placed anywhere**, so none takes an override — and an override naming
+    // **Neither of these two is placed anywhere**, so none takes an override — and an override naming
     // a component its prefab does not carry is refused at load, which is what would happen if the
     // HUD were handed a `Transform` (ADR 0029). A blank line after each keeps the file's shape
     // uniform.
@@ -1658,9 +1846,6 @@ fn write_contents(out: &mut String, layout: &Layout) {
     // The room tone is here rather than per room on purpose: it is not *from* anywhere. A
     // non-spatial source plays on its bus directly, so where its entity sits never matters, and one
     // per room would be fourteen copies of one drone beating against itself.
-    out.push_str(&format!(
-        "entity spill \"Spill from somewhere\" from {SPILL_PIECE}\n\n"
-    ));
     out.push_str(&format!(
         "entity ambience \"The Warren itself\" from {AMBIENCE_PIECE}\n\n"
     ));
@@ -1679,14 +1864,13 @@ pub fn exit_side(layout: &Layout) -> Side {
     let Some(room) = layout.at(cell) else {
         return Side::North;
     };
-    Side::ALL
-        .into_iter()
+    // **North and south only.** Every bore runs north-south, so those are the two sides that carry a
+    // bulkhead; east and west are 2.3 m side walls with cross-passages through them, and a 2.34 m
+    // door set into one would stand through the haunch and out the other side of the lining.
+    const ENDS: [Side; 2] = [Side::North, Side::South];
+    ENDS.into_iter()
         .find(|side| layout.at(side.step(cell)).is_none())
-        .or_else(|| {
-            Side::ALL
-                .into_iter()
-                .find(|side| !room.doors.contains(side))
-        })
+        .or_else(|| ENDS.into_iter().find(|side| !room.doors.contains(side)))
         .unwrap_or(Side::North)
 }
 

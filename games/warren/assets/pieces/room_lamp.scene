@@ -1,18 +1,45 @@
 scene room_lamp
 version 1
 
-entity room_lamp "A working lamp"
+assets
+  bulkhead
+  bulkhead_grey
+  bulkhead_grey_normal
+  bulkhead_grey_surface
+  fitting_tube
+  glow
+  ring_fitting
+
+entity room_lamp "A fitting still on the circuit"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 0.0 0.0 0.0
 
-  entity bulb "Bulb"
-    PointLight
-      colour 0.85 0.86 0.78
-      intensity 14.0
-      range 8.0
+  entity body "Shade and bracket"
+    Mesh
+      material "bulkhead"
+      mesh "ring_fitting"
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.0 2.6 0.0
+      translation 0.0 2.05 0.0
+
+  entity tube "The tube"
+    Mesh
+      material "glow"
+      mesh "fitting_tube"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -0.26 2.08 0.0
+
+  entity bulb "What it throws"
+    PointLight
+      colour 0.58 0.78 0.68
+      intensity 3.2
+      range 6.5
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -0.32 2.05 0.0

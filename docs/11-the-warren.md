@@ -695,6 +695,25 @@ then realise it. Today's `lay_out` does the opposite and it is why the level is 
 
 ### 5.2 The architecture is two tubes and cross-passages — which is still a grid, so that is not the rule
 
+> ### ✅ Built in session 23, and the numbers moved from the ones written below
+>
+> A cell is no longer a room. It is **12 m of bore, 4.8 m wide, with a segmental cast-iron crown
+> 3.2 m above the deck**, and every bore runs north–south. An east or west door is a **cross-passage**
+> through the 3.6 m of ground between two tubes, and a north or south end without a door is closed by
+> a **bulkhead**. The conditions below are a `Condition` drawn per room in `lay_out`.
+>
+> **Three numbers differ from this section as first written and each was decided rather than
+> drifted.** The tunnel is 4.8 m rather than 5 — half of it either side of a centreline, so the
+> cross-passage arithmetic is exact. It is 12 m per cell rather than 60–120 m, because a run is
+> however many cells share a line and the graph decides that. And the crown is 3.2 m rather than the
+> plan's 4.7: engine gate review 14 ruled that a 4.8 m tube with 4.7 m of headroom is a *running
+> tunnel*, where the real deep-level typology is a 5.03 m bore **split into two decks** — 2.2–2.5 m
+> of real headroom — and that claustrophobia is not served by a space you could drive a lorry
+> through.
+>
+> **What is not built** is §5.1's mission-first generator: the room graph is still `lay_out`'s walk,
+> realised as tubes rather than replaced. §10's plan item 3.
+
 - **Tunnels**: long (60–120 m), 5 m wide, arched, running parallel. `ArchMesh` exists for exactly
   this and is the engine's first curved primitive.
 - **Cross-passages**: short, low, blind — you cannot see what is in the other tunnel until you are in
