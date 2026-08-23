@@ -98,9 +98,54 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 >    the same way: `games/atrium` scores 62.1% and `games/scarp` 0.4%. The Warren went 92.9% to 48.4%,
 >    and the thing that moved it was the spill putting midtones on the near lining — not brightness.
 >
+> #### Review 20 then ruled on it, credited the fix, and found two false beliefs
+>
+> **NOT POLISHED**, with ten ordered changes. It proved review 19's finding was answered rather than
+> taking the claim: at `LEVEL 0.0` the near end of `at_key`'s wall still reads 63 against the far
+> end's 1, so ~85% of the near wall's light is punctual now. It confirmed all five rewritten clauses
+> and **ruled that clause (a)'s 65% was the right threshold and the range was earned** — *"if you had
+> merely lifted the exposure the A/B would have shown a uniform scale."* But it added that the near
+> half of the tunnel is lit and **the far half is still a grey wash**.
+>
+> **Two things this repository believed that are measurably false.** `sky ""` supplies a *brighter*
+> ambient than an authored map, not none — `ibl.rs`'s `DEFAULT_SKY` is 0.12 grey, deliberately
+> non-black — and `gloom.rs` and `CLAUDE.md` both said the opposite. And **the one emissive object in
+> the game could not bloom**: `bloom.wgsl` gives `over = max(brightness − threshold, 0)`, and
+> `emissive 0.62 0.82 0.7` against `threshold 1.1` is exactly zero. That was **session 24's own
+> regression**, introduced during an A/B chasing a blob that turned out to be the torch.
+>
+> **`moment` had the same defect twice in one function.** Review 19 found the exit snapshot facing
+> away from the exit; review 20 found the key **61.9° off the view axis** in the snapshot committed so
+> a reviewer could photograph the key. Fixing one landmark did not prompt anybody to check the other
+> two — the lesson is that a bug found in one branch of a `match` is a reason to read the others.
+>
+> #### What session 25 built, and what it did not
+>
+> **Done:** the lining's near-wall patch went **61.7% → 4.7%** in one 16-level band, and the thing
+> that moved it was *amplitude*, not frequency — a fourth octave and 512 → 1024 moved it by 0.4 of a
+> per cent, because the fine grain spanned about nine sRGB levels. The tube's emissive is restored.
+> The key is 9 cm on a key board with five empty hooks instead of 32 cm balanced on its tip on a
+> crate, and `brass` has a real surface. All three landmark snapshots look at their subject and stand
+> off its axis. Ambient 4.5 → 2.6. Section letters are black enamel. Crates are off `bulkhead`.
+>
+> **Not done, and these are review 20's own items 3, 5, 7 and 9:**
+>
+> - **The exit's lamp reads as four floating fragments** — `ring_fitting` at scale 0.8 seen head-on.
+>   It wants its own purpose-built bulkhead lamp, and the light moved so the pool falls *from* it
+>   rather than being brightest at the wheel.
+> - **Yaw 270 is a sixty-metre straight sightline** through the cross-passage, with eight identical
+>   door frames to a vanishing point — `docs/11` §5.3's named prohibition. Turning the *spawn* away
+>   from it is not removing it. Needs a bulkhead, a dogleg or a collapse within ~15 m.
+> - **The warden is fifteen levels from its background** (coat 14/23/27 against wall 29/30/49).
+> - **The hand lamp has no edge** — the omnidirectional spill is doing the beam's job.
+>
+> Also open and re-filed off item 24: **item 32** (the section letters name nothing) and **item 18**
+> (the warden walks through walls).
+
 > #### What is next
 >
-> **Send item 24 to the critic again.** All seven ordered changes are built and the five rewritten
+> **Send item 24 to the critic again.**
+ All seven ordered changes are built and the five rewritten
 > clauses measure as met, but `docs/14` §6 reserves ✅ to a review and those numbers are the
 > implementer's own. Two items were re-filed off it and are open: **item 32** (the section letters
 > name nothing and point nowhere — needs a stencil alphabet a binary can emit; note that emitting the
