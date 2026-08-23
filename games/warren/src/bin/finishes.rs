@@ -50,7 +50,7 @@ use amadeo_texture::{
 use std::path::{Path, PathBuf};
 
 /// Texture size in pixels. A power of two, so mip generation halves cleanly.
-const SIZE: u32 = 512;
+const SIZE: u32 = 1024;
 
 fn main() {
     let out = manifest_dir().join("assets/textures");
@@ -303,8 +303,11 @@ fn ring_lining() -> Surface {
         // Bone white, §5a's `0.62 0.60 0.55`, spread a little either side for the grain. Cooled from
         // the first attempt, which read pink once the rust was showing through it: paint is LEAD
         // white and the warmth in this material is supposed to come from the iron underneath.
-        low: [0.50, 0.50, 0.47],
-        high: [0.63, 0.63, 0.59],
+        // Widened from 0.50-0.63 in session 25. That span is 0.13 in linear light, which is about
+        // nine sRGB levels at this brightness -- the whole of the "nothing above 15 levels of local
+        // contrast" review 20 measured on the surface the player stands closest to.
+        low: [0.40, 0.40, 0.375],
+        high: [0.70, 0.70, 0.655],
         // The rust underneath. Warm, and the only warm thing in an unlit frame.
         beneath: [0.30, 0.13, 0.06],
         wear: 0.85,
@@ -524,7 +527,19 @@ fn bulkhead_grey() -> Surface {
 /// grid and read as a woven cross-hatch rather than as a material — the defect that made this
 /// engine's first generated stone look like bathroom tile.
 fn grain(seed: u64, u: f32, v: f32) -> f32 {
-    noise::octaves(seed, u, v, &[(7, 0.5), (17, 0.32), (43, 0.18)])
+    noise::octaves(
+        seed,
+        u,
+        v,
+        // **A fourth octave, and it is the one a player actually stands in front of.** Engine gate
+        // review 20 measured a 120x90 patch of near lining with **61.7% of it inside one 16-level
+        // band** and went to the source rather than judging from the render: the lining tile covers
+        // 3.6 m, so at two metres it is magnified past its own finest feature and flattens to a
+        // single value. Three octaves topping out at a lattice of 43 give features about 12 texels
+        // across at 512; 127 gives features a few texels across at 1024, which is the scale that
+        // survives being walked up to. Still co-prime with the others, for the reason below.
+        &[(7, 0.46), (17, 0.28), (43, 0.16), (127, 0.10)],
+    )
 }
 
 /// A slow drift across the whole tile, at a period unrelated to any lattice on it.
@@ -657,6 +672,16 @@ fn grimy(surface: &Surface, u: f32, v: f32) -> f32 {
     // A second, finer field breaks the first one's edge, so a dirty patch does not read as a decal.
     let broken = (grain(surface.seed ^ 0x6D_12, u, v) * 0.5 + 0.5).clamp(0.0, 1.0);
     let settled = (settled * (0.5 + 0.85 * broken)).clamp(0.0, 1.0);
+
+    // **And a fine speckle, which is the half that survives being walked up to.** Engine gate review
+    // 20 measured 61.7% of a 120x90 patch of near lining inside one 16-level band and traced it to
+    // the source: the tile's own detail was all low-frequency, so magnifying it flattened the lot.
+    // Raising the frequency alone did not fix it -- a fourth octave at lattice 127 moved that figure
+    // by 0.4 of a per cent -- because the amplitude was never there. Soot and dust are speckle, not a
+    // wash, so this is thresholded hard and applied at strength.
+    let speckle = (noise::tiling(surface.seed ^ 0x5E_CC_1E, u, v, 96) * 0.5 + 0.5).clamp(0.0, 1.0);
+    let speckle = ((speckle - 0.52) / 0.48).clamp(0.0, 1.0);
+    let settled = settled.max(speckle * 0.85);
 
     let recess = surface.wall.as_ref().map_or(0.0, |wall| {
         let joint = wall.at(u, v).joint;

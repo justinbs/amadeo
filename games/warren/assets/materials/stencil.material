@@ -1,0 +1,16 @@
+scene stencil
+version 1
+
+entity material "Black stencil enamel, for a section letter"
+  Material
+    alpha_mode Opaque
+    base_colour 0.055 0.055 0.052 1.0
+    base_colour_texture "sign_enamel"
+    emissive 0.0 0.0 0.0
+    metallic 0.0
+    metallic_roughness_texture "sign_enamel_surface"
+    normal_strength 0.5
+    normal_texture "sign_enamel_normal"
+    occlusion_strength 1.0
+    roughness 0.42
+    uv_scale 1.0 1.0

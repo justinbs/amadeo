@@ -205,22 +205,55 @@ fn stand_at_landmark(app: &mut amadeo_app::App, name: &str) -> anyhow::Result<()
     // after, and 4.2 m back from the middle of the cell leaves the door ten metres away at the end
     // of the bay — small, fogged, and impossible to judge. Three metres is the distance a player
     // actually arrives at it from.
-    let (facing_side, offset) = if name == "exit" {
-        let side = warren::exit_side(&layout);
-        (side, 2.6)
-    } else {
-        (warren::Side::North, -4.2)
+    // **Each landmark is photographed looking AT the thing it is named after, and off its axis.**
+    //
+    // Both halves were wrong. Every one of these used to stand at `cell + 4.2` in `z` facing north,
+    // which put the exit door behind the camera (`exit_side` already knew which bulkhead it was on)
+    // and the key **61.9° off the view axis** against a ~50° half-FOV — so the snapshot committed for
+    // a reviewer to photograph the key did not contain it. Engine gate review 20 found the second one
+    // after review 19 found the first, in the same function, because fixing one landmark did not
+    // prompt anybody to check the other two.
+    //
+    // And they were bullseye compositions: symmetry of 14.8 / 17.8 / 11.1 on row 600 against the
+    // authored frame's 70.9, because a camera on the axis of a symmetrical bore makes both halves of
+    // the picture the same picture. `across` is the look direction turned a quarter turn.
+    let side = match name {
+        "exit" => warren::exit_side(&layout),
+        // The key board hangs on the east lining, `PROP_OFFSET` along the bore from the middle to
+        // keep it clear of a centred cross-passage. Stand back from that wall and look at it.
+        "key" => warren::Side::East,
+        _ => warren::Side::North,
     };
-    let (bx, bz) = facing_side.step((0, 0));
+    let (fx, fz) = side.step((0, 0));
+    let (fx, fz) = (fx as f32, fz as f32);
+    // How far back from the cell's centre to stand, along the look direction. Negative walks away
+    // from what is being photographed, which is right for the warden -- it is a figure in a space and
+    // wants the space around it -- and wrong for a door or a board, which are the subject.
+    let along = match name {
+        "exit" => 2.6,
+        "key" => warren::BORE_HALF_WIDTH - 2.6,
+        _ => -4.2,
+    };
+    // Level with the key board along the bore, so it is in front of the camera rather than beside it.
+    let (ax, az) = if name == "key" {
+        (0.0, warren::KEY_ALONG)
+    } else {
+        (0.0, 0.0)
+    };
+    let across = match name {
+        "warden" => 1.1,
+        "key" => 0.55,
+        _ => 0.75,
+    };
     let you = warren::player(&app.world).ok_or_else(|| anyhow::anyhow!("there is no character"))?;
     let at = [
-        cell.0 as f32 * warren::CELL + bx as f32 * offset,
+        cell.0 as f32 * warren::CELL + fx * along + ax + (-fz) * across,
         warren::PLAYER_STAND,
-        cell.1 as f32 * warren::CELL + bz as f32 * offset,
+        cell.1 as f32 * warren::CELL + fz * along + az + fx * across,
     ];
     if let Some(transform) = app.world.get_mut::<amadeo_transform::Transform>(you) {
         transform.translation = at;
-        transform.rotation = [0.0, warren::facing(facing_side), 0.0];
+        transform.rotation = [0.0, warren::facing(side), 0.0];
     }
     app.run_ticks(8)?;
     Ok(())

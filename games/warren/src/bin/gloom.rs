@@ -12,8 +12,13 @@
 //! never draws a pixel of this — its entire job is the **indirect** half of lighting (ADR 0049),
 //! which is the light arriving at a surface from everywhere that is not a light.
 //!
-//! That was the gap `STATUS.md` recorded twice. With `sky ""` there is no indirect term at all, so
-//! any surface a light does not reach is exactly black, and the dim `spill` directional was standing
+//! That was the gap `STATUS.md` recorded twice, and the sentence that used to be here was **wrong**:
+//! it said that with `sky ""` there is no indirect term at all and any surface a light does not reach
+//! is exactly black. Engine gate review 20 A/B'd the ambient that way, got a frame that was *brighter*
+//! than the shipped one, and refused to conclude anything from it. `ibl.rs`'s `DEFAULT_SKY` is
+//! `[0.12, 0.12, 0.12]` — the constant that stood in for ambient before ADR 0049, kept deliberately
+//! non-black so that naming no sky is not an invisible regression. **So `sky ""` is a uniform dim
+//! grey, and for this map it is a brighter one than the map.** The dim `spill` directional was standing
 //! in for an ambient by shining at everything from one angle. An angle is not an ambient: it leaves
 //! the underside of every crate and the inside of every doorway unlit, and it cannot be tinted by
 //! what the room is made of.
@@ -89,7 +94,7 @@ const BELOW: [f32; 3] = [0.020, 0.016, 0.012];
 /// a fitting in every section and a short warm spill on the hand lamp — rather than from a probe
 /// that cannot tell near from far. `docs/11` §1's Frictional note still holds and is what keeps this
 /// above zero: a carried source, **a little ambient**, and fog that thickens with distance.
-const LEVEL: f32 = 4.5;
+const LEVEL: f32 = 2.6;
 
 fn main() {
     let out = manifest_dir().join("assets/skies");

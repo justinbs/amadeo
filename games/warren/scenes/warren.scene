@@ -116,11 +116,11 @@ entity torch "Torch on a crate" from dropped_torch
     scale 1.0 1.0 1.0
     translation -1.6 0.0 1.0
 
-entity key "Key on a crate" from lost_key
+entity key "The key board" from lost_key
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 1.5 0.0 -8.5
+    translation 2.4 0.0 -8.5
 
 entity you "You" from player_start
   override Transform

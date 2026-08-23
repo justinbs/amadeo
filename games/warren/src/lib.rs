@@ -1768,7 +1768,7 @@ pub const WARDEN_STAND: f32 = 0.93;
 /// Along rather than across, because the bore is only 4.8 m wide and 12 m long: a prop pushed
 /// sideways ends up in the lining, and one pushed along the length is out of the way of the passage
 /// opening, which is centred.
-const PROP_OFFSET: f32 = 3.4;
+pub const PROP_OFFSET: f32 = 3.4;
 
 /// How far off the centreline a prop stands, in world units.
 ///
@@ -1786,6 +1786,15 @@ const FITTING_OFFSET: f32 = 3.0;
 /// The other side of the opening from the fitting, so a junction reads as *lit sign* rather than as
 /// a lamp and a plate stacked on each other.
 const SIGN_OFFSET: f32 = 3.2;
+
+/// How far along the bore the key board hangs, from the middle of its section.
+///
+/// **Its own number because every other thing on that wall already had one, and they collided.**
+/// The section plate is at `SIGN_OFFSET` 3.2, the fittings at `FITTING_OFFSET` +/-3.0, and a
+/// cross-passage opening is centred and about 1.8 m wide -- so the first attempt at `PROP_OFFSET`
+/// 3.4 put the key board 0.2 m from the sign and the two interpenetrated in the one snapshot
+/// committed for photographing the key. 1.5 clears the passage, the fittings and the plate.
+pub const KEY_ALONG: f32 = 1.5;
 
 /// How far a bunk's centreline stands off the bore's, in world units.
 ///
@@ -2168,7 +2177,7 @@ fn write_contents(out: &mut String, layout: &Layout) {
 
     let (kx, kz) = centre(marks.key);
     out.push_str(&format!("entity key \"Key\" from {KEY_PIECE}\n"));
-    out.push_str(&place(kx + PROP_SIDE, 0.0, kz + PROP_OFFSET, 0.0));
+    out.push_str(&place(kx + BORE_HALF_WIDTH, 0.0, kz + KEY_ALONG, 0.0));
 
     // **The way out is set into a bulkhead**, not into a side wall, which is why `exit_side` now
     // answers north or south. A side wall is 2.3 m to the springing and the door is 2.34 m in its

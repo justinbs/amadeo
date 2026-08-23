@@ -1,40 +1,40 @@
 scene brass_key
 version 1
 
-entity mesh "A brass key"
+entity mesh "A brass key, at the size a key actually is"
   CompoundMesh
     parts
-      - position 0.0 0.1 0.0
+      - position 0.0 0.028 0.0
         rotation 90.0 0.0 0.0
         solid Cylinder
           shape
             capped false
-            height 0.014
-            radius 0.055
+            height 0.0039
+            radius 0.0154
             sides 16
-            top_radius 0.055
+            top_radius 0.0154
       - mirror false true false
-        position 0.0 0.155 0.0
+        position 0.0 0.0434 0.0
         solid Box
           shape
-            size 0.11 0.014 0.014
+            size 0.0308 0.0039 0.0039
       - mirror true false false
-        position 0.055 0.1 0.0
+        position 0.0154 0.028 0.0
         solid Box
           shape
-            size 0.014 0.11 0.014
-      - position 0.0 -0.03 0.0
+            size 0.0039 0.0308 0.0039
+      - position 0.0 -0.0084 0.0
         solid Cylinder
           shape
-            height 0.24
-            radius 0.011
+            height 0.0672
+            radius 0.0031
             sides 8
-            top_radius 0.011
-      - position 0.026 -0.115 0.0
+            top_radius 0.0031
+      - position 0.0073 -0.0322 0.0
         solid Box
           shape
-            size 0.042 0.05 0.012
-      - position 0.02 -0.147 0.0
+            size 0.0118 0.014 0.0034
+      - position 0.0056 -0.0412 0.0
         solid Box
           shape
-            size 0.03 0.03 0.012
+            size 0.0084 0.0084 0.0034

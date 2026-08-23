@@ -4,38 +4,26 @@ version 1
 assets
   brass
   brass_key
-  bulkhead
-  bulkhead_grey
-  bulkhead_grey_normal
-  bulkhead_grey_surface
-  supply_crate
+  fitting_steel
+  fitting_steel_normal
+  fitting_steel_surface
+  fittings
+  key_board
 
-entity lost_key "A key left on a crate"
+entity lost_key "The key board, with one key left on it"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 0.0 0.0 0.0
 
-  entity plinth "Crate"
-    Collider
-      friction 0.9
-      restitution 0.0
-      sensor false
-      shape Cuboid
-        size 0.9 0.9 0.9
+  entity board "Key board"
     Mesh
-      material "bulkhead"
-      mesh "supply_crate"
-    RigidBody
-      angular_damping 0.0
-      gravity false
-      kind Static
-      linear_damping 0.0
-      mass 1.0
+      material "fittings"
+      mesh "key_board"
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.0 0.45 0.0
+      translation 0.0 1.5 0.0
 
   entity key "Brass key"
     Collider
@@ -43,7 +31,7 @@ entity lost_key "A key left on a crate"
       restitution 0.0
       sensor false
       shape Cuboid
-        size 0.12 0.34 0.12
+        size 0.1 0.14 0.1
     Interactable
       enabled true
       prompt "Brass key"
@@ -63,4 +51,4 @@ entity lost_key "A key left on a crate"
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.0 1.06 0.0
+      translation -0.095 1.485 0.06

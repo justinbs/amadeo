@@ -48,7 +48,7 @@ entity archive "A section re-racked, and the bunks left in it"
 
   entity lower "Files on the lower shelf"
     Mesh
-      material "bulkhead"
+      material "fittings"
       mesh "supply_crate"
     Transform
       rotation 0.0 6.0 0.0
@@ -57,7 +57,7 @@ entity archive "A section re-racked, and the bunks left in it"
 
   entity upper "And on the upper"
     Mesh
-      material "bulkhead"
+      material "fittings"
       mesh "supply_crate"
     Transform
       rotation 0.0 -11.0 0.0

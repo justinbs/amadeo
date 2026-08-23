@@ -1062,9 +1062,13 @@ games/               actual games built with the engine
                    3 px dot while playing, four `Accent` ticks that open when something is in reach.
                    Driven from the prompt *string* rather than by asking `Looking` twice, so the mark
                    and the line cannot disagree.
-                   It names an environment with `sky ""`, so **nothing lights an upward-facing
-                   floor**; the dim `spill` directional is standing in for an ambient and a real sky
-                   is the honest fix.
+                   **It used to say it names `sky ""` so nothing lights an upward-facing floor, and
+                   that was false** -- `ibl.rs`'s `DEFAULT_SKY` is `[0.12, 0.12, 0.12]`, the pre-ADR-0049
+                   ambient constant, kept deliberately non-black so naming no sky is not an invisible
+                   regression. Naming no sky gets a uniform dim grey, not darkness. It names
+                   `warren_gloom` now and `spill` is deleted. Engine gate review 20 found the belief by
+                   A/Bing the ambient with `sky ""` and getting a *brighter* frame; the lesson is
+                   `docs/14` §4 #2's -- **do not defend a number with a claim nobody measured.**
   scarp            M2.5's exit gate: a generated world you walk on and dig into
                    (`cargo run -p scarp`). **Nothing is authored but the player, the camera and the
                    sun** -- the ground is a function of the seed, streamed in chunks. `Highlands` is

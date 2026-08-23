@@ -620,3 +620,76 @@ That is not the metric review 1 set and it did not change it.
   them"* has now been argued four ways by four reviews. It is quoted in full in `docs/13` item 24.
 
 Its seven ordered changes are what session 24 is building.
+
+### Review 20 — engine gate — `4693332` — item 24, sixth pass — **NOT POLISHED**
+
+Eleven 1920 × 1080 captures of `games/warren` plus the other three games (`quad-demo` has no GPU
+build and refused), eleven crops, ~70 probes, nine row/column profiles, **two controlled A/Bs** with a
+byte-identical restore check afterwards, both measurements recounted, and two authored numbers
+re-derived from the shaders that consume them.
+
+**It confirmed review 19's finding is answered, and proved it rather than taking the claim.** It
+regenerated `warren_gloom.hdr` at `LEVEL 0.0` itself: the `at_key` wall's near quarter goes 88.4 → 93.1
+while the far goes 93.7 → 50.8, and with the probe removed the near end still reads 63 against the far
+end's 1 — so ~85% of the near wall's light is punctual. It also confirmed symmetry at **70.88** against
+4.87 (`games/atrium` 96.11 as control), the fog at **33.0%** at a cell's far bulkhead, all five
+rewritten clauses met, and both measurements exact for a fifth review running.
+
+**Its ruling on clause (a), which the submission asked for directly:** 65% was the right threshold and
+the range was earned rather than brightened — *"if you had merely lifted the exposure the A/B would
+have shown a uniform scale"*. But it added that the clause was standing in for something larger and
+does not carry all of it: beyond the torch's reach the whole level is painted a uniform 34–61 by a
+direction-only probe, `at_key` has **no pixel above luma 137 in two megapixels**, and `docs/11` §6 asks
+for an unlit room to be *nearly black*. **The near half of the tunnel is lit and the far half is still
+a grey wash.**
+
+#### Two things it found that are defects in this repository's own beliefs
+
+**`sky ""` supplies a BRIGHTER ambient than the authored map, not none.** It A/B'd the ambient that way
+first, got a frame that was brighter (mean 91.8 against 89.1), and refused to conclude anything from
+it — correctly. `ibl.rs:223` defines `DEFAULT_SKY = [0.12, 0.12, 0.12]`, the pre-ADR-0049 constant,
+*deliberately* not black. **`gloom.rs`'s own doc comment says "with `sky ""` there is no indirect term
+at all, so any surface a light does not reach is exactly black", and `docs/13` repeats it.** Both are
+false, and the belief is the same shape as the 5.0 → 8.0 round trip: a number defended by a claim
+nobody measured.
+
+**The one emissive object in the game cannot bloom, by derivation.** `bloom.wgsl:72–81` computes
+`over = max(brightness − threshold, 0)` on the brightest channel after exposure. `glow.material`
+authors `emissive 0.62 0.82 0.7`, exposure is 1.0 and threshold 1.1, so **`over = 0`, always**.
+Measured: the tube goes 59 → 157 → 224 in two pixels and 225 → 93 → 63 in two, flat 224/225 across its
+whole face, no halo. **That is session 24's own regression** — the emissive was 1.55/2.05/1.75 and was
+dropped to 0.62 during an A/B chasing a bright blob that turned out to be the torch beam, and never put
+back. Q32's shape a fifth time: authorable, authored, ignored.
+
+#### What it failed the item on
+
+- **The key is still a key on a crate** — `docs/14` §1's founding complaint, verbatim, six reviews on,
+  in a piece whose own comment says so. A **32 cm** key standing upright on its tip on a supply crate,
+  in `brass` at `metallic 0.8` with no texture, so it reads as painted plastic against a near-black
+  probe. **And `at_key.snapshot` does not have the key in frame** — 61.9° off the view axis against a
+  ~50° half-FOV. The identical fault was found and fixed on `at_exit` this session and the other two
+  were not checked.
+- **Four pieces of unattached geometry float above the exit door** — `ring_fitting` at scale 0.8 seen
+  head-on, reading as four fragments of debris; the orange rule as a flat slab with no bevel; the pool
+  brightest at the wheel rather than falling from the lamp, because at `rotation -68` the axis clears
+  the door face.
+- **Yaw 270 is the worst frame in the game** — the brightest (mean 116.9) and incoherent: two
+  near-white clipped slabs across the near plane, and behind them a dead-straight run of eight
+  identical door frames to a vanishing point, `docs/11` §5.3's named prohibition. Turning the *spawn*
+  away from it is not removing it; the player's first input is the mouse.
+- **The nearest surface in every frame is featureless** — 61.7% of a 120×90 patch of near wall inside
+  **one 16-level band**. It opened the source rather than judging from the render: `ring_lining_wall`
+  repeats every 3.6 m and is magnified ~4.8× at two metres, and its detail is entirely low-frequency,
+  so `Surface::grime` does not survive to render scale on the surface where it matters most.
+- **The warden is fifteen levels from its background** — coat 14/23/27 against wall 29/30/49.
+- Plus: the section letter is bone on bone where §5a specifies **black**; a bunk leg passes through a
+  crate lid; the crates wear `bulkhead`, the tunnel's own bolted plate, on a 0.9 m box; the hand lamp
+  has no edge because the omnidirectional spill is doing the beam's job; the three landmark frames are
+  still bullseye compositions (sym600 14.8 / 17.8 / 11.1); and **twenty punctual lights against
+  `MAX_PUNCTUAL_LIGHTS = 8`**, nearest wins, silent drop — which it explicitly did not claim to have
+  observed, only that the arithmetic is against us and nothing warns.
+
+**Its two self-corrections:** the `sky ""` A/B above, and it called the bunks in the aimed key shot
+floating, cropped at 3×, found their legs on the deck and withdrew.
+
+Its ten ordered changes are session 25's work; it says **items 1–4 landing would settle the item**.

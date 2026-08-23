@@ -2,11 +2,11 @@ scene section_letter_m
 version 1
 
 assets
-  fitting_steel
-  fitting_steel_normal
-  fitting_steel_surface
-  fittings
   letter_m
+  sign_enamel
+  sign_enamel_normal
+  sign_enamel_surface
+  stencil
 
 entity section_letter "Section M"
   Transform
@@ -16,7 +16,7 @@ entity section_letter "Section M"
 
   entity letter "The letter"
     Mesh
-      material "fittings"
+      material "stencil"
       mesh "letter_m"
     Transform
       rotation 0.0 0.0 0.0
