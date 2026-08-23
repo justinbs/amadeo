@@ -171,9 +171,14 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 >
 > #### What is next
 >
+> **A fifth review was sent at `0124db7` and was cut off by an API session limit before it ruled**
+> (`docs/14` §8, review 18). It produced no findings and no verdict, so **item 24's standing verdict
+> is review 17's NOT POLISHED** and the first thing the next session should do is send that review
+> again — the tree is clean, CI is green on that commit, and nothing has changed since.
+>
 > `docs/13` §1 still carries review 13's order. Items 31 and 24 are both 🟡 — **item 24 has been
-> through four reviews and has not passed.** What review 17 asked for and is *not* done, so the next
-> session does not have to rediscover it:
+> through four delivered reviews and has not passed.** What review 17 asked for and is *not* done, so
+> the next session does not have to rediscover it:
 >
 > - **The section letters convey no direction and carry no name.** They are `manhattan % 5`, which is
 >   a distance *ring*, and Howe, Inglefield, Mountbatten, Osborn and Torrington exist only in a Rust

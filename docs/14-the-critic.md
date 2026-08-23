@@ -514,3 +514,15 @@ perfectly made, identically, everywhere.
 **Its self-correction:** it called the lining's rust *"the same airbrushed blob repeated"*, opened the
 source PNG, found the descending runs, and withdrew about the texture while keeping the real finding
 — that what is *rendered* at 3–6 m is not those runs.
+
+### Review 18 — engine gate — `0124db7` — item 24, fifth pass — **NO VERDICT**
+
+**Attempted and interrupted by an API session limit before it ruled.** It had got as far as §3 #5 —
+*"capture every game, not only the one under discussion"* — and produced no findings, no evidence and
+no verdict.
+
+Recorded because an attempted review that leaves no entry is indistinguishable from a review that was
+never asked for, and because the next reviewer should know the state it was reaching for: `0124db7`
+is pushed, CI is green on it, and the ten frames it was given are described in the handover. **Nothing
+here is credited or discredited by it.** Item 24's standing verdict is review 17's NOT POLISHED, and
+the four of its eight ordered changes that are still open are listed in `STATUS.md`.
