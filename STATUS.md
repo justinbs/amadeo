@@ -128,16 +128,21 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > crate, and `brass` has a real surface. All three landmark snapshots look at their subject and stand
 > off its axis. Ambient 4.5 → 2.6. Section letters are black enamel. Crates are off `bulkhead`.
 >
-> **Not done, and these are review 20's own items 3, 5, 7 and 9:**
+> **Then items 3, 7 and 9 landed too.** The exit has a purpose-built `bulkhead_lamp` whose parts all
+> touch, so it reads as one assembly head-on instead of four floating fragments — and rebuilding it
+> hit `docs/14` §4 #4 from *both* directions inside one commit, because a housing carries one material
+> and a steel lamp is a lamp you cannot see, so the lens is a separate entity. The warden reads ~122
+> against a wall at 77, against the 14/23/27 vs 29/30/49 the review measured. The hand lamp has an
+> edge: a column through the pool runs 57/61/56/62/97/185/189/193/172 rather than a 500-row plateau.
 >
-> - **The exit's lamp reads as four floating fragments** — `ring_fitting` at scale 0.8 seen head-on.
->   It wants its own purpose-built bulkhead lamp, and the light moved so the pool falls *from* it
->   rather than being brightest at the wheel.
-> - **Yaw 270 is a sixty-metre straight sightline** through the cross-passage, with eight identical
->   door frames to a vanishing point — `docs/11` §5.3's named prohibition. Turning the *spawn* away
->   from it is not removing it. Needs a bulkhead, a dogleg or a collapse within ~15 m.
-> - **The warden is fifteen levels from its background** (coat 14/23/27 against wall 29/30/49).
-> - **The hand lamp has no edge** — the omnidirectional spill is doing the beam's job.
+> **Only item 5 is open, and the attempt is recorded rather than the intention.** The yaw-270 straight
+> run happens because `bore_side_open` is built with a **mirror about its own middle**, so every
+> cross-passage in the level sits at the same offset along its bore and three cells joined east–west
+> line their openings up exactly. Closing a door in such a run was written, tested and **reverted**:
+> fourteen doors over fourteen rooms is a tree plus one loop edge, so nearly every closure
+> disconnects the level and the connectivity check put every door straight back — the generated scene
+> came out **byte-identical**. It needs a wall mesh with an off-centre opening, or a baffle standing
+> in the passage. **Do not re-attempt it in the door graph.**
 >
 > Also open and re-filed off item 24: **item 32** (the section letters name nothing) and **item 18**
 > (the warden walks through walls).
