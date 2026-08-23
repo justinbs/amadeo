@@ -147,10 +147,7 @@ fn the_door_is_locked_until_you_have_the_key() {
     );
 
     // And the prompt says so, which is the only thing the player has to go on.
-    assert_eq!(
-        warren::prompt(&app.world).as_deref(),
-        Some("The door is locked")
-    );
+    assert_eq!(warren::prompt(&app.world).as_deref(), Some("Locked"));
     assert_eq!(amadeo_inventory::count_of(&app.world, player, KEY), 0);
 }
 
@@ -165,10 +162,7 @@ fn with_the_key_the_same_door_lets_you_out() {
     stand_at(&mut app, [0.0, 1.0, -10.5]);
 
     // The prompt has to change, or a player holding the key has no way to know it worked.
-    assert_eq!(
-        warren::prompt(&app.world).as_deref(),
-        Some("Unlock the door and leave")
-    );
+    assert_eq!(warren::prompt(&app.world).as_deref(), Some("Way out"));
 
     tap_use(&mut app);
     assert_eq!(outcome(&app.world), Outcome::Escaped);
@@ -319,7 +313,7 @@ fn the_prompt_line_says_what_you_are_looking_at() {
     );
 
     stand_at(&mut app, [0.0, 1.0, -10.5]);
-    assert_eq!(line_says::<warren::PromptLine>(&app), "The door is locked");
+    assert_eq!(line_says::<warren::PromptLine>(&app), "Locked");
 }
 
 #[test]

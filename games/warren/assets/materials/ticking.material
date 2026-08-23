@@ -4,7 +4,7 @@ version 1
 entity material "Mattress ticking"
   Material
     alpha_mode Opaque
-    base_colour 1.0 1.0 1.0 1.0
+    base_colour 0.55 0.58 0.62 1.0
     base_colour_texture "bunk_ticking"
     emissive 0.0 0.0 0.0
     metallic 0.0

@@ -135,10 +135,12 @@ fn the_room_loads_and_the_player_is_first_person() {
     // Two bore sections (deck + crown), four side walls, two bulkheads, a cross-passage and its
     // blind cap, two fittings (housing + tube each), a section plate in three parts (surround,
     // plate, rule) plus its letter as a piece of its own, two bunk frames with two mattresses on one
-    // of them, two crates, the torch, the key, the door, the warden and the lamp it carries. The
-    // lights themselves are not geometry, and the player has no body mesh -- in first person you
-    // would be standing inside it.
-    assert_eq!(app.world.query::<(&amadeo_render::Mesh,)>().count(), 31);
+    // of them, two crates, the torch, the key, the warden and the lamp it carries, and the door
+    // with the three things engine gate review 19 asked for around it -- the lamp over it, the
+    // orange rule across its head and the call plate beside it, which is what turns arriving at the
+    // way out into arriving somewhere. The lights themselves are not geometry, and the player has no
+    // body mesh -- in first person you would be standing inside it.
+    assert_eq!(app.world.query::<(&amadeo_render::Mesh,)>().count(), 34);
 }
 
 #[test]
@@ -218,7 +220,7 @@ fn looking_down_at_the_torch_offers_the_prompt_the_scene_authored() {
 
     assert_eq!(
         prompt(&app.world).as_deref(),
-        Some("Take the torch"),
+        Some("Torch"),
         "the prompt has to come from the scene file rather than from code, and the view has to be \
          able to aim down at all"
     );

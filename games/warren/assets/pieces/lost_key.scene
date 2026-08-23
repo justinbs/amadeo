@@ -46,7 +46,7 @@ entity lost_key "A key left on a crate"
         size 0.12 0.34 0.12
     Interactable
       enabled true
-      prompt "Take the brass key"
+      prompt "Brass key"
     Item
       count 1
       kind "key"

@@ -124,7 +124,15 @@ pub const TORCH: &str = "torch";
 /// **An eyeball number**, and the one that decides whether the room reads as dark-but-navigable or
 /// as a black screen with a white circle in it. The scene authors `intensity 0.0` and this replaces
 /// it, so "off" and "on" are one number in one place rather than two lights.
-pub const BEAM_INTENSITY: f32 = 11.0;
+pub const BEAM_INTENSITY: f32 = 9.0;
+
+/// How hard the hand lamp's housing spills onto what is beside you, when you are carrying it.
+///
+/// **A small fraction of [`BEAM_INTENSITY`], and it is not a second torch.** Its job is to put a
+/// *falloff* on the lining within a few metres, which no ambient term can do. If it reads as a glow
+/// around the player, or as a corridor that is bright wherever you happen to stand, it is too high —
+/// at 4.2 it was both.
+pub const SPILL_INTENSITY: f32 = 3.0;
 
 /// The label [`carry_the_torch`] is registered under.
 pub const CARRY_THE_TORCH: &str = "carry_the_torch";
@@ -218,6 +226,31 @@ pub fn carry_the_torch(world: &mut World) {
     for beam in beams {
         if let Some(light) = world.get_mut::<SpotLight>(beam) {
             light.intensity = if holding { BEAM_INTENSITY } else { 0.0 };
+        }
+    }
+
+    // **And the housing's spill, which is the same switch on a second light.** A hand lamp is a bulb
+    // in a can and a can leaks: the beam is what you aim, the spill is what falls on the wall you are
+    // standing beside. Engine gate review 19 measured why it has to exist — the lining had no
+    // near-to-far gradient at all, because the beam is a 26° cone that only reaches a wall 2.4 m to
+    // the side once it is five metres ahead, and the only other thing lighting that wall was an
+    // ambient probe which is distance-independent by construction.
+    //
+    // **It is small, and the first attempt at it was not.** At 4.2 over a 4.5 m range it lit both
+    // walls of a 4.8 m bore to about 180 and turned the opening frame into a white tiled corridor —
+    // worse than the flat grey it was meant to fix, and it made the picture *more* symmetric rather
+    // than less, because a light at the camera lights whatever is around the camera equally.
+    //
+    // Found by parent rather than by type, for the reason the block above exists: the warden carries
+    // a `PointLight` too, and "the only one" is a property of today's content.
+    let spills: Vec<Entity> = world
+        .query::<(&PointLight, &Parent)>()
+        .filter(|(_, (_, parent))| parent.0 == eyes)
+        .map(|(entity, _)| entity)
+        .collect();
+    for spill in spills {
+        if let Some(light) = world.get_mut::<PointLight>(spill) {
+            light.intensity = if holding { SPILL_INTENSITY } else { 0.0 };
         }
     }
 }
@@ -763,11 +796,7 @@ pub fn label_the_door(world: &mut World) {
         return;
     };
     let has_key = amadeo_inventory::count_of(world, carrier, KEY) > 0;
-    let wanted = if has_key {
-        "Unlock the door and leave"
-    } else {
-        "The door is locked"
-    };
+    let wanted = if has_key { "Way out" } else { "Locked" };
 
     let doors: Vec<Entity> = world
         .query::<(&WayOut,)>()
@@ -1259,11 +1288,9 @@ pub fn lay_out(seed: u64, count: usize) -> Layout {
             PlacedRoom {
                 cell,
                 doors: open,
-                // **The room you wake up in always works; after that it is luck.** Waking in the
-                // pitch dark before you have found the torch is not atmosphere, it is a player who
-                // cannot tell the game has started. `cells` is sorted before this runs, so the
-                // sequence of draws is the same on every machine (I3).
-                lit: cell == START || rng.chance(LAMPS_WORKING),
+                // Filled in by `light_the_sections` below, once every room has a condition —
+                // because which fittings work is decided by what happened to the section.
+                lit: true,
                 // Filled in below, once every room's neighbours are known.
                 condition: Condition::SleptIn,
             }
@@ -1271,6 +1298,8 @@ pub fn lay_out(seed: u64, count: usize) -> Layout {
         .collect();
 
     assign_conditions(&mut rooms);
+
+    light_the_sections(&mut rooms);
 
     let landmarks = choose_landmarks(&rooms);
     Layout {
@@ -1280,16 +1309,38 @@ pub fn lay_out(seed: u64, count: usize) -> Layout {
     }
 }
 
+/// Decides which fittings are still on the circuit — **by what happened to the section, not by a
+/// die**.
+///
+/// # The draw this replaces, and why the rule is better than the number
+///
+/// It used to be `cell == START || rng.chance(LAMPS_WORKING)`: an independent coin per section at
+/// 45%. On the shipped seed that lit six sections of fourteen, and engine gate review 19 measured
+/// the consequence — eight sections with no light source in them at all, three of eight submitted
+/// frames containing no light source, and a tunnel lining lit by the ambient probe and nothing else.
+///
+/// The fix is not a higher probability. A coin gives no *reason*, and `assign_conditions` already
+/// made this argument one field along: a die roll is what makes a generator look like a generator.
+/// So a fitting is dark where the section it hangs in has **failed structurally** — the water got in,
+/// or the lining came down. Both of those are conditions a player can see from the doorway, so the
+/// dark stretches have a cause that is visible in the same frame as the dark.
+///
+/// That leaves roughly ten sections of fourteen lit, with pools and real dark between them rather
+/// than eight-of-fourteen blackout, and the sections that *are* dark are the ones a player would
+/// expect to be. The start is always lit whatever happened to it: waking in the pitch dark before
+/// finding the torch is not atmosphere, it is a player who cannot tell the game has started.
+fn light_the_sections(rooms: &mut [PlacedRoom]) {
+    for room in rooms.iter_mut() {
+        let dark = matches!(
+            room.condition,
+            Condition::Flooded | Condition::Collapsed | Condition::Stripped
+        );
+        room.lit = room.cell == START || !dark;
+    }
+}
+
 /// The cell every walk begins at, which is also where the player wakes up.
 pub const START: (i32, i32) = (0, 0);
-
-/// The chance that a room other than the start has a working lamp.
-///
-/// **An eyeball number, and the one that decides how dark the Warren is.** Too high and the torch is
-/// pointless; too low and the level is a black maze before you have found it. A room is lit or it is
-/// not, rather than everywhere being dimly lit, because a dark room next to a working one reads as
-/// lighting that has failed in patches — which is a *place*. Uniform gloom reads as a setting.
-pub const LAMPS_WORKING: f32 = 0.45;
 
 /// Gives every section a condition, **by rule rather than by die** — `docs/11` §5.2.
 ///
@@ -1613,6 +1664,20 @@ pub const TORCH_PIECE: &str = "dropped_torch";
 /// The prefab a working ceiling lamp comes from.
 pub const LAMP_PIECE: &str = "room_lamp";
 
+/// The prefab a fitting that is **not** on the circuit comes from — the same housing and tube, dark.
+///
+/// # Why a dead fitting is a piece rather than an absence
+///
+/// Until session 24 an unlit section had no fitting *at all*: [`PlacedRoom::lit`] gated whether the
+/// entity was written, so eight of fourteen sections contained no fixture and no light. That is
+/// `docs/14` §4 #4 from the inside — *the light with no fixture, and the fixture with no light* —
+/// and it reads as a tunnel nobody ever wired rather than as one whose lighting has failed.
+///
+/// A dead fitting says the opposite and costs one prefab: the bracket, the shade and the tube are
+/// all still there, and the tube is a dull grey rather than emitting. A player who has walked past
+/// three working ones knows exactly what they are looking at.
+pub const DEAD_LAMP_PIECE: &str = "room_lamp_dead";
+
 /// The prefab the warden comes from.
 pub const WARDEN_PIECE: &str = "warden_post";
 
@@ -1628,7 +1693,7 @@ pub const AMBIENCE_PIECE: &str = "ambience";
 /// here: the two orders are not the same, and hand-maintaining a sorted list of ids whose names are
 /// spelled differently from their constants is exactly the sort of thing that goes quietly wrong.
 /// `amadeo fmt --check` on the output is what would have caught it, and did.
-pub const PIECES: [&str; 25] = [
+pub const PIECES: [&str; 26] = [
     AMBIENCE_PIECE,
     BUNK_MADE_PIECE,
     BUNK_STRIPPED_PIECE,
@@ -1637,6 +1702,7 @@ pub const PIECES: [&str; 25] = [
     HUD_PIECE,
     KEY_PIECE,
     LAMP_PIECE,
+    DEAD_LAMP_PIECE,
     PASSAGE_PIECE,
     PLAYER_PIECE,
     ROOM_PIECE,
@@ -1655,6 +1721,30 @@ pub const PIECES: [&str; 25] = [
     EXIT_PIECE,
     WARDEN_PIECE,
 ];
+
+/// How far to the side of the player the thing they woke up next to stands, in metres.
+///
+/// Nearly at the lining: a crate in a shelter stands against a wall, and a prop at the edge of the
+/// frame is what makes the two halves of a picture different without putting an obstacle in the
+/// middle of the only route out.
+pub const WOKE_ASIDE: f32 = 2.0;
+
+/// How far ahead of the player the thing they woke up next to stands, in metres.
+///
+/// Only just ahead, because [`WOKE_ASIDE`] does the work: the prop sits at the edge of the frame
+/// rather than in the middle of it. Keeping it out of the torch's 26° cone matters as much as where
+/// it looks — a beam is inverse-square, and the first version put a crate 3.4 m dead ahead, which
+/// saturated 4% of the frame and read as a rendering fault rather than as a lit crate.
+pub const WOKE_AHEAD: f32 = 1.2;
+
+/// How far off the bore's centreline the player wakes up, in metres.
+///
+/// **A composition number, and the smallest change that answers review 19's symmetry finding.** The
+/// bore is 4.8 m wide, so this is over a third of the way towards one wall: far enough that the two
+/// halves of the frame are different pictures, near enough that you are still plainly in a corridor
+/// rather than pressed against its side. It is also where somebody asleep on a deck would actually
+/// be — against a wall, not down the middle of the traffic route.
+pub const PLAYER_OFF_AXIS: f32 = 0.9;
 
 /// How high off the floor the player's body sits when placed.
 ///
@@ -1842,18 +1932,42 @@ pub fn to_scene(layout: &Layout) -> String {
         // wash rather than pool; and a light down the middle of a long tube is the most symmetrical
         // composition available, which is exactly the machine-made read `docs/11` §6 is trying to
         // avoid. `FITTING_OFFSET` keeps it clear of the passage opening, which is centred.
-        if room.lit {
-            let east = (room.cell.0 + room.cell.1).rem_euclid(2) == 0;
-            let (dx, turn) = if east {
+        //
+        // **Every section has one; only some of them work.** Engine gate review 19 measured six
+        // fittings across fourteen sections and found eight sections containing no light source at
+        // all — so the fixture is always written and [`PlacedRoom::lit`] chooses which prefab, dead
+        // or alive. See [`DEAD_LAMP_PIECE`].
+        // **Two of them, on opposite haunches**, and both halves of that are load-bearing.
+        //
+        // *Two*, because a section is twelve metres long and one fitting in it is a light every
+        // twelve metres — which is why engine gate review 19 could walk a whole bore and find no
+        // near-to-far gradient on the lining at all. At six metres the nearest one dominates, so the
+        // wall beside you is brighter than the wall at the end, which is what a corridor looks like.
+        //
+        // *Opposite*, because two lights on the same side of a symmetrical tube is the most
+        // symmetrical composition available, and the same review measured the authored frame as
+        // mirror-symmetric to within five levels out of 255. Alternating them means the left and the
+        // right of any frame are lit differently, for free, on every seed.
+        let east = (room.cell.0 + room.cell.1).rem_euclid(2) == 0;
+        let fitting = if room.lit {
+            LAMP_PIECE
+        } else {
+            DEAD_LAMP_PIECE
+        };
+        for (index, along) in [-FITTING_OFFSET, FITTING_OFFSET].into_iter().enumerate() {
+            // The first one takes the section's own side and the second takes the other, so the
+            // alternation runs *along* the bore as well as across the level.
+            let this_side_east = if index == 0 { east } else { !east };
+            let (dx, turn) = if this_side_east {
                 (x + BORE_HALF_WIDTH, 0.0)
             } else {
                 (x - BORE_HALF_WIDTH, 180.0)
             };
             out.push_str(&format!(
-                "entity {} \"Fitting\" from {LAMP_PIECE}\n",
-                cell_id("fitting", room.cell)
+                "entity {} \"Fitting\" from {fitting}\n",
+                cell_id(&format!("fitting{index}"), room.cell)
             ));
-            out.push_str(&place(dx, 0.0, z - FITTING_OFFSET, turn));
+            out.push_str(&place(dx, 0.0, z + along, turn));
         }
 
         // A plate at every junction, which is `docs/11` §5.4's rule. A section with no passage off
@@ -1903,11 +2017,14 @@ pub fn to_scene(layout: &Layout) -> String {
 /// touches the room graph, and nothing needs a second material. That is what makes the rule
 /// affordable: the expensive-sounding half of §5.2 turns out to be a `match` in the writer.
 ///
-/// The bunks stand against **alternating** walls with the fitting, so a lit section lights its own
-/// berths from across the tube rather than from directly overhead. Two per section, offset along the
-/// bore rather than across it, because the bore is 4.8 m wide and 12 m long.
+/// The bunks stand against one wall or the other by the section's own parity, offset along the bore
+/// rather than across it, because the bore is 4.8 m wide and 12 m long. **This used to be phrased as
+/// "the side the fitting is not on", and that stopped being true in session 24** when every section
+/// gained a fitting on *each* haunch: the parity now decides which wall the berths take, and both
+/// walls have a light over them either way.
 fn write_condition(out: &mut String, room: &PlacedRoom, x: f32, z: f32) {
-    // Bunks go on the side the fitting is *not* on, which is the same parity read the other way.
+    // The same parity the fittings use, read the other way, so the berths and the section's first
+    // fitting are on opposite walls.
     let east = (room.cell.0 + room.cell.1).rem_euclid(2) == 0;
     let side = if east { -BUNK_SIDE } else { BUNK_SIDE };
 
@@ -1964,12 +2081,83 @@ fn write_contents(out: &mut String, layout: &Layout) {
     // **The player faces the way out of the start room**, which is the cheapest piece of direction a
     // level can give: you wake up looking at a doorway rather than at plaster.
     let (sx, sz) = centre(marks.start);
-    let look = layout
-        .at(marks.start)
-        .and_then(|room| room.doors.first().copied())
-        .map_or(0.0, facing);
+    // **Along the bore, not at whichever door happens to sort first.** Every bore runs north–south
+    // (`docs/11` §5.2), so an east or west door is a cross-passage through a side wall 2.4 m away:
+    // facing one means waking up with your nose against a wall, which is what happened the first
+    // time this placed a prop as well. Falling back to any door keeps a one-door end section working.
+    let start_room = layout.at(marks.start);
+    let ahead = start_room
+        .and_then(|room| {
+            room.doors
+                .iter()
+                .copied()
+                .find(|side| matches!(side, Side::North | Side::South))
+        })
+        // **And along the bore even when the only door is a cross-passage.** Facing an east or west
+        // door means waking up aimed through a passage and down the whole length of the level —
+        // which `docs/11` §5.3 prohibits by name (*"never let a straight run be visible end to
+        // end"*), and which fills the opening frame with sixty metres of fogged distance instead of
+        // the room you are actually in. You wake up seeing your own bay: the deck, a fitting, the
+        // bulkhead at the end. The way out is something you find by turning your head, which is the
+        // first thing this game asks you to do anyway.
+        .unwrap_or(Side::North);
+    let look = facing(ahead);
+    // **And stands off the centreline**, which is a composition decision rather than a gameplay one.
+    // Engine gate review 19 measured the authored frame as mirror-symmetric to within **4.87 levels
+    // out of 255** on row 600 — `games/atrium` scores 96 on the same test — because a camera on the
+    // axis of a symmetrical bore, looking along it, produces a picture whose two halves are the same
+    // picture. Bilateral symmetry that exact is a stronger machine-made tell than a box mesh is, and
+    // no amount of dressing fixes it while the camera sits on the axis.
+    // **Across the view, not across the bore**, and the difference is not pedantry: the start
+    // section's only door is often a cross-passage, so the player faces *along* `x` and an offset in
+    // `x` slides them towards the camera rather than away from the axis, changing nothing about the
+    // picture. `right` is the look direction turned a quarter turn, so this is off-axis whichever
+    // way they woke up facing.
+    let (fx, fz) = {
+        let (cx, cz) = ahead.step((0, 0));
+        (cx as f32, cz as f32)
+    };
+    let (rx, rz) = (-fz, fx);
     out.push_str(&format!("entity you \"You\" from {PLAYER_PIECE}\n"));
-    out.push_str(&place(sx, PLAYER_STAND, sz, look));
+    out.push_str(&place(
+        sx + rx * PLAYER_OFF_AXIS,
+        PLAYER_STAND,
+        sz + rz * PLAYER_OFF_AXIS,
+        look,
+    ));
+
+    // **Something in front of you when you wake up, on the other side of the bore.**
+    //
+    // Engine gate review 19 found three of nine frames containing no prop of any kind, and one of
+    // those three was the authored camera — the frame item 24 is judged on, and the frame a
+    // screenshot would be taken from. It also does the other half of the symmetry work: the player
+    // is off-axis one way and this is off-axis the other, so the two halves of the picture hold
+    // different things rather than the same thing twice.
+    //
+    // **Ahead is derived from where the player is looking**, not assumed. A cell is 12 m along the
+    // bore and 4.8 m across it, so how far "ahead" can be depends on which way that is: down the
+    // tube there is room for a prop at 3.4 m, across it the wall is at 2.4 m and the same number
+    // would put a crate inside the lining. That is `PROP_SIDE`/`PROP_OFFSET`'s lesson one prop along.
+    //
+    // **Ahead is along the bore and across is `x`, and mixing the two put the camera inside a
+    // crate.** The first version resolved "ahead" from the door and then subtracted the player's
+    // lateral offset from the same coordinate, so on a start room whose first door faces east the
+    // prop landed 10 cm in front of the player's face — a flat wall filling the whole frame, which
+    // measured as a perfectly good 4% clipped and looked like a rendering fault. Every bore runs
+    // north–south, so **across the bore is always `x`** and along it is always `z`.
+    // Slightly ahead and well over to the other side, so it sits at the edge of the frame rather
+    // than in the middle of it — foreground interest on one side is what breaks the symmetry, and a
+    // prop dead ahead would only be a second thing on the axis. Off to the side also keeps it out of
+    // the torch's 26° cone, which saturates anything inside about three metres.
+    out.push_str(&format!(
+        "entity woke \"What you woke up next to\" from {STORES_PIECE}\n"
+    ));
+    out.push_str(&place(
+        sx + fx * WOKE_AHEAD - rx * WOKE_ASIDE,
+        0.0,
+        sz + fz * WOKE_AHEAD - rz * WOKE_ASIDE,
+        facing(ahead),
+    ));
 
     // **Across the bore is `PROP_SIDE` and along it is `PROP_OFFSET`, and they are different
     // numbers now.** One offset used on both axes put a crate 3.2 m off the centreline of a tube

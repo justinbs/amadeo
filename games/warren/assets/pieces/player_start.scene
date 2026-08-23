@@ -81,3 +81,13 @@ entity you "You"
         rotation -12.0 0.0 0.0
         scale 1.0 1.0 1.0
         translation 0.12 -0.1 0.0
+
+    entity spill "What the lamp housing leaks"
+      PointLight
+        colour 1.0 0.93 0.82
+        intensity 0.0
+        range 5.5
+      Transform
+        rotation 0.0 0.0 0.0
+        scale 1.0 1.0 1.0
+        translation 0.42 -0.26 0.0

@@ -1,4 +1,4 @@
-scene room_lamp
+scene room_lamp_dead
 version 1
 
 assets
@@ -7,10 +7,10 @@ assets
   fitting_steel_surface
   fitting_tube
   fittings
-  glow
+  glow_dead
   ring_fitting
 
-entity room_lamp "A fitting still on the circuit"
+entity room_lamp_dead "A fitting off the circuit"
   Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -25,26 +25,11 @@ entity room_lamp "A fitting still on the circuit"
       scale 1.0 1.0 1.0
       translation 0.0 1.93 0.0
 
-  entity tube "The tube"
+  entity tube "The tube, dark"
     Mesh
-      material "glow"
+      material "glow_dead"
       mesh "fitting_tube"
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
       translation -0.26 1.96 0.0
-
-  entity bulb "What it throws"
-    SpotLight
-      colour 0.58 0.78 0.68
-      inner_angle 30.0
-      intensity 22.0
-      outer_angle 56.0
-      range 7.5
-      shadow_bias 0.03
-      shadow_resolution 1024
-      shadows false
-    Transform
-      rotation -52.0 90.0 0.0
-      scale 1.0 1.0 1.0
-      translation -0.3 1.86 0.0

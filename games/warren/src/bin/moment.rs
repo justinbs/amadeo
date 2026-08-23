@@ -188,19 +188,39 @@ fn stand_at_landmark(app: &mut amadeo_app::App, name: &str) -> anyhow::Result<()
         other => anyhow::bail!("no landmark called `{other}`"),
     };
 
+    // **Standing back from the thing and looking AT it**, which the exit snapshot did not do.
+    //
+    // Every one of these used to stand at `cell + 4.2` in `z` and face north, on the argument that a
+    // bore runs north–south so that always looks down the tube. For the key and the warden that is
+    // right. For the exit it is exactly backwards: the door sits on the bulkhead at one END of its
+    // cell, so facing north from the south side of the cell puts the way out **behind the camera**.
+    //
+    // The snapshot committed for a reviewer to photograph the way out therefore faced away from it,
+    // and every measurement anybody has taken of that door — including engine gate review 19's "an
+    // 11-level range across the entire face of the door" — was taken of the bulkhead at the far end
+    // instead. `exit_side` already knows which end the door is on and is what the level generator
+    // places it with, so this asks the same function rather than assuming.
+    //
+    // The exit also stands *closer*. A landmark snapshot is a photograph of the thing it is named
+    // after, and 4.2 m back from the middle of the cell leaves the door ten metres away at the end
+    // of the bay — small, fogged, and impossible to judge. Three metres is the distance a player
+    // actually arrives at it from.
+    let (facing_side, offset) = if name == "exit" {
+        let side = warren::exit_side(&layout);
+        (side, 2.6)
+    } else {
+        (warren::Side::North, -4.2)
+    };
+    let (bx, bz) = facing_side.step((0, 0));
     let you = warren::player(&app.world).ok_or_else(|| anyhow::anyhow!("there is no character"))?;
     let at = [
-        cell.0 as f32 * warren::CELL,
+        cell.0 as f32 * warren::CELL + bx as f32 * offset,
         warren::PLAYER_STAND,
-        cell.1 as f32 * warren::CELL + 4.2,
+        cell.1 as f32 * warren::CELL + bz as f32 * offset,
     ];
     if let Some(transform) = app.world.get_mut::<amadeo_transform::Transform>(you) {
         transform.translation = at;
-        // **Facing along the bore, not at whatever the start happened to face.** A landmark is a
-        // cell, and the player's rotation is carried over from where they woke up — which put the
-        // first of these snapshots a metre from a wall with the hand lamp blowing it out. Every bore
-        // runs north-south, so `facing(North)` looks down the tube from the south end of the cell.
-        transform.rotation = [0.0, warren::facing(warren::Side::North), 0.0];
+        transform.rotation = [0.0, warren::facing(facing_side), 0.0];
     }
     app.run_ticks(8)?;
     Ok(())

@@ -1,0 +1,16 @@
+scene bulkhead_exit
+version 1
+
+entity material "The pressure door out, painted apart from every other bulkhead"
+  Material
+    alpha_mode Opaque
+    base_colour 0.72 0.79 0.74 1.0
+    base_colour_texture "bulkhead_grey"
+    emissive 0.0 0.0 0.0
+    metallic 0.0
+    metallic_roughness_texture "bulkhead_grey_surface"
+    normal_strength 1.0
+    normal_texture "bulkhead_grey_normal"
+    occlusion_strength 1.0
+    roughness 0.62
+    uv_scale 1.0 1.0

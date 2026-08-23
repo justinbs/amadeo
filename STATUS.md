@@ -26,6 +26,94 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 ## 📬 For the next session — read this box first, then `docs/14-the-critic.md` §6
 
+> ### Session 24: review 19 found what was lighting the tunnel, and the answer was nothing
+>
+> **The interrupted review 18 was re-sent at `efdc90d` and delivered as review 19: NOT POLISHED**,
+> with a finding no previous review had reached and two re-filings. Its full record is `docs/14` §8.
+> Every factual claim in it was checked against the repository before any of it was acted on, and
+> **all six checked out** — including two the submission got wrong.
+>
+> #### The finding
+>
+> **`games/warren`'s lining was lit by the ambient probe and by nothing else.** The left wall of
+> `at_key` read 84–101 flat over twelve metres with the far end *brighter* than the near, because an
+> ambient probe is direction-only and distance-independent by construction. Two megapixels of the
+> yaw-270 frame held no pixel above luma 130.
+>
+> **And the ambient was at 8.0 to compensate for a defect that was fixed one commit later.** Review
+> 16 found three objects at `RGB(0,0,0)`; `6d82f7e` raised `LEVEL` 5.0 → 8.0 to give them something
+> to reflect; `0124db7` — the very next commit — proved with ADR 0084 that they were black because
+> the colour grade was clamping below byte 44. **The compensation was never taken back out.**
+> `docs/14` §4 #2 in its purest form: a knob moved to chase a symptom belonging to a different knob.
+>
+> #### The submission's own numbers were stale, and that is worth more than the finding
+>
+> It recounted **0 / 27** meshes and **2 / 11** materials against the submission's 0 / 25 and 2 / 10,
+> because the submission copied them out of `docs/13` instead of counting them off the filesystem.
+> `docs/14` §3 #6 exists to stop a *reviewer* doing that and nothing had said it applies just as hard
+> to whoever writes the submission. **Recount before quoting, in either direction.**
+>
+> #### All seven ordered changes are built
+>
+> - **Every section has two fittings, on opposite haunches**, dead or alive by whether it flooded or
+>   collapsed rather than by a coin. Six lit fittings across fourteen sections is what left eight
+>   sections with no light source in them at all.
+> - **The ambient is back to 4.5** and the hand lamp has a **housing spill**.
+> - **The player wakes off-axis facing along the bore.** The generator had been facing them at
+>   whichever door sorted first, which for the start section is usually a cross-passage — so the
+>   authored camera pointed down a sixty-metre straight run that `docs/11` §5.3 forbids by name.
+> - **Every generated surface has grime.** `wear` only ever exposed what was *under* the paint;
+>   nothing modelled what had settled *on* it, which is why three reviews measured six levels of
+>   variation inside one texture.
+> - **The way out is an arrival**: its own lamp, an orange rule, an orange call plate, its own paint.
+> - **The warden is a coat**, in wool rather than in the tunnel's own plate joints, with a spot rather
+>   than a bare bulb.
+> - Prompts follow `docs/11` §8 at last: `Locked`, `Way out`, `Torch`, `Brass key`.
+>
+> #### Six things worth not rediscovering
+>
+> 1. **`moment`'s `at_exit` snapshot faced away from the exit.** It stood at `cell + 4.2` in `z` and
+>    faced north for all three landmarks, but the door sits on a bulkhead at one *end* of its cell —
+>    so the snapshot committed for a reviewer to photograph the way out had the way out **behind the
+>    camera**, and every measurement of that door ever taken, including review 19's "11-level range
+>    across the entire face", was of the far bulkhead instead. `exit_side` already knew.
+> 2. **A light at the camera makes a frame MORE symmetric, not less.** The spill at 4.2 over 4.5 m lit
+>    both walls of a 4.8 m bore to about 180 and turned the opening shot into a white tiled corridor.
+>    It is the near-field falloff nothing else can give, and it is small or it is a disaster.
+> 3. **An A/B that comes back byte-identical may mean the thing is not in the frame.** Sweeping the
+>    fitting intensity 8 → 13 → 20 moved not one pixel, which looked exactly like `docs/14` §4 #11
+>    biting again. It was not: the composition at the time pointed away from every fitting. A magenta
+>    test settled it in one command — **change the variable to something unmissable before concluding
+>    the pipeline is broken.**
+> 4. **Check the indentation before believing a `perl -i -pe` did anything.** Three separate edits to
+>    `room_lamp.scene` and `way_out.scene` silently did nothing because the pattern assumed eight
+>    spaces and a scene file uses six. Every one of them produced a byte-identical capture and a
+>    plausible wrong conclusion.
+> 5. **The target directory had artefacts from a previous checkout path.** `cargo test --workspace`
+>    failed in `amadeo-app` and `amadeo-cli` looking for
+>    `C:\Users\justi\Desktop\Personal\Amadeo\...`, which is where this repository used to live. It is
+>    not a code failure and no amount of reading the test explains it; `cargo clean` does.
+> 6. **A dark frame concentrates its histogram, and that is not the same as being flat.** Review 19's
+>    clause (a) asks for no more than 65% of pixels in any one 64-level band. For reference measured
+>    the same way: `games/atrium` scores 62.1% and `games/scarp` 0.4%. The Warren went 92.9% to 48.4%,
+>    and the thing that moved it was the spill putting midtones on the near lining — not brightness.
+>
+> #### What is next
+>
+> **Send item 24 to the critic again.** All seven ordered changes are built and the five rewritten
+> clauses measure as met, but `docs/14` §6 reserves ✅ to a review and those numbers are the
+> implementer's own. Two items were re-filed off it and are open: **item 32** (the section letters
+> name nothing and point nowhere — needs a stencil alphabet a binary can emit; note that emitting the
+> back face at **(−x, y, −z)** is a rotation rather than a reflection, which lifts the
+> symmetric-alphabet constraint and makes all 26 letters available) and **item 18**, which now also
+> owns the warden walking through walls.
+>
+> `gh` is not on PATH: prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
+
+
+<details>
+<summary>Session 23's box, kept because review 17's four open items are traced through it</summary>
+
 > ### Session 23: the Warren stops being boxes, and a planning review happened first
 >
 > **Review 14 was the first review of a *plan* rather than of built work.** It returned NOT POLISHED
@@ -197,6 +285,8 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 >
 > `gh` is not on PATH: prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`. **Run the
 > fourth check (`cargo doc`) before pushing, not after.**
+
+</details>
 
 <details>
 <summary>Session 22's box, kept because its four lessons are still live</summary>

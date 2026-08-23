@@ -61,22 +61,35 @@ const BELOW: [f32; 3] = [0.020, 0.016, 0.012];
 /// **The one number to change if the Warren is too dark or not dark enough**, and the one that
 /// decides whether the torch matters. Everything above is a ratio; this is the level.
 ///
-/// # Raised 5.0 → 8.0 in session 23, and the reason is measured rather than felt
+/// # Raised 5.0 → 8.0 in session 23, then put back in session 24, and the round trip is the lesson
 ///
 /// Engine gate review 16 found three separate authored objects rendering at literally `RGB(0, 0, 0)`
 /// — a 20 cm skirting kerb running the full width of every frame as a hard black band, the fitting's
-/// housing, and the sign's surround. It suspected a metallic material, A/B'd that (7.9% of pixels,
-/// max 23 levels, every zero still zero), **withdrew**, and A/B'd the ambient instead: lifting it
-/// turned the kerb from 23 flat rows of zero into a graded top face and under-edge.
+/// housing, and the sign's surround — so this was raised to 8.0 to give them something to reflect.
 ///
-/// So the geometry was not missing and the materials were not wrong. There was nothing for a surface
-/// facing away from every light to reflect. `docs/11` §1 quotes Frictional on exactly this: pitch
-/// black is *not* effective, and what works is a carried source, **a little ambient**, and fog that
-/// thickens with distance. This game had the first and the third.
+/// **They were not black for want of ambient.** One commit later, review 17 derived the real cause:
+/// `Environment::grade.contrast` was a straight line through mid-grey, which crosses zero *inside*
+/// the visible range, and everything below sRGB byte 44 was being clamped to pure black after
+/// shading. ADR 0084 fixed it. The raise here is `6d82f7e`; the fix is `0124db7`, the very next
+/// commit — and **the compensation was never taken back out**, so for two commits the Warren was
+/// carrying a 60% ambient lift for a defect that no longer existed.
 ///
-/// The mood survives it, which is the part worth checking rather than assuming: the unlit direction
-/// still peaks below 140 and keeps better than a seventh of the frame under luma 16.
-const LEVEL: f32 = 8.0;
+/// Review 19 measured what that cost. The tunnel lining was being lit by this and by *nothing else*:
+/// the left wall of `at_key` read 84–101 flat over twelve metres with the far end **brighter** than
+/// the near, because an ambient probe is direction-only and distance-independent by construction and
+/// therefore paints a whole bore one value. Two megapixels of `w_y270` held no pixel above luma 130.
+/// That is `docs/11` §6's named failure mode — *"everything equally and mildly visible, no pools,
+/// nothing to walk towards"* — arrived at from the one direction nobody was watching.
+///
+/// **`docs/14` §4 #2 in its purest form: a knob moved to chase a symptom belonging to a different
+/// knob.** Before changing this number, check that what you are compensating for is not something
+/// else's defect.
+///
+/// It is back at 5.0, and the variation the walls needed comes from lights that have *positions* —
+/// a fitting in every section and a short warm spill on the hand lamp — rather than from a probe
+/// that cannot tell near from far. `docs/11` §1's Frictional note still holds and is what keeps this
+/// above zero: a carried source, **a little ambient**, and fog that thickens with distance.
+const LEVEL: f32 = 4.5;
 
 fn main() {
     let out = manifest_dir().join("assets/skies");

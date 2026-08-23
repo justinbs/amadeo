@@ -526,3 +526,97 @@ never asked for, and because the next reviewer should know the state it was reac
 is pushed, CI is green on it, and the ten frames it was given are described in the handover. **Nothing
 here is credited or discredited by it.** Item 24's standing verdict is review 17's NOT POLISHED, and
 the four of its eight ordered changes that are still open are listed in `STATUS.md`.
+
+### Review 19 — engine gate — `efdc90d` — item 24, fifth delivered pass — **NOT POLISHED**
+
+The re-send of the interrupted review 18, at the same clean tree. Thirteen 1920 × 1080 captures of
+`games/warren` — the authored camera, yaw 90/180/270, pitch ±30, all four committed snapshots and one
+at yaw 90 from the warden post — plus all four other games, six magnified crops with stated
+rectangles, eight row/column profiles, **three controlled A/Bs** on the ambient probe with a
+byte-identical restore check afterwards, both measurements recounted, and two authored numbers
+re-derived from the shaders that consume them.
+
+**It verified ADR 0084 independently and credited it as the best finding of the last five reviews.**
+Nine fresh frames, minima 10/14/15/15/16/16/16/16/19, not one pixel at `RGB(0,0,0)`, against review
+17's measured 42.5%. Eight of nine report **0 clipped pixels**. `games/vault` at `contrast 1.15`
+comes back min 20. It also credited the hand lamp without reservation — `w_pm30` row 800 lifts 139
+levels through a ~120 px falloff to a plateau of 170 at **R − B = +22** — the warm/cold split holding
+in one frame, the six section conditions landing as claimed, the fog at **28.3%** at the far wall of
+a cell, and clause [a] of the close condition, *"a cast-iron-lined tunnel"*, outright.
+
+**And it withdrew a finding mid-review**, which is the mechanism working for a third time: it first
+wrote that the warden carried no light — the design's most-argued-for visual idea absent from the
+picture — then cropped `(1090, 550, 260×220)` at 4×, found the lamp plainly lighting the racking and
+silhouetting the coat, and withdrew.
+
+#### The finding: the tunnel lining is lit by the ambient probe and by nothing else
+
+Three reviews have argued about *"real dark between them"* by measuring three different surfaces.
+This one walked the **left lining wall** of `at_key` along row 560, from 1.5 m to 14 m of depth:
+
+```
+84 84 86 89 88 87 88 95 95 95 90 92 92 91 [47] 98 84 83 99 97 87 97 94 97 92 [67] 93 93 [55] 101 88 92
+```
+
+Near quarter mean **88.4**, far quarter mean **93.7** — **the far end of a twelve-metre bore is
+brighter than the near end**, and a column from crown to skirting spans 29 levels with no directional
+sense at all. Three A/Bs on `warren_gloom.hdr`, which §4 #11 permits through `--from` because an
+environment map is an asset:
+
+| `gloom.rs` `LEVEL` | frame mean | wall at row 560 |
+|---|---|---|
+| **8.0** (shipped) | 67.8 | 84–101, flat |
+| 5.0 | 47.1 | 58–69, **still flat** |
+| 0.0 | 3.7 | `0 0 0 0 0 0 0 0 0 0 0 1 1 3 7` — zero for 500 px |
+
+So essentially **100% of the illumination on the lining is the ambient probe**, which is
+direction-only and distance-independent by construction and therefore paints a 12 m wall one flat
+value at every depth and every height. `w_y270` and `w_at_exit` contain **no pixel above luma 130 in
+two megapixels**, with 92.2% of both frames inside a single 80-level band — `docs/11` §6's named
+failure mode verbatim, and the reason the frames read as a grey render although the geometry is right
+and the textures are real.
+
+**The `LEVEL 8.0` is a compensation for a defect that was fixed one commit later and never taken back
+out.** `gloom.rs`'s own comment records the 5.0 → 8.0 raise as review 16's three-objects-at-black
+finding; that raise is `6d82f7e` and ADR 0084 is `0124db7`, the very next commit, which proved those
+objects were black because the grade was clamping below byte 44. Warning §4 #2's exact shape: a knob
+moved to chase a symptom belonging to a different knob. **And the A/B rules out the obvious remedy** —
+at `LEVEL 5.0` the wall is flat and merely darker, so the fix is where light comes from, not how much.
+
+#### Two things nobody had measured
+
+**The authored frame is mirror-symmetric to within five levels out of 255.** Mean `|L(x) − L(1919−x)|`
+on row 600: **`w_auth` 4.87**, `w_y270` 6.59, `w_pm30` 9.85, `w_at_key` 13.20, `w_at_warden` 18.20,
+`w_y180` 37.50 — against **96.16** for `games/atrium` as a control. A frame left–right identical to
+within five levels is exactly symmetric to any viewer, and it is also `docs/11` §5.3's one explicit
+prohibition, a straight run visible end to end. Bilateral symmetry is a stronger machine-made tell
+than a box is, and the best-composed frames in the set are precisely the asymmetric ones.
+
+**The way out is 31.3 m from the nearest light in the level.** A row across the door face spans
+**11 levels**; the objective every system points at is invisible, unlit, unsigned, and carries none of
+§5a's safety orange — which that section says exists precisely so that *the only orange things in the
+Warren are the things you can act on*. Its prompt is still the literal string `"The door is locked"`,
+the sentence `docs/11` §0 quotes Justin condemning and §8 forbids by name.
+
+#### On the measurements, and it is the submitter who drifted
+
+It recounted **0 / 27** and **2 / 11** against the submission's 0 / 25 and 2 / 10. The numerators are
+honest for a fourth review running; the denominators were copied out of this file rather than
+recounted, which is exactly what §3 #6 exists to prevent — **and this time the person who did it was
+the implementer writing the submission, not a reviewer.** Corrected in `docs/13` §1. It also recorded,
+so a later review does not "discover" it as a defect, that under a strict reading of *box-only* —
+made of nothing but boxes — **14 of 27** qualify, the five letters and both sign plates among them.
+That is not the metric review 1 set and it did not change it.
+
+#### Its re-filings, which §6 makes a legitimate output
+
+- **Item 32 is new** — the section letters name nothing and point nowhere. Off item 24: it is a
+  wayfinding failure `docs/11` §5.4 owns, it is not in item 24's close condition, and a stencil
+  alphabet is real work that should not sit behind a frame's verdict.
+- **Item 18 absorbs the warden walking through walls.** It already names the identical defect in
+  `games/atrium`. Review 15's reason for declining to credit the warden no longer applies, because it
+  is now in a frame with a working lamp.
+- **Item 24's close condition is rewritten into five numeric clauses**, because *"real dark between
+  them"* has now been argued four ways by four reviews. It is quoted in full in `docs/13` item 24.
+
+Its seven ordered changes are what session 24 is building.

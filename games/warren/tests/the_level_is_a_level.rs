@@ -620,7 +620,7 @@ fn you_can_walk_out_of_the_generated_level() {
 
     assert_eq!(
         warren::prompt(&app.world).as_deref(),
-        Some("Unlock the door and leave"),
+        Some("Way out"),
         "standing at the generated door with the key should offer to open it"
     );
 

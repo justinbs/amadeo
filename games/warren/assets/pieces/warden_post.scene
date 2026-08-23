@@ -2,14 +2,14 @@ scene warden_post
 version 1
 
 assets
-  bulkhead
-  bulkhead_grey
-  bulkhead_grey_normal
-  bulkhead_grey_surface
+  coat_wool
+  coat_wool_normal
+  coat_wool_surface
   fitting_steel
   fitting_steel_normal
   fitting_steel_surface
   fittings
+  greatcoat
   warden_breath
   warden_figure
   warden_lamp
@@ -54,7 +54,7 @@ entity warden "The warden"
   Facts
     known {}
   Mesh
-    material "bulkhead"
+    material "greatcoat"
     mesh "warden_figure"
   Transform
     rotation 0.0 0.0 0.0
@@ -72,11 +72,16 @@ entity warden "The warden"
       translation 0.34 -0.28 -0.14
 
   entity glow "What the lamp throws"
-    PointLight
+    SpotLight
       colour 0.5 0.72 0.62
-      intensity 3.2
-      range 5.0
+      inner_angle 15.0
+      intensity 7.0
+      outer_angle 34.0
+      range 9.0
+      shadow_bias 0.03
+      shadow_resolution 1024
+      shadows false
     Transform
-      rotation 0.0 0.0 0.0
+      rotation -34.0 0.0 0.0
       scale 1.0 1.0 1.0
       translation 0.34 -0.24 -0.14

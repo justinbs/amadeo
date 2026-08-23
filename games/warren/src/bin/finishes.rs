@@ -66,6 +66,7 @@ fn main() {
     write_set(&out, "bulkhead_grey", &bulkhead_grey());
     write_set(&out, "enamel_orange", &enamel_orange());
     write_set(&out, "bunk_ticking", &bunk_ticking());
+    write_set(&out, "coat_wool", &coat_wool());
     write_signage(&out);
 }
 
@@ -221,6 +222,21 @@ struct Surface {
     /// **the bolts are most of what says "tunnel" rather than "corridor"** — they are also, per
     /// §5a, what gives the normal map something to be.
     bolts: Option<(u32, f32, f32)>,
+    /// How far the dirtiest part of the surface is darkened, `0..1`. `0.0` leaves it spotless.
+    ///
+    /// # The half that `wear` does not cover, and three reviews measured its absence
+    ///
+    /// `wear` exposes what is *underneath* the paint — rust on iron, damp under screed — and it is
+    /// deliberately rare and strong. Grime is the opposite: what has settled *on top*, everywhere,
+    /// unevenly. Without it a plate face is its base colour plus a ±14% drift, which is the six
+    /// levels of variation engine gate reviews 16, 17 and 19 each measured inside one texture and
+    /// each described the same way — *"materials differed from each other and no material differed
+    /// from itself"*.
+    ///
+    /// It gathers where it actually gathers: in broad settled patches, and in the recesses. A joint
+    /// and the ring of a bolt head are both places dirt cannot be wiped out of, so they darken
+    /// twice — once because the paint is worn through there and once because they are full of dust.
+    grime: f32,
     /// Read the whole surface with `u` and `v` exchanged.
     ///
     /// # One lining, two orientations, and the seam that needs it
@@ -292,6 +308,7 @@ fn ring_lining() -> Surface {
         // The rust underneath. Warm, and the only warm thing in an unlit frame.
         beneath: [0.30, 0.13, 0.06],
         wear: 0.85,
+        grime: 0.62,
         face_roughness: 0.90,
         joint_roughness: 0.96,
         metallic: 0.0,
@@ -325,6 +342,7 @@ fn shelter_floor() -> Surface {
         // Damp coming up through the slab, greener and darker than the dust over it.
         beneath: [0.055, 0.058, 0.048],
         wear: 0.55,
+        grime: 0.34,
         face_roughness: 0.95,
         joint_roughness: 0.98,
         metallic: 0.0,
@@ -357,8 +375,44 @@ fn fitting_steel() -> Surface {
         high: [0.33, 0.38, 0.34],
         beneath: [0.24, 0.10, 0.05],
         wear: 0.45,
+        grime: 0.46,
         face_roughness: 0.68,
         joint_roughness: 0.85,
+        metallic: 0.0,
+        tone_variation: 0.0,
+        bolts: None,
+        transposed: false,
+    }
+}
+
+/// The warden's greatcoat — heavy wool, and the one surface in the game that is not built.
+///
+/// # It exists because the warden was wearing the tunnel
+///
+/// It wore `bulkhead`, which is `metallic 1.0` and carries the lining's plate joints and rust spots.
+/// Engine gate review 19 cropped it at 4× and found *"the lining's plate-joint lines and a rust dot
+/// mapped onto its cloth"* — horizontal ring seams running across a coat. A metal is also the wrong
+/// BRDF for cloth entirely: wool has no specular lobe worth the name, which is why this is
+/// `metallic: 0.0` at `face_roughness: 0.97`, about as rough as anything here gets.
+///
+/// **No lattice**, because cloth has no courses — the whole read comes from the fine grain, the
+/// macro tint and a lot of grime. Dark grey-green rather than black: `docs/11` §3a wants a shape you
+/// resolve out of the dark rather than a hole in it, and a true black silhouette carries no
+/// information about which way it is facing.
+fn coat_wool() -> Surface {
+    Surface {
+        wall: None,
+        seed: 0xC0_A7_00_15,
+        relief: 620.0,
+        low: [0.055, 0.062, 0.058],
+        high: [0.105, 0.115, 0.104],
+        // Where the nap is worn through to the weave beneath — at the shoulders and the hem on a
+        // coat that has been in a tunnel for forty years.
+        beneath: [0.14, 0.125, 0.10],
+        wear: 0.30,
+        grime: 0.55,
+        face_roughness: 0.97,
+        joint_roughness: 0.97,
         metallic: 0.0,
         tone_variation: 0.0,
         bolts: None,
@@ -395,6 +449,7 @@ fn bunk_ticking() -> Surface {
         // The blue stripe, and the stain of a shelter nobody aired.
         beneath: [0.13, 0.16, 0.24],
         wear: 0.65,
+        grime: 0.4,
         face_roughness: 0.95,
         joint_roughness: 0.92,
         metallic: 0.0,
@@ -419,6 +474,7 @@ fn enamel_orange() -> Surface {
         // Bare rusted plate under a chip, exactly as the bone enamel has.
         beneath: [0.11, 0.055, 0.03],
         wear: 0.7,
+        grime: 0.3,
         face_roughness: 0.32,
         joint_roughness: 0.8,
         metallic: 0.0,
@@ -452,6 +508,7 @@ fn bulkhead_grey() -> Surface {
         high: [0.205, 0.209, 0.215],
         beneath: [0.26, 0.11, 0.05],
         wear: 0.50,
+        grime: 0.42,
         face_roughness: 0.80,
         joint_roughness: 0.90,
         metallic: 0.25,
@@ -584,6 +641,34 @@ fn worn(surface: &Surface, u: f32, v: f32) -> f32 {
     (patchy.max(handled) * surface.wear).clamp(0.0, 1.0)
 }
 
+/// How dirty this point is, `0.0` clean and `1.0` as dirty as [`Surface::grime`] allows.
+///
+/// Two sources, combined with `max` for [`worn`]'s reason — summing them gives every point a little
+/// of both, which is the uniform wash all over again.
+///
+/// **Settled dirt** is a low-frequency field cut at a threshold, so most of a plate is merely dusty
+/// and a minority of it is properly filthy. **Recess dirt** is the joints and the ring around each
+/// bolt head, because those are the two places on a bolted casting that cannot be wiped.
+fn grimy(surface: &Surface, u: f32, v: f32) -> f32 {
+    let settled = (noise::tiling(surface.seed ^ 0x6D_11_7A, u, v, 4) * 0.5 + 0.5).clamp(0.0, 1.0);
+    // Re-normalised over the top two thirds rather than scaled, so the clean parts stay clean.
+    let settled = ((settled - 0.32) / 0.55).clamp(0.0, 1.0);
+
+    // A second, finer field breaks the first one's edge, so a dirty patch does not read as a decal.
+    let broken = (grain(surface.seed ^ 0x6D_12, u, v) * 0.5 + 0.5).clamp(0.0, 1.0);
+    let settled = (settled * (0.5 + 0.85 * broken)).clamp(0.0, 1.0);
+
+    let recess = surface.wall.as_ref().map_or(0.0, |wall| {
+        let joint = wall.at(u, v).joint;
+        let stud = bolt(surface, wall, u, v);
+        // The bolt's *rim*, not its dome: dirt collects around a raised head, not on top of it.
+        let rim = (stud * (1.0 - stud) * 4.0).clamp(0.0, 1.0);
+        (joint * 0.9).max(rim * 0.75)
+    });
+
+    settled.max(recess)
+}
+
 /// The base colour map, in sRGB.
 fn render_colour(surface: &Surface) -> Canvas {
     let mut canvas = Canvas::new(SIZE, Space::Srgb);
@@ -595,6 +680,7 @@ fn render_colour(surface: &Surface) -> Canvas {
             (wall.tone(wall.at(u, v), 0) - 0.5) * 2.0 * surface.tone_variation
         });
         let through = worn(surface, u, v);
+        let dirt = grimy(surface, u, v);
 
         let mut colour = [0.0; 4];
         for (channel, out) in colour.iter_mut().take(3).enumerate() {
@@ -602,7 +688,10 @@ fn render_colour(surface: &Surface) -> Canvas {
             let varied = (base * (1.0 + tone + drift)).clamp(0.0, 1.0);
             // The paint over the rust, rather than the rust over the paint: `through` is how much of
             // what is underneath has been exposed.
-            *out = (varied + (surface.beneath[channel] - varied) * through).clamp(0.0, 1.0);
+            let exposed = (varied + (surface.beneath[channel] - varied) * through).clamp(0.0, 1.0);
+            // Dirt sits **on** the surface, so it darkens whatever is showing — paint or the rust
+            // under it — rather than being mixed into the paint colour.
+            *out = (exposed * (1.0 - surface.grime * dirt)).clamp(0.0, 1.0);
         }
         colour[3] = 1.0;
         colour
