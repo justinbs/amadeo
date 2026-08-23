@@ -1,6 +1,6 @@
 amadeo-snapshot 2
-tick 126
-state-hash ebdc6e4fda025750
+tick 134
+state-hash 2f8e15df4117ecd9
 schema-hash 7d19eb67110d6a91
 
 schema
@@ -59,7 +59,7 @@ schema
 
 resources
   EventClock
-    next 2
+    next 3
   Focus
     entity ()
   Gravity
@@ -7985,7 +7985,7 @@ entities
         height 1.2
         radius 0.35
     GlobalTransform
-      matrix 0.0 0.0 1.0 0.0 -0.0 1.0 0.0 0.0 -1.0 -0.0 0.0 0.0 0.0 0.9700209 0.0 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 36.0 1.0 4.2 1.0
     Inventory
       slots 4
     RigidBody
@@ -7995,9 +7995,9 @@ entities
       linear_damping 0.0
       mass 80.0
     Transform
-      rotation -0.0 -90.0 0.0
+      rotation -0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.0 0.9700209 0.0
+      translation 36.0 1.0 4.2
   525:0
     AudioListener ()
     Camera
@@ -8016,7 +8016,7 @@ entities
       max_pitch 85.0
       min_pitch -85.0
     GlobalTransform
-      matrix 0.0 0.0 1.0 0.0 0.0 1.0 0.0 0.0 -1.0 0.0 0.0 0.0 0.0 1.5900209 0.0 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 36.0 1.62 4.2 1.0
     Interactor
       radius 0.22
       reach 2.2
@@ -8032,7 +8032,7 @@ entities
       translation 0.0 0.62 0.0
   526:0
     GlobalTransform
-      matrix 0.0 0.0 1.0 0.0 0.20791169 0.9781476 0.0 0.0 -0.9781476 0.20791169 0.0 0.0 0.0 1.4900209 0.12 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 0.9781476 -0.20791169 0.0 0.0 0.20791169 0.9781476 0.0 36.12 1.52 4.2 1.0
     Parent
       generation 0
       index 525
@@ -8222,8 +8222,8 @@ entities
       sound "warden_breath"
       spatial true
     Behaviour
-      elapsed 2.083332
-      state "idle"
+      elapsed 0.11666667
+      state "pursue"
     BehaviourMachine
       initial "idle"
       states
@@ -8258,20 +8258,20 @@ entities
               when ""
     Facts
       known
-        sees_you false
+        sees_you true
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 37.5 0.93 -3.4 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 37.45096 0.93 -3.151472 1.0
     Mesh
       material "bulkhead"
       mesh "warden_figure"
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 37.5 0.93 -3.4
+      translation 37.45096 0.93 -3.151472
     Warden ()
   536:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.84 0.65 -3.5400002 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.79096 0.65 -3.2914722 1.0
     Mesh
       material "fittings"
       mesh "warden_lamp"
@@ -8284,7 +8284,7 @@ entities
       translation 0.34 -0.28 -0.14
   537:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.84 0.69 -3.5400002 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.79096 0.69 -3.2914722 1.0
     Parent
       generation 0
       index 535

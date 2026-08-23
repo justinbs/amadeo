@@ -8,6 +8,18 @@ entity mesh "An emergency fitting on the haunch"
         solid Box
           shape
             size 0.06 0.3 0.54
+      - position -0.045 0.24 0.0
+        solid Box
+          shape
+            size 0.05 0.18 0.09
+      - position -0.045 0.4 0.0
+        rotation 0.0 0.0 6.0
+        solid Cylinder
+          shape
+            height 0.34
+            radius 0.022
+            sides 8
+            top_radius 0.022
       - position -0.13 0.0 0.0
         rotation 0.0 0.0 90.0
         solid Cylinder
@@ -21,13 +33,23 @@ entity mesh "An emergency fitting on the haunch"
           shape
             size 0.24 0.11 0.62
       - mirror false false true
-        position -0.24 0.055 0.305
+        position -0.24 0.118 0.315
         solid Box
           shape
-            size 0.24 0.04 0.01
+            size 0.26 0.15 0.018
       - mirror true false false
         position -0.345 0.075 0.0
         rotation 0.0 0.0 -22.0
         solid Box
           shape
             size 0.05 0.09 0.62
+      - mirror false false true
+        position -0.24 -0.075 0.22
+        solid Box
+          shape
+            size 0.2 0.016 0.016
+      - mirror true false false
+        position -0.325 -0.075 0.0
+        solid Box
+          shape
+            size 0.016 0.016 0.5

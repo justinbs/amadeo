@@ -106,8 +106,29 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // 4. Grade: contrast about mid-grey, then saturation about luminance, then tint.
     //
-    //    Contrast pivots on 0.5 rather than 0.0 because pivoting on black would only ever darken.
-    color = (color - vec3<f32>(0.5)) * post.grade.x + vec3<f32>(0.5);
+    //    **Contrast is a power about a pivot, not a line through one, and that is a defect fix
+    //    rather than a preference.** This used to be `(color - 0.5) * contrast + 0.5`, a straight
+    //    line, and a straight line steeper than 1 crosses zero *inside* the visible range: solving
+    //    for an output of zero at `contrast = 1.05` gives an input of `0.5 - 0.5/1.05 = 0.0238`,
+    //    which is byte **44** on an sRGB target. Every pixel darker than that was clamped to pure
+    //    black by the clamp below.
+    //
+    //    Engine gate review 17 derived that from this line and then measured it: `games/warren` at
+    //    an authored `contrast 1.05` had 42.5% of a frame at exactly `RGB(0,0,0)`, and at
+    //    `contrast 1.00` the same frame had **none** and a minimum of 17. It is what three separate
+    //    reviews had been finding one object at a time -- a skirting kerb, a fitting housing, a sign
+    //    surround, all "rendering as holes" -- and none of those were the objects' fault.
+    //    `games/vault` authors `contrast 1.15`, which was destroying everything below byte 72.
+    //
+    //    A power curve about the same pivot has the slope the old line had *at* the pivot, so an
+    //    authored number keeps its meaning, and it **cannot reach zero from a non-zero input**:
+    //    `pow(0, c)` is 0 and `pow(x, c)` is positive for every positive `x`. `contrast = 1.0` is
+    //    the exact identity, so a look that does not grade is still byte-for-byte untouched.
+    //
+    //    `max` before the power because `pow` of a negative is undefined in WGSL, and a tonemap can
+    //    hand this a small negative from a wide-gamut input.
+    let pivot = 0.5;
+    color = pivot * pow(max(color, vec3<f32>(0.0)) / pivot, vec3<f32>(post.grade.x));
 
     //    Rec. 709 luminance weights -- the standard perceptual greens-matter-most mix, not an even
     //    third each, which would turn a saturated red and a saturated green into the same grey.

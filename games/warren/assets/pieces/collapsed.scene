@@ -1,0 +1,42 @@
+scene collapsed
+version 1
+
+assets
+  collapse
+  lining
+  ring_lining
+  ring_lining_normal
+  ring_lining_surface
+
+entity collapsed "A section where the lining came in"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+  entity fall "Fallen rings and spoil"
+    Mesh
+      material "lining"
+      mesh "collapse"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.0 0.0
+
+  entity solid "What you cannot walk through"
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 3.4 1.2 2.9
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.6 0.2

@@ -3,14 +3,17 @@ version 1
 
 assets
   ambience
+  archive
   bore_end
   bore_section
   bore_wall
   bore_wall_open
   bunk_made
   bunk_stripped
+  collapsed
   cross_passage_open
   dropped_torch
+  flooded
   hud
   lost_key
   player_start
@@ -87,7 +90,7 @@ entity berth0_0_0 "Berth" from bunk_made
 
 entity berth1_0_0 "Berth" from bunk_made
   override Transform
-    rotation 0.0 0.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
     translation -1.95 0.0 0.6
 
@@ -147,7 +150,7 @@ entity berth0_1_n2 "Berth" from bunk_stripped
 
 entity berth1_1_n2 "Berth" from bunk_stripped
   override Transform
-    rotation 0.0 0.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
     translation 13.95 0.0 -23.4
 
@@ -187,7 +190,7 @@ entity letter_1_n1 "Section letter" from section_letter_m
     scale 1.0 1.0 1.0
     translation 14.4 0.0 -8.8
 
-entity stores_1_n1 "Stores" from stores
+entity condition_1_n1 "Stores" from stores
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -235,17 +238,11 @@ entity letter_1_0 "Section letter" from section_letter_i
     scale 1.0 1.0 1.0
     translation 14.4 0.0 3.2
 
-entity berth0_1_0 "Berth" from bunk_stripped
+entity condition_1_0 "Standing water" from flooded
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 13.95 0.0 -2.4
-
-entity berth1_1_0 "Berth" from bunk_stripped
-  override Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
-    translation 13.95 0.0 0.6
+    translation 12.0 0.0 0.0
 
 entity bore_2_n2 "Bore" from bore_section
   override Transform
@@ -295,17 +292,11 @@ entity letter_2_n2 "Section letter" from section_letter_t
     scale 1.0 1.0 1.0
     translation 26.4 0.0 -20.8
 
-entity berth0_2_n2 "Berth" from bunk_made
+entity condition_2_n2 "A fall" from collapsed
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 22.05 0.0 -26.4
-
-entity berth1_2_n2 "Berth" from bunk_made
-  override Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
-    translation 22.05 0.0 -23.4
+    translation 23.1225 0.0 -22.6
 
 entity bore_2_n1 "Bore" from bore_section
   override Transform
@@ -343,15 +334,15 @@ entity letter_2_n1 "Section letter" from section_letter_o
     scale 1.0 1.0 1.0
     translation 26.4 0.0 -8.8
 
-entity berth0_2_n1 "Berth" from bunk_stripped
+entity berth0_2_n1 "Berth" from archive
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 25.95 0.0 -14.4
 
-entity berth1_2_n1 "Berth" from bunk_stripped
+entity berth1_2_n1 "Berth" from archive
   override Transform
-    rotation 0.0 0.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
     translation 25.95 0.0 -11.4
 
@@ -403,11 +394,17 @@ entity letter_2_0 "Section letter" from section_letter_m
     scale 1.0 1.0 1.0
     translation 26.4 0.0 3.2
 
-entity stores_2_0 "Stores" from stores
+entity berth0_2_0 "Berth" from bunk_made
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 22.05 0.0 -2.2
+    translation 22.05 0.0 -2.4
+
+entity berth1_2_0 "Berth" from bunk_made
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 22.05 0.0 0.6
 
 entity bore_3_0 "Bore" from bore_section
   override Transform
@@ -469,15 +466,15 @@ entity letter_3_0 "Section letter" from section_letter_o
     scale 1.0 1.0 1.0
     translation 38.4 0.0 3.2
 
-entity berth0_3_0 "Berth" from bunk_made
+entity berth0_3_0 "Berth" from bunk_stripped
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 37.95 0.0 -2.4
 
-entity berth1_3_0 "Berth" from bunk_made
+entity berth1_3_0 "Berth" from bunk_stripped
   override Transform
-    rotation 0.0 0.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
     translation 37.95 0.0 0.6
 
@@ -535,7 +532,7 @@ entity letter_4_0 "Section letter" from section_letter_t
     scale 1.0 1.0 1.0
     translation 50.4 0.0 3.2
 
-entity stores_4_0 "Stores" from stores
+entity condition_4_0 "Stores" from stores
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -589,17 +586,11 @@ entity letter_5_0 "Section letter" from section_letter_h
     scale 1.0 1.0 1.0
     translation 62.4 0.0 3.2
 
-entity berth0_5_0 "Berth" from bunk_made
+entity condition_5_0 "Standing water" from flooded
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 61.95 0.0 -2.4
-
-entity berth1_5_0 "Berth" from bunk_made
-  override Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
-    translation 61.95 0.0 0.6
+    translation 60.0 0.0 0.0
 
 entity bore_5_1 "Bore" from bore_section
   override Transform
@@ -643,17 +634,11 @@ entity letter_5_1 "Section letter" from section_letter_i
     scale 1.0 1.0 1.0
     translation 62.4 0.0 15.2
 
-entity berth0_5_1 "Berth" from bunk_stripped
+entity condition_5_1 "A fall" from collapsed
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 58.05 0.0 9.6
-
-entity berth1_5_1 "Berth" from bunk_stripped
-  override Transform
-    rotation 0.0 0.0 0.0
-    scale 1.0 1.0 1.0
-    translation 58.05 0.0 12.6
+    translation 59.1225 0.0 13.4
 
 entity bore_5_2 "Bore" from bore_section
   override Transform
@@ -703,11 +688,17 @@ entity letter_5_2 "Section letter" from section_letter_m
     scale 1.0 1.0 1.0
     translation 62.4 0.0 27.2
 
-entity stores_5_2 "Stores" from stores
+entity berth0_5_2 "Berth" from archive
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 61.95 0.0 21.8
+    translation 61.95 0.0 21.6
+
+entity berth1_5_2 "Berth" from archive
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 61.95 0.0 24.6
 
 entity bore_6_1 "Bore" from bore_section
   override Transform
@@ -759,7 +750,7 @@ entity berth0_6_1 "Berth" from bunk_made
 
 entity berth1_6_1 "Berth" from bunk_made
   override Transform
-    rotation 0.0 0.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
     translation 73.95 0.0 12.6
 
@@ -813,7 +804,7 @@ entity berth0_6_2 "Berth" from bunk_stripped
 
 entity berth1_6_2 "Berth" from bunk_stripped
   override Transform
-    rotation 0.0 0.0 0.0
+    rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
     translation 70.05 0.0 24.6
 

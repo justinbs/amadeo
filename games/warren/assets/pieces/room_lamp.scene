@@ -23,7 +23,7 @@ entity room_lamp "A fitting still on the circuit"
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.0 2.05 0.0
+      translation 0.0 1.93 0.0
 
   entity tube "The tube"
     Mesh
@@ -32,7 +32,7 @@ entity room_lamp "A fitting still on the circuit"
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation -0.26 2.08 0.0
+      translation -0.26 1.96 0.0
 
   entity bulb "What it throws"
     SpotLight
@@ -47,4 +47,4 @@ entity room_lamp "A fitting still on the circuit"
     Transform
       rotation -52.0 90.0 0.0
       scale 1.0 1.0 1.0
-      translation -0.3 1.98 0.0
+      translation -0.3 1.86 0.0

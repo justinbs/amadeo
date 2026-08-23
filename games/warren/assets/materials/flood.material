@@ -1,0 +1,16 @@
+scene flood
+version 1
+
+entity material "Standing water over screed"
+  Material
+    alpha_mode Opaque
+    base_colour 0.22 0.26 0.24 1.0
+    base_colour_texture "shelter_floor"
+    emissive 0.0 0.0 0.0
+    metallic 0.2
+    metallic_roughness_texture ""
+    normal_strength 0.35
+    normal_texture "shelter_floor_normal"
+    occlusion_strength 1.0
+    roughness 0.35
+    uv_scale 0.5 0.5

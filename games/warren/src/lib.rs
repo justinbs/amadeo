@@ -950,6 +950,24 @@ pub enum Condition {
     Stripped,
     /// Cleared out entirely and used for storage. Crates, no bunks.
     Stores,
+    /// The water got in. Standing water over the screed, and the one reflective surface in the game.
+    ///
+    /// `docs/11` §6 is specific about why this is roughness 0.35 with a little metallic rather than
+    /// a mirror: it would be reflecting a deliberately near-black ambient, so a polished floor would
+    /// read as a *hole*. Its read comes from the hand lamp's specular — the one surface that shows
+    /// you where you are by throwing your own light back at you.
+    Flooded,
+    /// The lining came in. Ring sections out of true, and the spoil under them.
+    ///
+    /// `docs/11` §10 chose this shape over "debris" and said why: *"A pile of boxes reads as a pile
+    /// of boxes; a tunnel ring that has come out of true reads as a tunnel that has failed"* — and it
+    /// is the same primitive the walls are already made of.
+    Collapsed,
+    /// Re-racked as an archive: the frames raised and loaded, the bunks never taken out.
+    ///
+    /// `docs/11` §2's best environmental-storytelling idea — one object, two eras, readable at a
+    /// glance — and it costs nothing but a placement, because racking *is* a bunk frame.
+    Archive,
 }
 
 /// The handful of places in an interior that mean something.
@@ -1292,17 +1310,24 @@ pub const LAMPS_WORKING: f32 = 0.45;
 /// It is not the mission-first generator `docs/11` §5.1 asks for; that is §10's item 3 and a larger
 /// job. It is the property that section asked for, at the cost of one pass over a sorted list.
 fn assign_conditions(rooms: &mut [PlacedRoom]) {
-    const ORDER: [Condition; 3] = [Condition::SleptIn, Condition::Stripped, Condition::Stores];
+    const ORDER: [Condition; 6] = [
+        Condition::SleptIn,
+        Condition::Stripped,
+        Condition::Stores,
+        Condition::Flooded,
+        Condition::Collapsed,
+        Condition::Archive,
+    ];
 
     // How many rooms already carry each condition, so ties go to the one used least.
-    let mut used = [0usize; 3];
+    let mut used = [0usize; ORDER.len()];
 
     for index in 0..rooms.len() {
         let cell = rooms[index].cell;
 
         // What the neighbours already decided. Only rooms *before* this one in cell order have been
         // assigned, which is what makes one pass enough.
-        let mut taken = [false; 3];
+        let mut taken = [false; ORDER.len()];
         for side in Side::ALL {
             let at = side.step(cell);
             if let Some(neighbour) = rooms[..index].iter().find(|room| room.cell == at) {
@@ -1314,13 +1339,13 @@ fn assign_conditions(rooms: &mut [PlacedRoom]) {
             }
         }
 
-        // The least-used condition no neighbour has; if a room is boxed in by all three, the
+        // The least-used condition no neighbour has; if a room is boxed in by all of them, the
         // least-used one regardless, because a level is better than a panic.
-        let pick = (0..3)
+        let pick = (0..ORDER.len())
             .filter(|which| !taken[*which])
             .min_by_key(|which| (used[*which], *which))
             .unwrap_or_else(|| {
-                (0..3)
+                (0..ORDER.len())
                     .min_by_key(|which| (used[*which], *which))
                     .unwrap_or(0)
             });
@@ -1561,6 +1586,15 @@ pub const BUNK_MADE_PIECE: &str = "bunk_made";
 /// The prefab a section cleared out for storage comes from.
 pub const STORES_PIECE: &str = "stores";
 
+/// The prefab standing water over a section's deck comes from.
+pub const FLOODED_PIECE: &str = "flooded";
+
+/// The prefab a fallen ring and its spoil come from.
+pub const COLLAPSED_PIECE: &str = "collapsed";
+
+/// The prefab a section re-racked as an archive comes from.
+pub const ARCHIVE_PIECE: &str = "archive";
+
 /// The prefab a bunk that was stripped comes from.
 pub const BUNK_STRIPPED_PIECE: &str = "bunk_stripped";
 
@@ -1594,7 +1628,7 @@ pub const AMBIENCE_PIECE: &str = "ambience";
 /// here: the two orders are not the same, and hand-maintaining a sorted list of ids whose names are
 /// spelled differently from their constants is exactly the sort of thing that goes quietly wrong.
 /// `amadeo fmt --check` on the output is what would have caught it, and did.
-pub const PIECES: [&str; 22] = [
+pub const PIECES: [&str; 25] = [
     AMBIENCE_PIECE,
     BUNK_MADE_PIECE,
     BUNK_STRIPPED_PIECE,
@@ -1613,6 +1647,9 @@ pub const PIECES: [&str; 22] = [
     SECTION_LETTERS[3],
     SECTION_LETTERS[4],
     STORES_PIECE,
+    FLOODED_PIECE,
+    COLLAPSED_PIECE,
+    ARCHIVE_PIECE,
     TORCH_PIECE,
     WALL_PIECE,
     EXIT_PIECE,
@@ -1874,27 +1911,44 @@ fn write_condition(out: &mut String, room: &PlacedRoom, x: f32, z: f32) {
     let east = (room.cell.0 + room.cell.1).rem_euclid(2) == 0;
     let side = if east { -BUNK_SIDE } else { BUNK_SIDE };
 
+    // **Three of the six place one thing and stop**, because what makes a section read as a
+    // *different* section is not a variant of the same prop. Engine gate review 17 counted the whole
+    // vocabulary a player met across eight frames -- bunks, a ladder, one fitting, one sign -- and
+    // pointed out that the three original conditions differed only by whether a mattress mesh was
+    // present, while the three `docs/11` §5.2 names that would change what a room *looks* like were
+    // exactly the ones missing.
+    let single = match room.condition {
+        Condition::Stores => Some((STORES_PIECE, "Stores", side, -2.2)),
+        Condition::Flooded => Some((FLOODED_PIECE, "Standing water", 0.0, 0.0)),
+        Condition::Collapsed => Some((COLLAPSED_PIECE, "A fall", side * 0.45, 1.4)),
+        _ => None,
+    };
+    if let Some((piece, label, across, along)) = single {
+        out.push_str(&format!(
+            "entity {} \"{label}\" from {piece}\n",
+            cell_id("condition", room.cell)
+        ));
+        out.push_str(&place(x + across, 0.0, z + along, 0.0));
+        return;
+    }
+
     let piece = match room.condition {
-        Condition::SleptIn => BUNK_MADE_PIECE,
         Condition::Stripped => BUNK_STRIPPED_PIECE,
-        // Cleared out for storage: no berths at all, which is a bigger difference than any pair of
-        // bunk variants and costs one fewer entity.
-        Condition::Stores => {
-            out.push_str(&format!(
-                "entity {} \"Stores\" from {STORES_PIECE}\n",
-                cell_id("stores", room.cell)
-            ));
-            out.push_str(&place(x + side, 0.0, z - 2.2, 0.0));
-            return;
-        }
+        Condition::Archive => ARCHIVE_PIECE,
+        _ => BUNK_MADE_PIECE,
     };
 
+    // **The two berths are no longer identical**, which review 17 measured as "both bunks in shot,
+    // same stripe phase, same bolster at the same end, no sag, nothing over an edge". The cheapest
+    // real fix is a quarter turn on one of them: the ticking is directional, so a rotated berth
+    // shows its stripes running the other way and its bolster at the other end, from one number.
     for (index, along) in [-2.4_f32, 0.6].into_iter().enumerate() {
+        let turn = if index == 0 { 0.0 } else { 180.0 };
         out.push_str(&format!(
             "entity {} \"Berth\" from {piece}\n",
             cell_id(&format!("berth{index}"), room.cell)
         ));
-        out.push_str(&place(x + side, 0.0, z + along, 0.0));
+        out.push_str(&place(x + side, 0.0, z + along, turn));
     }
 }
 

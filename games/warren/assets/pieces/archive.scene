@@ -1,0 +1,65 @@
+scene archive
+version 1
+
+assets
+  bulkhead
+  bulkhead_grey
+  bulkhead_grey_normal
+  bulkhead_grey_surface
+  bunk_frame
+  fitting_steel
+  fitting_steel_normal
+  fitting_steel_surface
+  fittings
+  supply_crate
+
+entity archive "A section re-racked, and the bunks left in it"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+  entity racking "Frames raised into racking"
+    Mesh
+      material "fittings"
+      mesh "bunk_frame"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.0 0.0
+
+  entity solid "What you cannot walk through"
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 0.74 1.6 1.9
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.8 0.0
+
+  entity lower "Files on the lower shelf"
+    Mesh
+      material "bulkhead"
+      mesh "supply_crate"
+    Transform
+      rotation 0.0 6.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.9 -0.5
+
+  entity upper "And on the upper"
+    Mesh
+      material "bulkhead"
+      mesh "supply_crate"
+    Transform
+      rotation 0.0 -11.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.02 1.76 0.42

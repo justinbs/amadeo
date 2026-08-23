@@ -146,13 +146,44 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > rectangle below luma 16 to **1.0%** on a material swap alone, with no geometry change. If something
 > renders as a silhouette, check its albedo before its normals.
 >
+> #### Review 17 found an engine defect, with a derivation, that three reviews had been chasing
+>
+> **`Environment::grade.contrast` was clipping blacks to zero.** It was `(x − 0.5) · c + 0.5`, a
+> straight line, and a line steeper than 1 crosses zero *inside* the visible range: at `c = 1.05` the
+> crossing is byte **44**, and the clamp after it turned everything below into pure black.
+> `games/warren` authored 1.05 and had **42.5% of a frame at exactly `RGB(0,0,0)`**; `games/vault`
+> authors 1.15 and was losing everything below byte 72.
+>
+> **Three reviews had been finding this one object at a time** — a skirting kerb as a black band, a
+> fitting housing as a silhouette, a sign surround as a hole — and none of them were the objects'
+> fault. It is a power about the pivot now, which has the same slope at the pivot so authored numbers
+> keep their meaning, and `contrast 1.0` stays the exact identity. The Warren's pitch-down frame went
+> **42.5% → 0.0%** below luma 16, minimum 15.
+>
+> **The general lesson, in `docs/07`:** any post-process operator that can map an in-range input to an
+> out-of-range output is a defect waiting to be blamed on something upstream.
+>
+> Also landed: **six section conditions** instead of three, including the ones that change what a room
+> looks like — standing water, a fallen ring with spoil under it, and bunks re-racked as an archive;
+> **`moment --at`** with four committed snapshots, so a reviewer can stand at the key, the way out and
+> the warden post rather than only at the start line; and the fitting got end caps, a wire guard and a
+> conduit, and stopped interpenetrating an arch rib.
+>
 > #### What is next
 >
-> `docs/13` §1 still carries review 13's order. Items 31 and 24 are both 🟡 — **item 24 has now been
-> through three reviews and has not passed**, though review 16 called the remainder short. Two of its
-> eight are deliberately not done: **a second photographable moment** (`moment.rs` snapshots only the
-> player start, so no reviewer can see the key or the way out — this is item 31's real close
-> condition and it was closed short of it), and **the warden**, which still walks through walls. After it: **item 21**'s
+> `docs/13` §1 still carries review 13's order. Items 31 and 24 are both 🟡 — **item 24 has been
+> through four reviews and has not passed.** What review 17 asked for and is *not* done, so the next
+> session does not have to rediscover it:
+>
+> - **The section letters convey no direction and carry no name.** They are `manhattan % 5`, which is
+>   a distance *ring*, and Howe, Inglefield, Mountbatten, Osborn and Torrington exist only in a Rust
+>   comment. `docs/11` §5.4 states three requirements and this meets one. A name needs a stencil
+>   alphabet a binary can emit, which is the real job.
+> - **Three of eight frames have no light source in them.** The fix is where the fittings go, not how
+>   bright they are.
+> - **The rust does not survive to render scale** — the texture is right and what reaches 3–6 m is
+>   not.
+> - **The warden**, still walking through walls and still out of the frames. After it: **item 21**'s
 > screen-space occlusion half, **item 22**'s shadow-edge dithering, and **item 15**'s title screen.
 >
 > **One thing review 15 declined to credit and was right to:** the warden was kept out of the

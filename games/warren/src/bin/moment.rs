@@ -47,7 +47,58 @@ use std::path::PathBuf;
 /// reproducible rather than dependent on where a scripted walk happened to end.
 const SETTLE: u64 = 120;
 
+/// The places a moment can be taken, as `(argument, landmark, file)`.
+///
+/// # Why more than one, which is a review finding rather than a convenience
+///
+/// Engine gate review 16 pointed out that item 31 had been closed with a route reaching **exactly
+/// one location**: every frame any reviewer could take of this game was the player's start bore, one
+/// of fourteen. The key, the way out, the warden and two of the three section conditions were
+/// unphotographable, while item 24's close condition is *"a capture of it shows…"*. Review 17
+/// repeated it and called the gate *"decided on one fourteenth of the game"*.
+///
+/// So the landmarks `Landmarks` already chooses are the places worth standing, and each writes its
+/// own snapshot. The player is **placed** at the landmark rather than walked there: where a scripted
+/// walk ends depends on the level, and a snapshot whose position depends on pathing is one that
+/// moves every time the generator does.
+const MOMENTS: [(&str, &str, &str); 4] = [
+    ("start", "where you wake up", "playing.snapshot"),
+    ("key", "the room the key is in", "at_key.snapshot"),
+    ("exit", "the way out", "at_exit.snapshot"),
+    ("warden", "where the warden begins", "at_warden.snapshot"),
+];
+
 fn main() {
+    let wanted: Vec<String> = std::env::args().skip(1).collect();
+    if wanted.iter().any(|argument| argument == "--help") {
+        println!("usage: moment [start|key|exit|warden]...   (default: all of them)");
+        for (name, what, file) in MOMENTS {
+            println!("  {name:<7} {what:<26} -> snapshots/{file}");
+        }
+        return;
+    }
+
+    let chosen: Vec<&(&str, &str, &str)> = if wanted.is_empty() {
+        MOMENTS.iter().collect()
+    } else {
+        MOMENTS
+            .iter()
+            .filter(|(name, _, _)| wanted.iter().any(|argument| argument == name))
+            .collect()
+    };
+    if chosen.is_empty() {
+        eprintln!("no such moment: {}", wanted.join(" "));
+        eprintln!("try one of: start key exit warden");
+        std::process::exit(1);
+    }
+
+    for (name, what, file) in chosen {
+        write_moment(name, what, file);
+    }
+}
+
+/// Builds the level, stands the player at one landmark, and writes that snapshot.
+fn write_moment(name: &str, what: &str, file: &str) {
     let mut app = match warren::build_simulation() {
         Ok(app) => app,
         Err(error) => {
@@ -83,12 +134,22 @@ fn main() {
         std::process::exit(1);
     }
 
+    // **Standing where the moment asks for.** Placed rather than walked, and *after* the settle: the
+    // character controller rewrites its own `Transform` from `CharacterMotion` every tick, so a write
+    // before it has found the floor is undone (Q30).
+    if name != "start"
+        && let Err(error) = stand_at_landmark(&mut app, name)
+    {
+        eprintln!("could not stand at the {name}: {error}");
+        std::process::exit(1);
+    }
+
     let out = manifest_dir().join("snapshots");
     if let Err(error) = std::fs::create_dir_all(&out) {
         eprintln!("could not create {}: {error}", out.display());
         std::process::exit(1);
     }
-    let path = out.join("playing.snapshot");
+    let path = out.join(file);
 
     let snapshot = app.capture_snapshot();
     let text = amadeo_snapshot::to_text(&snapshot);
@@ -105,10 +166,44 @@ fn main() {
         snapshot.resources.len(),
         snapshot.state_hash,
     );
-    println!("where the player is standing: {}", standing(&app.world));
+    println!("  {name} — {what}, standing at {}", standing(&app.world));
     println!(
-        "\nphotograph it with:\n  amadeo capture -p warren --from games/warren/snapshots/playing.snapshot --ticks 5 shot.png"
+        "  photograph it with: amadeo capture -p warren --from games/warren/snapshots/{file} --ticks 5 shot.png\n"
     );
+}
+
+/// Puts the player at one of [`Landmarks`]' cells, on the floor at the bore's centreline.
+///
+/// Offset along the bore from dead centre, for the reason the generator offsets its props: standing
+/// exactly on a landmark can mean standing inside whatever the landmark put there.
+///
+/// [`Landmarks`]: warren::Landmarks
+fn stand_at_landmark(app: &mut amadeo_app::App, name: &str) -> anyhow::Result<()> {
+    let layout = warren::lay_out(warren::GENERATED_SEED, warren::GENERATED_ROOMS);
+    let marks = layout.landmarks;
+    let cell = match name {
+        "key" => marks.key,
+        "exit" => marks.exit,
+        "warden" => marks.warden,
+        other => anyhow::bail!("no landmark called `{other}`"),
+    };
+
+    let you = warren::player(&app.world).ok_or_else(|| anyhow::anyhow!("there is no character"))?;
+    let at = [
+        cell.0 as f32 * warren::CELL,
+        warren::PLAYER_STAND,
+        cell.1 as f32 * warren::CELL + 4.2,
+    ];
+    if let Some(transform) = app.world.get_mut::<amadeo_transform::Transform>(you) {
+        transform.translation = at;
+        // **Facing along the bore, not at whatever the start happened to face.** A landmark is a
+        // cell, and the player's rotation is carried over from where they woke up — which put the
+        // first of these snapshots a metre from a wall with the hand lamp blowing it out. Every bore
+        // runs north-south, so `facing(North)` looks down the tube from the south end of the cell.
+        transform.rotation = [0.0, warren::facing(warren::Side::North), 0.0];
+    }
+    app.run_ticks(8)?;
+    Ok(())
 }
 
 /// Puts the torch in the player's bag and lets the beam come up.

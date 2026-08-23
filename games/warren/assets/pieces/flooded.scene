@@ -1,0 +1,23 @@
+scene flooded
+version 1
+
+assets
+  flood
+  flood_plane
+  shelter_floor
+  shelter_floor_normal
+
+entity flooded "A section the water got into"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+  entity water "Standing water"
+    Mesh
+      material "flood"
+      mesh "flood_plane"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.05 0.0

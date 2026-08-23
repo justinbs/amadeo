@@ -2909,6 +2909,29 @@ It is a failure only the **fourth** of `CLAUDE.md` §4b's checks can see, and on
 it is invisible to every fast check and appears in CI after a push, which is exactly what happened:
 run the doc check *before* pushing, not after. The Warren's is `finishes` now.
 
+### A linear contrast curve clips blacks, and the clip looks exactly like missing light
+
+`Environment::grade.contrast` was `(x - 0.5) * c + 0.5` — a straight line through mid-grey. A line
+steeper than 1 crosses zero *inside* the visible range, and the clamp after it turns everything below
+that into pure black. Solve it: at `c = 1.05` the crossing is `0.5 - 0.5/1.05 = 0.0238`, which is
+byte **44** on an sRGB target.
+
+`games/warren` authored 1.05 and had **42.5% of a frame at exactly `RGB(0,0,0)`**. `games/vault`
+authors 1.15 and was losing everything below byte 72 — the bottom 28% of its range.
+
+**The symptom is indistinguishable from a lighting bug**, and three separate engine-gate reviews
+chased it one object at a time: a skirting kerb rendering as a black band across every frame, a light
+fitting rendering as a silhouette, a sign surround rendering as a hole. Each looked like a material
+or a normal or a missing ambient. None of them were.
+
+It is a **power about the pivot** now — `pivot * pow(x / pivot, c)` — which has the same slope at the
+pivot, so an authored number keeps its meaning, and cannot reach zero from a non-zero input.
+`contrast = 1.0` stays the exact identity, so a look that does not grade is byte-for-byte untouched.
+
+**The general lesson**: any post-process operator that can map an in-range input to an out-of-range
+output is a defect waiting to be blamed on something upstream. Check the operator before you check
+the scene.
+
 ### A material that is `metallic 1.0` has no colour of its own, and renders as a hole
 
 The Warren's bunk frames were `fittings`, a surface authored `metallic: 0.85` on the reasoning that

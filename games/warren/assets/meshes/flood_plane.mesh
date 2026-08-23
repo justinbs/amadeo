@@ -1,0 +1,15 @@
+scene flood_plane
+version 1
+
+entity mesh "Standing water across the deck"
+  CompoundMesh
+    parts
+      - position 0.0 0.0 0.0
+        solid Box
+          shape
+            size 4.6 0.02 11.6
+      - mirror true false false
+        position 2.24 0.01 0.0
+        solid Box
+          shape
+            size 0.12 0.03 11.6

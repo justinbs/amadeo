@@ -305,6 +305,15 @@ crates/
                      Every camera draws into a transient and a present pass copies it onward, which
                      is what gives the **windowed** backend capture -- it reads the transient, where
                      an offscreen one reads its destination after the present pass.
+                     **The colour grade cannot clip any more (ADR 0084)**: `contrast` was a straight
+                     line through mid-grey, and a line steeper than 1 crosses zero *inside* the
+                     visible range -- everything below sRGB byte 44 was clamped to pure black at the
+                     Warren's authored 1.05, and below byte 72 at the Vault's 1.15. **The symptom is
+                     indistinguishable from a lighting bug**, and three engine-gate reviews found it
+                     as three different objects before one of them derived it from the shader. It is
+                     a power about the pivot now, which has the same slope at the pivot so an
+                     authored number keeps its meaning, and `contrast 1.0` is still the exact
+                     identity.
                      **Post-processing (ADR 0034)**: the cameras draw into an **HDR** target and a
                      post pass brings it down -- `Environment` is an asset the camera names by id,
                      holding exposure/tonemap/grade/vignette in an engine-defined order. Its file is
