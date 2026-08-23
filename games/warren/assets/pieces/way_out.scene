@@ -8,6 +8,7 @@ assets
   bulkhead_grey
   bulkhead_grey_normal
   bulkhead_grey_surface
+  bulkhead_lamp
   enamel_orange
   enamel_orange_normal
   enamel_orange_surface
@@ -15,7 +16,6 @@ assets
   fitting_steel_normal
   fitting_steel_surface
   fittings
-  ring_fitting
   sign_plate
   sign_rule
 
@@ -50,14 +50,23 @@ entity way_out "The way out"
       translation 0.0 1.2 0.0
     WayOut
 
+  entity head_lamp_lens "The lamp's lens, which is what makes the fixture visible"
+    Mesh
+      material "glow"
+      mesh "fitting_tube"
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 0.46 0.55 0.55
+      translation 0.0 2.5 0.42
+
   entity head_lamp "The lamp over the door"
     Mesh
       material "fittings"
-      mesh "ring_fitting"
+      mesh "bulkhead_lamp"
     Transform
       rotation 0.0 0.0 0.0
-      scale 0.8 0.8 0.8
-      translation 0.0 2.62 0.34
+      scale 1.0 1.0 1.0
+      translation 0.0 2.58 0.16
 
   entity head_lamp_light "What it throws down the door"
     SpotLight
@@ -70,9 +79,9 @@ entity way_out "The way out"
       shadow_resolution 1024
       shadows false
     Transform
-      rotation -68.0 0.0 0.0
+      rotation -48.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.0 2.5 0.34
+      translation 0.0 2.46 0.44
 
   entity threshold "The orange rule across the head of the door"
     Mesh

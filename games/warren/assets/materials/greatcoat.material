@@ -4,7 +4,7 @@ version 1
 entity material "The warden's greatcoat"
   Material
     alpha_mode Opaque
-    base_colour 1.0 1.0 1.0 1.0
+    base_colour 1.9 1.9 1.85 1.0
     base_colour_texture "coat_wool"
     emissive 0.0 0.0 0.0
     metallic 0.0

@@ -124,7 +124,7 @@ pub const TORCH: &str = "torch";
 /// **An eyeball number**, and the one that decides whether the room reads as dark-but-navigable or
 /// as a black screen with a white circle in it. The scene authors `intensity 0.0` and this replaces
 /// it, so "off" and "on" are one number in one place rather than two lights.
-pub const BEAM_INTENSITY: f32 = 9.0;
+pub const BEAM_INTENSITY: f32 = 12.0;
 
 /// How hard the hand lamp's housing spills onto what is beside you, when you are carrying it.
 ///
@@ -132,7 +132,7 @@ pub const BEAM_INTENSITY: f32 = 9.0;
 /// *falloff* on the lining within a few metres, which no ambient term can do. If it reads as a glow
 /// around the player, or as a corridor that is bright wherever you happen to stand, it is too high —
 /// at 4.2 it was both.
-pub const SPILL_INTENSITY: f32 = 3.0;
+pub const SPILL_INTENSITY: f32 = 2.6;
 
 /// The label [`carry_the_torch`] is registered under.
 pub const CARRY_THE_TORCH: &str = "carry_the_torch";

@@ -136,11 +136,13 @@ fn the_room_loads_and_the_player_is_first_person() {
     // blind cap, two fittings (housing + tube each), a section plate in three parts (surround,
     // plate, rule) plus its letter as a piece of its own, two bunk frames with two mattresses on one
     // of them, two crates, the torch, the key, the warden and the lamp it carries, and the door
-    // with the three things engine gate review 19 asked for around it -- the lamp over it, the
+    // with the four things two reviews asked for around it -- the lamp over it, **its lens**, the
     // orange rule across its head and the call plate beside it, which is what turns arriving at the
-    // way out into arriving somewhere. The lights themselves are not geometry, and the player has no
+    // way out into arriving somewhere. The lens is a separate entity because a `Mesh` carries one
+    // material and a housing that emits is a housing you cannot see: review 20 found the first
+    // version of this lamp reading as four unattached fragments, and the second as no fixture at all. The lights themselves are not geometry, and the player has no
     // body mesh -- in first person you would be standing inside it.
-    assert_eq!(app.world.query::<(&amadeo_render::Mesh,)>().count(), 34);
+    assert_eq!(app.world.query::<(&amadeo_render::Mesh,)>().count(), 35);
 }
 
 #[test]

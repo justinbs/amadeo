@@ -75,13 +75,13 @@ entity warden "The warden"
     SpotLight
       colour 0.5 0.72 0.62
       inner_angle 15.0
-      intensity 7.0
+      intensity 11.0
       outer_angle 34.0
       range 9.0
       shadow_bias 0.03
       shadow_resolution 1024
       shadows false
     Transform
-      rotation -34.0 0.0 0.0
+      rotation -18.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.34 -0.24 -0.14
+      translation 0.3 -0.34 0.26

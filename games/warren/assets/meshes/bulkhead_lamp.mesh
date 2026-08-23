@@ -1,0 +1,44 @@
+scene bulkhead_lamp
+version 1
+
+entity mesh "A lamp over a pressure door, built to read head-on"
+  CompoundMesh
+    parts
+      - position 0.0 0.0 0.05
+        solid Box
+          shape
+            size 0.36 0.3 0.1
+      - mirror true false false
+        position 0.14 0.11 0.005
+        solid Cylinder
+          shape
+            height 0.02
+            radius 0.018
+            sides 8
+            top_radius 0.018
+      - position 0.0 0.02 0.17
+        solid Box
+          shape
+            size 0.3 0.2 0.16
+      - position 0.0 0.15 0.2
+        rotation 22.0 0.0 0.0
+        solid Box
+          shape
+            size 0.42 0.035 0.24
+      - position 0.0 -0.06 0.26
+        solid Box
+          shape
+            size 0.26 0.09 0.04
+      - mirror true false false
+        position 0.07 -0.06 0.285
+        solid Box
+          shape
+            size 0.014 0.13 0.014
+      - position 0.0 -0.06 0.285
+        solid Box
+          shape
+            size 0.014 0.13 0.014
+      - position 0.0 -0.125 0.28
+        solid Box
+          shape
+            size 0.28 0.016 0.05
