@@ -133,10 +133,11 @@ fn the_room_loads_and_the_player_is_first_person() {
         "and the camera is the first-person rig, which no game had used before this one"
     );
     // Two bore sections (deck + crown), four side walls, two bulkheads, a cross-passage and its
-    // blind cap, two fittings (shade + tube each), a section plate in four parts (surround, plate,
-    // rule, letter), two bunk frames with two mattresses on one of them, two crates, the torch, the
-    // key, the door, the warden and the lamp it carries. The lights themselves are not geometry, and
-    // the player has no body mesh -- in first person you would be standing inside it.
+    // blind cap, two fittings (housing + tube each), a section plate in three parts (surround,
+    // plate, rule) plus its letter as a piece of its own, two bunk frames with two mattresses on one
+    // of them, two crates, the torch, the key, the door, the warden and the lamp it carries. The
+    // lights themselves are not geometry, and the player has no body mesh -- in first person you
+    // would be standing inside it.
     assert_eq!(app.world.query::<(&amadeo_render::Mesh,)>().count(), 31);
 }
 

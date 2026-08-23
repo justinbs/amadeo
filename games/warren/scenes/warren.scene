@@ -15,6 +15,7 @@ assets
   lost_key
   player_start
   room_lamp
+  section_letter_h
   section_sign
   warden_post
   way_out
@@ -86,6 +87,12 @@ entity fitting_far "Another, on the other side" from room_lamp
     translation 2.4 0.0 -3.2
 
 entity sign "The section plate" from section_sign
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 2.4 0.0 -4.4
+
+entity sign_letter "Section H" from section_letter_h
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0

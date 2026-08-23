@@ -650,9 +650,31 @@ fn render_surface_map(surface: &Surface) -> Canvas {
         let jitter = grain(surface.seed ^ 0x5B7D, u, v) * 0.05;
         // Worn metal is rougher than the paint that was on it, so exposure raises roughness as well
         // as changing the colour. Without this the rust reads as a decal rather than as a surface.
-        let roughness = surface.face_roughness
+        let mut roughness = surface.face_roughness
             + (surface.joint_roughness - surface.face_roughness) * joint.max(through)
             + jitter;
+
+        // **Damp and handling, which is what a flat roughness map is missing.**
+        //
+        // Engine gate review 16 probed all six of these textures and found roughness varying by at
+        // most six levels *within* any one of them, and occlusion a constant 255 in five of the six.
+        // Materials differed from each other and no material differed from itself, which is the
+        // standard tell: uniform roughness is what says "computer-generated", because the variation
+        // is the part that tells a story — water runs down, hands polish what they touch, dust
+        // settles in what faces up.
+        //
+        // Two low-frequency fields, unrelated to each other and to any lattice. `damp` makes broad
+        // wet patches *smoother*; `dust` makes broad settled patches *rougher* and darkens their
+        // occlusion, because dirt in a recess is exactly what an occlusion map is for. Both are
+        // deliberately larger than a plate, so the variation reads across a wall rather than as
+        // speckle on one piece.
+        let damp = noise::tiling(surface.seed ^ 0x0D_A3_71, u, v, 3) * 0.5 + 0.5;
+        let dust = noise::tiling(surface.seed ^ 0x0D_05_72, u, v, 5) * 0.5 + 0.5;
+        roughness += 0.20 * dust - 0.26 * damp;
+
+        // Dirt collects where the surface is already occluded and where it faces the settling; a
+        // clean face keeps its full 1.0 so nothing is darkened for its own sake.
+        let occlusion = occlusion * (1.0 - 0.28 * dust);
 
         maps::pack_orm(occlusion, roughness, surface.metallic)
     });

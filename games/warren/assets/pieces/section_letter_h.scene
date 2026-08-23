@@ -1,0 +1,24 @@
+scene section_letter_h
+version 1
+
+assets
+  fitting_steel
+  fitting_steel_normal
+  fitting_steel_surface
+  fittings
+  letter_h
+
+entity section_letter "Section H"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+  entity letter "The letter"
+    Mesh
+      material "fittings"
+      mesh "letter_h"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -0.31 1.63 0.0

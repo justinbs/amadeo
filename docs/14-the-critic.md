@@ -431,3 +431,42 @@ ramp, then a bold `F` — showed the plate sampling about half of `u`. The lette
 rather than a picture; see `finishes.rs`'s `sign_colour` for why that is a retreat and not a fix.
 
 Item 24 stays 🟡. Its eight ordered changes are what session 23's second half built.
+
+### Review 16 — engine gate — `3c77a69` — item 24, third pass — **NOT POLISHED**
+
+Seven frames at 1920 × 1080 plus the other four games, seven crops, ~55 probes, six row/column
+profiles, three controlled A/Bs, both measurements recounted, and one number re-derived from the
+collection pass. It called the remainder *"a near miss with a short, concrete remainder"* and
+credited ten things on measurement, of which the ones worth carrying forward are:
+
+- **"It is a tunnel"**, and the pitch-up frame *"the best frame this project has produced"*.
+- **Real pools with real dark between them.** It had formed the opposite impression from the
+  histogram and the profiles refuted it: row 470 is bimodal with genuine zeros between the pools.
+  *"Withdrawn."*
+- **The warm/cold split works**: hand-lamp pool R−B = +22, fitting pool G−R = +13, same frame.
+- **The measurements are honest** — no drift in either direction, which §3 #6 exists because of.
+
+**What it failed the item on**, and all of it landed in the same session:
+
+- **Fourteen signs, every one saying H.** The largest defect in the game, and one the submission had
+  claimed as answered — moving the letter into geometry made a per-section letter *possible* and did
+  not deliver it. `docs/11` §2 makes the alphabetical naval scheme the thing that lets a player
+  orient with no map; fourteen identical letters do not fail to solve that, they invert it.
+- **Nothing had a fill light.** Three authored objects rendering at exactly `RGB(0,0,0)`: a 20 cm
+  skirting kerb as a hard black band across every frame, the fitting housing, the sign surround. It
+  suspected a metallic material, A/B'd it, **withdrew**, and A/B'd the ambient instead.
+- **Every material had flat roughness and flat occlusion** — varying by at most six levels inside any
+  one texture, with occlusion a constant 255 in five of six. *"Materials differed from each other and
+  no material differed from itself."*
+- **The fitting's cone was a 136° flood**, so the pool had no edge: 138 → 100 over 500 px.
+- **Only one place in the game can be photographed** — `moment.rs` snapshots the player start and
+  nothing else, so no reviewer can see the key, the way out, or two of the three conditions.
+
+**And one self-correction worth recording**, because it is the mechanism working: it called the
+lining's rust *"the same airbrushed blob repeated"* from the render, opened the PNG, found the
+staining runs downward from the bolts the way water actually does, and withdrew — while keeping the
+real finding, which is that it is executed at a tenth of the contrast it needs to survive being lit.
+
+**On the sign it split the verdict**, and correctly: the method is right and it accepted it, but
+*"moving the letter into geometry is only worth the trade because it makes a different letter per
+section trivial — that is the entire payoff, and it was not taken."*

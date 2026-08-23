@@ -1,7 +1,7 @@
 scene sign_frame
 version 1
 
-entity mesh "The pressed steel surround of a section plate"
+entity mesh "The pressed steel surround and bracket of a section plate"
   CompoundMesh
     parts
       - mirror false true false
@@ -23,3 +23,12 @@ entity mesh "The pressed steel surround of a section plate"
             radius 0.016
             sides 6
             top_radius 0.013
+      - mirror false true false
+        position 0.36 0.19 0.0
+        solid Box
+          shape
+            size 0.09 0.032 0.032
+      - position 0.412 0.0 0.0
+        solid Box
+          shape
+            size 0.024 0.44 0.05

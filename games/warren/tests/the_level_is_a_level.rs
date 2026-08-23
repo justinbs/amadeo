@@ -310,6 +310,64 @@ fn no_two_sections_next_to_each_other_are_in_the_same_condition() {
 }
 
 #[test]
+fn no_two_sections_next_to_each_other_carry_the_same_letter() {
+    // **`docs/11` §5.4's wayfinding system, and the reason it is not decoration.** That section is
+    // explicit that a player who sees a letter learns nothing unless the letters are *ordered along
+    // the route* — so a section's letter is its distance from the start, modulo the alphabet.
+    //
+    // Engine gate review 16 found fourteen signs in the shipped level and one letter mesh between
+    // them: every plate said `H`. It called that worse than no sign at all, because a player who
+    // reads the same letter at the second junction learns in one glance that the world is machine-
+    // assembled — my brief's second question, answered on the wall in 300 mm characters.
+    //
+    // The adjacency property is by construction rather than by search: a grid is bipartite, so two
+    // cells sharing a door always differ in breadth-first distance by exactly one. This asserts it
+    // anyway, across many seeds, because "by construction" is a claim about an argument and this is
+    // a claim about the output.
+    for seed in 0..48u64 {
+        let layout = lay_out(seed, 14);
+        for room in &layout.rooms {
+            let here = warren::section_index(&layout, room.cell);
+            for side in Side::ALL {
+                let at = side.step(room.cell);
+                if layout.at(at).is_none() {
+                    continue;
+                }
+                assert_ne!(
+                    here,
+                    warren::section_index(&layout, at),
+                    "seed {seed}: {:?} and {:?} both carry {}",
+                    room.cell,
+                    at,
+                    warren::SECTION_LETTERS[here]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn the_shipped_level_shows_more_than_one_letter() {
+    // The control. A generator that returned the same index everywhere would satisfy nothing above
+    // if the level were a straight line, and this is the assertion review 16 actually asked for:
+    // **two different sections show two different letters.**
+    let layout = shipped();
+    let mut seen: Vec<usize> = layout
+        .rooms
+        .iter()
+        .map(|room| warren::section_index(&layout, room.cell))
+        .collect();
+    seen.sort_unstable();
+    seen.dedup();
+    assert!(
+        seen.len() >= 3,
+        "the shipped level uses only {} of {} section letters",
+        seen.len(),
+        warren::SECTION_LETTERS.len()
+    );
+}
+
+#[test]
 fn every_condition_is_used_somewhere() {
     // The control for the test above, which a generator that gave every room a *different* condition
     // by cycling blindly would also pass — and which one that only ever used two would pass as well,

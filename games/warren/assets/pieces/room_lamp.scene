@@ -2,11 +2,11 @@ scene room_lamp
 version 1
 
 assets
-  bulkhead
-  bulkhead_grey
-  bulkhead_grey_normal
-  bulkhead_grey_surface
+  fitting_steel
+  fitting_steel_normal
+  fitting_steel_surface
   fitting_tube
+  fittings
   glow
   ring_fitting
 
@@ -18,7 +18,7 @@ entity room_lamp "A fitting still on the circuit"
 
   entity body "Shade and bracket"
     Mesh
-      material "bulkhead"
+      material "fittings"
       mesh "ring_fitting"
     Transform
       rotation 0.0 0.0 0.0
@@ -37,9 +37,9 @@ entity room_lamp "A fitting still on the circuit"
   entity bulb "What it throws"
     SpotLight
       colour 0.58 0.78 0.68
-      inner_angle 34.0
+      inner_angle 17.0
       intensity 7.0
-      outer_angle 68.0
+      outer_angle 33.0
       range 7.5
       shadow_bias 0.03
       shadow_resolution 1024

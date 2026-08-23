@@ -1,0 +1,26 @@
+scene letter_m
+version 1
+
+entity mesh "The section letter M, cut as a stencil and read from both sides"
+  CompoundMesh
+    parts
+      - mirror false false true
+        position -0.07 0.0 0.015
+        solid Box
+          shape
+            size 0.038 0.2 0.008
+      - mirror false false true
+        position 0.07 0.0 0.015
+        solid Box
+          shape
+            size 0.038 0.2 0.008
+      - mirror false false true
+        position 0.0 0.03 0.015
+        solid Box
+          shape
+            size 0.038 0.14 0.008
+      - mirror false false true
+        position 0.0 0.081 0.015
+        solid Box
+          shape
+            size 0.178 0.038 0.008

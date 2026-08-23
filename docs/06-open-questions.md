@@ -811,6 +811,45 @@ whichever option wins has to run *before* `generate_tangents` rather than after.
 
 ---
 
+## Q43 · P2 · A box face's texture axes do not run the way its sides do
+
+**New in session 23, found by engine gate review 15 and left undiagnosed on purpose.** A section
+plate — one `Box` part of 0.96 × 0.48 m in a `CompoundMesh`, with a material whose `uv_scale` is the
+reciprocal of each side — showed a crisp black `⊢` where the texture holds a clean `H`. Three
+diagnostics narrowed it and none of them closed it:
+
+- a **ten-band ruler** across `u` showed the plate carrying roughly two bands;
+- a **grey ramp** in `u` alone showed about six of ten steps across the plate;
+- a **bold `F`** filling the tile came out cropped rather than rotated or mirrored.
+
+The consistent reading is that the face samples **about half of `u`** where
+`extent = [size[0], size[1]]` and `uv = corner * extent * uv_scale` predicts exactly one copy, and
+that `v` maps as expected. Single-pixel edges rule out mip or anisotropic filtering as the cause.
+
+### Why it is a question rather than a bug report
+
+It was **worked around rather than fixed**: the letter and the rule became geometry
+(`letter_h.mesh`, `sign_rule.mesh`), which is a better artefact anyway — legible from any angle, and
+a second section is a second small `.mesh` rather than a second 512² picture. Review 16 accepted the
+method and said the debt should be recorded rather than retired with the workaround, which is what
+this entry is.
+
+### What it will cost when it bites
+
+**Any placed feature on a box face**: a decal, a stencilled number, a warning panel, a poster, a
+label on a crate. Anything tiling is unaffected, which is why every material in the repository looks
+right — noise does not care where it lands. The next time something must appear *at a place* on a
+box, this has to be solved first.
+
+### Where to start
+
+`BoxMesh::tessellate` in `crates/amadeo-render/src/mesh.rs` — the `corners` table is shared across
+all six faces, and the suspicion is that its `uv` pairs do not correspond to `extent`'s ordering for
+every face orientation. A unit test that tessellates a 2 × 1 box and asserts the `+Z` face's `u`
+spans 0..2 and `v` spans 0..1 would settle it in one run, with no renderer involved.
+
+---
+
 ## Q42 · P2 · Nothing warns when a clip overrides a value a scene file authors
 
 **New in session 22, found by engine gate review 13, and it cost a whole commit before anyone

@@ -60,7 +60,23 @@ const BELOW: [f32; 3] = [0.020, 0.016, 0.012];
 ///
 /// **The one number to change if the Warren is too dark or not dark enough**, and the one that
 /// decides whether the torch matters. Everything above is a ratio; this is the level.
-const LEVEL: f32 = 5.0;
+///
+/// # Raised 5.0 → 8.0 in session 23, and the reason is measured rather than felt
+///
+/// Engine gate review 16 found three separate authored objects rendering at literally `RGB(0, 0, 0)`
+/// — a 20 cm skirting kerb running the full width of every frame as a hard black band, the fitting's
+/// housing, and the sign's surround. It suspected a metallic material, A/B'd that (7.9% of pixels,
+/// max 23 levels, every zero still zero), **withdrew**, and A/B'd the ambient instead: lifting it
+/// turned the kerb from 23 flat rows of zero into a graded top face and under-edge.
+///
+/// So the geometry was not missing and the materials were not wrong. There was nothing for a surface
+/// facing away from every light to reflect. `docs/11` §1 quotes Frictional on exactly this: pitch
+/// black is *not* effective, and what works is a carried source, **a little ambient**, and fog that
+/// thickens with distance. This game had the first and the third.
+///
+/// The mood survives it, which is the part worth checking rather than assuming: the unlit direction
+/// still peaks below 140 and keeps better than a seventh of the frame under luma 16.
+const LEVEL: f32 = 8.0;
 
 fn main() {
     let out = manifest_dir().join("assets/skies");

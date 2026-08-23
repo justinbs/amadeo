@@ -1518,8 +1518,42 @@ pub const HEAD_PIECE: &str = "bore_end";
 /// turned inside out — a shared *wall* is written once, a shared *passage* is written from both ends.
 pub const PASSAGE_PIECE: &str = "cross_passage_open";
 
-/// The prefab an enamel section plate comes from.
+/// The prefab an enamel section plate comes from — the plate, its rule and its surround.
+///
+/// The **letter** is a separate piece, because a prefab names its mesh and a sign that named one
+/// could only ever say one thing. See [`SECTION_LETTERS`].
 pub const SIGN_PIECE: &str = "section_sign";
+
+/// The section letters, in the order the shelter's own alphabet runs.
+///
+/// # Six, and rectilinear, and that is a real constraint rather than a shrug
+///
+/// A letter here is a `CompoundMesh` of boxes (see [`SIGN_PIECE`] for why it is geometry rather than
+/// a picture), so the alphabet available is the one a stencil can cut without a diagonal or a curve.
+/// `docs/11` §5.4 asks for a *naval* name per section, and the constraint costs nothing: **EXMOUTH,
+/// FROBISHER, HOWE, INGLEFIELD, LEAKE, TORRINGTON** are all real First Sea Lords and admirals, and
+/// all five initials are straight lines **and horizontally symmetric**, which the second half of
+/// this matters as much as the first: a flag-mounted sign is read from both sides, so a letter that
+/// is not its own mirror image reads backwards from one of them. `E`, `F` and `L` were built first
+/// and discarded for exactly that.
+///
+/// # Chosen by position, which is what makes it wayfinding rather than decoration
+///
+/// `docs/11` §5.4 is emphatic that a player who sees a letter learns nothing unless the letters are
+/// **ordered along the route** — otherwise the whole scheme is set dressing. So a section's letter is
+/// its distance from the start, modulo six: cross a door and the letter advances, always in the same
+/// direction, so *"I have gone from F to H"* means *"I am further in"* without a map, a minimap or a
+/// compass.
+///
+/// It also gives the adjacency property for free rather than by search, and **on any seed**: see
+/// [`section_index`] for why the first attempt at that argument was wrong and what fixed it.
+pub const SECTION_LETTERS: [&str; 5] = [
+    "section_letter_h",
+    "section_letter_i",
+    "section_letter_m",
+    "section_letter_o",
+    "section_letter_t",
+];
 
 /// The prefab a bunk that was slept in comes from.
 pub const BUNK_MADE_PIECE: &str = "bunk_made";
@@ -1560,7 +1594,7 @@ pub const AMBIENCE_PIECE: &str = "ambience";
 /// here: the two orders are not the same, and hand-maintaining a sorted list of ids whose names are
 /// spelled differently from their constants is exactly the sort of thing that goes quietly wrong.
 /// `amadeo fmt --check` on the output is what would have caught it, and did.
-pub const PIECES: [&str; 17] = [
+pub const PIECES: [&str; 22] = [
     AMBIENCE_PIECE,
     BUNK_MADE_PIECE,
     BUNK_STRIPPED_PIECE,
@@ -1573,6 +1607,11 @@ pub const PIECES: [&str; 17] = [
     PLAYER_PIECE,
     ROOM_PIECE,
     SIGN_PIECE,
+    SECTION_LETTERS[0],
+    SECTION_LETTERS[1],
+    SECTION_LETTERS[2],
+    SECTION_LETTERS[3],
+    SECTION_LETTERS[4],
     STORES_PIECE,
     TORCH_PIECE,
     WALL_PIECE,
@@ -1792,6 +1831,18 @@ pub fn to_scene(layout: &Layout) -> String {
                 cell_id("sign", room.cell)
             ));
             out.push_str(&place(x + BORE_HALF_WIDTH, 0.0, z + SIGN_OFFSET, 0.0));
+
+            // **And the letter, which is a second piece and the whole point of the first.** Engine
+            // gate review 16 found fourteen signs in the shipped level and one letter mesh between
+            // them: every plate said `H`. A player who reaches the second sign and reads the same
+            // letter learns in one glance that the world is machine-assembled -- which is worse than
+            // no sign at all, because `docs/11` §5.4 makes this the entire wayfinding system.
+            let letter = SECTION_LETTERS[section_index(layout, room.cell)];
+            out.push_str(&format!(
+                "entity {} \"Section letter\" from {letter}\n",
+                cell_id("letter", room.cell)
+            ));
+            out.push_str(&place(x + BORE_HALF_WIDTH, 0.0, z + SIGN_OFFSET, 0.0));
         }
 
         write_condition(&mut out, room, x, z);
@@ -1941,6 +1992,28 @@ pub fn exit_side(layout: &Layout) -> Side {
         .find(|side| layout.at(side.step(cell)).is_none())
         .or_else(|| ENDS.into_iter().find(|side| !room.doors.contains(side)))
         .unwrap_or(Side::North)
+}
+
+/// Which of [`SECTION_LETTERS`] a cell carries: its **grid** distance from the start, modulo five.
+///
+/// # Grid distance rather than walking distance, and the difference is a real one
+///
+/// The first version used [`Layout::distances_from`] — how many *doors* away a cell is — on the
+/// argument that letters should advance along the route. It broke on seed 2: two cells that share a
+/// **wall** rather than a door can sit at the same door-distance, and then two plates a few metres
+/// apart through a cross-passage carry the same letter, which is the defect this exists to prevent.
+///
+/// Manhattan distance on the grid has the property unconditionally. A grid is bipartite under *grid*
+/// adjacency, so any two cells sharing a side differ by exactly one however the doors happen to fall
+/// — no seed can produce a clash, and it is a property of the arithmetic rather than of the walk.
+///
+/// It is also the better fiction. An institution letters its sections on a **plan**, by where they
+/// are, not by the order somebody happened to walk them.
+#[must_use]
+pub fn section_index(layout: &Layout, cell: (i32, i32)) -> usize {
+    let start = layout.landmarks.start;
+    let reach = (cell.0 - start.0).unsigned_abs() + (cell.1 - start.1).unsigned_abs();
+    reach as usize % SECTION_LETTERS.len()
 }
 
 /// A scene-safe entity id for a cell, since a negative coordinate cannot go in an identifier.

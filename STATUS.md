@@ -114,10 +114,45 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > by their place in the world, not by the type of component they carry**; "the only one" is a
 > property of today's content, not of the system. (`docs/07`.)
 >
+> #### Review 16 then called it "a near miss with a short, concrete remainder"
+>
+> It credited ten things on measurement — *"it is a tunnel"*, the pitch-up frame as *"the best frame
+> this project has produced"*, real pools with real dark between them (an impression it had formed
+> from the histogram and then **withdrew** when the profiles refuted it), the warm/cold split
+> working at R−B = +22 against G−R = +13 in one frame, and both measurements honest. Then it failed
+> the item on five things, all of which landed:
+>
+> - **Fourteen signs and every one said H.** The submission had claimed this answered; moving the
+>   letter into geometry made a per-section letter *possible* and did not deliver one. There are five
+>   now — H, I, M, O, T — chosen by grid distance from the start, so the alphabet advances outward and
+>   two adjacent sections can never match on any seed.
+> - **Nothing had a fill light.** Three authored objects at exactly `RGB(0,0,0)`. The critic suspected
+>   a metallic material, A/B'd it, **withdrew**, and A/B'd the ambient instead — `gloom.rs`'s `LEVEL`
+>   was 5.0 and is 8.0.
+> - **Every material had flat roughness and flat occlusion** — six levels of variation inside any one
+>   texture. Damp and dust fields now drive both.
+> - **The fitting's cone was a 136° flood**, so its pool had no edge. Narrowed; the deck now falls 40
+>   levels in 40 px at the boundary.
+> - **The sign collapsed at a grazing angle.** It is flag-mounted now, projecting from the wall and
+>   readable from both directions the way a tunnel sign actually is.
+>
+> #### Two things worth carrying
+>
+> **A double-sided sign needs a symmetric alphabet.** E, F and L were built first and read backwards
+> from one side; mirroring geometry mirrors the letter. H, I, M, O and T are their own mirror images,
+> which is why the alphabet is those five — and they are still real admirals in alphabetical order.
+>
+> **`bulkhead` is dark enough to read as a hole.** The fitting housing went from 34.6% of its
+> rectangle below luma 16 to **1.0%** on a material swap alone, with no geometry change. If something
+> renders as a silhouette, check its albedo before its normals.
+>
 > #### What is next
 >
 > `docs/13` §1 still carries review 13's order. Items 31 and 24 are both 🟡 — **item 24 has now been
-> through two reviews and has not passed**; a third is the next thing to send. After it: **item 21**'s
+> through three reviews and has not passed**, though review 16 called the remainder short. Two of its
+> eight are deliberately not done: **a second photographable moment** (`moment.rs` snapshots only the
+> player start, so no reviewer can see the key or the way out — this is item 31's real close
+> condition and it was closed short of it), and **the warden**, which still walks through walls. After it: **item 21**'s
 > screen-space occlusion half, **item 22**'s shadow-edge dithering, and **item 15**'s title screen.
 >
 > **One thing review 15 declined to credit and was right to:** the warden was kept out of the

@@ -1,0 +1,16 @@
+scene letter_t
+version 1
+
+entity mesh "The section letter T, cut as a stencil and read from both sides"
+  CompoundMesh
+    parts
+      - mirror false false true
+        position 0.0 0.0 0.015
+        solid Box
+          shape
+            size 0.038 0.2 0.008
+      - mirror false false true
+        position 0.0 0.081 0.015
+        solid Box
+          shape
+            size 0.162 0.038 0.008

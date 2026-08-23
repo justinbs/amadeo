@@ -1,7 +1,7 @@
-scene letter_h
+scene letter_o
 version 1
 
-entity mesh "The section letter H, cut as a stencil and read from both sides"
+entity mesh "The section letter O, cut as a stencil and read from both sides"
   CompoundMesh
     parts
       - mirror false false true
@@ -15,7 +15,12 @@ entity mesh "The section letter H, cut as a stencil and read from both sides"
           shape
             size 0.038 0.2 0.008
       - mirror false false true
-        position 0.0 0.0 0.015
+        position 0.0 0.081 0.015
         solid Box
           shape
-            size 0.086 0.038 0.008
+            size 0.162 0.038 0.008
+      - mirror false false true
+        position 0.0 -0.081 0.015
+        solid Box
+          shape
+            size 0.162 0.038 0.008
