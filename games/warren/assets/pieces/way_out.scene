@@ -15,7 +15,9 @@ assets
   fitting_steel
   fitting_steel_normal
   fitting_steel_surface
+  fitting_tube
   fittings
+  glow
   sign_plate
   sign_rule
 
@@ -56,8 +58,8 @@ entity way_out "The way out"
       mesh "fitting_tube"
     Transform
       rotation 0.0 90.0 0.0
-      scale 0.46 0.55 0.55
-      translation 0.0 2.5 0.42
+      scale 0.95 1.15 1.15
+      translation 0.0 2.5 0.3
 
   entity head_lamp "The lamp over the door"
     Mesh

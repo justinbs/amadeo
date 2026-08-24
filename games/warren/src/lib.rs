@@ -1579,7 +1579,10 @@ const HEAD_INSET: f32 = 0.125;
 pub const ROOM_PIECE: &str = "bore_section";
 
 /// The prefab a side wall with a cross-passage through it comes from.
-pub const DOORWAY_PIECE: &str = "bore_wall_open";
+pub const DOORWAY_PIECE_A: &str = "bore_wall_open_a";
+
+/// The same wall with its passage cut south of centre. See [`doorway_piece`].
+pub const DOORWAY_PIECE_B: &str = "bore_wall_open_b";
 
 /// The prefab a blank side wall comes from.
 pub const WALL_PIECE: &str = "bore_wall";
@@ -1599,6 +1602,68 @@ pub const PASSAGE_PIECE: &str = "cross_passage_open";
 /// The **letter** is a separate piece, because a prefab names its mesh and a sign that named one
 /// could only ever say one thing. See [`SECTION_LETTERS`].
 pub const SIGN_PIECE: &str = "section_sign";
+
+/// How far along the bore a cross-passage is cut from the middle of its wall, in metres.
+///
+/// # `docs/11` §5.3's one prohibition, and why it was being broken by arithmetic
+///
+/// *"Never let a straight run be visible end to end."* Every bore runs north–south and a passage goes
+/// east–west between two of them, and `bore_side_open` was built with a **mirror about its own
+/// middle** — so every aperture in the level sat at the same offset along its bore, three cells
+/// joined east–west lined their openings up exactly, and a player saw through all of them.
+///
+/// Engine gate review 20 called the result *"the worst frame in the game"*: eight identical, evenly
+/// spaced door frames receding to a vanishing point. Review 22 confirmed the diagnosis and pointed
+/// out that the fix is the same four boxes with the `mirror` flag dropped — which is what
+/// `bore_side_open_a` and `_b` are.
+///
+/// **A door-graph fix was tried first and reverted.** Closing one door of a straight run is cheaper,
+/// but fourteen doors over fourteen rooms is a spanning tree plus one edge, so nearly every closure
+/// disconnects the level and the connectivity check put every door straight back — the generated
+/// scene came out byte-identical. A `collapse` dropped in the aperture was the other suggestion and
+/// does not work either: its collider is 3.4 m wide and 1.2 m tall, sized for a 4.8 m bore, so in a
+/// 2 m passage it does not break a sightline, it walls the level off.
+///
+/// **1.4 m either way is a 2.8 m stagger over a 12 m pitch** — about 13° off the axis, enough that a
+/// player standing in one aperture cannot see through the next but one.
+pub const PASSAGE_STAGGER: f32 = 1.4;
+
+/// Which way this boundary's passage is offset, **keyed off the boundary rather than the cell**.
+///
+/// A passage is written by both of the cells it joins, so the two have to reach the same answer or
+/// half a tube meets a wall. Keying off the western cell of the pair gives that for free: the east
+/// wall of `(i, j)` and the west wall of `(i + 1, j)` both hash `(i, j)`.
+#[must_use]
+pub fn passage_stagger(cell: (i32, i32), side: Side) -> f32 {
+    let key = match side {
+        Side::West => (cell.0 - 1, cell.1),
+        // North and south are bulkheads rather than passages, so the value is never used there.
+        _ => cell,
+    };
+    if (key.0 + key.1).rem_euclid(2) == 0 {
+        PASSAGE_STAGGER
+    } else {
+        -PASSAGE_STAGGER
+    }
+}
+
+/// The wall piece whose aperture lands on `stagger` once the wall is turned to face the bore.
+///
+/// **The west wall is the same piece turned about**, so its local `+z` points along world `−z`. A
+/// mesh cut at local +1.4 lands at −1.4 when it is used as a west wall, and the two halves of one
+/// boundary would miss each other by 2.8 m. The turn is undone here.
+#[must_use]
+pub fn doorway_piece(stagger: f32, side: Side) -> &'static str {
+    let north_of_centre = match side {
+        Side::West => stagger < 0.0,
+        _ => stagger > 0.0,
+    };
+    if north_of_centre {
+        DOORWAY_PIECE_A
+    } else {
+        DOORWAY_PIECE_B
+    }
+}
 
 /// The section letters, in the order the shelter's own alphabet runs.
 ///
@@ -1693,11 +1758,12 @@ pub const AMBIENCE_PIECE: &str = "ambience";
 /// here: the two orders are not the same, and hand-maintaining a sorted list of ids whose names are
 /// spelled differently from their constants is exactly the sort of thing that goes quietly wrong.
 /// `amadeo fmt --check` on the output is what would have caught it, and did.
-pub const PIECES: [&str; 26] = [
+pub const PIECES: [&str; 27] = [
     AMBIENCE_PIECE,
     BUNK_MADE_PIECE,
     BUNK_STRIPPED_PIECE,
-    DOORWAY_PIECE,
+    DOORWAY_PIECE_A,
+    DOORWAY_PIECE_B,
     HEAD_PIECE,
     HUD_PIECE,
     KEY_PIECE,
@@ -1887,8 +1953,11 @@ pub fn to_scene(layout: &Layout) -> String {
         // 2 m passage and leaves the level open around it, which needs a piece nothing else wants.
         for side in [Side::East, Side::West] {
             let open = room.doors.contains(&side);
+            // **Which way this boundary's passage is staggered**, and both cells must agree. The piece
+            // is chosen so that after the west wall's half turn the two apertures land on one world z.
+            let stagger = passage_stagger(room.cell, side);
             let (piece, label) = if open {
-                (DOORWAY_PIECE, "Wall with a passage")
+                (doorway_piece(stagger, side), "Wall with a passage")
             } else {
                 (WALL_PIECE, "Wall")
             };
@@ -1912,7 +1981,10 @@ pub fn to_scene(layout: &Layout) -> String {
                     "entity {} \"Cross-passage\" from {PASSAGE_PIECE}\n",
                     cell_id(&format!("passage_{}", side_name(side)), room.cell)
                 ));
-                out.push_str(&place(dx, 0.0, z, turn));
+                // The tube follows its own aperture. The wall cannot be shifted -- it is 12 m
+                // long and moving it would open a gap at one end -- so the *mesh* carries the
+                // offset, and this, which is a free-standing tube, is simply placed at it.
+                out.push_str(&place(dx, 0.0, z + stagger, turn));
             }
         }
 

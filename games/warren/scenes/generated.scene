@@ -7,7 +7,8 @@ assets
   bore_end
   bore_section
   bore_wall
-  bore_wall_open
+  bore_wall_open_a
+  bore_wall_open_b
   bunk_made
   bunk_stripped
   collapsed
@@ -35,7 +36,7 @@ entity bore_0_0 "Bore" from bore_section
     scale 1.0 1.0 1.0
     translation 0.0 0.0 0.0
 
-entity wall_east_0_0 "Wall with a passage" from bore_wall_open
+entity wall_east_0_0 "Wall with a passage" from bore_wall_open_a
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -45,7 +46,7 @@ entity passage_east_0_0 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 2.4 0.0 0.0
+    translation 2.4 0.0 1.4
 
 entity wall_west_0_0 "Wall" from bore_wall
   override Transform
@@ -107,7 +108,7 @@ entity bore_1_n2 "Bore" from bore_section
     scale 1.0 1.0 1.0
     translation 12.0 0.0 -24.0
 
-entity wall_east_1_n2 "Wall with a passage" from bore_wall_open
+entity wall_east_1_n2 "Wall with a passage" from bore_wall_open_b
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -117,7 +118,7 @@ entity passage_east_1_n2 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 14.4 0.0 -24.0
+    translation 14.4 0.0 -25.4
 
 entity wall_west_1_n2 "Wall" from bore_wall
   override Transform
@@ -173,7 +174,7 @@ entity bore_1_n1 "Bore" from bore_section
     scale 1.0 1.0 1.0
     translation 12.0 0.0 -12.0
 
-entity wall_east_1_n1 "Wall with a passage" from bore_wall_open
+entity wall_east_1_n1 "Wall with a passage" from bore_wall_open_a
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -183,7 +184,7 @@ entity passage_east_1_n1 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 14.4 0.0 -12.0
+    translation 14.4 0.0 -10.6
 
 entity wall_west_1_n1 "Wall" from bore_wall
   override Transform
@@ -233,7 +234,7 @@ entity wall_east_1_0 "Wall" from bore_wall
     scale 1.0 1.0 1.0
     translation 14.4 0.0 0.0
 
-entity wall_west_1_0 "Wall with a passage" from bore_wall_open
+entity wall_west_1_0 "Wall with a passage" from bore_wall_open_b
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
@@ -243,7 +244,7 @@ entity passage_west_1_0 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 9.6 0.0 0.0
+    translation 9.6 0.0 1.4
 
 entity head_south_1_0 "Bulkhead" from bore_end
   override Transform
@@ -293,7 +294,7 @@ entity wall_east_2_n2 "Wall" from bore_wall
     scale 1.0 1.0 1.0
     translation 26.4 0.0 -24.0
 
-entity wall_west_2_n2 "Wall with a passage" from bore_wall_open
+entity wall_west_2_n2 "Wall with a passage" from bore_wall_open_a
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
@@ -303,7 +304,7 @@ entity passage_west_2_n2 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 21.6 0.0 -24.0
+    translation 21.6 0.0 -25.4
 
 entity head_north_2_n2 "Bulkhead" from bore_end
   override Transform
@@ -353,7 +354,7 @@ entity wall_east_2_n1 "Wall" from bore_wall
     scale 1.0 1.0 1.0
     translation 26.4 0.0 -12.0
 
-entity wall_west_2_n1 "Wall with a passage" from bore_wall_open
+entity wall_west_2_n1 "Wall with a passage" from bore_wall_open_b
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
@@ -363,7 +364,7 @@ entity passage_west_2_n1 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 21.6 0.0 -12.0
+    translation 21.6 0.0 -10.6
 
 entity fitting0_2_n1 "Fitting" from room_lamp
   override Transform
@@ -407,7 +408,7 @@ entity bore_2_0 "Bore" from bore_section
     scale 1.0 1.0 1.0
     translation 24.0 0.0 0.0
 
-entity wall_east_2_0 "Wall with a passage" from bore_wall_open
+entity wall_east_2_0 "Wall with a passage" from bore_wall_open_a
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -417,7 +418,7 @@ entity passage_east_2_0 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 26.4 0.0 0.0
+    translation 26.4 0.0 1.4
 
 entity wall_west_2_0 "Wall" from bore_wall
   override Transform
@@ -473,7 +474,7 @@ entity bore_3_0 "Bore" from bore_section
     scale 1.0 1.0 1.0
     translation 36.0 0.0 0.0
 
-entity wall_east_3_0 "Wall with a passage" from bore_wall_open
+entity wall_east_3_0 "Wall with a passage" from bore_wall_open_b
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -483,9 +484,9 @@ entity passage_east_3_0 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 38.4 0.0 0.0
+    translation 38.4 0.0 -1.4
 
-entity wall_west_3_0 "Wall with a passage" from bore_wall_open
+entity wall_west_3_0 "Wall with a passage" from bore_wall_open_b
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
@@ -495,7 +496,7 @@ entity passage_west_3_0 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 33.6 0.0 0.0
+    translation 33.6 0.0 1.4
 
 entity head_north_3_0 "Bulkhead" from bore_end
   override Transform
@@ -551,7 +552,7 @@ entity bore_4_0 "Bore" from bore_section
     scale 1.0 1.0 1.0
     translation 48.0 0.0 0.0
 
-entity wall_east_4_0 "Wall with a passage" from bore_wall_open
+entity wall_east_4_0 "Wall with a passage" from bore_wall_open_a
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -561,9 +562,9 @@ entity passage_east_4_0 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 50.4 0.0 0.0
+    translation 50.4 0.0 1.4
 
-entity wall_west_4_0 "Wall with a passage" from bore_wall_open
+entity wall_west_4_0 "Wall with a passage" from bore_wall_open_a
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
@@ -573,7 +574,7 @@ entity passage_west_4_0 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 45.6 0.0 0.0
+    translation 45.6 0.0 -1.4
 
 entity head_north_4_0 "Bulkhead" from bore_end
   override Transform
@@ -629,7 +630,7 @@ entity wall_east_5_0 "Wall" from bore_wall
     scale 1.0 1.0 1.0
     translation 62.4 0.0 0.0
 
-entity wall_west_5_0 "Wall with a passage" from bore_wall_open
+entity wall_west_5_0 "Wall with a passage" from bore_wall_open_b
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
@@ -639,7 +640,7 @@ entity passage_west_5_0 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 57.6 0.0 0.0
+    translation 57.6 0.0 1.4
 
 entity head_north_5_0 "Bulkhead" from bore_end
   override Transform
@@ -683,7 +684,7 @@ entity bore_5_1 "Bore" from bore_section
     scale 1.0 1.0 1.0
     translation 60.0 0.0 12.0
 
-entity wall_east_5_1 "Wall with a passage" from bore_wall_open
+entity wall_east_5_1 "Wall with a passage" from bore_wall_open_a
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -693,7 +694,7 @@ entity passage_east_5_1 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 62.4 0.0 12.0
+    translation 62.4 0.0 13.4
 
 entity wall_west_5_1 "Wall" from bore_wall
   override Transform
@@ -743,7 +744,7 @@ entity bore_5_2 "Bore" from bore_section
     scale 1.0 1.0 1.0
     translation 60.0 0.0 24.0
 
-entity wall_east_5_2 "Wall with a passage" from bore_wall_open
+entity wall_east_5_2 "Wall with a passage" from bore_wall_open_b
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -753,7 +754,7 @@ entity passage_east_5_2 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 62.4 0.0 24.0
+    translation 62.4 0.0 22.6
 
 entity wall_west_5_2 "Wall" from bore_wall
   override Transform
@@ -821,7 +822,7 @@ entity wall_east_6_1 "Wall" from bore_wall
     scale 1.0 1.0 1.0
     translation 74.4 0.0 12.0
 
-entity wall_west_6_1 "Wall with a passage" from bore_wall_open
+entity wall_west_6_1 "Wall with a passage" from bore_wall_open_b
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
@@ -831,7 +832,7 @@ entity passage_west_6_1 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 69.6 0.0 12.0
+    translation 69.6 0.0 13.4
 
 entity head_north_6_1 "Bulkhead" from bore_end
   override Transform
@@ -887,7 +888,7 @@ entity wall_east_6_2 "Wall" from bore_wall
     scale 1.0 1.0 1.0
     translation 74.4 0.0 24.0
 
-entity wall_west_6_2 "Wall with a passage" from bore_wall_open
+entity wall_west_6_2 "Wall with a passage" from bore_wall_open_a
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
@@ -897,7 +898,7 @@ entity passage_west_6_2 "Cross-passage" from cross_passage_open
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 69.6 0.0 24.0
+    translation 69.6 0.0 22.6
 
 entity head_south_6_2 "Bulkhead" from bore_end
   override Transform

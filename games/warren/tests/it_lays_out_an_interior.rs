@@ -201,7 +201,8 @@ fn it_writes_a_bore_per_cell_and_two_side_walls_with_it() {
     // doors are; what the doors change is *which* piece goes there, not whether one does. That is
     // the difference from the old shell, where a side with no wall was a room open to the void.
     let solid = instances(&document, warren::WALL_PIECE);
-    let open = instances(&document, warren::DOORWAY_PIECE);
+    let open = instances(&document, warren::DOORWAY_PIECE_A)
+        + instances(&document, warren::DOORWAY_PIECE_B);
     assert_eq!(solid + open, layout.rooms.len() * 2);
 
     // **Twice per east-west door, not once.** A cross-passage is written from both ends — each cell
@@ -252,7 +253,8 @@ fn the_pieces_it_needs_are_declared() {
     let document = amadeo_scene::parse(&warren::to_scene(&lay_out(9, 8))).expect("parses");
     for piece in [
         warren::ROOM_PIECE,
-        warren::DOORWAY_PIECE,
+        warren::DOORWAY_PIECE_A,
+        warren::DOORWAY_PIECE_B,
         warren::WALL_PIECE,
     ] {
         assert!(
@@ -302,7 +304,8 @@ fn a_passage_goes_where_there_is_a_cross_door_and_a_blank_wall_where_there_is_no
     let document = amadeo_scene::parse(&warren::to_scene(&layout)).expect("parses");
 
     let (across, _) = doors_by_axis(&layout);
-    let open = instances(&document, warren::DOORWAY_PIECE);
+    let open = instances(&document, warren::DOORWAY_PIECE_A)
+        + instances(&document, warren::DOORWAY_PIECE_B);
 
     assert_eq!(open, across * 2, "one opening at each end of each passage");
     assert_eq!(

@@ -1,0 +1,44 @@
+scene bore_side_open_a
+version 1
+
+entity mesh "A side wall whose cross-passage is cut 1.4 m north of centre"
+  CompoundMesh
+    parts
+      - position 0.15 1.0 -2.8
+        solid Box
+          shape
+            size 0.3 2.0 6.4
+      - position 0.15 1.0 4.2
+        solid Box
+          shape
+            size 0.3 2.0 3.6
+      - position -0.06 0.1 -2.8
+        solid Box
+          shape
+            size 0.12 0.2 6.4
+      - position -0.06 0.1 4.2
+        solid Box
+          shape
+            size 0.12 0.2 3.6
+      - position 0.06 1.0 0.28
+        solid Box
+          shape
+            size 0.28 2.06 0.24
+      - position 0.06 1.0 2.52
+        solid Box
+          shape
+            size 0.28 2.06 0.24
+      - position -0.045 1.0 -5.4
+        repeat
+          - count 10
+            step 0.0 0.0 0.6
+        solid Box
+          shape
+            size 0.09 2.0 0.16
+      - position -0.045 1.0 2.9
+        repeat
+          - count 6
+            step 0.0 0.0 0.6
+        solid Box
+          shape
+            size 0.09 2.0 0.16

@@ -67,6 +67,7 @@ fn main() {
     write_set(&out, "enamel_orange", &enamel_orange());
     write_set(&out, "bunk_ticking", &bunk_ticking());
     write_set(&out, "coat_wool", &coat_wool());
+    write_set(&out, "duck_timber", &duck_timber());
     write_signage(&out);
 }
 
@@ -311,7 +312,7 @@ fn ring_lining() -> Surface {
         // The rust underneath. Warm, and the only warm thing in an unlit frame.
         beneath: [0.30, 0.13, 0.06],
         wear: 0.85,
-        grime: 0.62,
+        grime: 0.78,
         face_roughness: 0.90,
         joint_roughness: 0.96,
         metallic: 0.0,
@@ -385,6 +386,48 @@ fn fitting_steel() -> Surface {
         tone_variation: 0.0,
         bolts: None,
         transposed: false,
+    }
+}
+
+/// Duckboard timber — the one soft-coloured, warm surface underfoot.
+///
+/// # `docs/11` §5a lost `timber` and this is where it is wanted back
+///
+/// The duckboards are the largest floor feature in most frames and they wore `screed`, the deck's own
+/// material, so engine gate review 22 read them as *"painted stripes"* rather than as boards on
+/// bearers. A run of timber is also the only warm-coloured surface at floor level, which gives the
+/// hand lamp something to be warm *against*.
+///
+/// The lattice runs one course, like [`bunk_ticking`], so its "joints" are the grain running along
+/// each board rather than a masonry pattern. Rough, dry and entirely non-metallic — forty years under
+/// a shelter is not varnish.
+fn duck_timber() -> Surface {
+    Surface {
+        wall: Some(
+            Courses {
+                seed: 0x7B_1C_00_D5,
+                rows: 1,
+                across: 7,
+                joint: 0.012,
+                bond: Bond::Stack,
+                variation: 0.34,
+            }
+            .lay(),
+        ),
+        seed: 0x7B_1C_00_D5,
+        relief: 900.0,
+        low: [0.115, 0.082, 0.048],
+        high: [0.205, 0.152, 0.092],
+        // Where the boards have gone black with damp at the ends and along the bearers.
+        beneath: [0.045, 0.036, 0.028],
+        wear: 0.55,
+        grime: 0.5,
+        face_roughness: 0.94,
+        joint_roughness: 0.97,
+        metallic: 0.0,
+        tone_variation: 0.22,
+        bolts: None,
+        transposed: true,
     }
 }
 
@@ -611,9 +654,17 @@ fn height(surface: &Surface, u: f32, v: f32) -> f32 {
         .map_or(0.0, |wall| bolt(surface, wall, u, v));
     let raised = surface.bolts.map_or(0.0, |(_, _, height)| height) * stud;
 
+    // **Pitting, at the same lattice the speckle uses.** A dirt mark that exists only in the albedo
+    // is flat under any light, so a patch of wall two metres away still resolves to one value however
+    // much colour variation it carries -- which is why engine gate review 22's band measure barely
+    // moved when the albedo speckle was added. Feeding the same field into the height gives it a
+    // normal, so it shades per pixel, and paint over iron really does pit rather than just soil.
+    let pitting = noise::tiling(surface.seed ^ 0x5E_CC_1E, u, v, 288) * 0.5 + 0.5;
+    let pitting = ((pitting - 0.5) / 0.5).clamp(0.0, 1.0);
+
     // The joint is cut *into* the surface and the bolt stands *out* of it. The grain is a fraction of
     // either, which is what keeps it from competing with the shapes that carry the read.
-    grain(surface.seed, u, v) * 0.030 - joint + raised
+    grain(surface.seed, u, v) * 0.030 - pitting * 0.016 - joint + raised
 }
 
 /// Where the paint has worn through, `0..1`.
@@ -679,9 +730,16 @@ fn grimy(surface: &Surface, u: f32, v: f32) -> f32 {
     // Raising the frequency alone did not fix it -- a fourth octave at lattice 127 moved that figure
     // by 0.4 of a per cent -- because the amplitude was never there. Soot and dust are speckle, not a
     // wash, so this is thresholded hard and applied at strength.
-    let speckle = (noise::tiling(surface.seed ^ 0x5E_CC_1E, u, v, 96) * 0.5 + 0.5).clamp(0.0, 1.0);
-    let speckle = ((speckle - 0.52) / 0.48).clamp(0.0, 1.0);
-    let settled = settled.max(speckle * 0.85);
+    // **Two lattices, and the fine one is the point.** At 1024 a lattice of 96 gives features about
+    // eleven texels across, which is still low-frequency once a player standing two metres away
+    // magnifies the tile: engine gate review 22 measured 51.1% of a near-wall patch inside one
+    // 16-level band even after the amplitude fix, and said what was missing was *per-texel* grain.
+    // 288 gives features under four texels and 704 gives them at about one and a half.
+    let speckle = (noise::tiling(surface.seed ^ 0x5E_CC_1E, u, v, 288) * 0.5 + 0.5).clamp(0.0, 1.0);
+    let speckle = ((speckle - 0.5) / 0.5).clamp(0.0, 1.0);
+    let dust = (noise::tiling(surface.seed ^ 0x5E_CC_2F, u, v, 704) * 0.5 + 0.5).clamp(0.0, 1.0);
+    let dust = ((dust - 0.62) / 0.38).clamp(0.0, 1.0);
+    let settled = settled.max(speckle * 0.8).max(dust * 0.95);
 
     let recess = surface.wall.as_ref().map_or(0.0, |wall| {
         let joint = wall.at(u, v).joint;

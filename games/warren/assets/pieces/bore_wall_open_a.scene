@@ -1,0 +1,87 @@
+scene bore_wall_open_a
+version 1
+
+assets
+  bore_side_open_a
+  lining_wall
+  ring_lining_wall
+  ring_lining_wall_normal
+  ring_lining_wall_surface
+
+entity wall "A side wall with a cross-passage through it"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+  entity panel "Jambs"
+    Mesh
+      material "lining_wall"
+      mesh "bore_side_open_a"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.0 0.0
+
+  entity solid_near "What keeps you in the bore, one side of the opening"
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 0.3 3.4 6.4
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.15 1.7 -2.8
+
+  entity solid_far "And the other"
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 0.3 3.4 3.6
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.15 1.7 4.2
+
+  entity lintel "What stops you walking over the opening"
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 0.3 1.4 2.0
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.15 2.7 1.4
+
+  entity socket "Where this joins"
+    Socket
+      kind "room"
+      open true
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.0 0.0

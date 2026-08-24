@@ -9,6 +9,11 @@ assets
   fitting_steel_surface
   fittings
   key_board
+  key_hooks
+  sign_enamel
+  sign_enamel_normal
+  sign_enamel_surface
+  stencil
 
 entity lost_key "The key board, with one key left on it"
   Transform
@@ -18,8 +23,17 @@ entity lost_key "The key board, with one key left on it"
 
   entity board "Key board"
     Mesh
-      material "fittings"
+      material "stencil"
       mesh "key_board"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.5 0.0
+
+  entity hooks "Its rail, hooks and docket shelf"
+    Mesh
+      material "fittings"
+      mesh "key_hooks"
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
