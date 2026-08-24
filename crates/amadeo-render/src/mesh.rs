@@ -1186,11 +1186,29 @@ pub struct PointLight {
     /// The falloff is smoothed to zero at the edge so the boundary is not a visible circle.
     #[reflect(min = 0.0, max = 1000.0, unit = "world units", default = 10.0)]
     pub range: f32,
+    /// The radius of the thing the light is *inside*, in world units — a sphere light (ADR 0085).
+    ///
+    /// **Zero is a mathematical point, which is what a bare inverse square assumes and what nothing
+    /// physical is.** Engine gate review 23 measured the consequence: the Warren's hand lamp at
+    /// intensity 26 blows any surface nearer than about five metres to paper white — 5.69% of one
+    /// frame at 255 — because `1/d²` is unbounded as `d` goes to zero, and one intensity cannot
+    /// serve a wall at 1.5 m and a bulkhead at 12 m at once.
+    ///
+    /// A real source has size, and inside its radius the irradiance stops climbing. The shader
+    /// clamps the distance to this before squaring, which is Karis's sphere-light form from *Real
+    /// Shading in Unreal Engine 4* and what Unreal exposes as `SourceRadius`; Frostbite's course
+    /// notes give the same. A hand lamp's bulb-and-reflector is about 0.5 m across.
+    ///
+    /// **Defaults to zero so that every existing capture is byte-identical**, which is the whole
+    /// reason it is authored rather than a constant in the shader.
+    #[reflect(default = 0.0)]
+    pub source_radius: f32,
 }
 
 impl Default for PointLight {
     fn default() -> Self {
         Self {
+            source_radius: 0.0,
             colour: [1.0, 1.0, 1.0],
             intensity: 1.0,
             // About a room. Far enough to be useful, near enough that a scene with several of them
@@ -1252,11 +1270,29 @@ pub struct SpotLight {
     /// How far to push a depth comparison away from the surface, in world units.
     #[reflect(min = 0.0, max = 10.0, unit = "world units", default = 0.02)]
     pub shadow_bias: f32,
+    /// The radius of the thing the light is *inside*, in world units — a sphere light (ADR 0085).
+    ///
+    /// **Zero is a mathematical point, which is what a bare inverse square assumes and what nothing
+    /// physical is.** Engine gate review 23 measured the consequence: the Warren's hand lamp at
+    /// intensity 26 blows any surface nearer than about five metres to paper white — 5.69% of one
+    /// frame at 255 — because `1/d²` is unbounded as `d` goes to zero, and one intensity cannot
+    /// serve a wall at 1.5 m and a bulkhead at 12 m at once.
+    ///
+    /// A real source has size, and inside its radius the irradiance stops climbing. The shader
+    /// clamps the distance to this before squaring, which is Karis's sphere-light form from *Real
+    /// Shading in Unreal Engine 4* and what Unreal exposes as `SourceRadius`; Frostbite's course
+    /// notes give the same. A hand lamp's bulb-and-reflector is about 0.5 m across.
+    ///
+    /// **Defaults to zero so that every existing capture is byte-identical**, which is the whole
+    /// reason it is authored rather than a constant in the shader.
+    #[reflect(default = 0.0)]
+    pub source_radius: f32,
 }
 
 impl Default for SpotLight {
     fn default() -> Self {
         Self {
+            source_radius: 0.0,
             colour: [1.0, 1.0, 1.0],
             intensity: 1.0,
             range: 20.0,
@@ -1277,11 +1313,22 @@ impl Default for SpotLight {
 
 /// How many spot lights may cast a shadow in one view — ADR 0058.
 ///
-/// **Two.** Every one is a full extra pass over the scene's geometry *and* a layer of a shadow-map
-/// array whose size is shared with the sun's cascades, so this is the most expensive constant in the
-/// renderer per unit increment. Two covers the case M3's exit gate actually needs — a flashlight,
-/// plus one fixed light in a room — and the third light in a scene is still *lit*, just not casting.
-pub const MAX_SHADOW_SPOTS: usize = 2;
+/// **Four, raised from ADR 0058's two in session 25.** Every one is a full extra pass over the
+/// scene's geometry *and* a layer of a shadow-map array whose size is shared with the sun's
+/// cascades, so this is still the most expensive constant in the renderer per unit increment.
+///
+/// Two was chosen for a flashlight plus one fixed light in a room, which is the Atrium's shape.
+/// `games/warren` is not that shape: engine gate review 23 counted **eighteen spot lights in one
+/// snapshot**, all casting, against a budget of two of which the player's torch takes one — so
+/// exactly one fixture in any frame cast a shadow, and *which* one changed as the player walked.
+/// The measured symptom was a deck carrying three bunks and three crates whose profile falls
+/// smoothly across 700 px with no feature in it at all.
+///
+/// **Raising it is a size change rather than a rewrite** because [`MAX_SHADOW_LAYERS`] derives from
+/// it and the layer arithmetic reads that. The one thing it is not free of is `view.wgsl`, which
+/// mirrors the array by hand — the two must be changed together or the uniform layout silently
+/// disagrees.
+pub const MAX_SHADOW_SPOTS: usize = 4;
 
 /// How many layers a view's shadow-map array can ever need — ADR 0058.
 ///

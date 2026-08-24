@@ -1,7 +1,7 @@
 amadeo-snapshot 2
 tick 126
-state-hash 0ef00b17cd8ba37d
-schema-hash 7d19eb67110d6a91
+state-hash 47bf60c8ce1cdc96
+schema-hash c258f27a5519d241
 
 schema
   component AudioListener 1
@@ -553,6 +553,7 @@ entities
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
+      source_radius 0.0
     Transform
       rotation -52.0 90.0 0.0
       scale 1.0 1.0 1.0
@@ -605,6 +606,7 @@ entities
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
+      source_radius 0.0
     Transform
       rotation -52.0 90.0 0.0
       scale 1.0 1.0 1.0
@@ -1785,6 +1787,7 @@ entities
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
+      source_radius 0.0
     Transform
       rotation -52.0 90.0 0.0
       scale 1.0 1.0 1.0
@@ -1837,6 +1840,7 @@ entities
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
+      source_radius 0.0
     Transform
       rotation -52.0 90.0 0.0
       scale 1.0 1.0 1.0
@@ -3444,6 +3448,7 @@ entities
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
+      source_radius 0.0
     Transform
       rotation -52.0 90.0 0.0
       scale 1.0 1.0 1.0
@@ -3496,6 +3501,7 @@ entities
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
+      source_radius 0.0
     Transform
       rotation -52.0 90.0 0.0
       scale 1.0 1.0 1.0
@@ -4121,6 +4127,7 @@ entities
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
+      source_radius 0.0
     Transform
       rotation -52.0 90.0 0.0
       scale 1.0 1.0 1.0
@@ -4173,6 +4180,7 @@ entities
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
+      source_radius 0.0
     Transform
       rotation -52.0 90.0 0.0
       scale 1.0 1.0 1.0
@@ -5779,6 +5787,7 @@ entities
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
+      source_radius 0.0
     Transform
       rotation -52.0 90.0 0.0
       scale 1.0 1.0 1.0
@@ -5831,6 +5840,7 @@ entities
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
+      source_radius 0.0
     Transform
       rotation -52.0 90.0 0.0
       scale 1.0 1.0 1.0
@@ -7502,6 +7512,7 @@ entities
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
+      source_radius 0.0
     Transform
       rotation -52.0 90.0 0.0
       scale 1.0 1.0 1.0
@@ -7554,6 +7565,7 @@ entities
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
+      source_radius 0.0
     Transform
       rotation -52.0 90.0 0.0
       scale 1.0 1.0 1.0
@@ -8179,6 +8191,7 @@ entities
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
+      source_radius 0.0
     Transform
       rotation -52.0 90.0 0.0
       scale 1.0 1.0 1.0
@@ -8231,6 +8244,7 @@ entities
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
+      source_radius 0.0
     Transform
       rotation -52.0 90.0 0.0
       scale 1.0 1.0 1.0
@@ -9099,12 +9113,13 @@ entities
     SpotLight
       colour 1.0 0.88 0.68
       inner_angle 11.0
-      intensity 26.0
+      intensity 14.0
       outer_angle 26.0
       range 18.0
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
+      source_radius 2.5
     Transform
       rotation -12.0 0.0 0.0
       scale 1.0 1.0 1.0
@@ -9119,6 +9134,7 @@ entities
       colour 1.0 0.88 0.68
       intensity 2.6
       range 5.5
+      source_radius 0.9
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
@@ -9371,7 +9387,7 @@ entities
     WayOut ()
   629:0
     GlobalTransform
-      matrix 0.0 0.0 -0.95 0.0 0.0 1.15 0.0 0.0 1.15 0.0 0.0 0.0 60.0 2.5 29.894999 1.0
+      matrix 0.0 0.0 -0.95 0.0 0.0 1.15 0.0 0.0 1.15 0.0 0.0 0.0 60.0 2.5 29.295 1.0
     Mesh
       material "glow"
       mesh "fitting_tube"
@@ -9381,10 +9397,10 @@ entities
     Transform
       rotation 0.0 90.0 0.0
       scale 0.95 1.15 1.15
-      translation 0.0 2.5 0.3
+      translation 0.0 2.5 -0.3
   630:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 2.58 29.755 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 2.58 29.435 1.0
     Mesh
       material "fittings"
       mesh "bulkhead_lamp"
@@ -9394,10 +9410,10 @@ entities
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.0 2.58 0.16
+      translation 0.0 2.58 -0.16
   631:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 0.6691306 -0.7431448 0.0 0.0 0.7431448 0.6691306 0.0 60.0 2.46 30.035 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 0.6691306 -0.7431448 0.0 0.0 0.7431448 0.6691306 0.0 60.0 2.46 29.154999 1.0
     Parent
       generation 0
       index 627
@@ -9410,10 +9426,11 @@ entities
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
+      source_radius 0.0
     Transform
       rotation -48.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.0 2.46 0.44
+      translation 0.0 2.46 -0.44
   632:0
     GlobalTransform
       matrix 3.6 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 2.44 29.715 1.0
@@ -9520,6 +9537,7 @@ entities
       colour 0.5 0.72 0.62
       intensity 1.15
       range 2.2
+      source_radius 0.0
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
@@ -9539,6 +9557,7 @@ entities
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
+      source_radius 0.0
     Transform
       rotation -14.0 0.0 0.0
       scale 1.0 1.0 1.0

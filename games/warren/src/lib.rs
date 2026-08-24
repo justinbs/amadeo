@@ -124,7 +124,7 @@ pub const TORCH: &str = "torch";
 /// **An eyeball number**, and the one that decides whether the room reads as dark-but-navigable or
 /// as a black screen with a white circle in it. The scene authors `intensity 0.0` and this replaces
 /// it, so "off" and "on" are one number in one place rather than two lights.
-pub const BEAM_INTENSITY: f32 = 26.0;
+pub const BEAM_INTENSITY: f32 = 14.0;
 
 /// How hard the hand lamp's housing spills onto what is beside you, when you are carrying it.
 ///

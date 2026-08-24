@@ -554,6 +554,7 @@ fn collect_punctual(world: &World, eye: [f32; 3], first_free_layer: u32) -> Vec<
                 ],
                 range: light.range,
                 cone_inner_cos: -1.0,
+                source_radius: light.source_radius,
                 cone_outer_cos: -1.0,
                 // A point light's shadow is a cube — six faces and six passes — which ADR 0058
                 // leaves out. Nothing here can cast.
@@ -602,6 +603,7 @@ fn collect_punctual(world: &World, eye: [f32; 3], first_free_layer: u32) -> Vec<
                 // with the engine's own trigonometry (ADR 0053), so two machines agree.
                 cone_inner_cos: amadeo_core::cos_degrees(light.inner_angle),
                 cone_outer_cos: amadeo_core::cos_degrees(outer),
+                source_radius: light.source_radius,
                 // Filled in after the sort, for the ones near enough to survive the cut and to be
                 // among the first `MAX_SHADOW_SPOTS` of those.
                 shadow: None,

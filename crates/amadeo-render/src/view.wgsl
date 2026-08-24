@@ -33,7 +33,8 @@ struct PunctualLight {
     // rgb = colour with intensity folded in. a = cosine of the inner half-angle.
     colour_inner: vec4<f32>,
     // x = which layer of the shadow array this light drew into, or -1 for a light that casts none
-    // (ADR 0058). y = its depth bias, in its own clip space. zw unused.
+    // (ADR 0058). y = its depth bias, in its own clip space. z = the sphere-light source radius
+    // (ADR 0085), in world units, zero for a point. w unused.
     shadow: vec4<f32>,
 };
 
@@ -94,7 +95,7 @@ struct MeshView {
     // Indexed by the light's shadow layer **minus the number of cascades**, because the cascades
     // take the first layers of the shared array and these follow them. `cascade_count` is
     // `shadow_params.z`.
-    spot_shadow: array<mat4x4<f32>, 2>,
+    spot_shadow: array<mat4x4<f32>, 4>,
 };
 
 @group(0) @binding(0) var<uniform> view: MeshView;

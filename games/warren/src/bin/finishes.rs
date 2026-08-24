@@ -111,7 +111,7 @@ fn write_signage(out: &Path) {
 
     let mut normal = Canvas::new(SIZE, Space::Linear);
     let step = 1.0 / SIZE as f32;
-    normal.fill(|u, v| encode_normal(normal_from_height(&sign_height, u, v, step, 900.0)));
+    normal.fill(|u, v| encode_normal(normal_from_height(&sign_height, u, v, step, 46.0)));
     write(
         &out.join("sign_enamel_normal.png"),
         "sign_enamel_normal",
@@ -340,13 +340,13 @@ fn shelter_floor() -> Surface {
     Surface {
         wall: None,
         seed: 0x44F1_0057,
-        relief: 140.0,
-        low: [0.115, 0.105, 0.092],
-        high: [0.165, 0.152, 0.132],
+        relief: 9.0,
+        low: [0.038, 0.035, 0.030],
+        high: [0.285, 0.264, 0.230],
         // Damp coming up through the slab, greener and darker than the dust over it.
         beneath: [0.055, 0.058, 0.048],
         wear: 0.55,
-        grime: 0.34,
+        grime: 0.52,
         face_roughness: 0.95,
         joint_roughness: 0.98,
         metallic: 0.0,
@@ -374,12 +374,12 @@ fn fitting_steel() -> Surface {
     Surface {
         wall: None,
         seed: 0x33A2_71BE,
-        relief: 260.0,
-        low: [0.24, 0.28, 0.25],
-        high: [0.33, 0.38, 0.34],
+        relief: 8.0,
+        low: [0.145, 0.170, 0.152],
+        high: [0.415, 0.475, 0.425],
         beneath: [0.24, 0.10, 0.05],
         wear: 0.45,
-        grime: 0.46,
+        grime: 0.6,
         face_roughness: 0.68,
         joint_roughness: 0.85,
         metallic: 0.0,
@@ -415,9 +415,9 @@ fn duck_timber() -> Surface {
             .lay(),
         ),
         seed: 0x7B_1C_00_D5,
-        relief: 900.0,
-        low: [0.115, 0.082, 0.048],
-        high: [0.205, 0.152, 0.092],
+        relief: 42.0,
+        low: [0.072, 0.050, 0.028],
+        high: [0.255, 0.192, 0.118],
         // Where the boards have gone black with damp at the ends and along the bearers.
         beneath: [0.045, 0.036, 0.028],
         wear: 0.55,
@@ -449,14 +449,14 @@ fn coat_wool() -> Surface {
     Surface {
         wall: None,
         seed: 0xC0_A7_00_15,
-        relief: 620.0,
-        low: [0.088, 0.096, 0.086],
-        high: [0.155, 0.163, 0.148],
+        relief: 9.5,
+        low: [0.038, 0.042, 0.036],
+        high: [0.255, 0.268, 0.244],
         // Where the nap is worn through to the weave beneath — at the shoulders and the hem on a
         // coat that has been in a tunnel for forty years.
         beneath: [0.14, 0.125, 0.10],
         wear: 0.30,
-        grime: 0.55,
+        grime: 0.62,
         face_roughness: 0.97,
         joint_roughness: 0.97,
         metallic: 0.0,
@@ -489,13 +489,13 @@ fn bunk_ticking() -> Surface {
             .lay(),
         ),
         seed: 0x71_CC_1A_60,
-        relief: 420.0,
-        low: [0.21, 0.20, 0.18],
-        high: [0.30, 0.29, 0.26],
+        relief: 26.0,
+        low: [0.125, 0.118, 0.104],
+        high: [0.385, 0.372, 0.335],
         // The blue stripe, and the stain of a shelter nobody aired.
         beneath: [0.13, 0.16, 0.24],
         wear: 0.65,
-        grime: 0.4,
+        grime: 0.55,
         face_roughness: 0.95,
         joint_roughness: 0.92,
         metallic: 0.0,
@@ -514,9 +514,9 @@ fn enamel_orange() -> Surface {
     Surface {
         wall: None,
         seed: 0x0A_CC_E4_71,
-        relief: 700.0,
-        low: [0.55, 0.135, 0.012],
-        high: [0.78, 0.215, 0.022],
+        relief: 9.5,
+        low: [0.42, 0.100, 0.008],
+        high: [0.90, 0.255, 0.028],
         // Bare rusted plate under a chip, exactly as the bone enamel has.
         beneath: [0.11, 0.055, 0.03],
         wear: 0.7,
@@ -550,11 +550,11 @@ fn bulkhead_grey() -> Surface {
         ),
         seed: 0x7B08_C31D,
         relief: 90.0,
-        low: [0.155, 0.158, 0.163],
-        high: [0.205, 0.209, 0.215],
+        low: [0.098, 0.100, 0.104],
+        high: [0.268, 0.273, 0.281],
         beneath: [0.26, 0.11, 0.05],
         wear: 0.50,
-        grime: 0.42,
+        grime: 0.56,
         face_roughness: 0.80,
         joint_roughness: 0.90,
         metallic: 0.25,

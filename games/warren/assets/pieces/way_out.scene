@@ -59,7 +59,7 @@ entity way_out "The way out"
     Transform
       rotation 0.0 90.0 0.0
       scale 0.95 1.15 1.15
-      translation 0.0 2.5 0.3
+      translation 0.0 2.5 -0.3
 
   entity head_lamp "The lamp over the door"
     Mesh
@@ -68,7 +68,7 @@ entity way_out "The way out"
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.0 2.58 0.16
+      translation 0.0 2.58 -0.16
 
   entity head_lamp_light "What it throws down the door"
     SpotLight
@@ -83,7 +83,7 @@ entity way_out "The way out"
     Transform
       rotation -48.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.0 2.46 0.44
+      translation 0.0 2.46 -0.44
 
   entity threshold "The orange rule across the head of the door"
     Mesh

@@ -676,7 +676,14 @@ fn fs_main(
         // Inverse square, which is how light actually falls off, windowed to reach exactly zero at
         // the range. Without the window there is a visible circle where the light is cut off; the
         // squared-and-squared term fades the last part of the falloff smoothly into nothing.
-        let falloff = 1.0 / max(distance * distance, 1e-4);
+        //
+        // **Clamped to the source radius first (ADR 0085).** A bare inverse square treats the light
+        // as a mathematical point, so it is unbounded as the distance goes to zero and any surface
+        // close enough saturates whatever the intensity is. A real source has size, and inside it
+        // the irradiance stops climbing. `source_radius` is zero by default, and `max(d, 0)` is `d`,
+        // so every light that does not author one shades exactly as it did before.
+        let reach = max(distance, light.shadow.z);
+        let falloff = 1.0 / max(reach * reach, 1e-4);
         let ratio = distance / range;
         let windowed = falloff * pow(max(1.0 - ratio * ratio * ratio * ratio, 0.0), 2.0);
 

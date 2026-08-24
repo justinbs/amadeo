@@ -1421,6 +1421,7 @@ fn a_point_light_actually_reaches_the_pixels() {
             colour: [1.0, 1.0, 1.0],
             intensity: 40.0,
             range: 12.0,
+            source_radius: 0.0,
         },
     );
 
@@ -1577,6 +1578,7 @@ fn a_spot_light_casts_a_shadow() {
                 shadows,
                 shadow_resolution: 1024,
                 shadow_bias: 0.02,
+                source_radius: 0.0,
             },
         );
 
@@ -1887,6 +1889,7 @@ fn an_arch_draws_as_a_vault_rather_than_a_box() {
             colour: [0.9, 0.85, 0.7],
             intensity: 12.0,
             range: 9.0,
+            source_radius: 0.0,
         },
     );
 

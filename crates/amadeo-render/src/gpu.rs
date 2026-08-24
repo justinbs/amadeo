@@ -3918,9 +3918,13 @@ impl RenderBackend for WgpuBackend {
                     // `-1` for a light that casts nothing, which is what the shader tests. A float
                     // rather than an integer because everything else here is one and a lone `i32`
                     // would take its own sixteen-byte slot anyway.
-                    shadow: light.shadow.map_or([-1.0, 0.0, 0.0, 0.0], |spot| {
-                        [spot.layer as f32, spot.bias, 0.0, 0.0]
-                    }),
+                    // `z` carries the sphere-light radius (ADR 0085), which rides here because this
+                    // slot already had two unused lanes -- so it costs no uniform-layout change.
+                    shadow: light
+                        .shadow
+                        .map_or([-1.0, 0.0, light.source_radius, 0.0], |spot| {
+                            [spot.layer as f32, spot.bias, light.source_radius, 0.0]
+                        }),
                 };
             }
 

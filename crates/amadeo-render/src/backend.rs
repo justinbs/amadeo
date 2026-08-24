@@ -210,6 +210,8 @@ pub struct PunctualLight {
     pub cone_inner_cos: f32,
     /// Cosine of the outer half-angle, where it fades to nothing. `-1.0` for a point light.
     pub cone_outer_cos: f32,
+    /// Radius of the source, for the sphere-light falloff (ADR 0085). Zero is a point.
+    pub source_radius: f32,
     /// This light's shadow, if it casts one — ADR 0058. Spot lights only.
     pub shadow: Option<SpotShadow>,
 }
