@@ -138,13 +138,14 @@ fn the_room_loads_and_the_player_is_first_person() {
     // of them, two crates, the torch, the key, the warden and the lamp it carries, and the door
     // with the four things two reviews asked for around it -- the lamp over it, **its lens**, the
     // orange rule across its head and the call plate beside it, which is what turns arriving at the
-    // way out into arriving somewhere; the duckboard run and the key board's hooks are separate
-    // meshes now too, because each wanted a material of its own. The lens is a separate entity
+    // way out into arriving somewhere; the duckboard run, the key board's hooks, its orange edging
+    // and a conduit along each haunch are separate meshes too, because each wanted a material of its
+    // own -- a `Mesh` carries exactly one, so every second material is a second entity. The lens is a separate entity
     // because a `Mesh` carries one
     // material and a housing that emits is a housing you cannot see: review 20 found the first
     // version of this lamp reading as four unattached fragments, and the second as no fixture at all. The lights themselves are not geometry, and the player has no
     // body mesh -- in first person you would be standing inside it.
-    assert_eq!(app.world.query::<(&amadeo_render::Mesh,)>().count(), 38);
+    assert_eq!(app.world.query::<(&amadeo_render::Mesh,)>().count(), 43);
 }
 
 #[test]

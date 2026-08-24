@@ -1,0 +1,16 @@
+scene key_board_edge
+version 1
+
+entity mesh "The key board's edging, which is what makes it findable across a room"
+  CompoundMesh
+    parts
+      - mirror false true false
+        position -0.056 0.225 0.0
+        solid Box
+          shape
+            size 0.014 0.035 0.9
+      - mirror false false true
+        position -0.056 0.0 0.443
+        solid Box
+          shape
+            size 0.014 0.49 0.035

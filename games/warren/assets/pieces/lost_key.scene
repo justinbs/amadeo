@@ -2,13 +2,18 @@ scene lost_key
 version 1
 
 assets
+  accent
   brass
   brass_key
+  enamel_orange
+  enamel_orange_normal
+  enamel_orange_surface
   fitting_steel
   fitting_steel_normal
   fitting_steel_surface
   fittings
   key_board
+  key_board_edge
   key_hooks
   sign_enamel
   sign_enamel_normal
@@ -25,6 +30,15 @@ entity lost_key "The key board, with one key left on it"
     Mesh
       material "stencil"
       mesh "key_board"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 1.5 0.0
+
+  entity board_edge "Its orange edging"
+    Mesh
+      material "accent"
+      mesh "key_board_edge"
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0

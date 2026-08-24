@@ -4,11 +4,16 @@ version 1
 assets
   bore_crown
   bore_deck
+  conduit_run
   duck_timber
   duck_timber_normal
   duck_timber_surface
   duckboard
   duckboards
+  fitting_steel
+  fitting_steel_normal
+  fitting_steel_surface
+  fittings
   lining
   ring_lining
   ring_lining_normal
@@ -23,6 +28,24 @@ entity section "Twelve metres of bore"
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 0.0 0.0 0.0
+
+  entity conduit_east "The conduit along the east haunch"
+    Mesh
+      material "fittings"
+      mesh "conduit_run"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 2.26 2.12 0.0
+
+  entity conduit_west "And along the west haunch"
+    Mesh
+      material "fittings"
+      mesh "conduit_run"
+    Transform
+      rotation 0.0 180.0 0.0
+      scale 1.0 1.0 1.0
+      translation -2.26 2.12 0.0
 
   entity duckboards "The duckboard run"
     Mesh

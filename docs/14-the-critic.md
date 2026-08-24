@@ -802,3 +802,106 @@ octagon and `letter_m` has diagonals**, the M caught by derivation before it was
 attempt put the apex at the top, which is an inverted V.
 
 Its items 2, 6, 7, 8 and 9 are open.
+
+### Review 23 — engine gate — `c374ceb` — item 24, eighth delivered pass — **NOT POLISHED**
+
+**Appended late, and review 24 had to flag it.** This entry and the one below were written after review
+24 pointed out that §8 ended at review 22 while the tree was three passes past it, so a reviewer was
+being asked to rule under clause rewrites that existed only in a submission message. §6 rule 4 says
+verdicts are appended; the reason is exactly this. **Append the verdict in the same session it is
+given.**
+
+Twelve captures plus the other three games, four crops, ~55 probes, twelve profiles, one controlled A/B
+on a material, both measurements recounted, two numbers re-derived.
+
+**It accepted all three of review 22's corrections** — the parser bug, the warden probe on the wrong
+object, and the column-not-row — and re-derived the histogram itself with a parser that prints a
+sanity sum. It credited `w_at_warden` at **115.95** row-600 asymmetry, beating the `games/atrium`
+control, and called it the best frame the project has produced; the sightline broken (28.43 → 65.81 on
+its own count, not the submission's 71.78 — **check which frame you measured**); the warden a coat at
+74–130 against a wall at 39–45; the key at 141 against 56–72; `letter_o` legible as an O at 40 px.
+
+**And it found item 7, which the submission had given up on.** It made `fittings.material` emissive
+`3.0 0.2 0.2`, captured, restored, and diffed: **917 px changed in a 90 × 22 box** — the two bolt heads
+at local z 0.005, and nothing else. Then it projected the fixture from the snapshot's camera and
+calibrated the projection against the orange rule to five pixels. Every part at local z ≥ 0.05 was
+behind the bulkhead plate. **A byte-identical frame across three authored positions is the signature
+of geometry behind a wall**, because moving a fully occluded object in x or y changes nothing — which
+is the diagnosis the submission had read as the field not being applied.
+
+Its ordered list, of which nine were built in session 25: bound the torch's near field with a
+sphere-light falloff (**118,040 clipped pixels, 5.69% of the yaw-270 frame**, derived from
+`mesh.wgsl:679`); give the props real maps (**six of ten normal maps within ±8 of flat**); raise
+`MAX_SHADOW_SPOTS` against 18 casters; negate the exit lamp's z; break the duckboard run; vary the
+bunks and re-material the crates; take the right angles off the warden; adopt its clause rewrites.
+
+**It rewrote four things and all four are adopted:** clause **(b)** to *the lit* lining wall, because
+measuring falloff on the shadowed wall measures the ambient probe; clause **(d)** to a **same-material**
+comparison, because the frame's extremes were duckboard timber and bunk paint — albedo, not light;
+clause **(f)** as *"an object darkens a lit surface by ≥ 30 levels within 20 px at a named crop, and the
+shadow's shape is recognisable as the object's"*; and **item 9's threshold retired** in favour of mean
+`|Δ|` between adjacent pixels ≥ 3.0 on a 120 px run, because four reviews had argued about surfaces
+using a test that measures lighting.
+
+### Review 24 — engine gate — `2487a61` — item 24, ninth delivered pass — **NOT POLISHED**
+
+Eleven captures plus the other three games, six crops, ~40 probes, eight profiles, one controlled A/B
+on the `Environment`, both measurements recounted, two numbers re-derived, **two self-corrections**.
+
+**All six clauses pass, for the first time in nine passes**, and it said so before anything else:
+(a) 57.8% and max 250; (b) span **163**, near 129.2 against far 64.3; (c) **67.35**; (d) R−B **+17**
+and G−R **+9**; (e) on inspection; (f) **30** levels at deck row 1020.
+
+**It corrected two of the submission's numbers and both corrections stand.** The submission's clause (f)
+of 40 was a **silhouette edge** — a crate's near face against the deck — not a shadow; restricted to
+deck-only spans it is 30 and 62. And the submission's (d) of +38/+12 was a **lining-versus-deck**
+reading, which the rewritten clause exists to forbid; same-material it is +17/+9, a two-level and a
+one-level margin. It also could not reproduce the submission's 5.59/5.27 local-contrast figures because
+neither the row nor the x-range was named. **Name the row and the range.**
+
+**Clause (f) it closed on a picture rather than a number**: a bunk leg throwing a rod-shaped shadow
+down-right from its foot, correctly proportioned, ending in a rounded cap that matches a round leg,
+with contact darkening at the foot. Review 22's central finding is answered.
+
+**Its own two self-corrections:** it read bright zones in `at_exit` and `at_key` as shadow-map artifacts
+with straight edges, profiled them, found 150-level gradients across ~380 px with no edge anywhere, and
+**withdrew** (§4 #7 again). And it nearly filed the torch as §4 #9 dead data — `player_start.scene`
+authors `intensity 0.0` on both lights — then checked the snapshots, found 14.0 and 2.6 carried
+correctly, and did not.
+
+**It also tested something nobody had**: an A/B on the vignette, which moves **66.6% of pixels by up to
+57 levels**. Clause (a) still passes without it at 56.6%. The histogram spread is earned by light rather
+than by the lens, now established against exposure *and* vignette.
+
+#### Why it still fails: the close condition passes and the item's title does not
+
+*"`games/warren` stops being boxes."* Six clauses measure lighting, composition, prop presence and
+shadows, and **not one of them can see uniform repetition** — the single largest machine-made tell
+there is, and the game's most prominent object is now a perfect repeat. `duckboards.mesh` is one
+`repeat count 30 step 0.0 0.0 0.4`: thirty slats, one width, one pitch, no board skewed, split, lifted,
+missing or a different length, no wear track down the line boots walk, in honey-coloured fresh pine in a
+flooded wartime shelter. It is the centre of four of nine frames. **The bearers and the cast shadows
+being real is what makes it worse** — the thing is now legible enough that its regularity is the first
+thing you see.
+
+Both interactive objectives are illegible. The key is **4 × 30 px** in the snapshot named for standing
+at it, from a camera aimed at it — at 4× the board is the best storytelling in the game and at
+1920 × 1080 it is a black rectangle with a yellow fleck. The way out is **not a door**: the handwheel is
+a flat 2D outline lying in the wall plane *with a gap in the ring*, the bulkhead's plate grid runs
+continuously straight through where the leaf should be, and there is no jamb, rebate, frame, hinge or
+gasket. And **nothing in the game is wired to anything** — no conduit, no tray, no junction box in ten
+frames, which is §4 #4 one level along: the fixture exists and its supply does not.
+
+#### Its replacement for the tracked measurements, which have saturated
+
+33/33 `CompoundMesh` and 14/14 non-emissive materials textured cannot move further. It proposed two that
+are countable without a human eye and would have caught what it caught:
+
+1. **Repeat exposure** — for every `repeat` block and every prefab the generator instances, report the
+   count and the number of **distinct** variants. `duckboards.mesh` scores **30 / 1**. Target: nothing
+   placed more than six times has fewer than three variants.
+2. **Objective legibility** — the on-screen bounding box in pixels of each interactive object from the
+   snapshot named for it. The key scores **~4 × 30**; target a 40 px minimum dimension at 1920 × 1080.
+
+Its eight ordered changes are the next session's work, and it asked for `games/scarp` to get an item of
+its own rather than be carried in this one's shadow.

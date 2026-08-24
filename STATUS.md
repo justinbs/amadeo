@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-22 (session 23)
+**Last updated:** 2026-08-25 (session 25)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE — all four exit gates met.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*

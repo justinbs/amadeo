@@ -1,0 +1,44 @@
+scene conduit_run
+version 1
+
+entity mesh "A conduit run along the haunch, with clips and a junction box"
+  CompoundMesh
+    parts
+      - position 0.0 0.0 0.0
+        rotation 90.0 0.0 0.0
+        solid Cylinder
+          shape
+            height 12.0
+            radius 0.028
+            sides 8
+            top_radius 0.028
+      - position 0.03 0.0 -5.4
+        repeat
+          - count 9
+            step 0.0 0.0 1.35
+        solid Box
+          shape
+            size 0.075 0.055 0.05
+      - position 0.02 -0.005 -3.0
+        solid Box
+          shape
+            size 0.11 0.16 0.22
+      - position 0.02 -0.005 3.0
+        solid Box
+          shape
+            size 0.11 0.16 0.22
+      - position 0.0 -0.16 -3.0
+        rotation 0.0 0.0 0.0
+        solid Cylinder
+          shape
+            height 0.3
+            radius 0.022
+            sides 8
+            top_radius 0.022
+      - position 0.0 -0.16 3.0
+        solid Cylinder
+          shape
+            height 0.3
+            radius 0.022
+            sides 8
+            top_radius 0.022
