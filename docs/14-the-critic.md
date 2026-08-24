@@ -693,3 +693,21 @@ back. Q32's shape a fifth time: authorable, authored, ignored.
 floating, cropped at 3×, found their legs on the deck and withdrew.
 
 Its ten ordered changes are session 25's work; it says **items 1–4 landing would settle the item**.
+
+### Review 21 — engine gate — `1d7784c` — item 24, seventh pass — **NO VERDICT**
+
+**Attempted and interrupted by an API session limit before it ruled**, for the second time in this
+gate's history. It had got as far as taking its first frames and produced no findings, no evidence and
+no verdict.
+
+Recorded for review 18's reason: an attempted review that leaves no entry is indistinguishable from a
+review that was never asked for. **Nothing here is credited or discredited by it.** Item 24's standing
+verdict is review 20's NOT POLISHED, of whose ten ordered changes **nine are built and item 5 is
+open** — see `docs/13` item 24 and `STATUS.md` for which, and for why item 5 must not be re-attempted
+in the door graph.
+
+`1d7784c` is pushed and the four checks in `CLAUDE.md` §4b are green on it.
+
+**Two of the last four reviews have now died to a session limit**, which is a fact about the process
+rather than about the work: a review of this item costs roughly 90 captures and 200k tokens, and it is
+worth sending as the *first* thing a session does rather than the last.
