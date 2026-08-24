@@ -711,3 +711,94 @@ in the door graph.
 **Two of the last four reviews have now died to a session limit**, which is a fact about the process
 rather than about the work: a review of this item costs roughly 90 captures and 200k tokens, and it is
 worth sending as the *first* thing a session does rather than the last.
+
+### Review 22 — engine gate — `1d7784c` — item 24, seventh delivered pass — **NOT POLISHED**
+
+Ten 1920 × 1080 captures plus the other three games, six crops, ~70 probes, eleven row/column
+profiles, both measurements recounted, two authored numbers re-derived, and one controlled experiment
+using **camera yaw as the variable** because §4 #11 forbids an A/B on a component through `--from`.
+
+**It credited more than any previous pass.** `w_at_warden` scored **98.54** on the row-600 asymmetry
+test — it beats the `games/atrium` control (96.17) taken the same hour — and it called it *"the best
+composed frame this project has produced"*. The three landmark frames went **14.8 / 17.8 / 11.1 →
+60.6 / 57.3 / 98.5**. It re-derived the bloom (`over = max(2.5 − 1.1, 0) = 1.4` against session 24's
+exact zero) and measured the halo at **248 → 63 across ~30 px** against item 13b's ≥ 12 px. It
+accepted the 642 clipped pixels as the same case as review 19's 571. Clauses (a), (b), (c) and (e)
+met, and it recounted the mesh denominator **against** the submission (0 / 29, not 0 / 28).
+
+#### The finding: fifteen of the sixteen fixtures cast no shadow
+
+`grep` says it: `player_start.scene` authors `shadows true` and `room_lamp`, `warden_post` and
+`way_out` all author `shadows false`. Measured — a key board brightly lit at 1.5 m whose six hooks
+stand 3 cm proud and **put not one mark on it**; duckboards that do not touch the deck; three bunks
+and two crate stacks in front of a lit wall, none of them casting. **With `games/atrium` on the same
+commit as the control**, whose lamp throws the table across the floor. *"Every Warren frame reads
+composited rather than rendered."*
+
+It is a flag, not a system: `MAX_SHADOW_SPOTS` is 2 and the collection pass already sorts casters by
+distance from the eye, so turning the flag on hands the caster to whatever is nearest.
+
+#### Three of the submission's numbers did not reproduce, and two of them were wrong
+
+**This is the entry to read before writing another submission.**
+
+- **Item 1 — the near-wall patch. The critic was right: 51.1%, not 5.0%.** The cause was a broken
+  measurement helper, not a broken capture. It parsed `image stats` histogram lines with the fourth
+  field after stripping the bar characters — and that field is the percentage **only for buckets whose
+  label contains a space** (`0- 15` … `80- 95`, right-aligned). From `96-111` upward the label is one
+  field, everything shifts, and the fourth field is empty. **Every high bucket was silently read as
+  zero**, so the reported figure was the maximum over the low half of the histogram. Clause (a)'s
+  64-level band survived only because its peak happened to sit low; re-measured with a correct parser
+  it is unchanged at 50.5%, and the `games/atrium` control reproduces the critic's 62.1% exactly.
+- **Item 7 — the warden. The critic was right: ~15 levels, not ~45.** The submission probed
+  `(1120, 620)` and `(1150, 660)`. A 3× crop of `(880, 440, 380 × 340)` puts the figure at frame
+  x ≈ 960–1023: **those probes were on the lit bunk frame beside the warden, not on the coat.**
+- **Item 9 — the column reproduces exactly.** `image col <auth> 1000 560 1070` gives
+  `57 61 56 62 97 185 189 193 172` on the shipped frame. The critic looked for it in *rows*
+  (`w_p-30` row 900, `w_auth` row 1000); it is a **column**. Its judgement stands regardless — that
+  gradient is a penumbra rather than an edge — but the number is real.
+
+**The lesson is not "check your arithmetic".** It is that a measurement pipeline is a piece of
+software and wants the same suspicion as a shader: **the helper agreed with the critic on one frame
+and was silently wrong on another**, which is exactly the shape of §4 #2. Print the intermediate.
+
+#### Its other findings
+
+`letter_o` is four boxes making a rectangle and `letter_m` is a Π with a tick — **two of five section
+letters are not legible as letters**, read off the files rather than the render. The warden is four
+stacked cones flaring at the hem, *"a postbox or a chess pawn"*, and its own lamp does not light it.
+The exit's `bulkhead_lamp` resolves to **two dark-green pixels** from the position a player arrives
+at. The key is a 5 × 30 px yellow stripe. The duckboards are zero-thickness painted stripes in the
+deck's own material. Yaw 270 is unchanged at symmetry 28.4. And `games/scarp` is now what review 12
+said `games/warren` was — recorded so it is not discovered as a surprise.
+
+#### On item 5 it endorsed the revert and refuted the reason
+
+It confirmed the diagnosis (`bore_side_open` is mirrored about its own middle, so every aperture is
+centred) and **endorsed reverting the door-closing fix** — *"shipping a function whose doc comment
+claims a fix it does not deliver would have been worse"*. But it refuted *"both geometry"* three ways:
+an off-centre opening is the same four boxes with the `mirror` flag dropped; two variants alternating
+by cell parity gives a 2.8 m stagger over a 12 m pitch; and a baffle is a **placement rule** using
+the `collapse` piece that already exists.
+
+**Its third option does not survive contact and is corrected here with evidence.** `collapsed.scene`
+carries a `Cuboid` collider of **3.4 × 1.2 × 2.9**, sized for a 4.8 m bore. A cross-passage is 2 m
+wide and 2 m tall, so dropping a collapse into one does not break the sightline, it **walls the level
+off** — and a 1.2 m heap is far above any step height. Options (i) and (ii) stand and are the route.
+
+It also made a level-design point worth keeping: fourteen doors over fourteen rooms means the player
+*can never loop, only retreat*, and that is the one topology in which a hunter cannot be beaten by
+movement.
+
+#### What session 25's second pass built
+
+Its items 1, 3, 4, 5 and 10, plus the black letters: **shadows on** (a bunk's kerb now falls
+194 → 88 in 6 px, against the new clause (f)'s ≥ 25 in 12 px); **clause (d) passes** at R − B **+17**
+and G − R **+12** after the fitting came down to 8.0, the beam went to 26.0 and the hand lamp was
+warmed to `1.0 0.88 0.68` — the critic's own derivation showed a 22.0 fitting at 4 m outrunning a
+12.0 torch at 2.8 m; **the warden is a coat** with shoulders, a collar and a hat brim, reading 71–128
+against a wall at 38–46 with 56 levels between its lamp side and its far side; **`letter_o` is an
+octagon and `letter_m` has diagonals**, the M caught by derivation before it was rendered — the first
+attempt put the apex at the top, which is an inverted V.
+
+Its items 2, 6, 7, 8 and 9 are open.

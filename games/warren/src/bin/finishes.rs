@@ -407,8 +407,8 @@ fn coat_wool() -> Surface {
         wall: None,
         seed: 0xC0_A7_00_15,
         relief: 620.0,
-        low: [0.055, 0.062, 0.058],
-        high: [0.105, 0.115, 0.104],
+        low: [0.088, 0.096, 0.086],
+        high: [0.155, 0.163, 0.148],
         // Where the nap is worn through to the weave beneath — at the shoulders and the hem on a
         // coat that has been in a tunnel for forty years.
         beneath: [0.14, 0.125, 0.10],

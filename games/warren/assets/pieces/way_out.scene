@@ -77,7 +77,7 @@ entity way_out "The way out"
       range 5.0
       shadow_bias 0.03
       shadow_resolution 1024
-      shadows false
+      shadows true
     Transform
       rotation -48.0 0.0 0.0
       scale 1.0 1.0 1.0

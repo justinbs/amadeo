@@ -71,6 +71,16 @@ entity warden "The warden"
       scale 1.0 1.0 1.0
       translation 0.34 -0.28 -0.14
 
+  entity bulb "The bulb itself, which is what lights the coat carrying it"
+    PointLight
+      colour 0.5 0.72 0.62
+      intensity 1.15
+      range 2.2
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.34 -0.3 0.34
+
   entity glow "What the lamp throws"
     SpotLight
       colour 0.5 0.72 0.62
@@ -80,8 +90,8 @@ entity warden "The warden"
       range 9.0
       shadow_bias 0.03
       shadow_resolution 1024
-      shadows false
+      shadows true
     Transform
-      rotation -18.0 0.0 0.0
+      rotation -14.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.3 -0.34 0.26
+      translation 0.34 -0.3 0.34

@@ -38,12 +38,12 @@ entity room_lamp "A fitting still on the circuit"
     SpotLight
       colour 0.58 0.78 0.68
       inner_angle 30.0
-      intensity 22.0
+      intensity 8.0
       outer_angle 56.0
       range 7.5
       shadow_bias 0.03
       shadow_resolution 1024
-      shadows false
+      shadows true
     Transform
       rotation -52.0 90.0 0.0
       scale 1.0 1.0 1.0

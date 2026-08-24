@@ -4,23 +4,19 @@ version 1
 entity mesh "The section letter O, cut as a stencil and read from both sides"
   CompoundMesh
     parts
-      - mirror false false true
-        position -0.062 0.0 0.015
-        solid Box
-          shape
-            size 0.038 0.2 0.008
-      - mirror false false true
+      - mirror true false true
         position 0.062 0.0 0.015
         solid Box
           shape
-            size 0.038 0.2 0.008
-      - mirror false false true
+            size 0.038 0.116 0.008
+      - mirror false true true
         position 0.0 0.081 0.015
         solid Box
           shape
-            size 0.162 0.038 0.008
-      - mirror false false true
-        position 0.0 -0.081 0.015
+            size 0.09 0.038 0.008
+      - mirror true true true
+        position 0.0505 0.0675 0.015
+        rotation 0.0 0.0 45.0
         solid Box
           shape
-            size 0.162 0.038 0.008
+            size 0.038 0.056 0.008

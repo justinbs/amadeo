@@ -69,7 +69,7 @@ entity you "You"
 
     entity beam "Torch beam"
       SpotLight
-        colour 1.0 0.95 0.86
+        colour 1.0 0.88 0.68
         inner_angle 11.0
         intensity 0.0
         outer_angle 26.0
@@ -84,7 +84,7 @@ entity you "You"
 
     entity spill "What the lamp housing leaks"
       PointLight
-        colour 1.0 0.93 0.82
+        colour 1.0 0.88 0.68
         intensity 0.0
         range 5.5
       Transform
