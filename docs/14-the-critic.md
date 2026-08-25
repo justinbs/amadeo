@@ -977,3 +977,74 @@ and not a defect; the same piece with an empty override every time is **14 / 1**
 heightfield, one salmon box for a player, zero textures, zero props. It is an **M2.5 exit gate** and it
 is now precisely what review 12 condemned `games/warren` for being. Reviews 22, 23 and 24 each recorded
 it; this one requires it to stop sitting behind item 24's verdict.
+
+### Review 26 — engine gate — `9728f10` — item 24, eleventh delivered pass — **NOT POLISHED**
+
+Ten captures plus the other three games, six crops, ~35 probes, nine profiles, one controlled
+experiment using **camera yaw as the variable** (§4 #11 forbids an A/B on a component through `--from`),
+both saturated measurements and all three of R1–R3 recounted, the spot-cone term re-derived from
+`mesh.wgsl:697`.
+
+**It credited the two halves that worked**: the plate grid is off the leaf, verified in *two* directions
+— horizontally, and by column, showing that no dip on the leaf lands on any row where the wall carries a
+joint — and the handwheel is *"a wheel"*, a continuous rim with a real boss and six spokes that reach it.
+`w_at_warden` still the best frame the project has produced.
+
+#### It found that the submission measured the wrong joint, and proved it three ways
+
+The submission reported a leaf-to-frame joint of **105** at `x 930–1010`. Review 26 projected the door
+from the snapshot's camera (focal `540 / tan 35° = 771.2 px`), checked the projection against four
+features to within a pixel, and confirmed it by horizontal profile and by column:
+
+> **The leaf occupies screen x 549 → 960. The stiles occupy 531–549 and 960–992. The band at 992–998 is
+> the joint between the *frame* and the *bulkhead wall*.**
+
+The submission's window contained the frame-to-wall band and **did not contain a leaf-to-frame joint at
+all**. Measured properly, the real joint's prominence was **zero** — the profile ran straight through it
+at rows 480, 660, 850 and 900 — against an interior maximum of 44 (the handwheel's rim reaching 99 on
+row 660). *"The leaf's own outline — the line that says this part opens — does not exist in the picture
+at all."* Ratio required 2; ratio measured **0**.
+
+**And it named the substitution, which this project has now made three times**: reviews 23 and 24 each
+had to correct a silhouette edge counted as a shadow and a lining-versus-deck reading counted as a
+same-material colour split. *"The only way to reach 2.39 is to take the shoulder on the lit leaf side
+rather than the wall side, which measures a lighting step, not a joint."*
+
+#### The one cause under all of it: the door was lit by the player's torch
+
+Derived from `mesh.wgsl:697` and confirmed by pixels. `head_lamp_light` sat 0.72 m out into the room at
+`rotation −58`, giving an axis of `(0, −0.848, −0.530)` — **down and further away from the door**. The
+cone term evaluates to **0 at the leaf's top and centre** and **0.106 at its foot**, or 2.4% of peak. The
+beam's axis met the deck 2.3 m in front of the door, and that spot is visible in the frame as the only
+place near the door with the fitting's cold `G > R` signature. Every lit surface *on* the door read warm
+at `R − B = +18` — the player's torch at `1.0 0.88 0.68`.
+
+Its controlled experiment: turning the camera `--yaw -30`, which moves the torch because it is a child of
+the camera and moves nothing else, dropped the door region from **95.4 to 47.0**. *"The objective loses
+half its light when the player turns their head."*
+
+**And a light at the eye casts no shadow the eye can see** — which is why 100 mm of proud leaf produced a
+zero-depth joint, an 85 mm handwheel read as an engraving, and six dogs read as painted dashes.
+*"Three separate pieces of relief were built this pass and then lit from the one direction that cannot
+show relief."*
+
+#### Its three rulings, all adopted
+
+- **Clause (e) retired.** Closed on inspection three reviews running, and *"a clause closed on inspection
+  three times running is a clause doing no work"*. Not replaced; R3 measures what now matters.
+- **Clause (g1) pinned to screen coordinates**, because the wording cost a whole pass.
+- **R1 amended and its Today cell corrected.** It flagged any `repeat` with `count > 6` and claimed the
+  duckboards were the only offender; **13 blocks in 9 assets** exceed it, and twelve are *manufactured*
+  repetition — a cast-iron lining genuinely is twenty identical segments. **Repetition is only a tell on
+  objects that should have individual histories.**
+- It also caught a **false sentence the implementer had written into §1** — *"0 / 16 on all three texture
+  slots, no material leaves one empty"*. True is 14/14 non-emissive textured, with `glow`, `glow_dead`
+  and `flood` correctly carrying none. *"Fix the sentence, not the game."*
+
+Session 25's answer: the lamp is aimed **at** the door (`rotation −112.5`, derived from the geometry
+rather than guessed), given a **`source_radius` of 1.85** under ADR 0085 when the corrected aim blew
+11,142 pixels, and the leaf is narrowed to 1.40 so its rebate is a real 50 mm gap rather than two
+coplanar faces. Measured on row 480: left joint **56**, right **147**, interior maximum **25** — ratios
+**2.2×** and **5.9×**. Leaf mean **141.8** against wall 83.5 and 25.9. Leaf colour `G − R = +22`, the
+fitting's green rather than the torch's warm. Zero clipped. **And the handwheel now casts a crescent onto
+the leaf**, which review 26 predicted would follow from the aim alone.

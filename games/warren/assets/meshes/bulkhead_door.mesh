@@ -4,10 +4,14 @@ version 1
 entity mesh "A dogged bulkhead door"
   CompoundMesh
     parts
+      - position 0.0 0.0 0.02
+        solid Box
+          shape
+            size 1.5 2.1 0.06
       - position 0.0 0.0 -0.09
         solid Box
           shape
-            size 1.5 2.1 0.18
+            size 1.4 2.0 0.18
       - mirror false true false
         position 0.0 1.11 0.0
         solid Box

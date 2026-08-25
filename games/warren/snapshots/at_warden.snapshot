@@ -1,6 +1,6 @@
 amadeo-snapshot 2
 tick 134
-state-hash ca45eaaf3789e657
+state-hash f9cd7a14c3d9f4cc
 schema-hash c258f27a5519d241
 
 schema
@@ -9790,22 +9790,22 @@ entities
       translation 0.0 2.58 -0.16
   660:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 0.52991927 -0.8480481 0.0 0.0 0.8480481 0.52991927 0.0 60.0 2.5 28.875 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 -0.38268343 -0.9238795 0.0 0.0 0.9238795 -0.38268343 0.0 60.0 2.5 28.875 1.0
     Parent
       generation 0
       index 656
     SpotLight
       colour 0.62 0.8 0.72
-      inner_angle 26.0
-      intensity 14.0
-      outer_angle 52.0
+      inner_angle 30.0
+      intensity 9.0
+      outer_angle 66.0
       range 5.0
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
-      source_radius 0.0
+      source_radius 1.85
     Transform
-      rotation -58.0 0.0 0.0
+      rotation -112.5 0.0 0.0
       scale 1.0 1.0 1.0
       translation 0.0 2.5 -0.72
   661:0
