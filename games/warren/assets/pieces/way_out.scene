@@ -67,7 +67,7 @@ entity way_out "The way out"
       scale 1.0 1.0 1.0
       translation 0.0 2.58 -0.16
 
-  entity head_lamp_light "What it throws down the door"
+  entity head_lamp_light "Aimed at -112.5 because it stands 0.72 m out from the leaf; source_radius 1.85 is compensation for that aim and not a model of the fitting, and correcting it to a physical value puts 11,142 pixels back at paper white"
     SpotLight
       colour 0.62 0.8 0.72
       inner_angle 30.0

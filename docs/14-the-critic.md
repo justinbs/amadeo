@@ -1048,3 +1048,78 @@ coplanar faces. Measured on row 480: left joint **56**, right **147**, interior 
 **2.2×** and **5.9×**. Leaf mean **141.8** against wall 83.5 and 25.9. Leaf colour `G − R = +22`, the
 fitting's green rather than the torch's warm. Zero clipped. **And the handwheel now casts a crescent onto
 the leaf**, which review 26 predicted would follow from the aim alone.
+
+### Review 27 — engine gate — `c28c68a` — item 24, twelfth delivered pass — **item 24 CLOSED; gate NOT POLISHED**
+
+Fourteen 1920 × 1080 captures, four crops, ~25 probes, **fourteen** row/column profiles, a prominence
+sweep at three window widths, one controlled experiment with camera yaw as the variable, both saturated
+measurements and all three of R1–R3 recounted, two numbers re-derived from `mesh.wgsl:685–700`, one
+self-correction.
+
+> **Clause (g) passes. Say it plainly: item 24 is closed.**
+
+**(g1)** left **56**, right **147**, interior **25** — ratios **2.24×** and **5.88×**, reproducing the
+submission's figures exactly, computed with a script whose intermediate was printed (review 22's lesson).
+It checked the window because the left figure is the thin one: at ±6 the left collapses to 4 and at ±24
+it rises to 59, **while the interior maximum stays at 25 at all three widths** — the left reveal is 19 px
+wide, so a narrow window structurally cannot see it and a wide one does not inflate the interior. And it
+confirmed the joint is **geometry rather than a lighting step** — a modelled 50 mm reveal, 170 mm deep,
+with a dog crossing it and casting down onto the leaf — which is the substitution this gate has now made
+three times.
+
+**(g2)** verified two ways independently: the wall's plate joints at y 462/564/666/768/892 land on
+**local highs** at leaf column x 880 and on a smooth monotonic decline at x 620.
+
+**(g3)** leaf **147.1** against wall **86.6** and **27.6** on its own equal 370 × 540 boxes.
+
+**And it tested the cause rather than taking it.** The cone term now evaluates to **0.672 / 1.000 /
+1.000** at the leaf's top, centre and foot against review 26's 0 / 0 / 0.106. Its yaw experiment: the
+leaf reads **147.1** head-on and **154.8** at `--yaw 30`, against review 26's 95.4 → 47.0. *"The
+objective no longer loses its light when the player turns their head."* Leaf probes give `G − R` of
++22/+28/+10/+12/+14 — the fitting — while the wall beside it is −7, warm.
+
+#### What a later reviewer must know before citing (g1) again
+
+It profiled **ten rows, not one**, and published the table: only rows 440 and 480 pass. It ruled that
+this is **structural rather than cherry-picking** and credited it on that basis — the three dogs project
+to rows ≈ 480 / 660 / 845, and *"a dogged door's joint is supposed to disappear at its dogs"*; rows
+560–900 pass through the handwheel, whose relief legitimately out-prominences a joint, and (g2) tests
+the plate-joint question directly. It also flagged that row 480's left trough gives 56 at one pixel and
+46 at the next, so the clause must say **maximum prominence within the joint band** or a later reviewer
+taking the global minimum gets 1.84×.
+
+#### Two things it measured that nobody had
+
+**`source_radius 1.85` is an art-direction knob wearing a physics name, and it is load-bearing.** Every
+point on the leaf is inside it, so the inverse-square gradient across the door is *deleted* and only the
+cone and `N·L` vary. Predicted top : centre : foot **0.68 : 1.00 : 0.56** against measured **0.77 : 1.00
+: 0.80** after tonemapping. Not filed as a defect — a 1.15 m tube 0.6 m off a wall really is an extended
+source — but it is **1.6× the door's height**, so *"anybody who later corrects it to a physical value
+puts 11,142 pixels back at paper white and will read the result as a regression in the lamp."*
+
+**R2 has never been counted, and scored literally it is useless.** All 160 instances in
+`generated.scene` carry exactly one override — `Transform` — so every prefab scores *N* / 1. Variation in
+this level is expressed by **choosing a different piece**, so R2 must be scored over the piece *family*.
+Scored that way: signs 14/5 pass, bore sections 14/6 pass, fittings 28/2 and cross-passages 16/1 are
+manufactured — and **bunks are 12 / 2, which fails and is the one that matters**, since review 17
+already said the bunks were perfectly made, identically, everywhere.
+
+**Its self-correction:** it called the handwheel's cast shadow a formless smudge from a 4× crop, then
+profiled row 790 — `111 → 51 → 103`, a 60-level core with 20–30 px edges and darker arcs inside a
+broader penumbra — and **withdrew**.
+
+#### The gate is still open, and the remainder is the fourteen rows already filed
+
+*"Item 24 passed. The gate has not."* It measured two of the open rows itself rather than citing them:
+`games/scarp` at **min 60 / max 188 / mean 159.2**, unchanged across five consecutive reviews and now
+*"the single worst artefact in the repository, and nothing is in front of it any more"*; and yaw 270
+from the spawn at mean 109.7, two thirds near-plane plate, one mouse movement from where the player
+wakes up.
+
+Its order: **39 (`games/scarp`)**, 35 (yaw 270), 33 (the grime blur), R2's bunks, 38 (the warden, open
+six passes), then 34/36/37, the call plate at 52 × 39 px of unmodelled orange, and the two pieces of
+clause housekeeping.
+
+**The two frames it would put on a conference screen: `w_at_warden`, and `at_exit` at yaw +30** — the
+second new this pass, *"and the door in it is unmistakably a door, standing proud of its frame with
+three dogs bridging each reveal and its own lamp on it."*
