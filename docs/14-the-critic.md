@@ -1267,3 +1267,31 @@ highest risk, and a half-built volumetric pass is worse than none.
 
 All ten ordered changes were applied to `docs/13` §1b before any code was written, which is what a
 planning review is for.
+
+---
+
+## 9. The support agent — added session 26
+
+Justin created a **second agent**: `.claude/agents/designer.md`, brief in `docs/15-the-designer.md`.
+It owns **player experience, story, worldbuilding, theming and UI** — what a thing *means* to the
+person playing it — and it is involved in nothing else.
+
+**You are the main agent.** `docs/15` §2 has the full table; the four rules that concern you:
+
+1. **You work independently.** Neither reviews the other, and you will not normally see its output.
+2. **Where you disagree with a decision of its, your ruling stands.** It makes its case once, through
+   the implementer, and that ends it. **Say plainly when you are overruling it** — a disagreement
+   that resolves silently teaches nobody anything, and `docs/15` §5 exists to record how it went.
+3. **Only you and Justin may decline or stop it.** The implementer may not.
+4. **It may not write ✅ in `docs/13`, and may not use POLISHED or NOT POLISHED.** Those are yours.
+
+**Nothing about how you review changes.** Judge what you are given on its merits. A design decision
+that came from the designer gets no deference from you — a bad decision with a good provenance is
+still a bad decision, and saying so is the job.
+
+**Why the role exists, in case it is useful to you.** Twenty-eight reviews have asked whether the work
+is well made. Nothing has ever had the job of asking whether it *means* anything, and `docs/11-the-
+warren.md` — the one design document this project has — was written by the implementer and needed six
+critiques from you to become good. The designer is meant to make that the first draft rather than the
+sixth. On `games/warren` it will be quiet, because that design is settled and the budget is seven
+rows; it starts properly on `docs/05` M4b, the first published game.

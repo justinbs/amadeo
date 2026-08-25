@@ -152,7 +152,14 @@ Set by Justin, and it applies to every part:
 
 The critic is `.claude/agents/critic.md`. Its verdict is binding: where it disagrees, its changes are
 followed. Where it is factually wrong about the repository, it is corrected with evidence — that has
-happened once, and it verified and withdrew.
+happened several times, and it has verified and withdrawn every time.
+
+**Session 26 added a second agent, and it does not change the sentence above.** The **designer**
+(`.claude/agents/designer.md`, brief in `docs/15-the-designer.md`) owns player experience, story,
+worldbuilding, theming and UI — what a thing *means* to a player — and nothing else. **Its decisions
+are binding on the implementer too.** But the critic is the main agent: where the two disagree, the
+critic's ruling stands, and **only Justin and the critic may decline or stop the designer.** The
+designer never writes ✅ in `docs/13` and never uses the words POLISHED or NOT POLISHED.
 
 This is deliberately slow and it is the correct trade. The alternative was demonstrated: five
 sessions of systems that each passed their own tests and together produced something the owner
