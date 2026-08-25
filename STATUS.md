@@ -26,6 +26,84 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 ## 📬 For the next session — read this box first, then `docs/14-the-critic.md` §6
 
+> ### Session 25: item 24 closed after twelve delivered reviews, and the gate moves to the Scarp
+>
+> **`docs/13` item 24 — "`games/warren` stops being boxes" — is ✅, written by review 27 with its own
+> evidence.** It had been through **twelve delivered reviews** (14 planning, 15, 16, 17, 19, 20, 22,
+> 23, 24, 25, 26, 27) plus two that died to session limits. Reviews 19–27 are all in `docs/14` §8.
+>
+> **The gate itself is still NOT POLISHED**, and the remainder is **fourteen open rows** in `docs/13`
+> §2 rather than a moving list attached to one item. Review 27's order, and this is the answer to
+> "what next":
+>
+> 1. **Item 39 — `games/scarp`.** It measured it rather than citing it: `min 60, max 188, mean 159.2`,
+>    the whole frame inside 128 levels of the upper half, unchanged across **five consecutive
+>    reviews**. One flat-shaded heightfield, one salmon box for a player, zero textures, zero props.
+>    It is an **M2.5 exit gate**, `amadeo-texture` and the whole surface pipeline exist and have never
+>    been pointed at it, and *"with item 24 out of the way nothing is in front of it any more."*
+> 2. **Item 35 — yaw 270 from the spawn**, mean 109.7 and two thirds near-plane lining plate. One
+>    mouse movement from where the player wakes up. The fix is a spawn position, not geometry.
+> 3. **Item 33 — the grime blur**, still a smear at three metres.
+> 4. **R2's bunks — 12 placements, 2 variants.** Three overrides on a piece that already exists.
+> 5. **Item 38 — the warden's right angles**, open across six passes.
+> 6. Items 34, 36, 37, then the call plate (52 × 39 px of unmodelled orange beside a locked door).
+>
+> **Item 40 is the next demo game**, asked for by Justin: a survival game in the Project Zomboid line.
+> **Not started, and its design document goes to the critic before any code** — that is the order
+> `docs/11` established and review 14 proved out. It is the first game that would make trap 9 real,
+> and the second to want pathfinding, which is what turns item 18 into a module with two users.
+>
+> #### What the last three sessions cost, and the one lesson worth carrying
+>
+> **Five of my own measurements were wrong, and a review caught every one.** They are worth knowing
+> because they are all the same shape — *measuring a thing that resembles the thing the clause names*:
+>
+> 1. A histogram helper read field 4 after stripping bar characters, which is the percentage **only
+>    for buckets whose label carries a space** (`0- 15` … `80- 95`). Every high bucket read as zero,
+>    and it agreed with the critic on one frame while being silently wrong on another.
+> 2. A warden probe at x 1120 was on **the lit bunk frame beside it**; the coat is at x 960–1023.
+> 3. A clause (f) reading of 40 levels was **a crate's silhouette edge**, not a shadow.
+> 4. A clause (d) reading of +38/+12 was **lining-versus-deck**, which the rewritten clause forbids.
+> 5. A clause (g) boundary of 105 was **the frame-to-wall band**, not the leaf-to-frame joint, which
+>    measured **0**. Review 26 proved it by projecting the door from the snapshot's own camera.
+>
+> **The fix that stuck is in the clauses, not in me:** (g1) now names screen coordinates and says
+> *maximum prominence within the joint band*, and it carries review 27's ten-row table showing which
+> rows it holds at and why. **A close condition that can be satisfied by measuring the wrong object
+> is not falsifiable**, which is what `docs/14` §6 requires.
+>
+> #### Four more things worth not rediscovering
+>
+> - **A byte-identical frame across three authored positions means the object is behind a wall**, not
+>   that the field is unread. Moving a fully occluded object in x or y changes nothing. That is how
+>   the exit lamp hid for two whole sessions.
+> - **A light at the eye casts no shadow the eye can see.** Three pieces of relief were built on the
+>   door in one pass and then lit from the one direction that cannot show relief — the fixture over it
+>   was aimed at the floor 2.3 m in front, and the torch was doing all the work.
+> - **`relief` in `finishes.rs` is a divisor tuned for surfaces that carry a lattice.** A joint is a
+>   height step of order 1 and the fine grain is 0.03, so the same divisor that suits cast iron
+>   flattens cloth and concrete twentyfold. Six of ten normal maps were the identity because of it.
+> - **Repetition is only a tell on objects that should have individual histories.** A cast-iron lining
+>   genuinely *is* twenty identical segments; R1 was amended after flagging thirteen blocks of which
+>   twelve were manufactured.
+>
+> #### Engine changes this session
+>
+> - **ADR 0085 — a light has a `source_radius` and the inverse square is clamped to it.** Karis's
+>   sphere-light form. **Defaults to 0.0**, so every existing capture in every game is byte-identical;
+>   it rides in the `shadow` vec4's unused `z` lane, so the uniform layout does not change. The
+>   Warren's yaw-270 frame went **118,040 clipped pixels → 0**.
+> - **`MAX_SHADOW_SPOTS` 2 → 4.** Eighteen spot lights were competing for two slots, so exactly one
+>   fixture cast per frame and which one changed as you walked. **`view.wgsl` mirrors the array size
+>   by hand and must change with it.**
+> - Both touched `.wgsl`, so **the fifth check in `CLAUDE.md` §4b applies** and passed (FXC, 55 tests).
+>
+> `gh` is not on PATH: prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
+
+
+<details>
+<summary>Session 24's box, kept for its five wrong-measurement lessons</summary>
+
 > ### Session 24: review 19 found what was lighting the tunnel, and the answer was nothing
 >
 > **The interrupted review 18 was re-sent at `efdc90d` and delivered as review 19: NOT POLISHED**,
@@ -160,6 +238,8 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 >
 > `gh` is not on PATH: prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
 
+
+</details>
 
 <details>
 <summary>Session 23's box, kept because review 17's four open items are traced through it</summary>

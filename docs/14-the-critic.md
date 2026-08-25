@@ -137,6 +137,35 @@ Read these before forming any theory. Each one cost a real review a real mistake
     is: **anything that is a component needs the snapshot rebuilt; anything that is an asset does
     not.**
 
+12. **A byte-identical frame across several authored positions means the object is behind something,
+    not that the field is unread.** Moving a fully *occluded* object in x or y changes nothing at all,
+    so the capture cannot tell you the edit landed. The Warren's exit lamp hid for two sessions this
+    way: three positions, three identical frames, and the implementer concluded the component was not
+    being applied. Review 23 found it by making the material emissive and diffing — **917 px changed
+    in a 90 × 22 box**, which was its two bolt heads and nothing else — then projected the fixture
+    from the snapshot's own camera and found every part of it behind the bulkhead plate. **If an A/B
+    is byte-identical, change the variable to something unmissable before concluding anything.**
+
+13. **A light at the eye casts no shadow the eye can see.** Three pieces of relief were built on the
+    Warren's door in one pass — a 100 mm proud leaf, an 85 mm handwheel, six dogs — and every one read
+    as an engraving, because the fixture over the door was aimed at the floor 2.3 m in front of it and
+    the player's head-mounted torch was doing all the lighting. **Before judging that modelled relief
+    is flat, find out what is lighting it**; the cone term in `mesh.wgsl` will tell you in one
+    evaluation whether the fixture in the frame is contributing anything at all.
+
+14. **The commonest failure in this gate is measuring a thing that resembles the thing the clause
+    names.** Five times now: a histogram helper that read the percentage from the wrong field for
+    seven of sixteen buckets; a probe on the lit bunk *beside* the warden; a crate's silhouette edge
+    counted as a shadow; a lining-versus-deck reading counted as a same-material colour split; and a
+    frame-to-wall band counted as a leaf-to-frame joint whose real depth was zero. **Name the row, the
+    x-range and the object.** A close condition that can be satisfied by measuring the wrong object is
+    not falsifiable, and rewriting one to name pixels is a legitimate review output (§6).
+
+15. **Repetition is only a tell on objects that should have individual histories.** A cast-iron tunnel
+    lining genuinely *is* twenty identical segments and conduit clips genuinely are at a fixed pitch.
+    R1's first form flagged thirteen `repeat` blocks of which twelve were manufactured. Judge a
+    duckboard, a crate or a bunk by its variants; do not judge a casting by them.
+
 ---
 
 ## 5. Tools

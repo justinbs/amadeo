@@ -19,9 +19,28 @@
 
 ## 1. Status at a glance
 
-**Gate verdict: NOT POLISHED (review 13).** Phases A and B are closed and passed — A on review 4,
+**Gate verdict: NOT POLISHED (review 27).** **Item 24 is CLOSED** — ✅ written by review 27 on
+clause (g) alone, after twelve delivered reviews and two that died to session limits. **The remainder
+is fourteen open rows below rather than a list attached to one item**, which is review 25's scope
+ruling: *"everything else is a specific object, not a property of the game, and specific objects belong
+in specific rows."* Review 27's order is **39 (`games/scarp`), 35 (yaw 270), 33 (the grime blur), R2's
+bunks, 38 (the warden), then 34 / 36 / 37 and the call plate.** Phases A and B are closed and passed — A on review 4,
 items 8 and 9 on review 5, item 11 on review 6, item 10 on review 7. **Phase C is open**; Phase D is
 untouched.
+
+### Where session 25 got to
+
+**Item 24 closed.** Reviews 22–27 took it from *"a near miss"* to a ✅ written by a review with its own
+evidence. What landed across them: **ADR 0085's sphere-light falloff** (118,040 clipped pixels → 0),
+`MAX_SHADOW_SPOTS` 2 → 4, the **cross-passage stagger** that removed `docs/11` §5.3's forbidden
+sixty-metre sightline, **timber duckboards** broken into six variants, **conduit down both haunches**,
+per-texel grain and normal maps that are no longer the identity, an **orange-edged key board**, and a
+**way out that is a door** — its own steel surface, a 50 mm reveal, a closed handwheel that casts onto
+the leaf, and its own lamp actually aimed at it.
+
+**The next thing is `games/scarp` (item 39).** Five consecutive reviews recorded it and none could act
+on it while item 24 was open. It is an M2.5 exit gate and it now reads as the thing review 12 condemned
+`games/warren` for being.
 
 ### Where session 24 got to
 
