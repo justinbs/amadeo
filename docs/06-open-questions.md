@@ -7,6 +7,68 @@ Priority: **P0** blocks work now · **P1** needed for the current milestone · *
 
 ---
 
+## Q44 · P0 · How does the audio pass learn that a wall is in the way?
+
+**Opened in session 26 by review 28, which found it sitting unnamed inside a close condition.**
+`docs/13` §1b's **F6** requires occlusion — `docs/11` §9 makes it a *gameplay* requirement rather than
+polish, because *"a warden exactly as loud through a wall as through a doorway makes the whole
+mechanic a lie"*, and the game is made of corridors.
+
+**The obstacle is the crate graph, and it is I6.** `crates/amadeo-audio/Cargo.toml` depends on assets,
+core, ecs, events, reflect and transform — **and not on `amadeo-physics`**. There is no way to ask
+"is there a wall between the listener and this source" from inside `collect_audio` without changing
+something structural.
+
+### The three shapes, and none of them is free
+
+1. **A new dependency edge, `amadeo-audio → amadeo-physics`.** Simplest to write. It also makes the
+   audio crate un-buildable without a physics crate, for a query that most games will not want, and
+   ADR 0036 §4's rule about foreign types crossing a backend has to be restated in a second place.
+2. **An occlusion value written from above**, by a system in the game or in a module that can see
+   both. Keeps the graph as it is and matches how `Overlay`, `TextureCache` and `MeshCache` already
+   invert — the lower crate owns the slot and something higher fills it, which this project has done
+   four times. Costs an authored component and a system every game must remember.
+3. **A geometric approximation that needs no physics at all** — a portal or room-adjacency value the
+   level generator already knows, since `layout.rs` builds the room graph and knows which sections
+   share a door. Cheapest at runtime, exact for this game, and useless to a game whose walls are not
+   generated.
+
+### Why it is Justin's
+
+`CLAUDE.md` §5: anything hard to reverse. A dependency edge in a strict DAG is close to the hardest
+thing in this repository to take back out, and option 2 versus option 3 decides whether occlusion is
+an engine capability or one game's trick. **It wants an ADR before F6 starts**, not during it.
+
+**Priority P0 because F6 is third in the FINISH order** and the budget is two or three sessions.
+
+---
+
+## Q45 · P0 · Which parameter drives the torch beam's scattering, and where does its colour come from?
+
+**Opened in session 26 by review 28, which re-derived the numbers and found the row unbuildable as
+written.** `docs/13` §1b's **F4** raymarches a volumetric beam through ADR 0073's fog.
+
+**The shipped medium cannot do the job.** `games/warren/assets/looks/warren.environment` carries
+`density 0.055, start 1.5`, exponential-squared — which is **0.68% at 3 m** and **3.6% at 5 m**. A
+torch cone lives in the first 4–6 m, so the air it crosses is essentially clear. And `fog.colour` is
+`0.02 0.028 0.024`, near black: **the same medium cannot both absorb to black and glow.**
+
+### The fork
+
+- **Reuse `fog.density` as the scattering coefficient** and derive the beam's colour from the light
+  rather than from the fog. One number means one thing, no new field, and every existing
+  `.environment` keeps its meaning — but raising the density to make a beam visible also raises the
+  distance haze, and the Warren's fog is authored where it is for a reason.
+- **A new `Environment` field** — `scattering`, with its own colour. Independent control, ADR
+  0075/0076 make the field free to add and every existing file keeps loading. It is a second knob
+  describing the same air, which is exactly the shape `docs/14` §4 #2 warns about: two knobs for one
+  physical quantity is how a repository ends up compensating for one with the other.
+
+**Decide before F4 starts.** Review 28: *"an ADR discovered mid-row is what spends the budget"*, and
+F4 is already the row named as the one allowed to slip.
+
+---
+
 ## Q41 · P1 · Skeletal animation, and where the rigged model comes from
 
 **Opened in session 21 by the engine review, which found that three documents cited this file as

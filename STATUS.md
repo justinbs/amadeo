@@ -1,7 +1,8 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-25 (session 25)
-**Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE — all four exit gates met.**
+**Last updated:** 2026-08-26 (session 26)
+**Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE. The engine gate is RE-SCOPED —
+`docs/13` §1b is the binding plan and seven FINISH rows are what is left of it.**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
 built: ADR 0031 (2D/3D coexistence, camera becomes an entity), 0033 (material and shader model), 0034
@@ -25,6 +26,84 @@ always on), **0041** (parallelism is deterministic by construction or absent —
    200-body complexity.
 
 ## 📬 For the next session — read this box first, then `docs/14-the-critic.md` §6
+
+> ### Session 26: Justin re-scoped the gate, review 28 re-planned the re-scope, and there are seven rows left
+>
+> **No code was written this session and that was the point.** `docs/13` **§1b is the binding plan now**
+> and supersedes review 27's order. Read it before §2 and before anything else in this file.
+>
+> #### What Justin instructed
+>
+> Lower the scope, cut the redundancies, **finish `games/warren` in two or three sessions**. Then **the
+> editor (M4)**. Then — and this is new — **the first published game**: a full survival game in the
+> Project Zomboid line, isometric, 2D and 3D, **not a demo game**. It has its own milestone now,
+> `docs/05` **M4b**, sitting between M4 and M5 rather than in M7's someday list, and `docs/12` §4 carries
+> the order. Its theme is settled when the project reaches it; its genre, perspective and status are not
+> in question.
+>
+> **The bar did not move.** AA indie, and the critic is still binding on every row that survived.
+>
+> #### Thirty-four open rows became seven
+>
+> **FINISH (7):** F1 the opening *and the ending* · F2 the warden's form · **F2b the warden respects the
+> level** · F3 wayfinding · F4 the torch beam · F5 the objects you stop in front of · F6 the ear.
+> **Order: F2, F2b, F6, F5, F4, F1, F3.**
+> **GAME 2 (14) · EDITOR (2) · CUT (7) · one row (31) that needs a verdict rather than work.**
+>
+> Two cuts did the work: **`games/atrium` and `games/scarp` are frozen**, because `docs/13` §3's POLISHED
+> condition has always been *"a frame from a real game"* and neither is one; and six object-rows became
+> one pass. **Review 28 upheld both**, including cutting the row it had itself ordered first.
+>
+> **What ships if the budget runs out, decided now rather than under fatigue:** F2, F2b, F5 and F1 are
+> mandatory. F6 may descope to occlusion and footstep surfaces. F3 may descope to §5.4's requirements 1
+> and 3. **F4 is the stretch and is the row allowed to slip.**
+>
+> #### The finding, and it is the largest thing in the plan
+>
+> **The warden sees through walls and walks through them.** `watch_for_you` sets `sees_you` from
+> `distance(...) <= WARDEN_SIGHT` alone; `move_the_warden` writes `Transform::translation` straight at
+> the player with no collider and no sweep. Its own doc comment excuses this — *"the room is open enough
+> that it does not read as broken"* — and **that sentence was written for `scenes/warren.scene` while the
+> game ships `scenes/generated.scene`**, fourteen sections divided by bulkheads.
+>
+> **This is why F6 cannot be built without F2b.** F6 exists to stop a warden being as loud through a wall
+> as through a doorway. Build it alone and the player hides behind a bulkhead, hears the breath muffle
+> correctly, and watches the figure come through the plate. It is not pathfinding and not item 18:
+> `cast_shape` for sight, `move_shape` for motion, both already built and both already used in this game.
+>
+> #### Two decisions that are Justin's before their rows start
+>
+> 1. **F6:** `amadeo-audio` does **not** depend on `amadeo-physics`, so nothing inside `collect_audio` can
+>    ask whether a wall is in the way. A new dependency edge is hard to reverse — `CLAUDE.md` §5 — and it
+>    wants an ADR.
+> 2. **F4:** whether the beam's scattering coefficient is `fog.density` or a new `Environment` field, and
+>    where its colour comes from. The shipped fog is **0.68% at 3 m**, and `fog.colour` is near black, so
+>    the same medium cannot both absorb to black and glow.
+>
+> **And one thing only Justin can settle**, on headphones, once: does `warden_breath` read as a creature
+> or as filtered noise; does `warren_tone` leave silence audible; do `caught` and `escaped` read as two
+> different endings. Any "no" is a row. Nothing else in audio is.
+>
+> #### Four things worth not rediscovering
+>
+> 1. **The handover I was given was two sessions stale** and told me to re-send review 18. It had already
+>    been re-sent as review 19, and item 24 closed on review 27. **Read `STATUS.md` and `git log` before
+>    acting on a handover's instructions**, including this one.
+> 2. **A close condition rewritten to be more falsifiable can be less.** F2 asked for ≥ 40 levels across
+>    the warden, and the unmodified model already reads **50 → 207**. Five of six rewritten conditions
+>    failed this way, which is the sixth instance of §4's *measuring the wrong object*.
+> 3. **The submission claimed the game has no music. It has an ambient bed** — `ambience.scene` plays
+>    `warren_tone` on `Bus::Music`, looping, forever. What is absent is anything *reactive*. Check the
+>    assets before writing an absence into a document.
+> 4. **`warden_figure.mesh` is nine `solid Box` parts, none rotated.** `Part` already carries `rotation`
+>    and `Solid` already ships `Cylinder`, `Sphere` and `Wedge` — **F2 needs no Rust at all.** The row six
+>    review passes could not move is authorable in text.
+>
+> `gh` is not on PATH: prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
+
+
+<details>
+<summary>Session 25's box, kept for the gate state it handed over</summary>
 
 > ### Session 25: item 24 closed after twelve delivered reviews, and the gate moves to the Scarp
 >
@@ -99,6 +178,9 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > - Both touched `.wgsl`, so **the fifth check in `CLAUDE.md` §4b applies** and passed (FXC, 55 tests).
 >
 > `gh` is not on PATH: prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
+
+
+</details>
 
 
 <details>

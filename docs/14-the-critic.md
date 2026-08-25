@@ -1152,3 +1152,118 @@ clause housekeeping.
 **The two frames it would put on a conference screen: `w_at_warden`, and `at_exit` at yaw +30** — the
 second new this pass, *"and the door in it is unmistakably a door, standing proud of its frame with
 three dogs bridging each reveal and its own lamp on it."*
+
+---
+
+### Review 28 — engine gate — `618e8d5` — **a PLANNING review of session 26's re-scope** — **NOT POLISHED (on the plan)**
+
+The second planning review this project has taken, review 14 being the first. Nothing was submitted as
+built and no capture was submitted for credit. What was submitted was `docs/13` §1b: Justin's session-26
+instruction to lower the scope, cut the redundancies and finish `games/warren` in two or three sessions,
+turned into thirty-four open rows becoming six.
+
+**It reviewed the plan and it also measured, which is why its findings are worth more than an opinion
+about a list**: six 1920 × 1080 captures, two magnified crops, four row profiles, four histograms, the
+crate dependency graph read off `Cargo.toml`, the shipped fog re-derived from `warren.environment`, and
+the warden's two systems read from source.
+
+#### It upheld the cut it had the most standing to defend, and corrected its reason
+
+Review 27 had ordered `games/scarp` first. Review 28 **upheld cutting it**: *"I am not going to defend
+my own ordering against a deadline that did not exist when I set it… POLISHED is a frame from a real
+game, and neither frozen game is one."* It also said plainly that writing the argument down and putting
+it first, instead of skipping a row quietly, *"is the behaviour this process exists to produce."*
+
+**But the stated reason was wrong and that mattered.** *"Texturing it is a second art pass"* is refuted
+by `crates/amadeo-terrain/src/world.rs`'s own comment: a planar projection stretches on vertical faces
+and *"triplanar mapping is the usual fix."* That is engine work an isometric outdoor game needs, so it
+was filed as its own GAME 2 row (**G-tri**) rather than being allowed to leave with item 39.
+
+#### The finding: the plan was missing its largest row, and building F6 without it would restore the lie F6 removes
+
+`move_the_warden` writes `Transform::translation` straight at the player with no collider and no sweep.
+`watch_for_you` sets `sees_you` from `distance(...) <= WARDEN_SIGHT` alone, with no line of sight.
+**The antagonist of a horror game sees through cast-iron bulkheads and walks through them.**
+
+The function's own doc comment excuses it — *"the room is open enough that it does not read as broken"* —
+and **that sentence was written for `scenes/warren.scene` while the shipped level is
+`scenes/generated.scene`**, fourteen sections divided by bulkheads. A comment that was true of the level
+it was written against and false of the level that ships.
+
+Why it outranks everything: **F6 exists to stop a warden being exactly as loud through a wall as through
+a doorway.** Build F6 and leave this, and the player hides behind a bulkhead, hears the breath muffle
+correctly, and watches the figure come through the plate — *"the lie F6 removes is put back by the
+omission, in the same thirty seconds. Two systems pointing opposite ways is worse than neither."*
+Filed as **F2b** and as item **41**. Not pathfinding, not item 18: `cast_shape` for sight and
+`move_shape` for motion, both built and both already used in this game.
+
+#### Five of six close conditions failed §6, and two were satisfiable with the defect fully intact
+
+The same failure this repository has now made six times — **a condition satisfiable by measuring the
+wrong object** — committed in the act of rewriting conditions to be *more* falsifiable:
+
+- **F2 asked for ≥ 40 levels between the coat's lit and unlit sides. It measured 50 → 207 across row
+  620 on the unmodified model** — a 157-level range, passing by nearly four times, on the mesh the row
+  exists to replace. Item 38's clause had been *"across the coat's front face"*, which is self-shading;
+  the rewrite substituted side-lighting the lamp already delivers.
+- **F4's numbers were impossible.** Re-derived from the shipped `density 0.055, start 1.5`: fog is
+  **0.68% at 3 m** and **3.6% at 5 m**, so the air a torch crosses is essentially clear and a 25-level
+  *mean* lift cannot come from that medium. `fog.colour` is near black, so the same medium cannot both
+  absorb to black and glow — an undeclared authoring decision sitting inside a row in a fixed budget.
+  Its *"< 3 outside the cone"* clause would also **fail a correct implementation**, since a raymarch
+  scatters every spot.
+- **F5's merge was upheld and its condition rejected.** One clause — *"nothing in the shelter brighter
+  than the lining"* — is **wrong art direction**: the lamp, the tube and the accent must all be
+  brighter than the lining, because they are the focal points. Four sentences of universal prose had
+  deleted the named rows and ranges the original rows already carried.
+- **F1's scrim clause was true of an opaque black rectangle on a rendered frame** — the exact defect —
+  and it had quietly relaxed item 35's *"≥ 1.5 m clear of any wall"* to 0.8 m, which with a 0.35 m
+  capsule is 0.45 m of standing room in a 4.8 m bore.
+- **F3 dropped the requirement `docs/11` §5.4 calls the whole scheme** — sections placed in
+  alphabetical order along the spine — and substituted a pointer, which an arrow satisfies while
+  fourteen signs stay decoration.
+- **F6 said "measurably attenuated"**, which §6 forbids, and did not name the architecture question
+  underneath it: `amadeo-audio` does **not** depend on `amadeo-physics`, so there is no way to ask
+  whether a wall is in the way without a new dependency edge or a value written from above. Hard to
+  reverse, so `CLAUDE.md` §5 makes it Justin's and it wants an ADR.
+
+**Its own self-correction, recorded because §4 requires it:** it first read F1's 25-level yaw clause as
+forcing uniformity and fighting item 24's clauses (a) and (c). The four cardinal means are
+**62.3 / 67.8 / 50.2 / 109.7** — fix yaw 270 and the other three span 17.6 — so it **withdrew**. It
+then replaced the instrument anyway, on the better ground that the mean measures brightness where the
+defect is *proximity*: the fraction above luma 144 reads **3.5% / 8.5% / 0.2% / 36.7%** and separates
+the defect cleanly.
+
+#### It corrected a claim the submission made about itself
+
+The submission said *"there is no music at all."* **`games/warren/assets/pieces/ambience.scene` plays
+`warren_tone` on `Bus::Music`**, non-spatial, looping, forever. What is absent is anything *reactive*.
+Its ruling was that reactive music does **not** get a row — §9's *"near-silence is the default, so that
+a single sound is an event"* — but that driving the existing bed's gain from distance to the warden is
+four lines and joins F6.
+
+It also found, without ears, a design failure that needs none: **there is one `footstep` clip and the
+game has three floor surfaces** — timber duckboards, concrete screed and standing water — after a whole
+review cycle was spent making the duckboards legible.
+
+**And it named what only Justin can settle**, on headphones, once: whether `warden_breath` reads as a
+creature or as filtered noise, whether `warren_tone` leaves silence audible, and whether `caught` and
+`escaped` read as two different endings. *"Any no is a row. Nothing else in audio is."*
+
+#### Plan hygiene: the arithmetic did not close
+
+`grep -c "FINISH (s26)"` returned **12** against a table naming **11** — the twelfth was item **25**,
+the reticle, tagged and then absent from the six, and measured at `at_exit` as a 4 px dot at luma **122
+against a door reading 200–233**, *darker* than its background at the game's final objective. Item
+**31** carried no bucket and needs a verdict rather than work. Item **40** carried a GAME 2 tag while
+missing from the GAME 2 list. Item **3c** was counted under EDITOR while closed on r13.
+
+#### And it required the fallback be decided while it is a decision
+
+*"Two-to-three sessions is not elastic and the plan does not say what ships if it runs out."*
+**Mandatory: F2, F2b, F5, F1.** F6 may descope to occlusion and footstep surfaces. F3 may descope to
+§5.4's requirements 1 and 3. **F4 is the stretch and is the row allowed to slip** — highest value and
+highest risk, and a half-built volumetric pass is worse than none.
+
+All ten ordered changes were applied to `docs/13` §1b before any code was written, which is what a
+planning review is for.

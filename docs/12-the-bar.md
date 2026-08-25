@@ -164,7 +164,8 @@ The four parts above are one gate around one game. **What follows it is now fixe
 recorded here because it changes what "finished" means for the current work:
 
 1. **Finish `games/warren`** — the M3 demo game, in **two or three sessions**, on the re-scoped plan
-   in `docs/13` §1b. It is a demo game in UE5's sense: it feels like a game and is one.
+   in `docs/13` §1b: **seven FINISH rows**, ordered F2, F2b, F6, F5, F4, F1, F3, with a stated fallback
+   for what ships if the budget runs out. It is a demo game in UE5's sense: it feels like a game and is one.
 2. **The editor** — M4. `games/warren` being finished is what gives the editor something real to open.
 3. **The first published game** — a full survival game in the Project Zomboid line: isometric, 2D and
    3D. **Not a demo.** `docs/13` item 40, and its design document goes to the critic before any code,
