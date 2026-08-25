@@ -486,6 +486,26 @@ test of the renderer. Reasoning in `00-vision.md` § The first game to actually 
 > look the way they do) and **ADR 0075** (a field may declare a default, closing Q32 and unblocking
 > every future `Material` field).
 
+> ### ⬇ RE-SCOPED IN SESSION 26 — the gate has a deadline now, and an order beyond it
+>
+> Justin re-scoped the engine gate in session 26: **finish `games/warren` in two or three sessions**,
+> cut the redundancies, then **the editor (M4)**, then **the first published game** — a full survival
+> game in the Project Zomboid line, isometric, 2D and 3D, which is **not a demo game**.
+>
+> **`docs/13` §1b is the binding plan** and supersedes review 27's order. Thirty-four open rows became
+> **six**: F1 the opening, F2 the warden, F3 wayfinding, F4 the torch beam, F5 the objects you stop in
+> front of, F6 audio occlusion. Eight rows are cut with a stated reason, ten move to the published
+> game, two to the editor. **`games/atrium` and `games/scarp` are frozen** — neither is a deliverable,
+> and `docs/13` §3's POLISHED condition was already *"a frame from a real game"*.
+>
+> **What this milestone's own exit gate still owes**, mapped onto those six: item 4 (inventory and
+> interaction) is met by the torch and the key, against the design rather than against the stale
+> wording above; item 5 (atmosphere) closes on **F4**; item 6 (audio) closes on **F6**; item 8
+> (a stable 60 fps against declared budgets) moves to the published game with `docs/13` item 19,
+> because widening the performance evidence on a twelve-metre bore measures the wrong thing.
+>
+> **The bar is unchanged.** AA indie, and the critic is still binding on every one of the six.
+
 ---
 
 ## M4 — The Editor
@@ -565,6 +585,41 @@ M0–M2 (ADR 0006).*
 
 **Scope discipline:** ADR 0006 authorises no networking machinery before this milestone. If earlier
 milestones start growing transport or prediction code, push it back here.
+
+---
+
+## M4b — The first published game
+
+⬆ **ADDED IN SESSION 26, by Justin, and it sits between M4 and M5 rather than out at M7.**
+
+> *"After the editor the next is not a demo game but a full fledged survival game like Project
+> Zomboid so 2d and 3d i think but Isometric, basically in that style and perspective and quality
+> level… That next game isn't a demo game anymore but will be our first published game."*
+
+**This is the first thing built here that is meant to be sold rather than to prove something.**
+`games/quad-demo`, `games/vault`, `games/atrium`, `games/scarp` and `games/warren` are all exhibits.
+This is not, and the difference decides its scope: it does not stop when the engine has been shown to
+work.
+
+**What it demands that nothing here has ever exercised** — tracked as `docs/13` item 40 and the
+GAME 2 bucket in §1b:
+
+- `mod-tilemap` and **isometric y-sorting** (item 27), which no plan contained before `docs/12`
+- `mod-pathfinding` (item 18) — a dense tile world routed by many agents, which is Zomboid's whole
+  simulation and which `modules/amadeo-behaviour` has been waiting on since it shipped
+- **Skeletal animation and skinning** (item 28, Q41) — a populated world
+- **Particles** (item 12) and **decals** (item 29) — rain, smoke, blood, wear
+- **Alpha cutout** (item 11b), now that textures exist to discard against
+- **Screen-space ambient occlusion** (item 21's second half) and **normal-map mip renormalisation**
+  (item 23), both moved here because an isometric daylight camera is the case that breaks them and a
+  torch-lit bore is not
+- **Widened performance evidence** (item 19) — thousands of tiles and hundreds of agents, which is
+  also where M3's own exit gate 8 lands
+
+**Its design document goes to the critic before any code**, exactly as `docs/11-the-warren.md` did,
+and `docs/12` §4's four-part order applies to it unchanged. **The theme is not settled** and Justin
+has said it is decided when the project reaches it; what is settled is the genre, the perspective and
+that it ships.
 
 ---
 

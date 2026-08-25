@@ -158,6 +158,22 @@ This is deliberately slow and it is the correct trade. The alternative was demon
 sessions of systems that each passed their own tests and together produced something the owner
 called a bland engine test.
 
+### The order beyond this gate, set by Justin in session 26
+
+The four parts above are one gate around one game. **What follows it is now fixed**, and it is
+recorded here because it changes what "finished" means for the current work:
+
+1. **Finish `games/warren`** — the M3 demo game, in **two or three sessions**, on the re-scoped plan
+   in `docs/13` §1b. It is a demo game in UE5's sense: it feels like a game and is one.
+2. **The editor** — M4. `games/warren` being finished is what gives the editor something real to open.
+3. **The first published game** — a full survival game in the Project Zomboid line: isometric, 2D and
+   3D. **Not a demo.** `docs/13` item 40, and its design document goes to the critic before any code,
+   the same way `docs/11` did.
+
+**This narrows the current gate; it does not lower the bar.** AA indie is still the standard and the
+critic is still binding. What changed is how many objects one demo is allowed to spend a review cycle
+on — see `docs/13` §1b for the six rows that remain and the reason each cut is a cut.
+
 ---
 
 ## 5. How to read this against the roadmap
