@@ -1,6 +1,6 @@
 amadeo-snapshot 2
 tick 134
-state-hash 909f51fdcde553d3
+state-hash f40960dcf067edc2
 schema-hash c258f27a5519d241
 
 schema
@@ -9790,7 +9790,7 @@ entities
       translation 0.0 2.58 -0.16
   660:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 0.6691306 -0.7431448 0.0 0.0 0.7431448 0.6691306 0.0 60.0 2.46 29.154999 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 0.52991927 -0.8480481 0.0 0.0 0.8480481 0.52991927 0.0 60.0 2.5 28.875 1.0
     Parent
       generation 0
       index 656
@@ -9805,9 +9805,9 @@ entities
       shadows true
       source_radius 0.0
     Transform
-      rotation -48.0 0.0 0.0
+      rotation -58.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.0 2.46 -0.44
+      translation 0.0 2.5 -0.72
   661:0
     GlobalTransform
       matrix 3.6 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 2.44 29.715 1.0

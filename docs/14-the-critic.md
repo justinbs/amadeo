@@ -905,3 +905,75 @@ are countable without a human eye and would have caught what it caught:
 
 Its eight ordered changes are the next session's work, and it asked for `games/scarp` to get an item of
 its own rather than be carried in this one's shadow.
+
+### Review 25 — engine gate — `9e47db5` — item 24, tenth delivered pass — **NOT POLISHED**
+
+Nine 1920 × 1080 captures plus the other three games, seven crops, ~45 probes, eleven profiles, both
+measurements recounted, two numbers re-derived, **one self-correction**. It recounted all six clauses
+itself, the submission having declined to quote its own figures after being wrong four times.
+
+**All six pass, and (b) and (c) reproduce review 24's numbers to the digit** — 163 / 129.2 / 64.3 and
+67.35. It noted that as the first time in this gate's history two consecutive reviews have agreed
+exactly on a clause. Nine frames with essentially no clipping (0 × 6, 38, 224, 0), against
+`games/atrium` on the same commit at **9,496 clipped px** — *"the Warren is now the better-exposed of
+the two games, which was not true five reviews ago."*
+
+**Measurements saturated and confirmed: 0 / 35 box-only meshes, and 0 / 16 on all three texture
+slots** — no material in the game leaves one empty. Honest for a seventh review running.
+
+**What it credited.** The duckboards *"fixed, and fixed properly"* — **27 slats over 6 distinct
+variants** against review 24's 30 / 1, and legible as broken at 1× without being told to look. The
+conduit *"the best single addition in this pass… the first thing in this game that says the tunnel was
+built rather than assembled from pieces"*. `w_at_warden` the best frame the project has produced and
+now measurably so: asymmetry **111.07** against the Atrium control's 96.11. Surface detail past the
+demo's: mean adjacent |ΔL| **4.45 / 3.18 / 3.13** on named runs against `games/atrium`'s 1.08 / 2.13.
+And the key board's orange **347 × 230 px** — the approach of edging the board rather than scaling the
+key *"was the right one, and it works"*.
+
+**Its self-correction:** it wrote that the crates and a bunk interpenetrate in yaw 90, magnified the
+junction at 5×, found a bunk seen edge-on that the crate ordinarily occludes, and **withdrew**.
+
+#### Why it fails, and the answer to "should this item close"
+
+*"The way out is still not a door, and it is the one object the whole game points at."* Measured: the
+lining's plate grid runs unbroken through the leaf, and **the leaf's own edge is an 11-level dip where
+plate joints inside it are 28 and 29** — the door's boundary is the weakest line on the door. The lamp
+lights the wall beside the objective rather than the objective (leaf mean **80.5** against wall
+**85.7**). The handwheel is a dashed ring: broken in six places, three of six spokes floating short,
+a cross for a hub, and casting nothing onto the leaf.
+
+**And it answered the question the submission put to it directly.** An item on a moving list is not an
+item, so:
+
+> **Item 24 should keep exactly one thing: the way out.** Everything else is a specific object, not a
+> property of the game, and specific objects belong in specific rows.
+
+It wrote a **clause (g)** to decide item 24 alone — the leaf/frame joint at least twice the deepest
+plate joint inside the leaf, no plate joint crossing the boundary, and the leaf's mean luma exceeding
+an equal-area patch of wall on either side — and re-filed the grime blur, the crate value and
+markings, yaw 270's near plane, the key board's occlusion, the sign's gold and the warden's right
+angles as rows of their own. Clause **(e)** either gets a real measurement or is retired; three
+reviews running have closed it on inspection.
+
+#### Its two replacement measurements, specified mechanically
+
+The submission asked whether a prefab placed *N* times counts as *N* / 1. **No — score it by distinct
+override sets.** A bore section placed fourteen times with fourteen different conditions is **14 / 14**
+and not a defect; the same piece with an empty override every time is **14 / 1** and is.
+
+1. **Intra-mesh repeat** — flag any `repeat` block with `count > 6` at a constant step. The game has
+   exactly one today, `duckboards.mesh` at `count 7`.
+2. **Placement repeat** — for every prefab instanced more than three times, report *N* and the number
+   of distinct override sets. Target: nothing placed more than six times has fewer than three.
+3. **Objective legibility** — project each `Interactable`'s collider AABB through the camera of the
+   snapshot named for it, and report **two** boxes: the interactable's own and any `accent`-material
+   sibling in the same instance. Target: the *marker* is ≥ 40 px on its minimum dimension **and no
+   more than 25% occluded by nearer geometry.** *"The occlusion half is not optional — the key board
+   passes 40 px by a factor of five today and is still eaten by a lining plate and a bunk."*
+
+#### And `games/scarp` gets its own row
+
+`min 60, max 188, mean 159.5` — the whole frame inside 128 levels of the upper half. One flat-shaded
+heightfield, one salmon box for a player, zero textures, zero props. It is an **M2.5 exit gate** and it
+is now precisely what review 12 condemned `games/warren` for being. Reviews 22, 23 and 24 each recorded
+it; this one requires it to stop sitting behind item 24's verdict.

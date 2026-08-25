@@ -4,14 +4,10 @@ version 1
 entity mesh "A dogged bulkhead door"
   CompoundMesh
     parts
-      - position 0.0 0.0 0.0
+      - position 0.0 0.0 -0.09
         solid Box
           shape
-            size 1.5 2.1 0.1
-      - position 0.0 0.0 -0.075
-        solid Box
-          shape
-            size 1.36 1.96 0.06
+            size 1.5 2.1 0.18
       - mirror false true false
         position 0.0 1.11 0.0
         solid Box
@@ -23,16 +19,16 @@ entity mesh "A dogged bulkhead door"
           shape
             size 0.12 2.34 0.16
       - mirror false true false
-        position -0.79 0.72 -0.11
+        position -0.79 0.72 -0.16
         solid Box
           shape
-            size 0.1 0.26 0.14
-      - position -0.79 0.0 -0.11
+            size 0.1 0.26 0.16
+      - position -0.79 0.0 -0.16
         solid Box
           shape
-            size 0.1 0.26 0.14
+            size 0.1 0.26 0.16
       - mirror true false false
-        position 0.68 0.6 -0.08
+        position 0.68 0.6 -0.19
         repeat
           - count 3
             step 0.0 -0.6 0.0
@@ -44,51 +40,51 @@ entity mesh "A dogged bulkhead door"
             sides 8
             top_radius 0.035
       - mirror true true false
-        position 0.2354 0.0468 -0.115
+        position 0.2354 0.0468 -0.27
         rotation 0.0 0.0 11.25
         solid Box
           shape
-            size 0.05 0.1 0.055
+            size 0.055 0.118 0.06
       - mirror true true false
-        position 0.1995 0.1334 -0.115
+        position 0.1995 0.1334 -0.27
         rotation 0.0 0.0 33.75
         solid Box
           shape
-            size 0.05 0.1 0.055
+            size 0.055 0.118 0.06
       - mirror true true false
-        position 0.1334 0.1995 -0.115
+        position 0.1334 0.1995 -0.27
         rotation 0.0 0.0 56.25
         solid Box
           shape
-            size 0.05 0.1 0.055
+            size 0.055 0.118 0.06
       - mirror true true false
-        position 0.0468 0.2354 -0.115
+        position 0.0468 0.2354 -0.27
         rotation 0.0 0.0 78.75
         solid Box
           shape
-            size 0.05 0.1 0.055
-      - position 0.0 0.0 -0.115
+            size 0.055 0.118 0.06
+      - position 0.0 0.0 -0.265
         rotation 90.0 0.0 0.0
         solid Cylinder
           shape
-            height 0.09
-            radius 0.06
+            height 0.11
+            radius 0.085
             sides 12
-            top_radius 0.045
+            top_radius 0.062
       - mirror true false false
-        position 0.12 0.0 -0.11
+        position 0.115 0.0 -0.265
         solid Box
           shape
-            size 0.24 0.04 0.04
+            size 0.29 0.042 0.045
       - mirror true false false
-        position 0.06 0.104 -0.11
+        position 0.0575 0.0996 -0.265
         rotation 0.0 0.0 60.0
         solid Box
           shape
-            size 0.24 0.04 0.04
+            size 0.29 0.042 0.045
       - mirror true false false
-        position 0.06 -0.104 -0.11
+        position 0.0575 -0.0996 -0.265
         rotation 0.0 0.0 -60.0
         solid Box
           shape
-            size 0.24 0.04 0.04
+            size 0.29 0.042 0.045

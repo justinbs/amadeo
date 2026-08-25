@@ -5,9 +5,6 @@ assets
   accent
   bulkhead_door
   bulkhead_exit
-  bulkhead_grey
-  bulkhead_grey_normal
-  bulkhead_grey_surface
   bulkhead_lamp
   enamel_orange
   enamel_orange_normal
@@ -81,9 +78,9 @@ entity way_out "The way out"
       shadow_resolution 1024
       shadows true
     Transform
-      rotation -48.0 0.0 0.0
+      rotation -58.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.0 2.46 -0.44
+      translation 0.0 2.5 -0.72
 
   entity threshold "The orange rule across the head of the door"
     Mesh
