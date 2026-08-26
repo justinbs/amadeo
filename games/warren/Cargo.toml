@@ -13,6 +13,7 @@ default-run = "warren"
 
 [dependencies]
 # `gpu` for the same reason `games/atrium` asks for it: this game opens a window.
+amadeo-anim.workspace = true
 amadeo-app = { workspace = true, features = ["gpu"] }
 amadeo-character.workspace = true
 # **First person**, which is what this game is for as much as the horror is: the rig existed from

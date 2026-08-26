@@ -232,7 +232,7 @@ fn looking_down_at_the_torch_offers_the_prompt_the_scene_authored() {
 
     assert_eq!(
         prompt(&app.world).as_deref(),
-        Some("Torch"),
+        Some("HAND LAMP"),
         "the prompt has to come from the scene file rather than from code, and the view has to be \
          able to aim down at all"
     );

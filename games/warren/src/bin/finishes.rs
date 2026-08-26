@@ -238,6 +238,12 @@ struct Surface {
     /// and the ring of a bolt head are both places dirt cannot be wiped out of, so they darken
     /// twice — once because the paint is worn through there and once because they are full of dust.
     grime: f32,
+    /// Per-texel grain of the material itself, as a fraction of its own value.
+    ///
+    /// Separate from [`Surface::grime`] because they are different things: grime is patchy and is
+    /// combined with `max`, and aggregate is continuous. A cast-iron plate gets its fine detail from
+    /// its joints and its bolts; a screed floor has neither, and without this it is a wash.
+    aggregate: f32,
     /// Read the whole surface with `u` and `v` exchanged.
     ///
     /// # One lining, two orientations, and the seam that needs it
@@ -313,6 +319,7 @@ fn ring_lining() -> Surface {
         beneath: [0.30, 0.13, 0.06],
         wear: 0.85,
         grime: 0.78,
+        aggregate: 0.0,
         face_roughness: 0.90,
         joint_roughness: 0.96,
         metallic: 0.0,
@@ -347,6 +354,7 @@ fn shelter_floor() -> Surface {
         beneath: [0.055, 0.058, 0.048],
         wear: 0.55,
         grime: 0.52,
+        aggregate: 0.36,
         face_roughness: 0.95,
         joint_roughness: 0.98,
         metallic: 0.0,
@@ -380,6 +388,7 @@ fn fitting_steel() -> Surface {
         beneath: [0.24, 0.10, 0.05],
         wear: 0.45,
         grime: 0.6,
+        aggregate: 0.0,
         face_roughness: 0.68,
         joint_roughness: 0.85,
         metallic: 0.0,
@@ -422,6 +431,7 @@ fn duck_timber() -> Surface {
         beneath: [0.045, 0.036, 0.028],
         wear: 0.55,
         grime: 0.68,
+        aggregate: 0.0,
         face_roughness: 0.94,
         joint_roughness: 0.97,
         metallic: 0.0,
@@ -457,6 +467,7 @@ fn coat_wool() -> Surface {
         beneath: [0.14, 0.125, 0.10],
         wear: 0.30,
         grime: 0.62,
+        aggregate: 0.0,
         face_roughness: 0.97,
         joint_roughness: 0.97,
         metallic: 0.0,
@@ -496,6 +507,7 @@ fn bunk_ticking() -> Surface {
         beneath: [0.13, 0.16, 0.24],
         wear: 0.65,
         grime: 0.55,
+        aggregate: 0.0,
         face_roughness: 0.95,
         joint_roughness: 0.92,
         metallic: 0.0,
@@ -521,6 +533,7 @@ fn enamel_orange() -> Surface {
         beneath: [0.11, 0.055, 0.03],
         wear: 0.7,
         grime: 0.3,
+        aggregate: 0.0,
         face_roughness: 0.32,
         joint_roughness: 0.8,
         metallic: 0.0,
@@ -555,6 +568,7 @@ fn bulkhead_grey() -> Surface {
         beneath: [0.26, 0.11, 0.05],
         wear: 0.50,
         grime: 0.56,
+        aggregate: 0.0,
         face_roughness: 0.80,
         joint_roughness: 0.90,
         metallic: 0.25,
@@ -779,7 +793,17 @@ fn render_colour(surface: &Surface) -> Canvas {
             let exposed = (varied + (surface.beneath[channel] - varied) * through).clamp(0.0, 1.0);
             // Dirt sits **on** the surface, so it darkens whatever is showing — paint or the rust
             // under it — rather than being mixed into the paint colour.
-            *out = (exposed * (1.0 - surface.grime * dirt)).clamp(0.0, 1.0);
+            let dirtied = exposed * (1.0 - surface.grime * dirt);
+            // **Aggregate: the per-texel grain of the material itself, not of what has settled on it.**
+            // `grimy` thresholds its speck and takes a `max`, which is right for soot -- dirt is
+            // patchy. Concrete is not. A screed floor is sand and stone all the way through, so its
+            // fine variation is *continuous* and always present, and thresholding it is what left
+            // `shelter_floor.png` at 3.24 against the lining's 11.10 at native resolution: the lining
+            // gets its texture from a lattice of joints and the floor has no lattice at all.
+            //
+            // Zero for every surface that does not ask, so no other map moves.
+            let speck = noise::speck(surface.seed ^ 0xA6_66_2E, u, v, 1024);
+            *out = (dirtied * (1.0 + surface.aggregate * speck)).clamp(0.0, 1.0);
         }
         colour[3] = 1.0;
         colour

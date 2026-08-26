@@ -1429,3 +1429,102 @@ add.
 *"the budget is real and a half-built volumetric pass is worse than none"* — but recorded that F2's
 remaining defects are partly F4's absence: an object seen in a beam is *never clearly seen*, which is
 the promise this model cannot keep on its own.
+
+---
+
+### Review 30 — engine gate — `04ba327` — F2, F2b, F5, F6 — **F2b ✅ · F6 ✅ · F2 and F5 reopened · gate NOT POLISHED**
+
+Eighteen captures, six crops, ~45 probes, ~22 profiles, five texture sources measured at **native**
+resolution per its own §4 #16, both tracked measurements and all of R1–R3 recounted off the filesystem,
+and three numbers re-derived from first principles.
+
+#### The correction, and it is the eighth instance of §4 #14
+
+**F2's (a3) ratios did not reproduce, because the submission measured width as a COUNT of figure
+pixels and the clause means EXTENT.** On a row the bunk crosses, a count silently loses the 30 px the
+bunk eats — so an occluded waist measures narrow and **inflates every ratio that divides by it**.
+Submitted 1.80 and 1.59; measured by extent, **1.14 and 1.01**. Shoulder-over-waist was essentially
+*one*.
+
+That is why the clause says a submission below 16 usable rows **re-frames rather than re-measures**:
+the widths on a broken row are not measurements of the object. Committed inside an instrument the
+critic wrote to prevent exactly it.
+
+Checked against the model instead of the pixels, the geometry agreed with the review: hem 0.36, waist
+0.259, shoulder 0.355 — **1.39 and 1.37 against a bar of 1.35.** *"The figure was built to clear the
+clause by three per cent, and three per cent does not survive projection, polygon flats or a 1.35 m
+off-axis camera."*
+
+#### The finding: everything added that pass is invisible by construction
+
+All three features that exist to break the solid of revolution sit within **1.4 cm** of the surface
+they are on — the closure slabs 1.35 cm (**1.8 px** at 5.7 m), the strap 1.0 cm, and the rear vent at
+`z +0.3` where **no camera the game can produce ever looks**. Review 29 failed the *arms* for exactly
+this; the arms were deleted and the same error was made three more times in the same file.
+
+**The lantern is inside the coat**: radial 0.345 with a half-width of 0.060 against a coat radius of
+0.280 — **5 mm of clearance, 0.7 px**. No background is visible between lamp and body, which is why it
+reads as a lit slot cut into a stove. *"The figure has zero enclosed negative space anywhere."*
+
+**And the structural verdict, which is the part worth keeping:** *"A stack of coaxial cones cannot
+produce a shoulder line, because a cone's widest place is a circle and a shoulder is a horizontal
+edge. That is the structural reason this keeps failing, and it is not fixed by rotating anything."*
+It named Playdead's one-bit silhouettes (enclosed negative space), Tarsier's figures (mass asymmetric
+about the vertical) and Frictional's (never fully lit, one landmark feature).
+
+**Its own self-correction:** it first wrote the hem step up as a surviving *silhouette* ledge from a
+4× lit crop; the matte and the model arithmetic both refuted that, and it changed the finding to a
+**shading** ledge — a 7 mm exposed cap annulus reading as a full-width one-pixel line at y716.
+
+#### The y-rotation revert — OVERRULED, and then withdrawn anyway
+
+The arithmetic was confirmed exactly: a 9-gon's inradius is `0.9397r`, so clearance needs a **6.03%**
+step — *"precisely your ~6% and precisely the ledge the overlap exists to delete."* **But nine sides
+is an authored number in the same file and the argument treated it as a constraint.** At 16 sides the
+step is **1.96%**, at 20 it is **1.24%**, both inside the overlap budget. *"The experiment answered
+'can I do this at 9 sides' when the question was 'can I do this'."*
+
+Then it withdrew the instruction: phase-breaking a stack of coaxial solids of revolution *"makes a
+faceted bollard instead of a smooth one"*.
+
+#### The `amadeo-app` correction — UPHELD
+
+*"You are right about the repository and I was wrong about it in the ADR amendment."* Verified: an
+ordering against an unregistered label is a hard `UnknownLabel`, and `App::new` therefore cannot
+register `occlude_voices` with a correct ordering. It noted that an `install_earshot` helper is the
+established shape and is worth doing when a second game wants it.
+
+#### F5: six of seven, and the source-side diagnosis confirmed
+
+`ring_lining` measures **12.48 / 12.67** at native against the 0.82 that produced §4 #16 — *"`speck`
+was the right call and the render follows it."* It **retired** the `w_y180` crop with arithmetic: at
+12 m the fog term is **28.3%** toward a near-black colour, and *"a surface behind 28.3% of near-black,
+several mip levels down, cannot carry per-texel grain and should not be asked to."*
+
+**And it held the other crop against the submission's defence, by deriving the distance.** Eye at
+1.59 m, focal `540/tan 35° = 771.2`, row 600 at pitch −30 → **2.32 m**, inside the 3 m the clause
+names. The cause: *"the fix went into the lining and not into the floor"* — `shelter_floor.png` was
+**2.82–6.18** at native against the lining's **10.0–12.7**.
+
+Credited without reservation: crates (44.7 against 126.1, *"the best single object change in the
+submission"*), key board 3 of 4, saturation, call plate, bunks 12/3 recounted, and the reticle at
+143–190 levels of separation across all four landmarks.
+
+#### F2b and F6 passed, both with something recorded rather than smoothed over
+
+F2b: *"the two tests discriminate against each other properly… this repository has shipped the version
+without it for four milestones."* But it flagged that **no reachable capture shows the warden in
+motion** — `at_warden` at tick 150 and `playing` at 400 and 900 are all byte-identical to tick 5 — so
+the mechanism is proven by test only, and it rewrote the capture clause into a headless one.
+
+F6: all three clauses verified in substance. It confirmed the downward-cast rejection independently.
+**And it recorded that F6 closing does not satisfy `docs/11` §9**: gain-only at 0.30× is −10.5 dB,
+*"arithmetically indistinguishable from the warden standing 1.8× further away"*, and the design needs
+*far* told from *behind that bulkhead*. Its own amendment allows the descope, so it did not fail the
+row — but the ledger says so.
+
+#### The observation that produced ordered change 9
+
+*"Fifteen seconds of game time changes not one pixel."* No `.anim` file anywhere in `games/warren`,
+while `games/atrium` has had `lamp_flicker.anim` since M2. *"A horror interior in which nothing
+whatever moves is a still life, and the engine has had the system for four milestones."*

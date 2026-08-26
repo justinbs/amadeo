@@ -315,6 +315,33 @@ pub fn build_from_scene(scene: &str) -> anyhow::Result<App> {
     amadeo_camera::install(&mut app)?;
     amadeo_interaction::install(&mut app)?;
     amadeo_inventory::install(&mut app)?;
+    // **Animation, and the reason this game has any is that it had none** (ADR 0066). Engine gate
+    // review 30 took two captures fifteen seconds of game time apart and found them byte-identical
+    // across all 2,073,600 pixels: *"a horror interior in which nothing whatever moves is a still
+    // life, and the engine has had the system for four milestones."* `games/atrium` has had a
+    // flickering lamp since M2.
+    //
+    // One clip, on the emergency fittings: a circuit that has been running unattended for forty
+    // years and is going. It is a `SpotLight.intensity` track named as a **field in a text file**,
+    // so `amadeo-anim` knows nothing about lights and adding a second animated property later is a
+    // scene edit rather than engine work.
+    //
+    // **`Animatable` is an allow-list and forgetting a line here is loud** — an unallowed target is
+    // reported by name in `Animatable::missing` rather than silently doing nothing (ADR 0066 §4).
+    let mut animatable = amadeo_anim::Animatable::new();
+    animatable.allow::<amadeo_render::SpotLight>();
+    app.insert_service(animatable);
+    app.register_component::<amadeo_anim::AnimationPlayer>()?;
+    app.register_component::<amadeo_anim::AnimationClip>()?;
+    app.register_event::<amadeo_anim::AnimationFinished>();
+    // In `Simulation`, for the reason `games/atrium` gives: a clip that wrote a `Transform` would be
+    // read by physics and `propagate_transforms` in the same tick, and running it later would apply
+    // this tick's animation to next tick's physics.
+    app.add_system(
+        Stage::Simulation,
+        system(amadeo_anim::ANIMATE, amadeo_anim::animate),
+    );
+
     amadeo_behaviour::install(&mut app)?;
 
     // This game's own marks, and the one thing it can end as.
@@ -1076,7 +1103,15 @@ pub fn label_the_door(world: &mut World) {
         return;
     };
     let has_key = amadeo_inventory::count_of(world, carrier, KEY) > 0;
-    let wanted = if has_key { "Way out" } else { "Locked" };
+    // **The label the shelter would have put on it**, not the verb -- design direction 1, decision 4.
+    // `Locked` is a game state told to the player; `SECURED` is the institution's own word for the
+    // same fact and is what is stencilled on a real bulkhead. `WAY OUT` is kept exactly: it is London
+    // Underground's own phrase for an exit, which is this game's precise typology.
+    let wanted = if has_key {
+        "WAY OUT"
+    } else {
+        "WAY OUT · SECURED"
+    };
 
     let doors: Vec<Entity> = world
         .query::<(&WayOut,)>()
@@ -2756,7 +2791,15 @@ pub fn write_the_hud(world: &mut World) {
     let ending = match outcome(world) {
         Outcome::Playing => String::new(),
         Outcome::Escaped => "YOU GOT OUT".to_string(),
-        Outcome::Caught => "IT FOUND YOU".to_string(),
+        // **`ACCOUNTED FOR`, not `IT FOUND YOU`** -- design direction 1, decision 2 (`docs/15` §5).
+        // The old line is a narrator stating a fact the player just watched, and its pronoun frames the
+        // warden as a monster that hunts. `docs/11` §3 is emphatic that it is not: it is an institution
+        // still performing its function, and **the function is counting**. This is that institution's
+        // own word for what has happened to you.
+        //
+        // `YOU GOT OUT` stays, and the asymmetry is the point rather than an oversight: when you
+        // escape you get the last word, and when you are caught the shelter does.
+        Outcome::Caught => "ACCOUNTED FOR".to_string(),
     };
     // Nothing to point at unless the game is actually being played. A stale "the door is locked"
     // under a lose screen reads as the game still running, and one behind the title plate reads as

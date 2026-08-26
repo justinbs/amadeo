@@ -87,8 +87,11 @@ pub struct AudioSource {
     /// that is the whole decision: `amadeo-audio` does not depend on `amadeo-physics`, so it cannot
     /// ask whether a wall is in the way. It owns the slot and something above both crates fills it,
     /// which is `Overlay`, `TextureCache`, `MeshCache` and `SkyCache`'s inversion a fifth time.
-    /// `amadeo-app` ships the system that does (`occlude_voices`), registered automatically wherever
-    /// a world has both an `Audio` and a `Physics` service, so no game has to remember it.
+    /// `amadeo-app` ships the system that does (`occlude_voices`), and **a game registers it beside its
+    /// own audio pass**. ADR 0086's amendment first said "registered automatically", and engine gate
+    /// review 30 upheld the correction: `amadeo-app` registers no default systems at all -- it is a
+    /// schedule host -- and an ordering against an unregistered label is a hard `UnknownLabel`, so
+    /// automatic registration with a correct ordering was never available.
     ///
     /// # What it means, and why it is not "how much quieter"
     ///

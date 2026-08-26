@@ -2,6 +2,7 @@ scene room_lamp
 version 1
 
 assets
+  fitting_fail
   fitting_steel
   fitting_steel_normal
   fitting_steel_surface
@@ -35,6 +36,12 @@ entity room_lamp "A fitting still on the circuit"
       translation -0.26 1.96 0.0
 
   entity bulb "What it throws"
+    AnimationPlayer
+      clip "fitting_fail"
+      looping true
+      playing true
+      speed 1.0
+      time 0.0
     SpotLight
       colour 0.58 0.78 0.68
       inner_angle 30.0

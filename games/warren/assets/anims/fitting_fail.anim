@@ -1,0 +1,31 @@
+scene fitting_fail
+version 1
+
+entity clip "A fitting on its way out"
+  AnimationClip
+    duration 5.4
+    tracks
+      - component "SpotLight"
+        field "intensity"
+        interpolation Linear
+        keys
+          - time 0.0
+            value 8.0
+          - time 2.9
+            value 8.0
+          - time 3.02
+            value 2.1
+          - time 3.1
+            value 8.6
+          - time 3.18
+            value 1.4
+          - time 3.34
+            value 8.2
+          - time 4.6
+            value 8.0
+          - time 4.72
+            value 3.2
+          - time 4.8
+            value 8.0
+          - time 5.4
+            value 8.0

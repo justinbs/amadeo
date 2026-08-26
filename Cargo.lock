@@ -3138,6 +3138,7 @@ dependencies = [
 name = "warren"
 version = "0.1.0"
 dependencies = [
+ "amadeo-anim",
  "amadeo-app",
  "amadeo-audio",
  "amadeo-behaviour",

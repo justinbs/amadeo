@@ -21,7 +21,7 @@ entity mesh "The warden: a greatcoat with a closure, a vent and a strap, so it i
             capped true
             flat true
             height 0.34
-            radius 0.311
+            radius 0.322
             sides 9
             top_radius 0.278
       - position 0.004 -0.125 0.0

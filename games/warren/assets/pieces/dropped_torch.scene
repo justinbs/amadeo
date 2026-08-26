@@ -45,7 +45,7 @@ entity dropped_torch "A torch left on a crate"
         size 0.16 0.36 0.16
     Interactable
       enabled true
-      prompt "Torch"
+      prompt "HAND LAMP"
     Item
       count 1
       kind "torch"

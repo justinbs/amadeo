@@ -232,7 +232,7 @@ entity hud "HUD"
           content "THE WARREN"
           font "BebasNeue-Regular"
           order 11
-          paint Accent
+          paint Ink
           scale Title
           wrap false
         UiNode
@@ -722,7 +722,7 @@ entity hud "HUD"
           content ""
           font "BebasNeue-Regular"
           order 11
-          paint Accent
+          paint Ink
           scale Title
           wrap false
         UiNode

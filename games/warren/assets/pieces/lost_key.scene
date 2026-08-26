@@ -62,7 +62,7 @@ entity lost_key "The key board, with one key left on it"
         size 0.1 0.14 0.1
     Interactable
       enabled true
-      prompt "Brass key"
+      prompt "KEY"
     Item
       count 1
       kind "key"

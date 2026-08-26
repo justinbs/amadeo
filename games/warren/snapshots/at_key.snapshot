@@ -1,9 +1,10 @@
 amadeo-snapshot 2
 tick 134
-state-hash bda523683ecba100
-schema-hash 75ccc38abcc66794
+state-hash 2b02866efdc2e386
+schema-hash 7116c34bea2c5349
 
 schema
+  component AnimationPlayer 1
   component AudioListener 1
   component AudioSource 1
   component Behaviour 1
@@ -51,6 +52,7 @@ schema
   resource SimRng 1
   resource Sounded 1
   resource Stride 1
+  resource events<AnimationFinished> 1
   resource events<BehaviourChanged> 1
   resource events<Interacted> 1
   resource events<ItemDropped> 1
@@ -83,6 +85,9 @@ resources
     outcome Playing
   Stride
     since_last 0.0
+  events<AnimationFinished>
+    reading []
+    writing []
   events<BehaviourChanged>
     reading []
     writing []
@@ -569,6 +574,12 @@ entities
       scale 1.0 1.0 1.0
       translation -0.26 1.96 0.0
   30:0
+    AnimationPlayer
+      clip "fitting_fail"
+      looping true
+      playing true
+      speed 1.0
+      time 2.233332
     GlobalTransform
       matrix 0.0 0.0 -1.0 0.0 -0.7880108 0.6156615 0.0 0.0 0.6156615 0.7880108 0.0 0.0 2.1000001 1.86 -3.0 1.0
     Parent
@@ -622,6 +633,12 @@ entities
       scale 1.0 1.0 1.0
       translation -0.26 1.96 0.0
   34:0
+    AnimationPlayer
+      clip "fitting_fail"
+      looping true
+      playing true
+      speed 1.0
+      time 2.233332
     GlobalTransform
       matrix 0.0 0.0 1.0 0.0 0.7880108 0.6156615 0.0 0.0 -0.6156615 0.7880108 0.0 0.0 -2.1000001 1.86 3.0 1.0
     Parent
@@ -1861,6 +1878,12 @@ entities
       scale 1.0 1.0 1.0
       translation -0.26 1.96 0.0
   120:0
+    AnimationPlayer
+      clip "fitting_fail"
+      looping true
+      playing true
+      speed 1.0
+      time 2.233332
     GlobalTransform
       matrix 0.0 0.0 -1.0 0.0 -0.7880108 0.6156615 0.0 0.0 0.6156615 0.7880108 0.0 0.0 14.099999 1.86 -15.0 1.0
     Parent
@@ -1914,6 +1937,12 @@ entities
       scale 1.0 1.0 1.0
       translation -0.26 1.96 0.0
   124:0
+    AnimationPlayer
+      clip "fitting_fail"
+      looping true
+      playing true
+      speed 1.0
+      time 2.233332
     GlobalTransform
       matrix 0.0 0.0 1.0 0.0 0.7880108 0.6156615 0.0 0.0 -0.6156615 0.7880108 0.0 0.0 9.900001 1.86 -9.0 1.0
     Parent
@@ -3690,6 +3719,12 @@ entities
       scale 1.0 1.0 1.0
       translation -0.26 1.96 0.0
   246:0
+    AnimationPlayer
+      clip "fitting_fail"
+      looping true
+      playing true
+      speed 1.0
+      time 2.233332
     GlobalTransform
       matrix 0.0 0.0 1.0 0.0 0.7880108 0.6156615 0.0 0.0 -0.6156615 0.7880108 0.0 0.0 21.9 1.86 -15.0 1.0
     Parent
@@ -3743,6 +3778,12 @@ entities
       scale 1.0 1.0 1.0
       translation -0.26 1.96 0.0
   250:0
+    AnimationPlayer
+      clip "fitting_fail"
+      looping true
+      playing true
+      speed 1.0
+      time 2.233332
     GlobalTransform
       matrix 0.0 0.0 -1.0 0.0 -0.7880108 0.6156615 0.0 0.0 0.6156615 0.7880108 0.0 0.0 26.1 1.86 -9.0 1.0
     Parent
@@ -4398,6 +4439,12 @@ entities
       scale 1.0 1.0 1.0
       translation -0.26 1.96 0.0
   295:0
+    AnimationPlayer
+      clip "fitting_fail"
+      looping true
+      playing true
+      speed 1.0
+      time 2.233332
     GlobalTransform
       matrix 0.0 0.0 -1.0 0.0 -0.7880108 0.6156615 0.0 0.0 0.6156615 0.7880108 0.0 0.0 26.1 1.86 -3.0 1.0
     Parent
@@ -4451,6 +4498,12 @@ entities
       scale 1.0 1.0 1.0
       translation -0.26 1.96 0.0
   299:0
+    AnimationPlayer
+      clip "fitting_fail"
+      looping true
+      playing true
+      speed 1.0
+      time 2.233332
     GlobalTransform
       matrix 0.0 0.0 1.0 0.0 0.7880108 0.6156615 0.0 0.0 -0.6156615 0.7880108 0.0 0.0 21.9 1.86 3.0 1.0
     Parent
@@ -6116,6 +6169,12 @@ entities
       scale 1.0 1.0 1.0
       translation -0.26 1.96 0.0
   409:0
+    AnimationPlayer
+      clip "fitting_fail"
+      looping true
+      playing true
+      speed 1.0
+      time 2.233332
     GlobalTransform
       matrix 0.0 0.0 -1.0 0.0 -0.7880108 0.6156615 0.0 0.0 0.6156615 0.7880108 0.0 0.0 50.100002 1.86 -3.0 1.0
     Parent
@@ -6169,6 +6228,12 @@ entities
       scale 1.0 1.0 1.0
       translation -0.26 1.96 0.0
   413:0
+    AnimationPlayer
+      clip "fitting_fail"
+      looping true
+      playing true
+      speed 1.0
+      time 2.233332
     GlobalTransform
       matrix 0.0 0.0 1.0 0.0 0.7880108 0.6156615 0.0 0.0 -0.6156615 0.7880108 0.0 0.0 45.899998 1.86 3.0 1.0
     Parent
@@ -8009,6 +8074,12 @@ entities
       scale 1.0 1.0 1.0
       translation -0.26 1.96 0.0
   539:0
+    AnimationPlayer
+      clip "fitting_fail"
+      looping true
+      playing true
+      speed 1.0
+      time 2.233332
     GlobalTransform
       matrix 0.0 0.0 1.0 0.0 0.7880108 0.6156615 0.0 0.0 -0.6156615 0.7880108 0.0 0.0 57.899998 1.86 21.0 1.0
     Parent
@@ -8062,6 +8133,12 @@ entities
       scale 1.0 1.0 1.0
       translation -0.26 1.96 0.0
   543:0
+    AnimationPlayer
+      clip "fitting_fail"
+      looping true
+      playing true
+      speed 1.0
+      time 2.233332
     GlobalTransform
       matrix 0.0 0.0 -1.0 0.0 -0.7880108 0.6156615 0.0 0.0 0.6156615 0.7880108 0.0 0.0 62.100002 1.86 27.0 1.0
     Parent
@@ -8717,6 +8794,12 @@ entities
       scale 1.0 1.0 1.0
       translation -0.26 1.96 0.0
   588:0
+    AnimationPlayer
+      clip "fitting_fail"
+      looping true
+      playing true
+      speed 1.0
+      time 2.233332
     GlobalTransform
       matrix 0.0 0.0 1.0 0.0 0.7880108 0.6156615 0.0 0.0 -0.6156615 0.7880108 0.0 0.0 69.9 1.86 9.0 1.0
     Parent
@@ -8770,6 +8853,12 @@ entities
       scale 1.0 1.0 1.0
       translation -0.26 1.96 0.0
   592:0
+    AnimationPlayer
+      clip "fitting_fail"
+      looping true
+      playing true
+      speed 1.0
+      time 2.233332
     GlobalTransform
       matrix 0.0 0.0 -1.0 0.0 -0.7880108 0.6156615 0.0 0.0 0.6156615 0.7880108 0.0 0.0 74.1 1.86 15.0 1.0
     Parent
@@ -9909,7 +9998,7 @@ entities
         size 0.16 0.36 0.16
     Interactable
       enabled true
-      prompt "Torch"
+      prompt "HAND LAMP"
     Item
       count 1
       kind "torch"
@@ -9988,7 +10077,7 @@ entities
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 14.184999 1.485 -22.44 1.0
     Interactable
       enabled true
-      prompt "Brass key"
+      prompt "KEY"
     Item
       count 1
       kind "key"
@@ -10027,7 +10116,7 @@ entities
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 1.2 29.595 1.0
     Interactable
       enabled true
-      prompt "Locked"
+      prompt "WAY OUT · SECURED"
     Mesh
       material "bulkhead_exit"
       mesh "bulkhead_door"
@@ -10190,7 +10279,7 @@ entities
     Warden ()
   683:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.785 0.67 -3.595 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.94 0.67 -3.64 1.0
     Mesh
       material "lantern_case"
       mesh "warden_lamp"
@@ -10200,10 +10289,10 @@ entities
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.285 -0.26 -0.195
+      translation 0.44 -0.26 -0.24
   684:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.785 0.67 -3.595 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.94 0.67 -3.64 1.0
     Mesh
       material "lamp_glass"
       mesh "warden_glass"
@@ -10213,7 +10302,7 @@ entities
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.285 -0.26 -0.195
+      translation 0.44 -0.26 -0.24
   685:0
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.45 1.475 -3.3920002 1.0
@@ -10229,7 +10318,7 @@ entities
       translation -0.05 0.545 0.008
   686:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.785 0.67 -3.595 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.94 0.67 -3.64 1.0
     Parent
       generation 0
       index 682
@@ -10241,10 +10330,10 @@ entities
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.285 -0.26 -0.195
+      translation 0.44 -0.26 -0.24
   687:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 0.9702957 -0.2419219 0.0 0.0 0.2419219 0.9702957 0.0 37.785 0.67 -3.595 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 0.9702957 -0.2419219 0.0 0.0 0.2419219 0.9702957 0.0 37.94 0.67 -3.64 1.0
     Parent
       generation 0
       index 682
@@ -10261,7 +10350,7 @@ entities
     Transform
       rotation -14.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.285 -0.26 -0.195
+      translation 0.44 -0.26 -0.24
   688:0
     AudioSource
       bus Music
@@ -10526,7 +10615,7 @@ entities
       content "THE WARREN"
       font "BebasNeue-Regular"
       order 11
-      paint Accent
+      paint Ink
       scale Title
       wrap false
     UiNode
@@ -11056,7 +11145,7 @@ entities
       content ""
       font "BebasNeue-Regular"
       order 11
-      paint Accent
+      paint Ink
       scale Title
       wrap false
     UiNode
