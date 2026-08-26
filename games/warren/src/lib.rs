@@ -2136,7 +2136,7 @@ pub const WOKE_AHEAD: f32 = 1.2;
 /// halves of the frame are different pictures, near enough that you are still plainly in a corridor
 /// rather than pressed against its side. It is also where somebody asleep on a deck would actually
 /// be — against a wall, not down the middle of the traffic route.
-pub const PLAYER_OFF_AXIS: f32 = 0.9;
+pub const PLAYER_OFF_AXIS: f32 = 0.8;
 
 /// How high off the floor the player's body sits when placed.
 ///

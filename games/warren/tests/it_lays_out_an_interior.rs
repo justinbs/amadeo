@@ -375,3 +375,42 @@ fn cell_part(value: i32) -> String {
         value.to_string()
     }
 }
+
+#[test]
+fn you_wake_up_with_room_around_you() {
+    // **`docs/13` §1b F1's clause (d), and it is a number rather than a look.** Engine gate review 25
+    // measured the yaw-270 frame from the spawn at mean 109.7 — the brightest of nine, two thirds of
+    // it near-plane lining plate — and review 28 recorded 36.7% of it above luma 144. A camera that
+    // near a wall has no depth to show, and this is one mouse movement from where the player wakes.
+    //
+    // The fix is a spawn position, so this asserts the position rather than the picture: **1.5 m of
+    // clear bore on the near side**, which is where the near-plane clipping came from. The far side
+    // is not the constraint — a bore is 4.8 m across and the player is deliberately off its axis, so
+    // whichever wall is nearer is the one that can fill a frame.
+    let layout = warren::lay_out(warren::GENERATED_SEED, warren::GENERATED_ROOMS);
+    let scene = warren::to_scene(&layout);
+
+    let you = placed_x(&scene, "you").expect("the level places a player");
+    let centre = layout.landmarks.start.0 as f32 * warren::CELL;
+    let off_axis = (you - centre).abs();
+    let clearance = warren::BORE_HALF_WIDTH - off_axis;
+
+    assert!(
+        clearance >= 1.5,
+        "the player wakes {clearance:.2} m from the near lining, and a frame taken that close to a \
+         wall is a frame of the wall — {off_axis:.2} m off the axis of a bore {:.1} m across",
+        warren::BORE_HALF_WIDTH * 2.0
+    );
+
+    // And the thing they wake next to must not be in their lap either. It is deliberately close —
+    // foreground interest is what stops the opening frame being symmetrical — but a crate the camera
+    // is inside measures as a perfectly good 4% clipped and reads as a rendering fault, which is
+    // exactly what the first version of this prop did.
+    let crate_x = placed_x(&scene, "woke").expect("the level places the crate you wake beside");
+    assert!(
+        (crate_x - you).abs() > 0.9,
+        "the crate is {:.2} m from the player across the bore, which is close enough to fill the \
+         frame with one flat face",
+        (crate_x - you).abs()
+    );
+}

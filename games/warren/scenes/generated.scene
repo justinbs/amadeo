@@ -947,7 +947,7 @@ entity you "You" from player_start
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 0.9 1.0 0.0
+    translation 0.8 1.0 0.0
 
 entity woke "What you woke up next to" from stores
   override Transform

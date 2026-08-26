@@ -206,21 +206,40 @@ entity hud "HUD"
       size 0.0 0.0
       visible false
 
-    entity title_menu_panel "Title menu panel"
+    entity title_scrim "A scrim over the tunnel, not a card in front of it"
       Panel
-        order 10
-        paint Raised
+        order 9
+        paint Custom
+          rgba 0.006 0.007 0.008 0.65
       UiNode
-        align_children Stretch
+        align_children Start
         anchor
-          horizontal Centre
+          horizontal Stretch
+          vertical Stretch
+        flow None
+        gap None
+        grow 0.0
+        margin
+          bottom 0.0
+          left 0.0
+          right 0.0
+          top 0.0
+        padding None
+        size 0.0 0.0
+        visible true
+
+    entity title_menu_panel "Title menu panel -- no paint of its own, because the scrim behind it is the darkening and a card on top of a scrim is two of them"
+      UiNode
+        align_children Start
+        anchor
+          horizontal Start
           vertical Centre
         flow Column
         gap Snug
         grow 0.0
         margin
           bottom 0.0
-          left 0.0
+          left 190.0
           right 0.0
           top 0.0
         padding Normal
@@ -245,22 +264,21 @@ entity hud "HUD"
           grow 0.0
           margin
             bottom 0.0
-            left 0.0
+            left 46.0
             right 0.0
             top 0.0
           padding None
           size 0.0 60.0
           visible true
 
-      entity title_begin "Begin"
-        Focusable
-          enabled true
-          order 0
-        MenuButton
-          choice Begin
-        Panel
-          order 10
-          paint Surface
+      entity title_subtitle "What the paperwork called it, under what the staff called it"
+        Text
+          content "SHELTER FOUR · SUB-SURFACE ARCHIVE"
+          font "BebasNeue-Regular"
+          order 11
+          paint Dim
+          scale Body
+          wrap false
         UiNode
           align_children Start
           anchor
@@ -271,7 +289,34 @@ entity hud "HUD"
           grow 0.0
           margin
             bottom 0.0
-            left 0.0
+            left 51.0
+            right 0.0
+            top 0.0
+          padding None
+          size 0.0 22.0
+          visible true
+
+      entity title_begin "Begin"
+        Focusable
+          enabled true
+          order 0
+        MenuButton
+          choice Begin
+        Panel
+          order 10
+          paint Custom
+            rgba 0.0 0.0 0.0 0.0
+        UiNode
+          align_children Start
+          anchor
+            horizontal Stretch
+            vertical Start
+          flow None
+          gap None
+          grow 0.0
+          margin
+            bottom 0.0
+            left 44.0
             right 0.0
             top 0.0
           padding Snug
@@ -311,7 +356,8 @@ entity hud "HUD"
           choice Load
         Panel
           order 10
-          paint Surface
+          paint Custom
+            rgba 0.0 0.0 0.0 0.0
         UiNode
           align_children Start
           anchor
@@ -322,7 +368,7 @@ entity hud "HUD"
           grow 0.0
           margin
             bottom 0.0
-            left 0.0
+            left 44.0
             right 0.0
             top 0.0
           padding Snug
@@ -362,7 +408,8 @@ entity hud "HUD"
           choice Quit
         Panel
           order 10
-          paint Surface
+          paint Custom
+            rgba 0.0 0.0 0.0 0.0
         UiNode
           align_children Start
           anchor
@@ -373,7 +420,7 @@ entity hud "HUD"
           grow 0.0
           margin
             bottom 0.0
-            left 0.0
+            left 44.0
             right 0.0
             top 0.0
           padding Snug
