@@ -177,6 +177,17 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > `accent` reads 0.876. It reads 0.223 where the torch is hardest on it, which is the tonemapper
 > desaturating a highlight rather than a second orange, and both numbers are published.
 >
+> #### CI caught a fmt diff my own check had passed, and the cause is ordering
+>
+> `00bb4c9` went red on `cargo fmt --all --check` over one line in `the_run_can_end.rs`. My check said
+> FMT OK — because I ran it **before** the edits that broke it, and the verification I ran immediately
+> before committing was tests and doc only. Later commits ran `cargo fmt --all` (the rewriting form)
+> and repaired it, so the tree self-healed, but the rule is:
+>
+> **Run all four §4b checks in one command, immediately before the commit.** Not spread across the
+> session, and not with edits in between. A green check on a tree you then changed is a green check on
+> a different tree.
+>
 > #### Review 30 closed F2b and F6, reopened F2 and F5, and corrected me on how to measure a width
 >
 > **F2's ratios: I counted figure pixels, the clause means extent.** On a row the bunk crosses a count
