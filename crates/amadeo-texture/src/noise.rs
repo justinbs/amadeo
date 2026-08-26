@@ -157,9 +157,89 @@ fn gradient_at(seed: u64, x: i32, y: i32) -> [f32; 2] {
     GRADIENTS[(hash >> 60) as usize & 15]
 }
 
+/// Uncorrelated value noise, one value per cell, with **no interpolation** — grain rather than a field.
+///
+/// # Why [`tiling`] cannot do this, and why three reviews thought it already had
+///
+/// `tiling` is Perlin gradient noise, and gradient noise is **exactly zero at every lattice point**.
+/// That is the property that makes it smooth, and it is fatal the moment the lattice approaches the
+/// texel size: at 704 cells across a 1024-texel map, a cell is 1.45 texels wide, so nearly every
+/// texel lands close enough to a corner that the value collapses towards zero. A field built that way
+/// is not fine grain, it is *nothing*.
+///
+/// `games/warren`'s floor was generated with exactly that call, under a comment claiming per-texel
+/// grain, and measured **0.82 mean adjacent |ΔL| at native resolution over a range of 89–107** — a
+/// wash. Engine gate reviews 20, 22 and 25 each measured the *render* and concluded the texture was
+/// right and something downstream was flattening it. The texture was never right.
+///
+/// This hashes the cell index straight to a value, so at `cells == resolution` it is genuine
+/// per-texel white noise, and it **tiles by construction** because the index wraps with `rem_euclid`.
+/// Exactly specified integer arithmetic throughout, so ADR 0044 is satisfied without a caveat.
+#[must_use]
+pub fn speck(seed: u64, u: f32, v: f32, cells: i32) -> f32 {
+    let cells = cells.max(1);
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a cell count is small; the f32 is exact well past any usable size"
+    )]
+    let scale = cells as f32;
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "floor of a coordinate over a small cell count; far inside i32"
+    )]
+    let (x, y) = ((u * scale).floor() as i32, (v * scale).floor() as i32);
+    value_at(seed, x.rem_euclid(cells), y.rem_euclid(cells))
+}
+
+/// One uncorrelated value in `-1.0..=1.0` for a cell, from the same mix [`gradient_at`] uses.
+fn value_at(seed: u64, x: i32, y: i32) -> f32 {
+    let mut hash = (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ (y as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9)
+        ^ seed
+        ^ 0x2545_F491_4F6C_DD1D;
+    hash ^= hash >> 30;
+    hash = hash.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    hash ^= hash >> 27;
+    hash = hash.wrapping_mul(0x94D0_49BB_1331_11EB);
+    hash ^= hash >> 31;
+    // The top 24 bits to a float in 0..1, then to -1..1. Exact: 2^24 is inside f32's integer range.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "24 bits is exactly representable in f32 by construction"
+    )]
+    let unit = (hash >> 40) as f32 / 16_777_216.0;
+    unit * 2.0 - 1.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn speck_tiles_and_is_actually_per_texel() {
+        // The wrap, which is the whole reason this lives here rather than in `amadeo-noise`.
+        for step in 0..64 {
+            let v = step as f32 / 64.0;
+            assert_eq!(speck(0x51A9, 0.0, v, 32), speck(0x51A9, 1.0, v, 32));
+        }
+
+        // **And that it has amplitude at a one-texel cell, which is what `tiling` does not.**
+        // Gradient noise is zero at every lattice point, so at cell sizes near one texel it returns
+        // almost nothing — `games/warren`'s floor was generated that way and measured a wash. This
+        // asserts the difference rather than trusting the comment.
+        let mut speck_sum = 0.0;
+        let mut tiling_sum = 0.0;
+        for step in 1..256 {
+            let u = step as f32 / 1024.0;
+            speck_sum += speck(0x77, u, 0.37, 1024).abs();
+            tiling_sum += tiling(0x77, u, 0.37, 1024).abs();
+        }
+        assert!(
+            speck_sum > tiling_sum * 4.0,
+            "per-texel value noise must carry far more amplitude at a one-texel cell than gradient \
+             noise does: {speck_sum:.2} against {tiling_sum:.2}"
+        );
+    }
 
     #[test]
     fn it_tiles_seamlessly() {

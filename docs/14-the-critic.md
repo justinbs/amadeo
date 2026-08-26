@@ -166,7 +166,22 @@ Read these before forming any theory. Each one cost a real review a real mistake
     R1's first form flagged thirteen `repeat` blocks of which twelve were manufactured. Judge a
     duckboard, a crate or a bunk by its variants; do not judge a casting by them.
 
-16. **A control is not a control until you have shown it lands on the object.** Review 28 demanded a
+16. **A texture measured from a render is a texture nobody measured.** §4 #5 says do not diagnose a
+    texture from a render, and it was written about a *lattice* being wrong. The harder case is the
+    reverse: `games/warren`'s floor was flagged by reviews 20, 22 and 25 as detail that failed to
+    survive to render scale, and each time the conclusion was that the texture was right and
+    something downstream flattened it. **Opening the PNG settled it in one command:** 0.82 mean
+    adjacent |ΔL| at native resolution over a range of 89–107, which is a wash. The texture was never
+    right.
+
+    The cause is worth knowing because the comments in the file claimed the opposite. **Gradient
+    noise is exactly zero at every lattice point** — that is what makes it smooth — so a lattice
+    approaching the texel size returns almost nothing. The call was `tiling(.., 704)` on a 1024 map:
+    1.45 texels per cell. Per-texel grain needs a *value* hash, not gradient noise.
+
+    **Measure the source before measuring the render, and publish both numbers.**
+
+17. **A control is not a control until you have shown it lands on the object.** Review 28 demanded a
     control run on F2; the control was then taken at a column that was **62% off the old model**, so
     what it measured was the tunnel wall's plate joints behind it — the highest-contrast thing in the
     frame — and the conclusion drawn was that the clause scored the *worse* model higher. On a column

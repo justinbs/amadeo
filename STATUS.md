@@ -163,6 +163,20 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > **Five clauses left on F5** — the grime blur, the crates, the key board's bars, `accent` saturation
 > and the call plate — and **the row does not close until all seven pass in one review.**
 >
+> #### The grime was never a render problem, and three reviews chased the wrong end
+>
+> `games/warren`'s floor texture measured **0.82 mean adjacent |ΔL| at NATIVE resolution**, range
+> 89–107. A wash, in the source. Reviews 20, 22 and 25 each measured the *render*, concluded the map
+> was right, and blamed something downstream.
+>
+> **`grimy` called `tiling(.., 704)` on a 1024 map under a comment claiming per-texel grain.**
+> Gradient noise is **exactly zero at every lattice point** — that is what makes it smooth — so at
+> 1.45 texels per cell it returns almost nothing. Per-texel grain needs a **value** hash, which is now
+> `amadeo-texture::noise::speck`. Same row: **3.24**. Near lining in the render: **7.41** and **4.19**
+> against a 3.0 bar.
+>
+> **Measure the source before the render, and publish both numbers.** Filed as `docs/14` §4 #16.
+>
 > #### The defect worth not rediscovering
 >
 > **A cast to the ears hits the listener's own body just before it arrives**, so every voice in the

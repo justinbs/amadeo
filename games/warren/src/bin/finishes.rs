@@ -737,8 +737,13 @@ fn grimy(surface: &Surface, u: f32, v: f32) -> f32 {
     // 288 gives features under four texels and 704 gives them at about one and a half.
     let speckle = (noise::tiling(surface.seed ^ 0x5E_CC_1E, u, v, 288) * 0.5 + 0.5).clamp(0.0, 1.0);
     let speckle = ((speckle - 0.5) / 0.5).clamp(0.0, 1.0);
-    let dust = (noise::tiling(surface.seed ^ 0x5E_CC_2F, u, v, 704) * 0.5 + 0.5).clamp(0.0, 1.0);
-    let dust = ((dust - 0.62) / 0.38).clamp(0.0, 1.0);
+    // **Per-texel grain, and it has to be `speck` rather than `tiling`.** This call used to be
+    // `tiling(.., 704)` under a comment claiming per-texel detail, and gradient noise is exactly zero
+    // at every lattice point -- so at 1.45 texels per cell it returned almost nothing and the map
+    // measured 0.82 mean adjacent |dL| at native resolution. Three reviews measured the render,
+    // concluded the texture was right and blamed something downstream. It was never right.
+    let dust = (noise::speck(surface.seed ^ 0x5E_CC_2F, u, v, 1024) * 0.5 + 0.5).clamp(0.0, 1.0);
+    let dust = ((dust - 0.55) / 0.45).clamp(0.0, 1.0);
     let settled = settled.max(speckle * 0.8).max(dust * 0.95);
 
     let recess = surface.wall.as_ref().map_or(0.0, |wall| {
