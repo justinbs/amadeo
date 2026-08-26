@@ -10,6 +10,7 @@ assets
   bore_wall_open_a
   bore_wall_open_b
   bunk_made
+  bunk_rolled
   bunk_stripped
   collapsed
   cross_passage_open
@@ -90,7 +91,7 @@ entity letter_0_0 "Section letter" from section_letter_h
     scale 1.0 1.0 1.0
     translation 2.4 0.0 3.2
 
-entity berth0_0_0 "Berth" from bunk_made
+entity berth0_0_0 "Berth" from bunk_rolled
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -456,7 +457,7 @@ entity letter_2_0 "Section letter" from section_letter_m
     scale 1.0 1.0 1.0
     translation 26.4 0.0 3.2
 
-entity berth0_2_0 "Berth" from bunk_made
+entity berth0_2_0 "Berth" from bunk_rolled
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -870,7 +871,7 @@ entity berth0_6_1 "Berth" from bunk_made
     scale 1.0 1.0 1.0
     translation 73.95 0.0 9.6
 
-entity berth1_6_1 "Berth" from bunk_made
+entity berth1_6_1 "Berth" from bunk_rolled
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0

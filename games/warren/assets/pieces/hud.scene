@@ -22,10 +22,33 @@ entity hud "HUD"
     size 0.0 0.0
     visible true
 
+  entity reticle_halo "The reticle's halo, so the mark is readable on anything"
+    Panel
+      order 9
+      paint Surface
+    Reticle
+      opens false
+    UiNode
+      align_children Centre
+      anchor
+        horizontal Centre
+        vertical Centre
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 7.0 7.0
+      visible true
+
   entity reticle_dot "Reticle"
     Panel
       order 10
-      paint Dim
+      paint Ink
     Reticle
       opens false
     UiNode

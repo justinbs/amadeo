@@ -150,6 +150,19 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > consumer is not wired — gain-only is the descope the ADR itself names — and the probe's cost has not
 > been measured against `docs/10`.
 >
+> #### F5 is started: two of its seven clauses
+>
+> **The bunks have a third dressing** — `bunk_rolled` — and the level is **6 stripped, 3 made, 3
+> rolled**. It is a third *history* rather than a third look, and which berth was rolled alternates by
+> cell so it is not a rule a player can read.
+>
+> **The reticle has a halo.** No single colour holds 60 levels against both a lit door and a dark
+> bore, so it is a `Surface` halo behind an `Ink` dot: **3 against ~199** at `at_exit`, **225 against
+> ~62** at `playing`. Opposite directions, both well past the bar.
+>
+> **Five clauses left on F5** — the grime blur, the crates, the key board's bars, `accent` saturation
+> and the call plate — and **the row does not close until all seven pass in one review.**
+>
 > #### The defect worth not rediscovering
 >
 > **A cast to the ears hits the listener's own body just before it arrives**, so every voice in the

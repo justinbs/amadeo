@@ -1,0 +1,65 @@
+scene bunk_rolled
+version 1
+
+assets
+  bunk_frame
+  bunk_ticking
+  bunk_ticking_normal
+  bunk_ticking_surface
+  fitting_steel
+  fitting_steel_normal
+  fitting_steel_surface
+  fittings
+  mattress
+  ticking
+
+entity bunk_rolled "A bunk somebody stripped and rolled before they left"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+  entity frame "Frame"
+    Mesh
+      material "fittings"
+      mesh "bunk_frame"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.0 0.0
+
+  entity solid "What you cannot walk through"
+    Collider
+      friction 0.9
+      restitution 0.0
+      sensor false
+      shape Cuboid
+        size 0.74 1.6 1.9
+    RigidBody
+      angular_damping 0.0
+      gravity false
+      kind Static
+      linear_damping 0.0
+      mass 1.0
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.8 0.0
+
+  entity roll "The bedding, rolled and left at the head of the lower berth"
+    Mesh
+      material "ticking"
+      mesh "mattress"
+    Transform
+      rotation 0.0 0.0 90.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.63 -0.72
+
+  entity spare "The upper berth's, rolled beside it"
+    Mesh
+      material "ticking"
+      mesh "mattress"
+    Transform
+      rotation 0.0 0.0 90.0
+      scale 1.0 1.0 1.0
+      translation 0.0 0.63 -0.44

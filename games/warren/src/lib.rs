@@ -1994,6 +1994,16 @@ pub const ARCHIVE_PIECE: &str = "archive";
 /// The prefab a bunk that was stripped comes from.
 pub const BUNK_STRIPPED_PIECE: &str = "bunk_stripped";
 
+/// The piece id of a bunk whose bedding was rolled and left on it.
+///
+/// **A third dressing, and it is a third thing that happened here rather than a third look.** R2
+/// measured twelve bunk placements over two variants, and review 17 put it plainly: *the bunks were
+/// perfectly made, identically, everywhere.* Made means somebody was living here when it stopped;
+/// stripped means somebody cleared it out afterwards; **rolled means somebody left properly, in their
+/// own time, and expected the place to be used again.** A section with one of each is a section where
+/// people made different decisions.
+pub const BUNK_ROLLED_PIECE: &str = "bunk_rolled";
+
 /// The prefab the player, the camera and the torch beam come from.
 pub const PLAYER_PIECE: &str = "player_start";
 
@@ -2038,9 +2048,10 @@ pub const AMBIENCE_PIECE: &str = "ambience";
 /// here: the two orders are not the same, and hand-maintaining a sorted list of ids whose names are
 /// spelled differently from their constants is exactly the sort of thing that goes quietly wrong.
 /// `amadeo fmt --check` on the output is what would have caught it, and did.
-pub const PIECES: [&str; 27] = [
+pub const PIECES: [&str; 28] = [
     AMBIENCE_PIECE,
     BUNK_MADE_PIECE,
+    BUNK_ROLLED_PIECE,
     BUNK_STRIPPED_PIECE,
     DOORWAY_PIECE_A,
     DOORWAY_PIECE_B,
@@ -2415,6 +2426,10 @@ fn write_condition(out: &mut String, room: &PlacedRoom, x: f32, z: f32) {
         Condition::Archive => ARCHIVE_PIECE,
         _ => BUNK_MADE_PIECE,
     };
+    // Which berth in a slept-in section was rolled rather than left made. By cell rather than by
+    // die, so it is a property of the level and not of a random draw -- and alternating on the cell
+    // means the rolled one is not always the same berth, which is what would read as a rule.
+    let rolled_first = (room.cell.0 + room.cell.1).rem_euclid(2) == 0;
 
     // **The two berths are no longer identical**, which review 17 measured as "both bunks in shot,
     // same stripe phase, same bolster at the same end, no sag, nothing over an edge". The cheapest
@@ -2422,8 +2437,17 @@ fn write_condition(out: &mut String, room: &PlacedRoom, x: f32, z: f32) {
     // shows its stripes running the other way and its bolster at the other end, from one number.
     for (index, along) in [-2.4_f32, 0.6].into_iter().enumerate() {
         let turn = if index == 0 { 0.0 } else { 180.0 };
+        // **One berth in a slept-in section was rolled, and it is not always the same berth.** The
+        // turn above stops the two looking identical; this stops them having had the same history.
+        // A section left by two people who made different decisions is content; twelve bunks in one
+        // state is a rule the player can read.
+        let dressed = if piece == BUNK_MADE_PIECE && (index == 0) == rolled_first {
+            BUNK_ROLLED_PIECE
+        } else {
+            piece
+        };
         out.push_str(&format!(
-            "entity {} \"Berth\" from {piece}\n",
+            "entity {} \"Berth\" from {dressed}\n",
             cell_id(&format!("berth{index}"), room.cell)
         ));
         out.push_str(&place(x + side, 0.0, z + along, turn));
