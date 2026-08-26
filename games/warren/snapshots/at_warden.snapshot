@@ -1,6 +1,6 @@
 amadeo-snapshot 2
 tick 136
-state-hash 4858259c91195cfc
+state-hash 6be5a01ed0d1497c
 schema-hash 7116c34bea2c5349
 
 schema
@@ -9799,11 +9799,11 @@ entities
       translation 0.42 -0.26 0.0
   656:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 -2.0 0.0 -1.2 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 2.0 0.0 -1.2 1.0
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation -2.0 0.0 -1.2
+      translation 2.0 0.0 -1.2
   657:0
     Collider
       friction 0.9
@@ -9812,7 +9812,7 @@ entities
       shape Cuboid
         size 0.9 0.9 0.9
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 -2.0 0.45 -1.2 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 2.0 0.45 -1.2 1.0
     Mesh
       material "crate_board"
       mesh "supply_crate"
@@ -9837,7 +9837,7 @@ entities
       shape Cuboid
         size 0.9 0.9 0.9
     GlobalTransform
-      matrix 0.9702957 0.0 -0.2419219 0.0 0.0 1.0 0.0 0.0 0.2419219 0.0 0.9702957 0.0 -1.88 0.45 -0.18000007 1.0
+      matrix 0.9702957 0.0 -0.2419219 0.0 0.0 1.0 0.0 0.0 0.2419219 0.0 0.9702957 0.0 2.12 0.45 -0.18000007 1.0
     Mesh
       material "crate_board"
       mesh "supply_crate"
@@ -9862,7 +9862,7 @@ entities
       shape Cuboid
         size 0.9 0.9 0.9
     GlobalTransform
-      matrix 0.9945219 0.0 0.104528464 0.0 0.0 1.0 0.0 0.0 -0.104528464 0.0 0.9945219 0.0 -2.05 1.35 -1.1400001 1.0
+      matrix 0.9945219 0.0 0.104528464 0.0 0.0 1.0 0.0 0.0 -0.104528464 0.0 0.9945219 0.0 1.95 1.35 -1.1400001 1.0
     Mesh
       material "crate_board"
       mesh "supply_crate"
@@ -9881,7 +9881,7 @@ entities
       translation -0.05 1.35 0.06
   660:0
     GlobalTransform
-      matrix 0.9 0.0 0.0 0.0 0.0 0.9 0.0 0.0 0.0 0.0 0.9 0.0 -2.0 0.5 -1.6400001 1.0
+      matrix 0.9 0.0 0.0 0.0 0.0 0.9 0.0 0.0 0.0 0.0 0.9 0.0 2.0 0.5 -1.6400001 1.0
     Mesh
       material "stencil"
       mesh "letter_h"
@@ -9894,7 +9894,7 @@ entities
       translation 0.0 0.5 -0.44
   661:0
     GlobalTransform
-      matrix 0.87326616 0.0 -0.2177297 0.0 0.0 0.9 0.0 0.0 0.2177297 0.0 0.87326616 0.0 -1.88 0.5 -0.62000006 1.0
+      matrix 0.87326616 0.0 -0.2177297 0.0 0.0 0.9 0.0 0.0 0.2177297 0.0 0.87326616 0.0 2.12 0.5 -0.62000006 1.0
     Mesh
       material "stencil"
       mesh "letter_m"
@@ -9907,7 +9907,7 @@ entities
       translation 0.12 0.5 0.58
   662:0
     GlobalTransform
-      matrix 0.8950697 0.0 0.09407561 0.0 0.0 0.9 0.0 0.0 -0.09407561 0.0 0.8950697 0.0 -2.05 1.4 -1.58 1.0
+      matrix 0.8950697 0.0 0.09407561 0.0 0.0 0.9 0.0 0.0 -0.09407561 0.0 0.8950697 0.0 1.95 1.4 -1.58 1.0
     Mesh
       material "stencil"
       mesh "letter_t"
@@ -9920,7 +9920,7 @@ entities
       translation -0.05 1.4 -0.38
   663:0
     GlobalTransform
-      matrix 0.0 0.0 -0.9 0.0 0.0 0.9 0.0 0.0 0.9 0.0 0.0 0.0 -1.56 0.5 -1.2 1.0
+      matrix 0.0 0.0 -0.9 0.0 0.0 0.9 0.0 0.0 0.9 0.0 0.0 0.0 2.44 0.5 -1.2 1.0
     Mesh
       material "stencil"
       mesh "letter_h"
@@ -9933,7 +9933,7 @@ entities
       translation 0.44 0.5 0.0
   664:0
     GlobalTransform
-      matrix -0.2177297 0.0 -0.87326616 0.0 0.0 0.9 0.0 0.0 0.87326616 0.0 -0.2177297 0.0 -1.44 0.5 -0.18000007 1.0
+      matrix -0.2177297 0.0 -0.87326616 0.0 0.0 0.9 0.0 0.0 0.87326616 0.0 -0.2177297 0.0 2.56 0.5 -0.18000007 1.0
     Mesh
       material "stencil"
       mesh "letter_m"
@@ -9946,7 +9946,7 @@ entities
       translation 0.56 0.5 1.02
   665:0
     GlobalTransform
-      matrix 0.09407561 0.0 -0.8950697 0.0 0.0 0.9 0.0 0.0 0.8950697 0.0 0.09407561 0.0 -1.61 1.4 -1.1400001 1.0
+      matrix 0.09407561 0.0 -0.8950697 0.0 0.0 0.9 0.0 0.0 0.8950697 0.0 0.09407561 0.0 2.3899999 1.4 -1.1400001 1.0
     Mesh
       material "stencil"
       mesh "letter_t"

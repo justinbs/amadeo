@@ -177,6 +177,37 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > `accent` reads 0.876. It reads 0.223 where the torch is hardest on it, which is the tonemapper
 > desaturating a highlight rather than a second orange, and both numbers are published.
 >
+> #### Review 30 closed F2b and F6, reopened F2 and F5, and corrected me on how to measure a width
+>
+> **F2's ratios: I counted figure pixels, the clause means extent.** On a row the bunk crosses a count
+> loses the occluded pixels, so an occluded waist measures narrow and inflates every ratio dividing by
+> it. I reported 1.80 / 1.59; by extent they are **1.14 / 1.01**. Eighth instance of §4 #14, committed
+> inside the matte instrument written to prevent it.
+>
+> **The structural verdict is what to carry:** *"a stack of coaxial cones cannot produce a shoulder
+> line, because a cone's widest place is a circle and a shoulder is a horizontal edge."* I applied the
+> ordered changes to the cone body and **made it worse twice** — plackets 7–9 cm proud of a cone read
+> as planks. Reverted to what the review measured. **F2 needs a box-and-wedge figure with mass
+> asymmetric about the vertical**, which is a session's work, not an increment. What stands: the hem
+> cap annulus closed, and the lantern outboard at radial 0.50 — its first enclosed negative space.
+>
+> **F5's last clause is fixed and the diagnosis was the review's:** the `speck` fix went into the
+> lining and never into the floor. `Surface::aggregate` is a **continuous** per-texel term, separate
+> from `grimy`'s thresholded `max` because grime is patchy and concrete is not. Floor **3.24 → 11.54**
+> at native; the three rewritten crops read **9.73 / 3.40 / 3.97**.
+>
+> **The level moves now.** No `.anim` existed in this game while `games/atrium` has had one since M2.
+> The fittings fail: three seconds apart, **636,143 pixels** change. Two near-misses on the way — both
+> capture times I first picked landed in flat parts of my own clip, and `amadeo anim` showed fourteen
+> players advancing correctly.
+>
+> **And a placement bug of the whole class:** `WOKE_ASIDE` is 2.0 against `BUNK_SIDE` 1.95, and which
+> wall the crate took came from the way the player happened to be *facing*. Two reviews found a bunk's
+> leg standing on a crate lid. It reads the berths' own parity now, and
+> `the_crate_you_wake_next_to_is_not_standing_where_the_bunks_are` asserts the berth list is non-empty
+> before looping, because a green test that checks no data is the failure this repository has shipped
+> twice.
+>
 > #### The grime was never a render problem, and three reviews chased the wrong end
 >
 > `games/warren`'s floor texture measured **0.82 mean adjacent |ΔL| at NATIVE resolution**, range

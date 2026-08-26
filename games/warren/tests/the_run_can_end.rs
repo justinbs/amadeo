@@ -147,7 +147,10 @@ fn the_door_is_locked_until_you_have_the_key() {
     );
 
     // And the prompt says so, which is the only thing the player has to go on.
-    assert_eq!(warren::prompt(&app.world).as_deref(), Some("WAY OUT · SECURED"));
+    assert_eq!(
+        warren::prompt(&app.world).as_deref(),
+        Some("WAY OUT · SECURED")
+    );
     assert_eq!(amadeo_inventory::count_of(&app.world, player, KEY), 0);
 }
 

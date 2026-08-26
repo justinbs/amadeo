@@ -2578,10 +2578,24 @@ fn write_contents(out: &mut String, layout: &Layout) {
     out.push_str(&format!(
         "entity woke \"What you woke up next to\" from {STORES_PIECE}\n"
     ));
+    // **On the wall the berths are NOT on, and that is a placement bug rather than a preference.**
+    // `WOKE_ASIDE` is 2.0 and `BUNK_SIDE` is 1.95, so a crate stack put on the berths' side lands
+    // inside their footprint — and it did. Engine gate reviews 20 and 30 both found a bunk's corner
+    // post terminating on a crate lid, not reaching the deck and casting nothing. Two pieces dropped
+    // into one footprint by a generator that does not check is the most machine-made thing a frame
+    // can contain.
+    //
+    // The old form offset along `right`, which is derived from the way the player happens to be
+    // *facing* — so which wall the crate landed on had nothing to do with which wall the berths took.
+    // `write_condition` decides that from the cell's own parity, so this asks the same question and
+    // takes the other side. Across the bore is always `x` (every bore runs north–south), which is why
+    // this is a bare offset rather than a rotated one.
+    let berths_east = (marks.start.0 + marks.start.1).rem_euclid(2) == 0;
+    let aside = if berths_east { WOKE_ASIDE } else { -WOKE_ASIDE };
     out.push_str(&place(
-        sx + fx * WOKE_AHEAD - rx * WOKE_ASIDE,
+        sx + fx * WOKE_AHEAD + aside,
         0.0,
-        sz + fz * WOKE_AHEAD - rz * WOKE_ASIDE,
+        sz + fz * WOKE_AHEAD,
         facing(ahead),
     ));
 

@@ -314,3 +314,64 @@ fn a_passage_goes_where_there_is_a_cross_door_and_a_blank_wall_where_there_is_no
         "every side that is not an opening is a blank wall"
     );
 }
+
+/// The x of a named entity's `Transform` in the generated text, if it has one.
+///
+/// Read off the *text* rather than out of a loaded world, because what is being tested is what the
+/// generator wrote — a world would also tell you, but a failure there could be the loader's.
+fn placed_x(scene: &str, entity: &str) -> Option<f32> {
+    let start = scene.find(&format!("entity {entity} "))?;
+    let tail = &scene[start..];
+    let at = tail.find("translation ")? + "translation ".len();
+    tail[at..].split_whitespace().next()?.parse().ok()
+}
+
+#[test]
+fn the_crate_you_wake_next_to_is_not_standing_where_the_bunks_are() {
+    // **Two pieces dropped into one footprint is the most machine-made thing a frame can contain**,
+    // and a generator that does not check cannot see it. Engine gate reviews 20 and 30 both found a
+    // bunk's corner post terminating on a crate lid — not reaching the deck, casting nothing — in the
+    // frame a player wakes up looking at.
+    //
+    // The cause was arithmetic rather than bad luck: `WOKE_ASIDE` is 2.0 and `BUNK_SIDE` is 1.95, so
+    // the two are the same place, and which wall the crate took was derived from the way the player
+    // happened to be *facing* rather than from which wall the berths were on.
+    let layout = warren::lay_out(warren::GENERATED_SEED, warren::GENERATED_ROOMS);
+    let scene = warren::to_scene(&layout);
+
+    let crate_x = placed_x(&scene, "woke").expect("the start room has the crate you wake beside");
+    let berths: Vec<f32> = ["berth0", "berth1"]
+        .iter()
+        .filter_map(|name| {
+            let id = format!(
+                "{name}_{}_{}",
+                cell_part(layout.landmarks.start.0),
+                cell_part(layout.landmarks.start.1)
+            );
+            placed_x(&scene, &id)
+        })
+        .collect();
+
+    // **Asserted rather than assumed**: an empty list here would make the loop below assert nothing,
+    // which is a green test that checks no data — the failure mode this repository has shipped twice.
+    assert!(
+        !berths.is_empty(),
+        "the start cell has no berths in the generated text, so this test would check nothing"
+    );
+    for berth_x in berths {
+        assert!(
+            (crate_x - berth_x).abs() > 2.0,
+            "the crate is at x {crate_x:.2} and a berth at x {berth_x:.2}, which is inside one \
+             footprint of it — they should be on opposite walls of a 4.8 m bore"
+        );
+    }
+}
+
+/// How `cell_id` spells one coordinate: negatives get an `n` because a `-` is not an id character.
+fn cell_part(value: i32) -> String {
+    if value < 0 {
+        format!("n{}", -value)
+    } else {
+        value.to_string()
+    }
+}

@@ -953,7 +953,7 @@ entity woke "What you woke up next to" from stores
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation -2.0 0.0 -1.2
+    translation 2.0 0.0 -1.2
 
 entity torch "Torch" from dropped_torch
   override Transform
