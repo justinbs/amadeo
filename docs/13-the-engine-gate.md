@@ -163,6 +163,17 @@ for the level are one object and one session. **F6 goes third, not last** — it
 and one architectural question, and the row the design calls gameplay must not be the one that falls
 off the end.
 
+### The budget is two to three FULL CONTEXT WINDOWS, not two to three exchanges
+
+Justin clarified this in session 26, after watching the first re-scope read it too conservatively:
+
+> *"by finish this demo game in 2-3 sessions you know I mean 2-3 full context windows right?"*
+
+That is a substantial budget, and it changes how the fallback below should be used: **it is a
+fallback, not a plan.** Do not pre-emptively descope a row because it looks large — descope only when
+a window is genuinely running out. The re-scope's purpose was to stop thirty-four rows consuming six
+sessions, not to make seven rows cheap.
+
 ### What ships if the budget runs out — decided now, while it is a decision rather than fatigue
 
 Two-to-three sessions is not elastic and review 28 required this be stated up front:
