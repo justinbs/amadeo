@@ -1,0 +1,28 @@
+scene call_plate
+version 1
+
+entity mesh "A call point: a cast housing on the bulkhead beside the way out"
+  CompoundMesh
+    parts
+      - position 0.0 0.0 0.0
+        solid Box
+          shape
+            size 0.19 0.26 0.045
+      - position 0.0 0.0 -0.03
+        solid Box
+          shape
+            size 0.155 0.225 0.02
+      - mirror false true false
+        position 0.0 0.107 -0.028
+        solid Box
+          shape
+            size 0.19 0.022 0.03
+      - mirror true false false
+        position 0.082 0.0 -0.028
+        solid Box
+          shape
+            size 0.026 0.26 0.03
+      - position 0.0 -0.088 -0.046
+        solid Box
+          shape
+            size 0.13 0.03 0.012

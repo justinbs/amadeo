@@ -3,6 +3,8 @@ version 1
 
 assets
   accent
+  call_button
+  call_plate
   bulkhead_door
   bulkhead_exit
   bulkhead_lamp
@@ -92,11 +94,20 @@ entity way_out "The way out"
       scale 3.6 1.0 1.0
       translation 0.0 2.44 0.12
 
-  entity call_plate "The call plate beside it"
+  entity call_plate "The call point beside it -- a cast housing, not a painted rectangle"
     Mesh
-      material "accent"
-      mesh "sign_plate"
+      material "fittings"
+      mesh "call_plate"
     Transform
       rotation 0.0 0.0 0.0
-      scale 0.34 0.34 0.5
-      translation 1.06 1.38 0.1
+      scale 1.0 1.0 1.0
+      translation 1.06 1.38 0.06
+
+  entity call_button "Its button, in the one colour this game gives to things you can act on"
+    Mesh
+      material "accent"
+      mesh "call_button"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 1.06 1.395 0.028

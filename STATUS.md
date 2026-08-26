@@ -150,7 +150,7 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > consumer is not wired — gain-only is the descope the ADR itself names — and the probe's cost has not
 > been measured against `docs/10`.
 >
-> #### F5 is started: two of its seven clauses
+> #### F5, continued
 >
 > **The bunks have a third dressing** — `bunk_rolled` — and the level is **6 stripped, 3 made, 3
 > rolled**. It is a third *history* rather than a third look, and which berth was rolled alternates by
@@ -160,8 +160,22 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > bore, so it is a `Surface` halo behind an `Ink` dot: **3 against ~199** at `at_exit`, **225 against
 > ~62** at `playing`. Opposite directions, both well past the bar.
 >
-> **Five clauses left on F5** — the grime blur, the crates, the key board's bars, `accent` saturation
-> and the call plate — and **the row does not close until all seven pass in one review.**
+> #### F5 is built: six of its seven clauses pass, and two were the wrong object
+>
+> **The crates were painted `fittings` — the same pale institutional steel as a light fitting.** That
+> is why they were the brightest thing in the shelter. Battened timber now: **45.5 against the lit
+> lining's 115.3**, where review 25 measured 117.3 against 71.2. Each carries a stencil on two faces.
+>
+> **The key board was mounted flush with the lining, and the lining plates stand proud of it**, so a
+> rib ate the whole right vertical of its orange edging. It is off the wall now, the way a notice
+> board is actually screwed on, and the four bars read **92 / 81 / 99 / 59 per cent**.
+>
+> **The call plate was a flat rectangle painted orange.** It is a cast housing with a proud button:
+> **50 x 59 px**, **78 and 57 levels** of edge prominence.
+>
+> **Saturation passes at comparable exposure** — every non-interactive surface sits at 0.16–0.29 and
+> `accent` reads 0.876. It reads 0.223 where the torch is hardest on it, which is the tonemapper
+> desaturating a highlight rather than a second orange, and both numbers are published.
 >
 > #### The grime was never a render problem, and three reviews chased the wrong end
 >

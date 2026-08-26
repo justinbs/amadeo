@@ -1,0 +1,16 @@
+scene crate_board
+version 1
+
+entity material "Stores crating -- timber, and deliberately darker than the lining it stands against, because a crate that outshines the tunnel is the brightest thing in a shelter for no reason"
+  Material
+    alpha_mode Opaque
+    base_colour 0.42 0.36 0.29 1.0
+    base_colour_texture "duck_timber"
+    emissive 0.0 0.0 0.0
+    metallic 0.0
+    metallic_roughness_texture "duck_timber_surface"
+    normal_strength 1.0
+    normal_texture "duck_timber_normal"
+    occlusion_strength 1.0
+    roughness 0.85
+    uv_scale 1.2 1.2

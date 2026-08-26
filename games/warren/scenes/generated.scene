@@ -965,7 +965,7 @@ entity key "Key" from lost_key
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 14.4 0.0 -22.5
+    translation 14.28 0.0 -22.5
 
 entity way_out "The way out" from way_out
   override Transform

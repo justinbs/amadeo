@@ -6,6 +6,17 @@ assets
   bulkhead_grey
   bulkhead_grey_normal
   bulkhead_grey_surface
+  crate_board
+  letter_h
+  letter_m
+  letter_t
+  duck_timber
+  duck_timber_normal
+  duck_timber_surface
+  sign_enamel
+  sign_enamel_normal
+  sign_enamel_surface
+  stencil
   supply_crate
 
 entity stores "A section cleared out and used for stores"
@@ -22,7 +33,7 @@ entity stores "A section cleared out and used for stores"
       shape Cuboid
         size 0.9 0.9 0.9
     Mesh
-      material "fittings"
+      material "crate_board"
       mesh "supply_crate"
     RigidBody
       angular_damping 0.0
@@ -43,7 +54,7 @@ entity stores "A section cleared out and used for stores"
       shape Cuboid
         size 0.9 0.9 0.9
     Mesh
-      material "fittings"
+      material "crate_board"
       mesh "supply_crate"
     RigidBody
       angular_damping 0.0
@@ -64,7 +75,7 @@ entity stores "A section cleared out and used for stores"
       shape Cuboid
         size 0.9 0.9 0.9
     Mesh
-      material "fittings"
+      material "crate_board"
       mesh "supply_crate"
     RigidBody
       angular_damping 0.0
@@ -76,3 +87,57 @@ entity stores "A section cleared out and used for stores"
       rotation 0.0 -6.0 0.0
       scale 1.0 1.0 1.0
       translation -0.05 1.35 0.06
+
+  entity lower_mark "Its stores mark, stencilled on"
+    Mesh
+      material "stencil"
+      mesh "letter_h"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 0.9 0.9 0.9
+      translation 0.0 0.5 -0.44
+
+  entity beside_mark "The next one's, a different letter"
+    Mesh
+      material "stencil"
+      mesh "letter_m"
+    Transform
+      rotation 0.0 14.0 0.0
+      scale 0.9 0.9 0.9
+      translation 0.12 0.5 0.58
+
+  entity stacked_mark "And the one on top"
+    Mesh
+      material "stencil"
+      mesh "letter_t"
+    Transform
+      rotation 0.0 -6.0 0.0
+      scale 0.9 0.9 0.9
+      translation -0.05 1.4 -0.38
+
+  entity lower_mark_side "The same crate's side, stencilled too"
+    Mesh
+      material "stencil"
+      mesh "letter_h"
+    Transform
+      rotation 0.0 90.0 0.0
+      scale 0.9 0.9 0.9
+      translation 0.44 0.5 0.0
+
+  entity beside_mark_side "And this one's"
+    Mesh
+      material "stencil"
+      mesh "letter_m"
+    Transform
+      rotation 0.0 104.0 0.0
+      scale 0.9 0.9 0.9
+      translation 0.56 0.5 1.02
+
+  entity stacked_mark_side "And the top one's"
+    Mesh
+      material "stencil"
+      mesh "letter_t"
+    Transform
+      rotation 0.0 84.0 0.0
+      scale 0.9 0.9 0.9
+      translation 0.39 1.4 0.06

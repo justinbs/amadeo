@@ -145,11 +145,14 @@ fn the_room_loads_and_the_player_is_first_person() {
     // material and a housing that emits is a housing you cannot see: review 20 found the first
     // version of this lamp reading as four unattached fragments, and the second as no fixture at all. The lights themselves are not geometry, and the player has no
     // body mesh -- in first person you would be standing inside it.
-    // **45 rather than 43 since session 26**: the warden gained a `head` and a lantern `glass`, both
-    // separate entities for this list's own reason -- a `Mesh` carries one material, the head has to be
-    // near-black so the brim shades a void rather than a pale dome, and the glass has to be emissive so
-    // the lamp reads as a source at range rather than as a ten-level smudge (engine gate review 29).
-    assert_eq!(app.world.query::<(&amadeo_render::Mesh,)>().count(), 45);
+    // **46 rather than 43 since session 26**, and every one of the three is the same rule: a `Mesh`
+    // carries exactly one material, so a part that must look different is a second entity. The warden
+    // gained a `head` that has to be near-black, so the brim shades a void rather than a pale dome, and
+    // a lantern `glass` that has to be emissive, so its lamp reads as a source at range rather than as
+    // a ten-level smudge (engine gate review 29). The way out gained a `call_button`, because F5's
+    // clause on the call plate wants a modelled housing with the one colour this game reserves for
+    // things you can act on sitting proud of it -- and a housing and a button cannot share a material.
+    assert_eq!(app.world.query::<(&amadeo_render::Mesh,)>().count(), 46);
 }
 
 #[test]

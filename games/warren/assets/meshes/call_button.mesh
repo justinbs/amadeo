@@ -1,0 +1,26 @@
+scene call_button
+version 1
+
+entity mesh "The button itself, proud of its housing so a hand finds it in the dark"
+  CompoundMesh
+    parts
+      - position 0.0 0.0 0.0
+        rotation 90.0 0.0 0.0
+        solid Cylinder
+          shape
+            capped true
+            flat true
+            height 0.026
+            radius 0.042
+            sides 12
+            top_radius 0.036
+      - position 0.0 0.0 -0.006
+        rotation 90.0 0.0 0.0
+        solid Cylinder
+          shape
+            capped true
+            flat true
+            height 0.014
+            radius 0.052
+            sides 12
+            top_radius 0.052

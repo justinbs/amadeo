@@ -2153,6 +2153,12 @@ const SIGN_OFFSET: f32 = 3.2;
 /// committed for photographing the key. 1.5 clears the passage, the fittings and the plate.
 pub const KEY_ALONG: f32 = 1.5;
 
+/// How far the key board stands off the lining plane, in world units.
+///
+/// The lining plates project into the bore, so a board mounted flush is a board with ribs across its
+/// edges -- and its edging is the `accent` mark that says it can be acted on (`docs/11` §5a).
+pub const BOARD_PROUD: f32 = 0.12;
+
 /// How far a bunk's centreline stands off the bore's, in world units.
 ///
 /// A bunk is 0.72 m across and the lining is at 2.4 m, so this puts its outer upright a hand's width
@@ -2553,7 +2559,16 @@ fn write_contents(out: &mut String, layout: &Layout) {
 
     let (kx, kz) = centre(marks.key);
     out.push_str(&format!("entity key \"Key\" from {KEY_PIECE}\n"));
-    out.push_str(&place(kx + BORE_HALF_WIDTH, 0.0, kz + KEY_ALONG, 0.0));
+    // **Proud of the lining, not flush with it.** At `BORE_HALF_WIDTH` exactly, the board sits in the
+    // plane of the plates -- and the plates stand proud of that plane, so a rib ate the whole right
+    // vertical of its orange edging and the top of it, which is what F5 clause (c) measures. A notice
+    // board is screwed *onto* a wall, so `BOARD_PROUD` brings it into the bore in front of the ribs.
+    out.push_str(&place(
+        kx + BORE_HALF_WIDTH - BOARD_PROUD,
+        0.0,
+        kz + KEY_ALONG,
+        0.0,
+    ));
 
     // **The way out is set into a bulkhead**, not into a side wall, which is why `exit_side` now
     // answers north or south. A side wall is 2.3 m to the springing and the door is 2.34 m in its
