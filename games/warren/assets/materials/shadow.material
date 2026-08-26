@@ -1,0 +1,16 @@
+scene shadow
+version 1
+
+entity material "What a face is not: near-black, matte, and it swallows the light under the brim"
+  Material
+    alpha_mode Opaque
+    base_colour 0.021 0.023 0.026 1.0
+    base_colour_texture ""
+    emissive 0.0 0.0 0.0
+    metallic 0.0
+    metallic_roughness_texture ""
+    normal_strength 1.0
+    normal_texture ""
+    occlusion_strength 1.0
+    roughness 0.95
+    uv_scale 1.0 1.0

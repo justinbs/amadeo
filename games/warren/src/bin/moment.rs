@@ -234,7 +234,7 @@ fn stand_at_landmark(app: &mut amadeo_app::App, name: &str) -> anyhow::Result<()
         "key" => warren::BORE_HALF_WIDTH - 2.6,
         // The warden is anchored on the figure itself now, so this is a real subject distance rather
         // than an offset from a cell centre: close enough to read the coat, far enough for the bore.
-        "warden" => -3.4,
+        "warden" => -5.7,
         _ => -4.2,
     };
     // Level with the key board along the bore, so it is in front of the camera rather than beside it.
@@ -251,7 +251,7 @@ fn stand_at_landmark(app: &mut amadeo_app::App, name: &str) -> anyhow::Result<()
         // warden against open lining with the bunks behind the camera.
         // Stepping to the other haunch puts the warden against open lining rather than behind a
         // bunk frame, which is what +1.1 did.
-        "warden" => -0.9,
+        "warden" => -1.35,
         "key" => 0.55,
         _ => 0.75,
     };
@@ -292,6 +292,33 @@ fn stand_at_landmark(app: &mut amadeo_app::App, name: &str) -> anyhow::Result<()
         transform.rotation = [0.0, warren::facing(side), 0.0];
     }
     app.run_ticks(8)?;
+
+    // **The warden is turned to face the camera, and that is staging rather than cheating.**
+    //
+    // An idle warden keeps whatever yaw the generator gave it, and `move_the_warden` only turns one
+    // that is pursuing. Row F2b gave the warden line of sight, so the figure in this snapshot is
+    // correctly `idle` — it cannot see a camera 5.7 m away past a bunk — and it therefore stands
+    // with its back to the lens, with the coat's closure, its strap and the lamp it carries all on
+    // the far side.
+    //
+    // This function already teleports the player, dismisses the title screen and puts a torch in
+    // their hand, all so the photograph is of the game rather than of a menu. Turning the subject to
+    // face the lens is the same act: it changes no rule and no reachable state, and the alternative
+    // is a portrait of a coat from behind.
+    if name == "warden" {
+        let wardens: Vec<amadeo_ecs::Entity> = app
+            .world
+            .query::<(&warren::Warden,)>()
+            .map(|(entity, _)| entity)
+            .collect();
+        for warden in wardens {
+            if let Some(transform) = app.world.get_mut::<amadeo_transform::Transform>(warden) {
+                transform.rotation[1] = warren::facing(warren::Side::South);
+            }
+        }
+        app.run_ticks(2)?;
+    }
+
     Ok(())
 }
 

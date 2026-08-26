@@ -1,0 +1,13 @@
+scene warden_head
+version 1
+
+entity mesh "The warden's head, which is a void under the brim rather than a face"
+  CompoundMesh
+    parts
+      - position 0.0 0.0 0.0
+        solid Sphere
+          shape
+            flat true
+            radius 0.105
+            rings 5
+            segments 8

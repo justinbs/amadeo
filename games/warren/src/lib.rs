@@ -451,11 +451,18 @@ pub fn build_from_scene(scene: &str) -> anyhow::Result<App> {
     // boundary: the module sequences states and this game supplies both sides of it.
     app.add_system(
         Stage::Simulation,
-        system(WATCH_FOR_YOU, watch_for_you).before(amadeo_behaviour::RUN_BEHAVIOURS),
+        system(WATCH_FOR_YOU, watch_for_you)
+            .before(amadeo_behaviour::RUN_BEHAVIOURS)
+            // **After the step, or the sight cast queries an empty index.** ADR 0054's rule: a
+            // backend answers from an index `step_physics` builds, so asking first finds nothing in
+            // the way anywhere -- which is exactly the defect this cast exists to fix, restored.
+            .after(amadeo_physics::STEP_PHYSICS),
     );
     app.add_system(
         Stage::Simulation,
-        system(MOVE_THE_WARDEN, move_the_warden).after(amadeo_behaviour::RUN_BEHAVIOURS),
+        system(MOVE_THE_WARDEN, move_the_warden)
+            .after(amadeo_behaviour::RUN_BEHAVIOURS)
+            .after(amadeo_physics::STEP_PHYSICS),
     );
     // Last, so it judges where everything actually ended up this tick rather than where it was.
     app.add_system(
@@ -641,6 +648,44 @@ pub const WARDEN_SPEED: f32 = 1.9;
 /// How close it has to get to catch you, in metres.
 pub const WARDEN_REACH: f32 = 0.9;
 
+/// How high the warden's eye sits above its own origin, in metres.
+///
+/// Its head is at local `0.545` in `warden_post.scene`; this is the same place, and a sight line is
+/// cast from here rather than from the floor so a bunk does not blind it.
+pub const WARDEN_EYE: f32 = 0.55;
+
+/// How high the player's eye sits above their origin, in metres.
+///
+/// The sight line ends here rather than at the feet, for the mirror of [`WARDEN_EYE`]'s reason: a
+/// line to the floor is blocked by every duckboard between the two.
+pub const PLAYER_EYE: f32 = 0.6;
+
+/// The radius of the sight probe, in metres.
+///
+/// **Not a zero-width ray**, for `modules/amadeo-interaction`'s reason: a hairline ray threads the
+/// gap between two lining plates and reports a clear line where a person would see a wall. This is
+/// how much of a gap counts as a gap.
+pub const SIGHT_PROBE: f32 = 0.12;
+
+/// The radius of the capsule the warden walks with, in metres.
+///
+/// Narrower than the coat it wears — the greatcoat's hem is 0.36 and this is what fits through a
+/// doorway. A collider matching the widest part of a costume is how a figure gets stuck on nothing.
+pub const WARDEN_RADIUS: f32 = 0.28;
+
+/// The straight section of that capsule, in metres. Total height is this plus twice the radius.
+pub const WARDEN_BODY: f32 = 1.1;
+
+/// The tallest thing it steps over rather than stopping at, in metres.
+///
+/// A duckboard is 40 mm and a threshold is more; this clears both.
+pub const WARDEN_STEP: f32 = 0.35;
+
+/// How far below itself it looks for floor to stay stuck to, in metres.
+///
+/// Without it, walking off a duckboard launches it, which reads as a hovering figure.
+pub const WARDEN_SNAP: f32 = 0.3;
+
 /// The label [`watch_for_you`] is registered under.
 pub const WATCH_FOR_YOU: &str = "watch_for_you";
 
@@ -655,6 +700,16 @@ pub const TRY_THE_DOOR: &str = "try_the_door";
 
 /// The label [`label_the_door`] is registered under.
 pub const LABEL_THE_DOOR: &str = "label_the_door";
+
+/// The yaw that points a thing along a horizontal direction, in degrees.
+///
+/// **Yaw 0 faces −z**, which is [`facing`]'s own convention: `Side::North` is `z − 1` and
+/// `facing(North)` is `0.0`. So the direction a yaw θ looks along is `(−sin θ, −cos θ)`, and
+/// inverting that is `atan2(−dx, −dz)` rather than the `atan2(dx, dz)` that looks right. Getting it
+/// wrong turns the warden exactly around, which reads as a figure walking at you backwards.
+fn facing_along(toward: [f32; 2]) -> f32 {
+    (-toward[0]).atan2(-toward[1]).to_degrees()
+}
 
 /// Where the player is, if there is one.
 fn player_at(world: &World) -> Option<[f32; 3]> {
@@ -680,15 +735,75 @@ pub fn watch_for_you(world: &mut World) {
     let Some(you) = player_at(world) else {
         return;
     };
-    let seen: Vec<(Entity, bool)> = world
+    let near: Vec<(Entity, [f32; 3])> = world
         .query::<(&Warden, &Transform)>()
-        .map(|(entity, (_, at))| (entity, distance(at.translation, you) <= WARDEN_SIGHT))
+        .filter(|(_, (_, at))| distance(at.translation, you) <= WARDEN_SIGHT)
+        .map(|(entity, (_, at))| (entity, at.translation))
         .collect();
 
-    for (entity, sees) in seen {
+    // Distance is necessary and was never sufficient. Every warden inside the radius now has to
+    // *see* the player as well, which is the second half and the one that makes a wall mean
+    // something.
+    let seen: Vec<(Entity, bool)> = near
+        .into_iter()
+        .map(|(entity, at)| (entity, can_see(world, at, you)))
+        .collect();
+
+    // Everything out of range is cleared, so walking away still ends a pursuit.
+    let all: Vec<Entity> = world
+        .query::<(&Warden,)>()
+        .map(|(entity, _)| entity)
+        .collect();
+    for entity in all {
+        let sees = seen.iter().any(|(seen, yes)| *seen == entity && *yes);
         if let Some(facts) = world.get_mut::<Facts>(entity) {
             facts.set("sees_you", sees);
         }
+    }
+}
+
+/// Whether there is an unobstructed line from the warden's eye to the player's.
+///
+/// # This is what `ShapeHit::entity` was added for
+///
+/// Its own doc comment says so: *"an AI's line of sight asks whether the thing in the way is the
+/// player or a wall."* The field landed in session 17 and nothing used it for this until engine gate
+/// review 28 pointed out that the antagonist of a horror game sees through cast-iron bulkheads.
+///
+/// # A sphere rather than a ray, for `modules/amadeo-interaction`'s reason
+///
+/// A zero-width ray threads the gap between two lining plates and reports open air where a person
+/// sees a wall. [`SIGHT_PROBE`] is how much of a gap counts as a gap.
+///
+/// # No solver means every line is clear, and that is stated rather than hidden
+///
+/// Against `NullPhysics` every cast reports clear, so the warden sees through walls again — the same
+/// control case `modules/amadeo-character` asserts, where the character walks through them. The
+/// tests say so out loud rather than quietly passing.
+fn can_see(world: &World, from: [f32; 3], to: [f32; 3]) -> bool {
+    let Some(physics) = world.service::<Physics>() else {
+        return true;
+    };
+    let eye = [from[0], from[1] + WARDEN_EYE, from[2]];
+    let head = [to[0], to[1] + PLAYER_EYE, to[2]];
+    let motion = [head[0] - eye[0], head[1] - eye[1], head[2] - eye[2]];
+
+    let cast = amadeo_physics::ShapeCast {
+        skin: 0.0,
+        ..amadeo_physics::ShapeCast::new(
+            amadeo_physics::Shape::Sphere {
+                radius: SIGHT_PROBE,
+            },
+            eye,
+            motion,
+        )
+    };
+    match physics.cast_shape(&cast) {
+        // Nothing in the way at all.
+        None => true,
+        // Something is. It only fails to block if it *is* the player — a cast that stops on the
+        // thing it was aimed at is a clear line, and `None` here would mean static level geometry.
+        Some(hit) => hit.entity.is_some() && hit.entity == player(world),
     }
 }
 
@@ -715,17 +830,67 @@ pub fn move_the_warden(world: &mut World) {
         .map(|(entity, (_, _, at))| (entity, at.translation))
         .collect();
 
-    for (entity, at) in moving {
-        let gap = distance(at, you);
-        if gap <= f32::EPSILON {
-            continue;
+    // Where each one ends up, decided against the level before anything is written. Collected in
+    // one pass because `move_shape` needs the service mutably and writing a `Transform` needs the
+    // world mutably, and those cannot be held at once.
+    let mut arrivals: Vec<(Entity, [f32; 3], f32)> = Vec::new();
+    if let Some(physics) = world.service_mut::<Physics>() {
+        for (entity, at) in &moving {
+            let gap = distance(*at, you);
+            if gap <= f32::EPSILON {
+                continue;
+            }
+            let step = WARDEN_SPEED * amadeo_core::FIXED_DT;
+            // Horizontal only, so it walks the floor rather than swimming towards your eyes.
+            let toward = [(you[0] - at[0]) / gap, (you[2] - at[2]) / gap];
+
+            // **Moved by the same query a character is moved by, so a wall stops it.** It used to
+            // write the translation straight in, which is why it walked through cast iron for six
+            // milestones. `move_shape` slides along whatever it hits, which is all a warden needs:
+            // it does not have to be clever, it has to not be a ghost.
+            let request = amadeo_physics::ShapeMove {
+                max_slope_degrees: 55.0,
+                step_height: WARDEN_STEP,
+                snap_distance: WARDEN_SNAP,
+                ..amadeo_physics::ShapeMove::new(
+                    amadeo_physics::Shape::Capsule {
+                        radius: WARDEN_RADIUS,
+                        height: WARDEN_BODY,
+                    },
+                    *at,
+                    [toward[0] * step, 0.0, toward[1] * step],
+                )
+            };
+            let moved = physics.move_shape(&request);
+            // **Facing where it is going.** Nothing turned it before, so the coat's closure, its
+            // strap and the lamp it carries were all on whichever side the level generator happened
+            // to leave facing away. A thing that walks at you while pointing elsewhere is not
+            // frightening, it is broken.
+            let facing = facing_along(toward);
+            arrivals.push((*entity, moved.translation, facing));
         }
-        let step = WARDEN_SPEED * amadeo_core::FIXED_DT;
-        // Horizontal only, so it walks the floor rather than swimming towards your eyes.
-        let toward = [(you[0] - at[0]) / gap, (you[2] - at[2]) / gap];
+    } else {
+        // No solver: the old straight-line walk, which is the control case the tests assert.
+        for (entity, at) in &moving {
+            let gap = distance(*at, you);
+            if gap <= f32::EPSILON {
+                continue;
+            }
+            let step = WARDEN_SPEED * amadeo_core::FIXED_DT;
+            let toward = [(you[0] - at[0]) / gap, (you[2] - at[2]) / gap];
+            let facing = facing_along(toward);
+            arrivals.push((
+                *entity,
+                [at[0] + toward[0] * step, at[1], at[2] + toward[1] * step],
+                facing,
+            ));
+        }
+    }
+
+    for (entity, arrived, facing) in arrivals {
         if let Some(transform) = world.get_mut::<Transform>(entity) {
-            transform.translation[0] += toward[0] * step;
-            transform.translation[2] += toward[1] * step;
+            transform.translation = arrived;
+            transform.rotation[1] = facing;
         }
     }
 }

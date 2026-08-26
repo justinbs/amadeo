@@ -1,0 +1,15 @@
+scene warden_glass
+version 1
+
+entity mesh "The lantern's glass, which is what makes the lamp readable as a source at range"
+  CompoundMesh
+    parts
+      - position 0.0 0.0 0.0
+        solid Cylinder
+          shape
+            capped true
+            flat false
+            height 0.125
+            radius 0.049
+            sides 10
+            top_radius 0.049

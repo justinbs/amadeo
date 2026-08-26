@@ -7,7 +7,7 @@ Priority: **P0** blocks work now · **P1** needed for the current milestone · *
 
 ---
 
-## Q44 · P0 · How does the audio pass learn that a wall is in the way? — **ANSWERED by Justin, pending the critic**
+## ~~Q44~~ · **Resolved — ADR 0086.** Occlusion is a hashed field on `AudioSource`, filled by `amadeo-app`
 
 **Opened in session 26 by review 28, which found it sitting unnamed inside a close condition.**
 `docs/13` §1b's **F6** requires occlusion — `docs/11` §9 makes it a *gameplay* requirement rather than
@@ -47,7 +47,7 @@ rather than `accepted` until the critic approves it. Do not build F6 against it 
 
 ---
 
-## Q45 · P0 · Which parameter drives the torch beam's scattering? — **ANSWERED by Justin, pending the critic**
+## ~~Q45~~ · **Resolved — ADR 0087.** Scattering is its own `Environment` block, not the fog's density
 
 **Opened in session 26 by review 28, which re-derived the numbers and found the row unbuildable as
 written.** `docs/13` §1b's **F4** raymarches a volumetric beam through ADR 0073's fog.

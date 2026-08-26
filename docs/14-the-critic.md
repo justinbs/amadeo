@@ -166,6 +166,25 @@ Read these before forming any theory. Each one cost a real review a real mistake
     R1's first form flagged thirteen `repeat` blocks of which twelve were manufactured. Judge a
     duckboard, a crate or a bunk by its variants; do not judge a casting by them.
 
+16. **A control is not a control until you have shown it lands on the object.** Review 28 demanded a
+    control run on F2; the control was then taken at a column that was **62% off the old model**, so
+    what it measured was the tunnel wall's plate joints behind it — the highest-contrast thing in the
+    frame — and the conclusion drawn was that the clause scored the *worse* model higher. On a column
+    verified on-figure for both, the rebuilt model beat the control by 74%, in the right direction.
+    **Print the on-object sample count beside every figure**, for the subject *and* for the control.
+
+    **The instrument that settles it is a matte, and it costs three commands.** Set the subject's
+    material to `base_colour 0 0 0` and `emissive 12 0 12`, capture, restore the material with
+    `git checkout`, and re-capture to prove byte-identity. A material is an asset, so §4 #11 permits
+    it through `--from`. The subject's pixels are then exactly `R ≥ 200 ∧ G ≤ 60` — no lighting, no
+    background, no contrast direction, no shadow trough — and **a broken run on a row is occlusion,
+    detected for free.** Matte *every* material the subject wears, not just the main one: a figure
+    whose head, lantern and glass are separate materials shows holes in a single-material matte, and
+    those holes are indistinguishable from something standing in front of it.
+
+    This is the seventh instance of #14 and the first committed *inside* a control demanded to prevent
+    exactly it.
+
 ---
 
 ## 5. Tools
@@ -1295,3 +1314,103 @@ warren.md` — the one design document this project has — was written by the i
 critiques from you to become good. The designer is meant to make that the first draft rather than the
 sixth. On `games/warren` it will be quiet, because that design is settled and the budget is seven
 rows; it starts properly on `docs/05` M4b, the first published game.
+
+---
+
+### Review 29 — engine gate — `aaa2195` — F2 built, ADRs 0086/0087 proposed — **NOT POLISHED; both ADRs APPROVED WITH CHANGES**
+
+Twelve captures, five crops, ~30 probes, six profiles, four controlled A/Bs on assets with a
+byte-identical restore check after each, and the projection re-derived from the snapshot's own
+transforms and calibrated against the hat crown to 4 px.
+
+#### It replaced the instrument, and that is the durable part
+
+It did not try to find the silhouette photometrically. It set `greatcoat.material` to
+`base_colour 0 0 0 / emissive 12 0 12`, captured, restored with `git checkout`, and re-captured to
+confirm byte-identity. **A material is an asset, so §4 #11 allows it through `--from`.** The figure's
+pixels are then exactly `R ≥ 200 ∧ G ≤ 60` — no lighting, no background, no contrast direction, no
+shadow trough — and a broken run on a row is occlusion, detected for free.
+
+#### The correction: clause (c) is not backwards, and the submission's control was contaminated
+
+The submission reported the old nine-box model scoring **3.92** against the rebuilt one's **3.44** and
+concluded the clause was backwards. Review 29 reproduced both figures exactly and then checked whether
+the column was **on the object**:
+
+```
+x=1175, y600-950   new: on-figure 350 / off   0
+                   old: on-figure 133 / off 217
+```
+
+**62% of the old model's score was the tunnel wall behind it**, whose plate joints are the highest
+contrast in the frame. On a column verified on-figure for both — x=1130, y 640–760 — the new model
+reads **3.34** against the old's **1.92**: it beats the control by **74%**, in the right direction.
+
+Filed as **§4 #16** below. It is the seventh instance of §4 #14, and it was committed *inside* a
+control run that review 28 had specifically demanded.
+
+#### Why F2 does not close
+
+1. **It is still a stack, and part count was never the problem.** Every body part is axis-symmetric
+   and every joint a hard horizontal ledge running the full circumference — six of them between brim
+   and hem. *"Rotational symmetry is a stronger machine-made tell than a box is."*
+2. **There are no shoulders, and the shoulder cone is upside down** — `0.29 → 0.225`, widest at its
+   bottom, which is a cape rather than a shoulder. The figure's widest points are hem 164 px and
+   collar 125 px with the body between them at 85–97.
+3. **"No face shows under the brim" was not what rendered** — 0.095 m of skull stood proud of the
+   collar, *"a bald egg, which is less frightening than darkness would be."*
+4. **The lantern had no light in it and the light had no lantern, 0.48 m apart** — projected to
+   **47 px** apart on screen. The lamp body read 224–239 against the coat's 207–231, *ten levels*,
+   with 843 clipped pixels beside it, and the mesh carried no glass and no emissive element.
+5. **It is clearly seen, and `docs/11` §3 forbids that.** Figure median 106, p90 150, against lining
+   behind it at 30–90 — roughly **120 levels above its immediate background** in full detail. Review
+   20 rejected this figure at *fifteen* levels. *"Fifteen was too few. One hundred and twenty is too
+   many, and the row has crossed the target rather than reached it."*
+6. **The arms were 2 cm proud of a coat of the same radius** — half-embedded slabs, *"present enough
+   to be add-ons, absent enough not to be arms."*
+
+**Its own self-correction:** it first called the coat *"the brightest large object in the frame"* from
+a crop; the median says parity with the brightest lit lining, not dominance. It changed the sentence
+to the local-contrast claim, which is what the numbers support.
+
+#### The two unasked changes: half stands
+
+**Anchoring the snapshot on the warden's own `Transform` stands** — *"a snapshot named for the only
+landmark that moves must ask where it is."* **3.4 m and −0.9 m across do not**: row-600 asymmetry fell
+**111.07 / 115.95 → 69.48** on the identical instrument, with the `games/atrium` control reproducing
+at 96.16 against reviews 19 and 25, and **11 of 20 sampled rows crossed by nearer geometry**. It voids
+exactly one prior reading — the composition credit on `w_at_warden` from reviews 22, 23, 25 and 27 —
+and **no measurement of the warden**, because those were true of a figure at ~9 m.
+
+**The lamp colour is approved, and it ruled that it was never the designer's to grant.** `docs/11` §4
+already specifies *"a cold, narrow, downward beam, deliberately unlike the player's warm one"*, and
+the shipped green flood met **neither word**. *"The designer identified a violation of a passed
+design, not a new direction."* One correction to how it was described: it is **not** a reduction —
+peak channel went `11.0 × 0.72 = 7.92` up to `9.0 × 1.0 = 9.00`, which is why the coat blew out.
+**Renormalise on peak channel, not on the intensity scalar.**
+
+#### The ADRs
+
+**ADR 0086 — APPROVED WITH CHANGES.** The inversion is right and both rejections correctly argued.
+Three things it must say first: **name the crate that owns the filling system** (the ADR never does,
+and `modules/` would contradict its own *"not left to each game to remember"*); **one cast per voice
+per tick cannot satisfy F6's own clause (a)**, since a binary cast steps 1.0 → 0.0 in one tick against
+a 0.15× bound — ease the scalar toward its cast target at a bounded rate; and **record the low-pass as
+the intended consumer**, because *"a wall does not make a sound quieter, it makes it dull"*, and gain
+alone tells the player "further away" when the mechanic needs "behind that bulkhead".
+
+**ADR 0087 — APPROVED WITH CHANGES.** *"Correct, and correct for the physical reason it gives."*
+**Its own self-correction is the useful part:** it began to require `scattering.strength` be bounded as
+an albedo multiplying the fog's extinction, then checked that against the shipped numbers — 0.68% at
+3 m — found the bound would make the beam invisible by construction, and **withdrew**. Changes: say
+plainly that `fog` and `scattering` **do not describe the same medium** and that this is art direction
+wearing a physics name, because *"the next person to unify these two numbers on physical grounds
+deletes the beam and will read it as a shader bug"*; and give `colour` a stated default of **white**,
+or a file omitting it scatters black — Q32's defect shape a sixth time, in the field the ADR exists to
+add.
+
+**And one thing for Justin:** F4 is the row that cashes `docs/11` §4's headline mechanic, because
+**a carried lamp with no visible beam cannot be tracked through a doorway.** It did not reorder it —
+*"the budget is real and a half-built volumetric pass is worse than none"* — but recorded that F2's
+remaining defects are partly F4's absence: an object seen in a beam is *never clearly seen*, which is
+the promise this model cannot keep on its own.

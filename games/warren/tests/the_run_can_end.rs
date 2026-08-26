@@ -409,3 +409,100 @@ fn open_sockets_come_back_in_a_reproducible_order() {
     let right: Vec<_> = warren::open_sockets(&second.world);
     assert_eq!(left, right);
 }
+
+// ---------------------------------------------------------------------------------------------
+// The warden and the level — engine gate row F2b, filed by review 28.
+//
+// `watch_for_you` set `sees_you` from distance alone and `move_the_warden` wrote a translation
+// straight at the player, so the antagonist saw through cast-iron bulkheads and walked through
+// them. The function's own comment excused it on the room being "open enough that it does not read
+// as broken" — written for *this* room, while the game ships a generated level of fourteen sections
+// divided by exactly the walls it ignored.
+//
+// It matters because of what it does to audio occlusion: that exists so a warden is not as loud
+// through a wall as through a doorway, and a player who hides behind a bulkhead, hears the breath
+// muffle correctly, and then watches the figure come through the plate has been told two opposite
+// things in the same second.
+//
+// **These need a real solver.** Against `NullPhysics` every cast reports clear and every move
+// succeeds, which is the control case asserted last.
+
+/// Puts the player at a known spot on the bore's centreline.
+fn you_stand_at(app: &mut App, at: [f32; 3]) {
+    let you = player(&app.world).expect("there is a player");
+    if let Some(transform) = app.world.get_mut::<Transform>(you) {
+        transform.translation = at;
+    }
+    app.run_ticks(2).expect("ticks run");
+}
+
+#[test]
+fn a_wall_between_you_is_a_wall() {
+    let mut app = room();
+    you_stand_at(&mut app, [0.0, 1.0, 0.0]);
+
+    // Outside the lining, well inside sight range. Nothing but the bore wall is between.
+    let outside = [warren::BORE_HALF_WIDTH + 1.6, 0.93, 0.0];
+    assert!(
+        distance_2d(outside, [0.0, 0.0]) < WARDEN_SIGHT,
+        "the placement has to be inside sight range or the test proves nothing"
+    );
+    warden_stands_at(&mut app, outside);
+
+    assert_eq!(
+        warden_state(&app),
+        "idle",
+        "a warden on the far side of the lining cannot see you, so its machine never leaves idle"
+    );
+
+    // And it stays there rather than arriving through the plate.
+    let before = warden_at(&app);
+    app.run_ticks(300).expect("ticks run");
+    let after = warden_at(&app);
+    assert!(
+        after[0] > warren::BORE_HALF_WIDTH,
+        "it crossed the lining: started at x {:.2}, ended at x {:.2}",
+        before[0],
+        after[0]
+    );
+    assert_ne!(
+        outcome(&app.world),
+        Outcome::Caught,
+        "it should not be able to catch you through a wall"
+    );
+}
+
+#[test]
+fn a_clear_line_is_a_clear_line() {
+    let mut app = room();
+    you_stand_at(&mut app, [0.0, 1.0, 0.0]);
+
+    // The same distance, inside the bore, with nothing in the way.
+    warden_stands_at(&mut app, [0.0, 0.93, -(warren::BORE_HALF_WIDTH + 1.6)]);
+
+    assert_eq!(
+        warden_state(&app),
+        "pursue",
+        "an open line at the same distance must be seen, or the cast is blocking everything"
+    );
+
+    app.run_ticks(300).expect("ticks run");
+    assert_eq!(
+        outcome(&app.world),
+        Outcome::Caught,
+        "with a clear line and three hundred ticks it should reach you"
+    );
+}
+
+/// Where the warden is now.
+fn warden_at(app: &App) -> [f32; 3] {
+    app.world
+        .get::<Transform>(warden(app))
+        .map(|at| at.translation)
+        .expect("the warden has a transform")
+}
+
+/// Horizontal distance, which is what sight range is measured in here.
+fn distance_2d(a: [f32; 3], b: [f32; 2]) -> f32 {
+    ((a[0] - b[0]).powi(2) + (a[2] - b[1]).powi(2)).sqrt()
+}

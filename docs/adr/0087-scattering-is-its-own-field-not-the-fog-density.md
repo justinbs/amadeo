@@ -1,6 +1,6 @@
 # ADR 0087 — Scattering is its own `Environment` field, not the fog's density
 
-**Status:** proposed (session 26) — **awaiting the critic's approval, which Justin made a condition**
+**Status:** accepted (session 26) — chosen by Justin, **approved with changes by engine gate review 29**; the changes are the amendment at the end
 **Extends:** ADR 0073's fog. Supersedes nothing.
 **Closes:** Q45.
 
@@ -80,3 +80,43 @@ Three things bound it:
   the rewritten clause names a crop containing **no light's** cone.
 - **Cost is a per-fragment loop**, and it is the reason this row is the one allowed to slip. It is
   measured against `docs/10`'s budget before F4 closes, not after.
+
+---
+
+## Amendment — review 29's two required changes (session 26)
+
+Approved with changes, and the review's own withdrawn objection is the reason for the first one. It
+began by requiring `scattering.strength` be bounded as an albedo multiplying the fog's extinction —
+mechanically preventing two knobs from describing different air, which is a stronger bound than
+"they are side by side in one asset". It then checked that against the shipped numbers, found the
+Warren's fog returns **0.68% at 3 m** so a beam bounded by it is **invisible by construction**, and
+withdrew.
+
+### 1. `fog` and `scattering` do not describe the same medium, and that is deliberate
+
+Say it plainly rather than defending against the two-knobs charge, because the charge is *correct* on
+physical grounds and the answer is that these are not physics.
+
+**`fog` is a depth cue. `scattering` is a beam.** Both are authored for a look, and the numbers that
+make each read are not the numbers a single medium would have. Review 27 recorded the identical hazard
+about `source_radius 1.85`: *"anybody who later corrects it to a physical value puts 11,142 pixels
+back at paper white and will read the result as a regression in the lamp."*
+
+**The next person to unify these two numbers on physical grounds deletes the beam and will read it as
+a shader bug.** This paragraph exists so that person finds this first.
+
+### 2. `colour` defaults to white
+
+Unstated, a file omitting it gets zeros and scatters **black** — which is Q32's defect shape a sixth
+time, authorable and authored and silently ignored, in the very field this ADR exists to add. The
+default is `1.0 1.0 1.0`, so scattering takes the light's own colour and a warm hand lamp and a cold
+lantern each glow in their own hue without either being authored twice.
+
+### What review 29 recorded about deferring this row
+
+F4 is the row `docs/13` §1b names as the one allowed to slip, and review 29 explicitly declined to
+reorder it — *"the budget is real and a half-built volumetric pass is worse than none."* But it
+recorded the cost: **`docs/11` §4's headline mechanic is that you track the warden by its lamp crossing
+a doorway two rooms away, and a carried lamp with no visible beam cannot be tracked.** F2's remaining
+defects are partly this row's absence, since an object seen in a beam is *never clearly seen* — which
+is what §3 requires and what a model alone cannot deliver.
