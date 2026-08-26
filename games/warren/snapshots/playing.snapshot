@@ -1,7 +1,7 @@
 amadeo-snapshot 2
 tick 126
-state-hash 65b61cd73bf27b5c
-schema-hash 7116c34bea2c5349
+state-hash ee8b4383ad924a2f
+schema-hash e774124d7ef84d54
 
 schema
   component AnimationPlayer 1
@@ -39,6 +39,7 @@ schema
   component Text 1
   component Transform 1
   component UiNode 1
+  component Verdict 1
   component Warden 1
   component WayOut 1
   resource EventClock 1
@@ -9717,7 +9718,7 @@ entities
         height 1.2
         radius 0.35
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 0.9 0.9702748 0.0 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 0.8 0.97021586 0.0 1.0
     Inventory
       slots 4
     RigidBody
@@ -9729,7 +9730,7 @@ entities
     Transform
       rotation -0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.9 0.9702748 0.0
+      translation 0.8 0.97021586 0.0
   653:0
     AudioListener ()
     Camera
@@ -9748,7 +9749,7 @@ entities
       max_pitch 85.0
       min_pitch -85.0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.9 1.5902748 0.0 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.8 1.5902159 0.0 1.0
     Interactor
       radius 0.22
       reach 2.2
@@ -9764,7 +9765,7 @@ entities
       translation 0.0 0.62 0.0
   654:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 0.9781476 -0.20791169 0.0 0.0 0.20791169 0.9781476 0.0 1.02 1.4902748 0.0 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 0.9781476 -0.20791169 0.0 0.0 0.20791169 0.9781476 0.0 0.92 1.4902158 0.0 1.0
     Parent
       generation 0
       index 653
@@ -9784,7 +9785,7 @@ entities
       translation 0.12 -0.1 0.0
   655:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 1.3199999 1.3302748 0.0 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 1.22 1.3302159 0.0 1.0
     Parent
       generation 0
       index 653
@@ -10586,31 +10587,52 @@ entities
       visible false
   698:0
     Panel
-      order 10
-      paint Raised
+      order 9
+      paint Custom
+        rgba 0.006 0.007 0.008 0.65
     Parent
       generation 0
       index 697
     UiNode
-      align_children Stretch
+      align_children Start
       anchor
-        horizontal Centre
-        vertical Centre
-      flow Column
-      gap Snug
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
       grow 0.0
       margin
         bottom 0.0
         left 0.0
         right 0.0
         top 0.0
-      padding Normal
-      size 320.0 224.0
+      padding None
+      size 0.0 0.0
       visible true
   699:0
     Parent
       generation 0
-      index 698
+      index 697
+    UiNode
+      align_children Start
+      anchor
+        horizontal Start
+        vertical Centre
+      flow Column
+      gap Snug
+      grow 0.0
+      margin
+        bottom 0.0
+        left 190.0
+        right 0.0
+        top 0.0
+      padding Normal
+      size 320.0 224.0
+      visible true
+  700:0
+    Parent
+      generation 0
+      index 699
     Text
       content "THE WARREN"
       font "BebasNeue-Regular"
@@ -10628,13 +10650,40 @@ entities
       grow 0.0
       margin
         bottom 0.0
-        left 0.0
+        left 46.0
         right 0.0
         top 0.0
       padding None
       size 0.0 60.0
       visible true
-  700:0
+  701:0
+    Parent
+      generation 0
+      index 699
+    Text
+      content "SHELTER FOUR · SUB-SURFACE ARCHIVE"
+      font "BebasNeue-Regular"
+      order 11
+      paint Dim
+      scale Body
+      wrap false
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Start
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 51.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 22.0
+      visible true
+  702:0
     Focusable
       enabled true
       order 0
@@ -10642,10 +10691,11 @@ entities
       choice Begin
     Panel
       order 10
-      paint Surface
+      paint Custom
+        rgba 0.0 0.0 0.0 0.0
     Parent
       generation 0
-      index 698
+      index 699
     UiNode
       align_children Start
       anchor
@@ -10656,62 +10706,7 @@ entities
       grow 0.0
       margin
         bottom 0.0
-        left 0.0
-        right 0.0
-        top 0.0
-      padding Snug
-      size 0.0 36.0
-      visible true
-  701:0
-    Parent
-      generation 0
-      index 700
-    Text
-      content "BEGIN"
-      font "BebasNeue-Regular"
-      order 11
-      paint Ink
-      scale Body
-      wrap false
-    UiNode
-      align_children Start
-      anchor
-        horizontal Stretch
-        vertical Stretch
-      flow None
-      gap None
-      grow 0.0
-      margin
-        bottom 0.0
-        left 0.0
-        right 0.0
-        top 0.0
-      padding None
-      size 0.0 0.0
-      visible true
-  702:0
-    Focusable
-      enabled true
-      order 1
-    MenuButton
-      choice Load
-    Panel
-      order 10
-      paint Surface
-    Parent
-      generation 0
-      index 698
-    UiNode
-      align_children Start
-      anchor
-        horizontal Stretch
-        vertical Start
-      flow None
-      gap None
-      grow 0.0
-      margin
-        bottom 0.0
-        left 0.0
+        left 44.0
         right 0.0
         top 0.0
       padding Snug
@@ -10722,7 +10717,7 @@ entities
       generation 0
       index 702
     Text
-      content "CONTINUE"
+      content "BEGIN"
       font "BebasNeue-Regular"
       order 11
       paint Ink
@@ -10747,15 +10742,16 @@ entities
   704:0
     Focusable
       enabled true
-      order 2
+      order 1
     MenuButton
-      choice Quit
+      choice Load
     Panel
       order 10
-      paint Surface
+      paint Custom
+        rgba 0.0 0.0 0.0 0.0
     Parent
       generation 0
-      index 698
+      index 699
     UiNode
       align_children Start
       anchor
@@ -10766,7 +10762,7 @@ entities
       grow 0.0
       margin
         bottom 0.0
-        left 0.0
+        left 44.0
         right 0.0
         top 0.0
       padding Snug
@@ -10776,6 +10772,62 @@ entities
     Parent
       generation 0
       index 704
+    Text
+      content "CONTINUE"
+      font "BebasNeue-Regular"
+      order 11
+      paint Ink
+      scale Body
+      wrap false
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible true
+  706:0
+    Focusable
+      enabled true
+      order 2
+    MenuButton
+      choice Quit
+    Panel
+      order 10
+      paint Custom
+        rgba 0.0 0.0 0.0 0.0
+    Parent
+      generation 0
+      index 699
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Start
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 44.0
+        right 0.0
+        top 0.0
+      padding Snug
+      size 0.0 36.0
+      visible true
+  707:0
+    Parent
+      generation 0
+      index 706
     Text
       content "QUIT"
       font "BebasNeue-Regular"
@@ -10799,7 +10851,7 @@ entities
       padding None
       size 0.0 0.0
       visible true
-  706:0
+  708:0
     Menu
       screen Paused
     Parent
@@ -10821,13 +10873,13 @@ entities
       padding None
       size 0.0 0.0
       visible false
-  707:0
+  709:0
     Panel
       order 10
       paint Raised
     Parent
       generation 0
-      index 706
+      index 708
     UiNode
       align_children Stretch
       anchor
@@ -10844,10 +10896,10 @@ entities
       padding Normal
       size 320.0 238.0
       visible true
-  708:0
+  710:0
     Parent
       generation 0
-      index 707
+      index 709
     Text
       content "PAUSED"
       font "BebasNeue-Regular"
@@ -10871,7 +10923,7 @@ entities
       padding None
       size 0.0 30.0
       visible true
-  709:0
+  711:0
     Focusable
       enabled true
       order 0
@@ -10882,62 +10934,7 @@ entities
       paint Surface
     Parent
       generation 0
-      index 707
-    UiNode
-      align_children Start
-      anchor
-        horizontal Stretch
-        vertical Start
-      flow None
-      gap None
-      grow 0.0
-      margin
-        bottom 0.0
-        left 0.0
-        right 0.0
-        top 0.0
-      padding Snug
-      size 0.0 36.0
-      visible true
-  710:0
-    Parent
-      generation 0
       index 709
-    Text
-      content "RESUME"
-      font "BebasNeue-Regular"
-      order 11
-      paint Ink
-      scale Body
-      wrap false
-    UiNode
-      align_children Start
-      anchor
-        horizontal Stretch
-        vertical Stretch
-      flow None
-      gap None
-      grow 0.0
-      margin
-        bottom 0.0
-        left 0.0
-        right 0.0
-        top 0.0
-      padding None
-      size 0.0 0.0
-      visible true
-  711:0
-    Focusable
-      enabled true
-      order 1
-    MenuButton
-      choice Save
-    Panel
-      order 10
-      paint Surface
-    Parent
-      generation 0
-      index 707
     UiNode
       align_children Start
       anchor
@@ -10959,7 +10956,7 @@ entities
       generation 0
       index 711
     Text
-      content "SAVE"
+      content "RESUME"
       font "BebasNeue-Regular"
       order 11
       paint Ink
@@ -10984,15 +10981,15 @@ entities
   713:0
     Focusable
       enabled true
-      order 2
+      order 1
     MenuButton
-      choice Load
+      choice Save
     Panel
       order 10
       paint Surface
     Parent
       generation 0
-      index 707
+      index 709
     UiNode
       align_children Start
       anchor
@@ -11014,7 +11011,7 @@ entities
       generation 0
       index 713
     Text
-      content "LOAD"
+      content "SAVE"
       font "BebasNeue-Regular"
       order 11
       paint Ink
@@ -11039,15 +11036,15 @@ entities
   715:0
     Focusable
       enabled true
-      order 3
+      order 2
     MenuButton
-      choice Quit
+      choice Load
     Panel
       order 10
       paint Surface
     Parent
       generation 0
-      index 707
+      index 709
     UiNode
       align_children Start
       anchor
@@ -11068,6 +11065,61 @@ entities
     Parent
       generation 0
       index 715
+    Text
+      content "LOAD"
+      font "BebasNeue-Regular"
+      order 11
+      paint Ink
+      scale Body
+      wrap false
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible true
+  717:0
+    Focusable
+      enabled true
+      order 3
+    MenuButton
+      choice Quit
+    Panel
+      order 10
+      paint Surface
+    Parent
+      generation 0
+      index 709
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Start
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding Snug
+      size 0.0 36.0
+      visible true
+  718:0
+    Parent
+      generation 0
+      index 717
     Text
       content "QUIT"
       font "BebasNeue-Regular"
@@ -11091,7 +11143,7 @@ entities
       padding None
       size 0.0 0.0
       visible true
-  717:0
+  719:0
     Menu
       screen Ended
     Parent
@@ -11113,46 +11165,19 @@ entities
       padding None
       size 0.0 0.0
       visible false
-  718:0
+  720:0
     Panel
-      order 10
-      paint Raised
+      order 9
+      paint Custom
+        rgba 0.006 0.007 0.008 0.35
     Parent
       generation 0
-      index 717
-    UiNode
-      align_children Stretch
-      anchor
-        horizontal Centre
-        vertical Centre
-      flow Column
-      gap Snug
-      grow 0.0
-      margin
-        bottom 0.0
-        left 0.0
-        right 0.0
-        top 0.0
-      padding Normal
-      size 320.0 180.0
-      visible true
-  719:0
-    EndingLine ()
-    Parent
-      generation 0
-      index 718
-    Text
-      content ""
-      font "BebasNeue-Regular"
-      order 11
-      paint Ink
-      scale Title
-      wrap false
+      index 719
     UiNode
       align_children Start
       anchor
         horizontal Stretch
-        vertical Start
+        vertical Stretch
       flow None
       gap None
       grow 0.0
@@ -11162,9 +11187,117 @@ entities
         right 0.0
         top 0.0
       padding None
-      size 0.0 60.0
+      size 0.0 0.0
       visible true
-  720:0
+    Verdict
+      caught false
+  721:0
+    Panel
+      order 9
+      paint Custom
+        rgba 0.004 0.004 0.005 0.78
+    Parent
+      generation 0
+      index 719
+    UiNode
+      align_children Start
+      anchor
+        horizontal Stretch
+        vertical Stretch
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 0.0
+        right 0.0
+        top 0.0
+      padding None
+      size 0.0 0.0
+      visible false
+    Verdict
+      caught true
+  722:0
+    EndingLine ()
+    Parent
+      generation 0
+      index 719
+    Text
+      content ""
+      font "BebasNeue-Regular"
+      order 12
+      paint Ink
+      scale Title
+      wrap false
+    UiNode
+      align_children Start
+      anchor
+        horizontal Start
+        vertical Start
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 0.0
+        left 258.0
+        right 0.0
+        top 300.0
+      padding None
+      size 700.0 90.0
+      visible true
+    Verdict
+      caught false
+  723:0
+    EndingLine ()
+    Parent
+      generation 0
+      index 719
+    Text
+      content ""
+      font "BebasNeue-Regular"
+      order 12
+      paint Ink
+      scale Body
+      wrap false
+    UiNode
+      align_children Start
+      anchor
+        horizontal Start
+        vertical End
+      flow None
+      gap None
+      grow 0.0
+      margin
+        bottom 300.0
+        left 258.0
+        right 0.0
+        top 0.0
+      padding None
+      size 700.0 30.0
+      visible false
+    Verdict
+      caught true
+  724:0
+    Parent
+      generation 0
+      index 719
+    UiNode
+      align_children Start
+      anchor
+        horizontal Start
+        vertical End
+      flow Column
+      gap Snug
+      grow 0.0
+      margin
+        bottom 90.0
+        left 258.0
+        right 0.0
+        top 0.0
+      padding Normal
+      size 320.0 180.0
+      visible true
+  725:0
     Focusable
       enabled true
       order 0
@@ -11172,10 +11305,11 @@ entities
       choice TryAgain
     Panel
       order 10
-      paint Surface
+      paint Custom
+        rgba 0.0 0.0 0.0 0.0
     Parent
       generation 0
-      index 718
+      index 724
     UiNode
       align_children Start
       anchor
@@ -11192,10 +11326,10 @@ entities
       padding Snug
       size 0.0 36.0
       visible true
-  721:0
+  726:0
     Parent
       generation 0
-      index 720
+      index 725
     Text
       content "TRY AGAIN"
       font "BebasNeue-Regular"
@@ -11219,7 +11353,7 @@ entities
       padding None
       size 0.0 0.0
       visible true
-  722:0
+  727:0
     Focusable
       enabled true
       order 1
@@ -11227,10 +11361,11 @@ entities
       choice Quit
     Panel
       order 10
-      paint Surface
+      paint Custom
+        rgba 0.0 0.0 0.0 0.0
     Parent
       generation 0
-      index 718
+      index 724
     UiNode
       align_children Start
       anchor
@@ -11247,10 +11382,10 @@ entities
       padding Snug
       size 0.0 36.0
       visible true
-  723:0
+  728:0
     Parent
       generation 0
-      index 722
+      index 727
     Text
       content "QUIT"
       font "BebasNeue-Regular"

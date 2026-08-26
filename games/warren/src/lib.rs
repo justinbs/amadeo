@@ -353,6 +353,7 @@ pub fn build_from_scene(scene: &str) -> anyhow::Result<App> {
     app.register_component::<PromptLine>()?;
     app.register_component::<Reticle>()?;
     app.register_component::<EndingLine>()?;
+    app.register_component::<Verdict>()?;
     app.insert_resource(Outcome::default());
 
     // The shell (ADR 0065). `Screen` is this game's and is the **authority**; the engine's `Paused`
@@ -2773,6 +2774,34 @@ pub struct PromptLine;
 
 impl Component for PromptLine {}
 
+/// Which of the two endings a piece of the ended screen belongs to.
+///
+/// # Two registers, not two strings — design direction 1, decision 3
+///
+/// Both outcomes used one panel, one scale and one placement, and only the words changed. `docs/11`
+/// §8 already names the game's two typographic registers — **the interface is signage** and **the
+/// pause menu is a form** — and the endings are where that pays: escaping a place should not read
+/// like being caught in it.
+///
+/// **Escaped, the sign speaks.** The line at `Title` scale, upper-left, over a *light* scrim, so the
+/// frame you escaped through is clearly readable behind it. You can still see.
+///
+/// **Caught, the record speaks.** The line at `Body` scale, low and left, where a reference number
+/// goes on a form, over a *deep* scrim. It should read as an entry being written rather than as a
+/// result being announced — which is the same movement `ACCOUNTED FOR` makes in the words.
+///
+/// The medium of this game is light, so this makes the outcome legible *as* light: you got out and
+/// you can still see, or you were caught and it is nearly gone. **A player knows which ending they
+/// got before they read a word.**
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub struct Verdict {
+    /// `true` for the parts shown when the warden reaches you.
+    #[reflect(default = false)]
+    pub caught: bool,
+}
+
+impl Component for Verdict {}
+
 /// Marks the line that says how the run ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
 pub struct EndingLine;
@@ -2863,6 +2892,24 @@ pub fn write_the_hud(world: &mut World) {
                 .map(|(entity, _)| (entity, ending.clone())),
         )
         .collect();
+
+    // **Which ending's furniture is on screen** (design direction 1, decision 3). Both outcomes used
+    // one panel and one scale, so only the words told you which had happened; each has its own scrim
+    // and its own register now, and this is what shows one and hides the other.
+    let caught = outcome(world) == Outcome::Caught;
+    let verdicts: Vec<(Entity, bool)> = world
+        .query::<(&Verdict,)>()
+        .map(|(entity, (verdict,))| (entity, verdict.caught == caught))
+        .collect();
+    for (entity, shown) in verdicts {
+        // Compared before writing, for `Text`'s reason below: a write every tick would move the state
+        // hash for a change nobody can see.
+        if let Some(node) = world.get_mut::<UiNode>(entity)
+            && node.visible != shown
+        {
+            node.visible = shown;
+        }
+    }
 
     for (entity, wanted) in lines {
         // Compared before writing, so a HUD that says the same thing as last tick does not move the

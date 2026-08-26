@@ -61,17 +61,30 @@ const SETTLE: u64 = 120;
 /// own snapshot. The player is **placed** at the landmark rather than walked there: where a scripted
 /// walk ends depends on the level, and a snapshot whose position depends on pathing is one that
 /// moves every time the generator does.
-const MOMENTS: [(&str, &str, &str); 4] = [
+const MOMENTS: [(&str, &str, &str); 6] = [
     ("start", "where you wake up", "playing.snapshot"),
     ("key", "the room the key is in", "at_key.snapshot"),
     ("exit", "the way out", "at_exit.snapshot"),
     ("warden", "where the warden begins", "at_warden.snapshot"),
+    // **The last thing a player sees, and it was unphotographable.** `docs/13` §1b's F1 asks for a
+    // capture of the `Ended` screen, and there was no way to reach one: the endings are driven by
+    // `settle_the_run` and `try_the_door` from inside a run, and a capture flag cannot play a game.
+    // That is item 31's defect exactly, one screen along -- every frame anybody had ever taken of
+    // this game's endings was none.
+    (
+        "caught",
+        "the screen when it reaches you",
+        "caught.snapshot",
+    ),
+    ("escaped", "the screen when you get out", "escaped.snapshot"),
 ];
 
 fn main() {
     let wanted: Vec<String> = std::env::args().skip(1).collect();
     if wanted.iter().any(|argument| argument == "--help") {
-        println!("usage: moment [start|key|exit|warden]...   (default: all of them)");
+        println!(
+            "usage: moment [start|key|exit|warden|caught|escaped]...   (default: all of them)"
+        );
         for (name, what, file) in MOMENTS {
             println!("  {name:<7} {what:<26} -> snapshots/{file}");
         }
@@ -88,7 +101,7 @@ fn main() {
     };
     if chosen.is_empty() {
         eprintln!("no such moment: {}", wanted.join(" "));
-        eprintln!("try one of: start key exit warden");
+        eprintln!("try one of: start key exit warden caught escaped");
         std::process::exit(1);
     }
 
@@ -137,11 +150,41 @@ fn write_moment(name: &str, what: &str, file: &str) {
     // **Standing where the moment asks for.** Placed rather than walked, and *after* the settle: the
     // character controller rewrites its own `Transform` from `CharacterMotion` every tick, so a write
     // before it has found the floor is undone (Q30).
-    if name != "start"
+    if !matches!(name, "start" | "caught" | "escaped")
         && let Err(error) = stand_at_landmark(&mut app, name)
     {
         eprintln!("could not stand at the {name}: {error}");
         std::process::exit(1);
+    }
+
+    // **The two endings, which is the one thing in this game a capture could not reach.**
+    //
+    // `settle_the_run` ends a run when the warden touches you and `try_the_door` ends it when you use
+    // the way out carrying the key — both from inside a run, over many seconds. A capture flag cannot
+    // play a game, so the last thing a player sees was unphotographable, which is item 31's defect
+    // one screen along.
+    //
+    // The outcome is written directly rather than driven. That is a departure from how the rest of
+    // this binary works — the torch goes in through `store` so the beam lights the way the game
+    // lights it — and the reason it is acceptable here is that `Outcome` is the **whole** of what an
+    // ending is: `apply_screen` reads it and moves `Screen`, `write_the_hud` reads it and writes the
+    // line, and `Verdict` reads it and shows one register rather than the other. There is no second
+    // state to get wrong.
+    if let Some(ending) = match name {
+        "caught" => Some(warren::Outcome::Caught),
+        "escaped" => Some(warren::Outcome::Escaped),
+        _ => None,
+    } {
+        if let Some(settled) = app.world.resource_mut::<warren::Outcome>() {
+            *settled = ending;
+        }
+        // Two ticks rather than one: `apply_screen` moves the screen in the next tick's
+        // `PreSimulation`, so a snapshot taken immediately records the ending with the playing HUD
+        // still up.
+        if let Err(error) = app.run_ticks(4) {
+            eprintln!("the run stopped while ending it: {error}");
+            std::process::exit(1);
+        }
     }
 
     let out = manifest_dir().join("snapshots");

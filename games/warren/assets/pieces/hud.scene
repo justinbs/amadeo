@@ -742,52 +742,127 @@ entity hud "HUD"
       size 0.0 0.0
       visible false
 
-    entity ended_menu_panel "Ending menu panel"
+    entity ended_scrim_out "Escaped: a light scrim, because you can still see the place you got out of"
       Panel
-        order 10
-        paint Raised
+        order 9
+        paint Custom
+          rgba 0.006 0.007 0.008 0.35
       UiNode
-        align_children Stretch
+        align_children Start
         anchor
-          horizontal Centre
-          vertical Centre
-        flow Column
-        gap Snug
+          horizontal Stretch
+          vertical Stretch
+        flow None
+        gap None
         grow 0.0
         margin
           bottom 0.0
           left 0.0
           right 0.0
           top 0.0
+        padding None
+        size 0.0 0.0
+        visible true
+      Verdict
+        caught false
+
+    entity ended_scrim_caught "Caught: a deep scrim, because it is nearly gone"
+      Panel
+        order 9
+        paint Custom
+          rgba 0.004 0.004 0.005 0.78
+      UiNode
+        align_children Start
+        anchor
+          horizontal Stretch
+          vertical Stretch
+        flow None
+        gap None
+        grow 0.0
+        margin
+          bottom 0.0
+          left 0.0
+          right 0.0
+          top 0.0
+        padding None
+        size 0.0 0.0
+        visible true
+      Verdict
+        caught true
+
+    entity ending_line_out "Escaped: the sign speaks — Title scale, high and left"
+      EndingLine
+      Text
+        content ""
+        font "BebasNeue-Regular"
+        order 12
+        paint Ink
+        scale Title
+        wrap false
+      UiNode
+        align_children Start
+        anchor
+          horizontal Start
+          vertical Start
+        flow None
+        gap None
+        grow 0.0
+        margin
+          bottom 0.0
+          left 258.0
+          right 0.0
+          top 300.0
+        padding None
+        size 700.0 90.0
+        visible true
+      Verdict
+        caught false
+
+    entity ending_line_caught "Caught: the record speaks — Body scale, low and left, where a reference number goes on a form"
+      EndingLine
+      Text
+        content ""
+        font "BebasNeue-Regular"
+        order 12
+        paint Ink
+        scale Body
+        wrap false
+      UiNode
+        align_children Start
+        anchor
+          horizontal Start
+          vertical End
+        flow None
+        gap None
+        grow 0.0
+        margin
+          bottom 300.0
+          left 258.0
+          right 0.0
+          top 0.0
+        padding None
+        size 700.0 30.0
+        visible true
+      Verdict
+        caught true
+
+    entity ended_menu_panel "Ending menu panel -- no paint, because the scrim behind it is the darkening"
+      UiNode
+        align_children Start
+        anchor
+          horizontal Start
+          vertical End
+        flow Column
+        gap Snug
+        grow 0.0
+        margin
+          bottom 90.0
+          left 258.0
+          right 0.0
+          top 0.0
         padding Normal
         size 320.0 180.0
         visible true
-
-      entity ending_line "Ending"
-        EndingLine
-        Text
-          content ""
-          font "BebasNeue-Regular"
-          order 11
-          paint Ink
-          scale Title
-          wrap false
-        UiNode
-          align_children Start
-          anchor
-            horizontal Stretch
-            vertical Start
-          flow None
-          gap None
-          grow 0.0
-          margin
-            bottom 0.0
-            left 0.0
-            right 0.0
-            top 0.0
-          padding None
-          size 0.0 60.0
-          visible true
 
       entity ended_again "Try again"
         Focusable
@@ -797,7 +872,8 @@ entity hud "HUD"
           choice TryAgain
         Panel
           order 10
-          paint Surface
+          paint Custom
+            rgba 0.0 0.0 0.0 0.0
         UiNode
           align_children Start
           anchor
@@ -848,7 +924,8 @@ entity hud "HUD"
           choice Quit
         Panel
           order 10
-          paint Surface
+          paint Custom
+            rgba 0.0 0.0 0.0 0.0
         UiNode
           align_children Start
           anchor
