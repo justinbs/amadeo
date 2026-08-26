@@ -7,7 +7,7 @@ Priority: **P0** blocks work now · **P1** needed for the current milestone · *
 
 ---
 
-## Q44 · P0 · How does the audio pass learn that a wall is in the way?
+## Q44 · P0 · How does the audio pass learn that a wall is in the way? — **ANSWERED by Justin, pending the critic**
 
 **Opened in session 26 by review 28, which found it sitting unnamed inside a close condition.**
 `docs/13` §1b's **F6** requires occlusion — `docs/11` §9 makes it a *gameplay* requirement rather than
@@ -41,9 +41,13 @@ an engine capability or one game's trick. **It wants an ADR before F6 starts**, 
 
 **Priority P0 because F6 is third in the FINISH order** and the budget is two or three sessions.
 
+**Justin chose option 2 in session 26 — a value written from above — and made it conditional:**
+*"a value written from above, but agent must approve too."* Drafted as **ADR 0086**, which is `proposed`
+rather than `accepted` until the critic approves it. Do not build F6 against it before then.
+
 ---
 
-## Q45 · P0 · Which parameter drives the torch beam's scattering, and where does its colour come from?
+## Q45 · P0 · Which parameter drives the torch beam's scattering? — **ANSWERED by Justin, pending the critic**
 
 **Opened in session 26 by review 28, which re-derived the numbers and found the row unbuildable as
 written.** `docs/13` §1b's **F4** raymarches a volumetric beam through ADR 0073's fog.
@@ -66,6 +70,11 @@ torch cone lives in the first 4–6 m, so the air it crosses is essentially clea
 
 **Decide before F4 starts.** Review 28: *"an ADR discovered mid-row is what spends the budget"*, and
 F4 is already the row named as the one allowed to slip.
+
+**Justin chose the new field in session 26 and made it conditional:** *"new environment field but agent
+must approve too."* Drafted as **ADR 0087**, `proposed` until the critic approves. It names the
+two-knobs risk explicitly and bounds it three ways, because that risk is the whole case for the option
+Justin did not pick.
 
 ---
 
