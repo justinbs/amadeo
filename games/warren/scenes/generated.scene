@@ -151,7 +151,7 @@ entity sign_1_n2 "Section plate" from section_sign
     scale 1.0 1.0 1.0
     translation 14.4 0.0 -20.8
 
-entity letter_1_n2 "Section letter" from section_letter_o
+entity letter_1_n2 "Section letter" from section_letter_i
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -211,7 +211,7 @@ entity sign_1_n1 "Section plate" from section_sign
     scale 1.0 1.0 1.0
     translation 14.4 0.0 -8.8
 
-entity letter_1_n1 "Section letter" from section_letter_m
+entity letter_1_n1 "Section letter" from section_letter_h
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -271,7 +271,7 @@ entity sign_1_0 "Section plate" from section_sign
     scale 1.0 1.0 1.0
     translation 14.4 0.0 3.2
 
-entity letter_1_0 "Section letter" from section_letter_i
+entity letter_1_0 "Section letter" from section_letter_h
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -331,7 +331,7 @@ entity sign_2_n2 "Section plate" from section_sign
     scale 1.0 1.0 1.0
     translation 26.4 0.0 -20.8
 
-entity letter_2_n2 "Section letter" from section_letter_t
+entity letter_2_n2 "Section letter" from section_letter_m
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -385,7 +385,7 @@ entity sign_2_n1 "Section plate" from section_sign
     scale 1.0 1.0 1.0
     translation 26.4 0.0 -8.8
 
-entity letter_2_n1 "Section letter" from section_letter_o
+entity letter_2_n1 "Section letter" from section_letter_i
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -451,7 +451,7 @@ entity sign_2_0 "Section plate" from section_sign
     scale 1.0 1.0 1.0
     translation 26.4 0.0 3.2
 
-entity letter_2_0 "Section letter" from section_letter_m
+entity letter_2_0 "Section letter" from section_letter_i
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -529,7 +529,7 @@ entity sign_3_0 "Section plate" from section_sign
     scale 1.0 1.0 1.0
     translation 38.4 0.0 3.2
 
-entity letter_3_0 "Section letter" from section_letter_o
+entity letter_3_0 "Section letter" from section_letter_m
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -607,7 +607,7 @@ entity sign_4_0 "Section plate" from section_sign
     scale 1.0 1.0 1.0
     translation 50.4 0.0 3.2
 
-entity letter_4_0 "Section letter" from section_letter_t
+entity letter_4_0 "Section letter" from section_letter_m
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -667,7 +667,7 @@ entity sign_5_0 "Section plate" from section_sign
     scale 1.0 1.0 1.0
     translation 62.4 0.0 3.2
 
-entity letter_5_0 "Section letter" from section_letter_h
+entity letter_5_0 "Section letter" from section_letter_o
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -727,7 +727,7 @@ entity sign_5_1 "Section plate" from section_sign
     scale 1.0 1.0 1.0
     translation 62.4 0.0 15.2
 
-entity letter_5_1 "Section letter" from section_letter_i
+entity letter_5_1 "Section letter" from section_letter_o
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -793,7 +793,7 @@ entity sign_5_2 "Section plate" from section_sign
     scale 1.0 1.0 1.0
     translation 62.4 0.0 27.2
 
-entity letter_5_2 "Section letter" from section_letter_m
+entity letter_5_2 "Section letter" from section_letter_o
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -859,7 +859,7 @@ entity sign_6_1 "Section plate" from section_sign
     scale 1.0 1.0 1.0
     translation 74.4 0.0 15.2
 
-entity letter_6_1 "Section letter" from section_letter_m
+entity letter_6_1 "Section letter" from section_letter_t
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
@@ -925,7 +925,7 @@ entity sign_6_2 "Section plate" from section_sign
     scale 1.0 1.0 1.0
     translation 74.4 0.0 27.2
 
-entity letter_6_2 "Section letter" from section_letter_o
+entity letter_6_2 "Section letter" from section_letter_t
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0

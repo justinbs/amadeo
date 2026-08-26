@@ -283,65 +283,73 @@ fn some_rooms_are_dark_and_some_are_not() {
 }
 
 #[test]
-fn no_two_sections_next_to_each_other_are_in_the_same_condition() {
-    // **`docs/11` §5.2's binding rule, and it is the half a die roll cannot give you.** *"Rooms may
-    // repeat. No two may be in the same condition."* The first implementation drew `rng.below_u32(3)`
-    // independently per room, which puts two of the same state side by side about a third of the
-    // time — and in a tube, where several sections are visible down the length in one frame, adjacent
-    // repeats are exactly what reads as machine-made. Engine gate review 15 caught the contradiction
-    // between the code and the sentence it was written to satisfy.
+fn the_section_letters_ascend_along_the_spine_and_none_appears_twice() {
+    // **`docs/11` §5.4's wayfinding system, and the reason it is not decoration.** A player who sees
+    // a letter learns nothing unless the letters are *ordered along the route*.
     //
-    // Checked across many seeds, because one lucky layout proves nothing about a placement rule.
+    // **This test asserted the opposite rule until session 26, and the rule was wrong.** It required
+    // two cells sharing a door to carry different letters, which forced a letter to change every
+    // twelve metres — and the only scheme that does that is a **distance ring**, `manhattan % 5`,
+    // which rises whichever way you walk away from the start and repeats. Engine gate reviews 19, 25
+    // and 30 all filed the consequence: the letters convey no direction.
+    //
+    // A section is a lettered **stretch**, several bores long, the way Clapham South's sixteen
+    // sub-shelters were A to P. So two cells sharing a letter is correct — they are the same
+    // section. The two properties that actually matter are these:
+    //
+    // 1. **Each letter occupies one contiguous band of the ranking**, so the same letter never
+    //    appears in two unrelated places.
+    // 2. **The letters ascend with distance into the level**, so a letter tells a player which way
+    //    is further in.
+    //
+    // Across many seeds, because "by construction" is a claim about an argument and this is a claim
+    // about the output.
     for seed in 0..48u64 {
         let layout = lay_out(seed, 14);
-        for room in &layout.rooms {
-            for side in Side::ALL {
-                let Some(neighbour) = layout.at(side.step(room.cell)) else {
-                    continue;
+
+        // (2): a cell further from the start never carries an earlier letter than a nearer one.
+        for a in &layout.rooms {
+            for b in &layout.rooms {
+                let reach = |cell: (i32, i32)| {
+                    (cell.0 - layout.landmarks.start.0).unsigned_abs()
+                        + (cell.1 - layout.landmarks.start.1).unsigned_abs()
                 };
-                assert_ne!(
-                    room.condition, neighbour.condition,
-                    "seed {seed}: {:?} and {:?} are both {:?}",
-                    room.cell, neighbour.cell, room.condition
-                );
+                if reach(a.cell) < reach(b.cell) {
+                    assert!(
+                        warren::section_index(&layout, a.cell)
+                            <= warren::section_index(&layout, b.cell),
+                        "seed {seed}: {:?} is nearer the start than {:?} and carries a later letter",
+                        a.cell,
+                        b.cell
+                    );
+                }
             }
         }
-    }
-}
 
-#[test]
-fn no_two_sections_next_to_each_other_carry_the_same_letter() {
-    // **`docs/11` §5.4's wayfinding system, and the reason it is not decoration.** That section is
-    // explicit that a player who sees a letter learns nothing unless the letters are *ordered along
-    // the route* — so a section's letter is its distance from the start, modulo the alphabet.
-    //
-    // Engine gate review 16 found fourteen signs in the shipped level and one letter mesh between
-    // them: every plate said `H`. It called that worse than no sign at all, because a player who
-    // reads the same letter at the second junction learns in one glance that the world is machine-
-    // assembled — my brief's second question, answered on the wall in 300 mm characters.
-    //
-    // The adjacency property is by construction rather than by search: a grid is bipartite, so two
-    // cells sharing a door always differ in breadth-first distance by exactly one. This asserts it
-    // anyway, across many seeds, because "by construction" is a claim about an argument and this is
-    // a claim about the output.
-    for seed in 0..48u64 {
-        let layout = lay_out(seed, 14);
-        for room in &layout.rooms {
-            let here = warren::section_index(&layout, room.cell);
-            for side in Side::ALL {
-                let at = side.step(room.cell);
-                if layout.at(at).is_none() {
-                    continue;
-                }
-                assert_ne!(
-                    here,
-                    warren::section_index(&layout, at),
-                    "seed {seed}: {:?} and {:?} both carry {}",
-                    room.cell,
-                    at,
-                    warren::SECTION_LETTERS[here]
-                );
+        // (1): every cell with a given letter sits in one unbroken run of the distance ranking.
+        let mut ranked: Vec<(i32, i32)> = layout.rooms.iter().map(|room| room.cell).collect();
+        let start = layout.landmarks.start;
+        ranked.sort_by_key(|at| {
+            (
+                (at.0 - start.0).unsigned_abs() + (at.1 - start.1).unsigned_abs(),
+                *at,
+            )
+        });
+        let letters: Vec<usize> = ranked
+            .iter()
+            .map(|at| warren::section_index(&layout, *at))
+            .collect();
+        let mut seen: Vec<usize> = Vec::new();
+        for (index, letter) in letters.iter().enumerate() {
+            if index > 0 && letters[index - 1] == *letter {
+                continue;
             }
+            assert!(
+                !seen.contains(letter),
+                "seed {seed}: letter {} appears in two separate stretches",
+                warren::SECTION_LETTERS[*letter]
+            );
+            seen.push(*letter);
         }
     }
 }

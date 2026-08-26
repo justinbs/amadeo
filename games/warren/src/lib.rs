@@ -2687,24 +2687,48 @@ pub fn exit_side(layout: &Layout) -> Side {
 
 /// Which of [`SECTION_LETTERS`] a cell carries: its **grid** distance from the start, modulo five.
 ///
-/// # Grid distance rather than walking distance, and the difference is a real one
+/// Which section letter a cell carries — `docs/11` §5.4.
 ///
-/// The first version used [`Layout::distances_from`] — how many *doors* away a cell is — on the
-/// argument that letters should advance along the route. It broke on seed 2: two cells that share a
-/// **wall** rather than a door can sit at the same door-distance, and then two plates a few metres
-/// apart through a cross-passage carry the same letter, which is the defect this exists to prevent.
+/// # A section is a lettered STRETCH, not a cell, and that is what makes the letters mean anything
 ///
-/// Manhattan distance on the grid has the property unconditionally. A grid is bipartite under *grid*
-/// adjacency, so any two cells sharing a side differ by exactly one however the doors happen to fall
-/// — no seed can produce a clash, and it is a property of the arithmetic rather than of the walk.
+/// The previous form was `manhattan(cell, start) % 5`, which is a **distance ring**: it rises
+/// whichever way you walk away from the start and repeats every five cells, so the letters cannot
+/// say *further in* and two plates at opposite ends of the level can carry the same one. §5.4 names
+/// three requirements and that met one. Engine gate reviews 19, 25 and 30 all filed it.
 ///
-/// It is also the better fiction. An institution letters its sections on a **plan**, by where they
-/// are, not by the order somebody happened to walk them.
+/// A real deep shelter letters **stretches** — Clapham South's sixteen sub-shelters were A to P, each
+/// one a run of bunks hundreds long, not a room. So the cells are ranked by how far into the level
+/// they are and cut into as many contiguous stretches as there are letters, ascending.
+///
+/// Two cells in the same stretch share a letter, and that is correct rather than a clash: they are
+/// the same section. What must not happen — and cannot, by construction — is the *same letter in two
+/// places*, because a letter is one contiguous band of the ranking.
+///
+/// # Ranked by grid distance, and the ranking is what carries the old lesson
+///
+/// An earlier attempt used [`Layout::distances_from`] — how many *doors* away a cell is — and broke
+/// on seed 2, because two cells sharing a **wall** rather than a door can sit at the same
+/// door-distance. Grid distance has no such case: a grid is bipartite under grid adjacency, so any
+/// two cells sharing a side differ by exactly one however the doors fall. That property is what
+/// makes the ranking monotonic along the spine no matter what the generator did with the doors.
+///
+/// Ties are broken by **cell order**, which `Layout::rooms` already guarantees is sorted — so the
+/// answer is a property of the layout rather than of iteration order, and two runs agree (I3).
 #[must_use]
 pub fn section_index(layout: &Layout, cell: (i32, i32)) -> usize {
     let start = layout.landmarks.start;
-    let reach = (cell.0 - start.0).unsigned_abs() + (cell.1 - start.1).unsigned_abs();
-    reach as usize % SECTION_LETTERS.len()
+    let reach = |at: (i32, i32)| (at.0 - start.0).unsigned_abs() + (at.1 - start.1).unsigned_abs();
+
+    // Every cell in the level, ordered by how far into it they are. `rooms` is already sorted by
+    // cell, and `sort_by_key` is stable, so equal distances keep that order.
+    let mut ranked: Vec<(i32, i32)> = layout.rooms.iter().map(|room| room.cell).collect();
+    ranked.sort_by_key(|at| (reach(*at), *at));
+
+    let total = ranked.len().max(1);
+    let rank = ranked.iter().position(|at| *at == cell).unwrap_or(0);
+    // Cut the ranking into as many contiguous stretches as there are letters. The `min` guards the
+    // last cell, which would otherwise land one past the end.
+    (rank * SECTION_LETTERS.len() / total).min(SECTION_LETTERS.len() - 1)
 }
 
 /// A scene-safe entity id for a cell, since a negative coordinate cannot go in an identifier.

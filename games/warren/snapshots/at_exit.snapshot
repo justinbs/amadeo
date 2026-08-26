@@ -1,6 +1,6 @@
 amadeo-snapshot 2
 tick 134
-state-hash b66e8475abc21f39
+state-hash 4bec2f8c15230a58
 schema-hash 7116c34bea2c5349
 
 schema
@@ -1384,7 +1384,7 @@ entities
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 14.089999 1.63 -20.8 1.0
     Mesh
       material "stencil"
-      mesh "letter_o"
+      mesh "letter_i"
     Parent
       generation 0
       index 86
@@ -2020,7 +2020,7 @@ entities
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 14.089999 1.63 -8.8 1.0
     Mesh
       material "stencil"
-      mesh "letter_m"
+      mesh "letter_h"
     Parent
       generation 0
       index 129
@@ -2712,7 +2712,7 @@ entities
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 14.089999 1.63 3.2 1.0
     Mesh
       material "stencil"
-      mesh "letter_i"
+      mesh "letter_h"
     Parent
       generation 0
       index 176
@@ -3267,7 +3267,7 @@ entities
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 26.09 1.63 -20.8 1.0
     Mesh
       material "stencil"
-      mesh "letter_t"
+      mesh "letter_m"
     Parent
       generation 0
       index 215
@@ -3861,7 +3861,7 @@ entities
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 26.09 1.63 -8.8 1.0
     Mesh
       material "stencil"
-      mesh "letter_o"
+      mesh "letter_i"
     Parent
       generation 0
       index 255
@@ -4581,7 +4581,7 @@ entities
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 26.09 1.63 3.2 1.0
     Mesh
       material "stencil"
-      mesh "letter_m"
+      mesh "letter_i"
     Parent
       generation 0
       index 304
@@ -5446,7 +5446,7 @@ entities
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 38.09 1.63 3.2 1.0
     Mesh
       material "stencil"
-      mesh "letter_o"
+      mesh "letter_m"
     Parent
       generation 0
       index 362
@@ -6311,7 +6311,7 @@ entities
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 50.09 1.63 3.2 1.0
     Mesh
       material "stencil"
-      mesh "letter_t"
+      mesh "letter_m"
     Parent
       generation 0
       index 418
@@ -7003,7 +7003,7 @@ entities
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 62.09 1.63 3.2 1.0
     Mesh
       material "stencil"
-      mesh "letter_h"
+      mesh "letter_o"
     Parent
       generation 0
       index 465
@@ -7558,7 +7558,7 @@ entities
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 62.09 1.63 15.2 1.0
     Mesh
       material "stencil"
-      mesh "letter_i"
+      mesh "letter_o"
     Parent
       generation 0
       index 504
@@ -8216,7 +8216,7 @@ entities
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 62.09 1.63 27.2 1.0
     Mesh
       material "stencil"
-      mesh "letter_m"
+      mesh "letter_o"
     Parent
       generation 0
       index 548
@@ -8936,7 +8936,7 @@ entities
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 74.090004 1.63 15.2 1.0
     Mesh
       material "stencil"
-      mesh "letter_m"
+      mesh "letter_t"
     Parent
       generation 0
       index 597
@@ -9604,7 +9604,7 @@ entities
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 74.090004 1.63 27.2 1.0
     Mesh
       material "stencil"
-      mesh "letter_o"
+      mesh "letter_t"
     Parent
       generation 0
       index 644
