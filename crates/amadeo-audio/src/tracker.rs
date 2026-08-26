@@ -187,6 +187,7 @@ mod tests {
             pitch: 1.0,
             looping: true,
             position: Some([0.0, 0.0, 0.0]),
+            occlusion: 0.0,
         }
     }
 

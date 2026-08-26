@@ -27,7 +27,7 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 ## 📬 For the next session — read this box first, then `docs/14-the-critic.md` §6
 
-> ### Session 26: the gate was re-scoped twice, a second agent exists, and the warden stopped being boxes
+> ### Session 26: re-scoped twice, a second agent, and the warden stopped being boxes and started respecting walls
 >
 > `docs/13` **§1b is the binding plan now** and supersedes review 27's order. Read it before §2 and
 > before anything else in this file. **Three things happened, in this order: Justin re-scoped, review 28
@@ -128,11 +128,42 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > its start cell by snapshot time, so `at_warden` photographed an empty stretch of bore. It is anchored
 > on the warden's own transform now, and stepped to the other haunch so a bunk frame is not across it.
 >
+> #### F6 is built — all three clauses, measured headlessly
+>
+> **`AudioSource::occlusion` (ADR 0086)** is a hashed scalar the audio crate owns and
+> `amadeo-app::occlude_voices` fills, so **`amadeo-audio` gained no dependency**. Measured: the warden
+> held at the same range twice reads **0.30× through the lining against 1.00× along the bore**, which
+> is `docs/11` §9's number exactly, and no tick moves gain by more than 0.15 across ninety of them.
+>
+> **Three footstep clips replace one** — screed, timber, water — chosen by a `Footing` volume authored
+> beside the surface it describes. **A downward cast cannot do this**: the duckboards have no collider
+> and the only one in a bore section is the slab beneath, so a cast reports screed where a player is
+> audibly walking on timber.
+>
+> **The room tone leans 0.55 → 1.20** as the warden closes, in a hashed field so a save restores the
+> state of the chase rather than resetting it to calm.
+>
+> **And the warden treads rather than breathing** until it sees you (designer decision 10), so the
+> change of sound *is* the moment of being noticed.
+>
+> **Two things named rather than hidden:** the **low-pass** ADR 0086 calls the scalar's intended
+> consumer is not wired — gain-only is the descope the ADR itself names — and the probe's cost has not
+> been measured against `docs/10`.
+>
+> #### The defect worth not rediscovering
+>
+> **A cast to the ears hits the listener's own body just before it arrives**, so every voice in the
+> world reads as fully occluded — and the symptom is not an error, it is *the whole game getting
+> quieter*, which is indistinguishable from working. `modules/amadeo-interaction` hit the same thing
+> from the other end in session 18. The ears are a child with no collider of their own, so it is the
+> **body** that has to be ignored: walk up the `Parent` chain to the nearest `Collider`.
+>
 > #### Two decisions are still Justin's, and F6 is third in the order
 >
-> **Q44** — may `amadeo-audio` depend on `amadeo-physics`? Nothing in `collect_audio` can currently ask
-> whether a wall is in the way. Three shapes are written up. **Q45** — does the torch beam's scattering
-> come from `fog.density` or a new `Environment` field? Both are P0 and both block a row.
+> **Both are answered and both are ADRs now.** Justin chose a value written from above (Q44 → **ADR
+> 0086**) and a new `Environment` field (Q45 → **ADR 0087**), each conditional on the critic approving
+> too; review 29 approved both **with changes**, which are amendments at the end of each file. 0086 is
+> built. 0087 is F4, which is the row `docs/13` §1b names as the one allowed to slip.
 >
 > **And one thing only Justin can settle**, on headphones, once: does `warden_breath` read as a creature
 > or as filtered noise; does `warren_tone` leave silence audible; do `caught` and `escaped` read as two

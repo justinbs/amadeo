@@ -160,10 +160,16 @@ const SOUNDS: &[Sound] = &[
             },
         ],
     },
-    // A footstep on carpet: duller than the Atrium's, which is on stone. Mostly a low thump with
-    // just enough noise to read as contact rather than as a switch being thrown.
+    // **Three footsteps, not one** — `docs/13` §1b's F6 clause (b). The Warren has three floor
+    // surfaces and had one clip, so walking onto the duckboards a whole review cycle went into making
+    // legible sounded exactly like walking on concrete, and wading sounded like it too.
+    //
+    // They differ in the two things that actually separate a footfall by ear: **where the body of the
+    // thump sits**, and **how much broadband noise rides on it**. Timber is hollow — a higher, more
+    // resonant thump over a box of air. Screed is dead — low, short, almost no ring. Water is nearly
+    // all noise, high and wide, with barely any pitch at all.
     Sound {
-        id: "footstep",
+        id: "step_screed",
         seconds: 0.2,
         peak: 0.4,
         looping: false,
@@ -182,6 +188,95 @@ const SOUNDS: &[Sound] = &[
             high_hertz: 2600.0,
             level: 0.35,
             partials: 32,
+        }],
+    },
+    // Hollow: the box of air under a duckboard gives it a ring the deck has not got.
+    Sound {
+        id: "step_timber",
+        seconds: 0.26,
+        peak: 0.42,
+        looping: false,
+        partials: &[
+            Partial {
+                hertz: 118.0,
+                level: 1.0,
+            },
+            Partial {
+                hertz: 232.0,
+                level: 0.55,
+            },
+            Partial {
+                hertz: 447.0,
+                level: 0.22,
+            },
+        ],
+        bands: &[Band {
+            low_hertz: 600.0,
+            high_hertz: 3400.0,
+            level: 0.3,
+            partials: 32,
+        }],
+    },
+    // Nearly all noise: a splash has very little pitch, and what it has is high.
+    Sound {
+        id: "step_water",
+        seconds: 0.34,
+        peak: 0.38,
+        looping: false,
+        partials: &[Partial {
+            hertz: 196.0,
+            level: 0.28,
+        }],
+        bands: &[
+            Band {
+                low_hertz: 900.0,
+                high_hertz: 7200.0,
+                level: 1.0,
+                partials: 48,
+            },
+            Band {
+                low_hertz: 300.0,
+                high_hertz: 900.0,
+                level: 0.4,
+                partials: 16,
+            },
+        ],
+    },
+    // **The warden's constant, ranged channel — and it is a tread, not a breath.**
+    //
+    // Design direction 1, decision 10 (`docs/15` §5). `warden_breath` used to loop in every state,
+    // forever, and two things were wrong with that. A thing that breathes continuously reads as an
+    // *animal*, and `docs/11` §3 is emphatic that the warden is not one — it is an institution still
+    // performing its function, and the function is counting. And `docs/11` §9 wants near-silence as
+    // the default *"so that a single sound is an event"*, which a permanent noise from the antagonist
+    // makes impossible: §3a's most important tell is an **absence** of sound, and you cannot hear an
+    // absence inside a continuous tone.
+    //
+    // So the thing you track it by at range is its footfall: slow, heavy, regular, and unmistakably
+    // not yours. Breath belongs to pursuit and to nothing else.
+    Sound {
+        id: "warden_tread",
+        // **2.0 s rather than 1.9** — the generator refuses a partial that is not a whole number of
+        // cycles in the loop, because a fraction of a cycle at the seam is a click once per loop. At
+        // 2.0 s the base is 0.5 Hz and both partials are exact.
+        seconds: 2.0,
+        peak: 0.3,
+        looping: true,
+        partials: &[
+            Partial {
+                hertz: 58.0,
+                level: 1.0,
+            },
+            Partial {
+                hertz: 87.0,
+                level: 0.3,
+            },
+        ],
+        bands: &[Band {
+            low_hertz: 240.0,
+            high_hertz: 1900.0,
+            level: 0.22,
+            partials: 24,
         }],
     },
     // Picking something up. Brass on wood: two partials a fifth apart and a short scrape.

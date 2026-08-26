@@ -53,6 +53,7 @@
 
 mod agent;
 mod app;
+mod earshot;
 mod profile;
 mod schedule;
 
@@ -62,5 +63,6 @@ pub use agent::{
     serve_if_requested,
 };
 pub use app::{App, Paused, SimRng};
+pub use earshot::{EARSHOT_PROBE, OCCLUDE_VOICES, OCCLUSION_RATE, occlude_voices};
 pub use profile::{Profiler, SystemTiming};
 pub use schedule::{Schedule, ScheduleError, Stage, SystemConfig, system};

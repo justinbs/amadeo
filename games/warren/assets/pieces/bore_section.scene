@@ -48,6 +48,9 @@ entity section "Twelve metres of bore"
       translation -2.26 2.12 0.0
 
   entity duckboards "The duckboard run"
+    Footing
+      half_extent 0.62 0.35 6.0
+      surface Timber
     Mesh
       material "duckboard"
       mesh "duckboards"

@@ -78,6 +78,16 @@ use amadeo_transform::{GlobalTransform, Transform};
 /// The label the app layer registers [`collect_audio`] under.
 pub const COLLECT_AUDIO: &str = "collect_audio";
 
+/// How much of a voice's level survives a completely blocked path — ADR 0086.
+///
+/// **Not zero, deliberately.** A wall muffles a sound; it does not delete it. A voice that vanished
+/// at full occlusion would teach a player that a bulkhead is a cliff edge rather than a wall, and it
+/// would make the loudest cue in the game the *moment of disappearing* rather than the sound itself.
+///
+/// `docs/11` §9 asks for a warden behind a bore wall at **≤ 0.30×** a clear line at the same
+/// distance, which this meets exactly at full occlusion.
+pub const OCCLUDED_GAIN: f32 = 0.3;
+
 /// Holds the active audio backend and the last thing it was told.
 ///
 /// A [`Service`]: machinery, never simulation state (ADR 0009). That is what makes the rule at the
@@ -272,6 +282,7 @@ fn build_frame(world: &World) -> AudioFrame {
                     // position and the listener's — the engine does not pre-attenuate, because a
                     // backend that does its own spatialisation would then do it twice.
                     position: if source.spatial { Some(position) } else { None },
+                    occlusion: source.occlusion.clamp(0.0, 1.0),
                 },
             )
         })
@@ -318,6 +329,12 @@ fn build_frame(world: &World) -> AudioFrame {
     // the one its component authored.
     if let Some(audio) = world.service::<Audio>() {
         for voice in &mut frame.voices {
+            // **Occlusion attenuates here, beside the bus and master gain, and for their reason**
+            // (ADR 0086): a backend that applied it would be a second place the order could differ.
+            // `OCCLUDED_GAIN` is how much of the level survives a fully blocked path -- it is not
+            // zero, because a wall muffles a sound rather than deleting it, and a sound that vanishes
+            // at a threshold is how a player learns a wall is a cliff edge.
+            voice.gain *= 1.0 - voice.occlusion * (1.0 - OCCLUDED_GAIN);
             voice.gain *= audio.gain_for(voice.bus);
         }
         // The same multiply, for the same reason. Easy to forget precisely because one-shots were

@@ -28,6 +28,13 @@ amadeo-scene.workspace = true
 # `.anim` is a scene file and `amadeo-scene` sits above `amadeo-anim`, so the animation crate cannot
 # parse its own asset -- the same split `Material`, `Environment` and `Theme` all have.
 amadeo-anim.workspace = true
+# ADR 0086: occlusion is a value written onto a voice from above, and this is the "above". Two edges
+# rather than one because the question is "does a wall stand between this sound and the ears" -- it
+# needs the audio components and the physics query, and neither of those crates may depend on the
+# other (I6). This crate already carries render, anim, scene and snapshot for the same reason: it is
+# where subsystems are wired to each other.
+amadeo-audio.workspace = true
+amadeo-physics.workspace = true
 # `--snapshot` restores before the first tick, and `snapshot.take` captures.
 amadeo-snapshot.workspace = true
 # `render.capture --pitch/--yaw` aims the cameras and puts them back, which means writing a

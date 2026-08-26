@@ -120,6 +120,16 @@ pub struct Voice {
     ///
     /// `None` is what music and narration want — see `AudioSource::spatial`.
     pub position: Option<[f32; 3]>,
+    /// How blocked the path from this sound to the listener is, `0.0` clear to `1.0` solid.
+    ///
+    /// Carried through from `AudioSource::occlusion` (ADR 0086). **Its gain effect is already in
+    /// `gain`**, applied by the collection pass beside the bus and master multiplications for the
+    /// same reason those are: two backends must not be able to disagree about the order.
+    ///
+    /// It arrives here as well as in the gain because gain is the *secondary* term. A wall makes a
+    /// sound dull rather than quiet, so a backend that can filter should use this to set a low-pass
+    /// cutoff; one that cannot gets the attenuation and nothing else, which is the honest descope.
+    pub occlusion: f32,
 }
 
 /// A sound to start once and then forget about.
@@ -414,6 +424,7 @@ mod tests {
                 pitch: 1.0,
                 looping: false,
                 position: None,
+                occlusion: 0.0,
             }],
             one_shots: Vec::new(),
         };

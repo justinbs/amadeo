@@ -87,8 +87,12 @@ fn the_room_hums_and_the_warden_breathes() {
         sounds.iter().any(|id| id == "warren_tone"),
         "the room has no tone: {sounds:?}"
     );
+    // **A tread rather than a breath while it has not seen you** — design direction 1, decision 10.
+    // A thing that breathes continuously reads as an animal and `docs/11` §3 says it is an
+    // institution; the breath is what you hear once it has noticed you, so the change of sound *is*
+    // the moment of being noticed.
     assert!(
-        sounds.iter().any(|id| id == "warden_breath"),
+        sounds.iter().any(|id| id == "warden_tread"),
         "the warden makes no noise, which is most of what it is for: {sounds:?}"
     );
 }
@@ -116,8 +120,8 @@ fn the_wardens_voice_is_where_the_warden_is() {
         .frame
         .voices
         .into_iter()
-        .find(|voice| voice.sound == "warden_breath")
-        .expect("it is still breathing");
+        .find(|voice| voice.sound == warren::WARDEN_TREAD)
+        .expect("it is still making a noise");
     let at = voice.position.expect("and it is somewhere, not everywhere");
     assert!(
         (at[0] - moved[0]).abs() < 0.01 && (at[2] - moved[2]).abs() < 0.01,
@@ -175,7 +179,9 @@ fn walking_taps_out_footsteps_and_standing_still_does_not() {
             .world
             .read_events::<amadeo_audio::SoundPlayed>()
             .iter()
-            .filter(|record| record.event.sound == "footstep")
+            // **Any of the three**, since F6 clause (b) made the clip depend on what is underfoot: the
+            // Warren has duckboards, screed and standing water and had one sound for all of them.
+            .filter(|record| record.event.sound.starts_with("step_"))
             .count();
     }
     assert!(
@@ -241,5 +247,180 @@ fn every_sound_the_game_names_is_an_asset_it_has() {
     assert!(
         failures.is_empty(),
         "the game asked for sounds it does not have: {failures:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The ear — engine gate row F6, and `docs/11` §9 makes it a gameplay requirement rather than
+// polish: *"a warden exactly as loud through a wall as through a doorway makes the whole mechanic a
+// lie."* The game is made of corridors and its antagonist is found by ear.
+//
+// **These need a real solver.** Against `NullPhysics` every cast reports clear and nothing is ever
+// occluded, which is the control case asserted last.
+
+/// The gain a named sound is submitted at, or `None` if it is not being made.
+fn gain_of(app: &App, sound: &str) -> Option<f32> {
+    describe_audio(&app.world)
+        .frame
+        .voices
+        .into_iter()
+        .find(|voice| voice.sound == sound)
+        .map(|voice| voice.gain)
+}
+
+/// The gain of whichever loop the warden is currently making.
+///
+/// **Either clip**, because it treads until it sees you and breathes afterwards, and a test about
+/// how loud it is must not also be a test of which state it is in.
+fn warden_gain(app: &App) -> Option<f32> {
+    gain_of(app, warren::WARDEN_TREAD).or_else(|| gain_of(app, warren::WARDEN_BREATH))
+}
+
+/// Holds an entity still for `ticks` ticks, re-pinning it every tick.
+///
+/// The warden moves under its own power the moment it sees you, so a measurement taken over ninety
+/// ticks would be a measurement at some *other* distance. Pinning is what keeps "the same distance"
+/// true, which is the whole comparison here.
+fn hold(app: &mut App, entity: amadeo_ecs::Entity, at: [f32; 3], ticks: u64) {
+    for _ in 0..ticks {
+        if let Some(transform) = app.world.get_mut::<Transform>(entity) {
+            transform.translation = at;
+        }
+        app.run_ticks(1).expect("a tick runs");
+    }
+}
+
+/// Puts an entity somewhere and lets a few ticks run.
+fn place(app: &mut App, entity: amadeo_ecs::Entity, at: [f32; 3]) {
+    if let Some(transform) = app.world.get_mut::<Transform>(entity) {
+        transform.translation = at;
+    }
+    app.run_ticks(4).expect("ticks run");
+}
+
+fn the_warden(app: &App) -> amadeo_ecs::Entity {
+    app.world
+        .query::<(&warren::Warden,)>()
+        .map(|(entity, _)| entity)
+        .next()
+        .expect("a warden")
+}
+
+#[test]
+fn a_wall_makes_the_warden_quieter_than_an_open_line_at_the_same_distance() {
+    let mut app = playing();
+    let warden = the_warden(&app);
+    let you = warren::player(&app.world).expect("a player");
+    place(&mut app, you, [0.0, 1.0, 0.0]);
+
+    // Same distance both times. The only difference is the lining between.
+    let range = warren::BORE_HALF_WIDTH + 1.6;
+
+    // Held still, and long enough for the ease to settle: `occlusion` moves at a bounded rate per
+    // tick on purpose, so a reading taken immediately is a reading of the transition.
+    hold(&mut app, warden, [0.0, 0.93, -range], 90);
+    let clear = warden_gain(&app).expect("it is making a noise");
+
+    hold(&mut app, warden, [range, 0.93, 0.0], 90);
+    let blocked = warden_gain(&app).expect("it is still making a noise");
+
+    assert!(
+        blocked <= clear * 0.31,
+        "through a bore wall it should be at most 0.30x an open line at the same distance, \
+         and it is {blocked:.3} against {clear:.3}"
+    );
+}
+
+#[test]
+fn occlusion_never_jumps_in_one_tick() {
+    // F6 clause (a)'s second half, and the reason ADR 0086 eases rather than assigning: a single
+    // cast answers blocked-or-clear, so writing its answer straight in steps the gain from full to
+    // nothing in one tick every time the listener crosses a doorway edge. That is an audible click.
+    let mut app = playing();
+    let warden = the_warden(&app);
+    let you = warren::player(&app.world).expect("a player");
+    place(&mut app, you, [0.0, 1.0, 0.0]);
+    hold(&mut app, warden, [0.0, 0.93, -3.0], 90);
+
+    // Straight through the lining, which is the worst case: the cast's answer flips in one tick.
+    let across = [warren::BORE_HALF_WIDTH + 1.6, 0.93, 0.0];
+    let mut last = warden_gain(&app).expect("a noise");
+    for tick in 0..90 {
+        if let Some(transform) = app.world.get_mut::<Transform>(warden) {
+            transform.translation = across;
+        }
+        app.run_ticks(1).expect("a tick runs");
+        let now = warden_gain(&app).expect("a noise");
+        assert!(
+            (now - last).abs() <= 0.15,
+            "gain moved {:.3} in one tick ({last:.3} -> {now:.3}) at tick {tick}",
+            (now - last).abs()
+        );
+        last = now;
+    }
+}
+
+#[test]
+fn a_step_sounds_like_what_it_lands_on() {
+    // F6 clause (b). The Warren has three floor surfaces and had one clip.
+    use warren::Surface;
+    assert_ne!(Surface::Timber.footstep(), Surface::Screed.footstep());
+    assert_ne!(Surface::Water.footstep(), Surface::Screed.footstep());
+    assert_ne!(Surface::Timber.footstep(), Surface::Water.footstep());
+
+    let app = playing();
+    // The duckboard run is down the centreline, so a step there is timber and one against the
+    // lining is not. Both are the same bore section, which is what makes this a surface test rather
+    // than a level test.
+    assert_eq!(
+        warren::footing_at(&app.world, [0.0, 0.05, 0.0]),
+        Surface::Timber,
+        "the centreline of a bore section is a duckboard run"
+    );
+    assert_eq!(
+        warren::footing_at(&app.world, [warren::BORE_HALF_WIDTH - 0.2, 0.05, 0.0]),
+        Surface::Screed,
+        "against the lining there are no duckboards, so it is bare deck"
+    );
+}
+
+#[test]
+fn the_room_tone_leans_as_the_warden_closes() {
+    // F6 clause (c). The bed is the only sound that is always there, so it is the one thing that can
+    // tell you something without competing with anything.
+    let mut app = playing();
+    let warden = the_warden(&app);
+    let you = warren::player(&app.world).expect("a player");
+    place(&mut app, you, [0.0, 1.0, 0.0]);
+
+    place(&mut app, warden, [0.0, 0.93, -(warren::WARDEN_SIGHT + 4.0)]);
+    let far = gain_of(&app, warren::WARREN_TONE).expect("there is a room tone");
+
+    place(&mut app, warden, [0.0, 0.93, -warren::WARDEN_REACH]);
+    let near = gain_of(&app, warren::WARREN_TONE).expect("there is still a room tone");
+
+    assert!(
+        near >= far * 2.0,
+        "the bed should span at least 2:1 between sight range and arm's length, \
+         and it is {near:.3} against {far:.3}"
+    );
+}
+
+#[test]
+fn the_bed_survives_a_save() {
+    // The lean is written into a hashed component field rather than into the mixer, so a save
+    // restores the state of the chase rather than resetting it to calm.
+    let mut app = playing();
+    let warden = the_warden(&app);
+    let you = warren::player(&app.world).expect("a player");
+    place(&mut app, you, [0.0, 1.0, 0.0]);
+    place(&mut app, warden, [0.0, 0.93, -warren::WARDEN_REACH]);
+
+    let leaning = gain_of(&app, warren::WARREN_TONE).expect("a room tone");
+    let snapshot = app.capture_snapshot();
+    let text = amadeo_snapshot::to_text(&snapshot);
+    assert!(
+        text.contains(&format!("gain {leaning}")),
+        "the lean is not in the snapshot, so a save would restore a calm room: {leaning}"
     );
 }

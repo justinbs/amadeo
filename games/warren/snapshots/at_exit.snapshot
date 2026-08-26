@@ -1,7 +1,7 @@
 amadeo-snapshot 2
 tick 134
-state-hash cb4378961d786119
-schema-hash c258f27a5519d241
+state-hash 1ec11e0000949a00
+schema-hash 75ccc38abcc66794
 
 schema
   component AudioListener 1
@@ -16,6 +16,7 @@ schema
   component Facts 1
   component FirstPersonCamera 1
   component Focusable 1
+  component Footing 1
   component GlobalTransform 1
   component Interactable 1
   component Interactor 1
@@ -136,6 +137,9 @@ entities
       scale 1.0 1.0 1.0
       translation -2.26 2.12 0.0
   3:0
+    Footing
+      half_extent 0.62 0.35 6.0
+      surface Timber
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0
     Mesh
@@ -873,6 +877,9 @@ entities
       scale 1.0 1.0 1.0
       translation -2.26 2.12 0.0
   54:0
+    Footing
+      half_extent 0.62 0.35 6.0
+      surface Timber
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 12.0 0.0 -24.0 1.0
     Mesh
@@ -1486,6 +1493,9 @@ entities
       scale 1.0 1.0 1.0
       translation -2.26 2.12 0.0
   97:0
+    Footing
+      half_extent 0.62 0.35 6.0
+      surface Timber
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 12.0 0.0 -12.0 1.0
     Mesh
@@ -2105,6 +2115,9 @@ entities
       scale 1.0 1.0 1.0
       translation -2.26 2.12 0.0
   138:0
+    Footing
+      half_extent 0.62 0.35 6.0
+      surface Timber
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 12.0 0.0 0.0 1.0
     Mesh
@@ -2608,6 +2621,9 @@ entities
       scale 1.0 1.0 1.0
       translation 12.0 0.0 0.0
   173:0
+    Footing
+      half_extent 2.3 0.4 6.0
+      surface Water
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 12.0 0.05 0.0 1.0
     Mesh
@@ -2654,6 +2670,9 @@ entities
       scale 1.0 1.0 1.0
       translation -2.26 2.12 0.0
   177:0
+    Footing
+      half_extent 0.62 0.35 6.0
+      surface Timber
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 24.0 0.0 -24.0 1.0
     Mesh
@@ -3225,6 +3244,9 @@ entities
       scale 1.0 1.0 1.0
       translation -2.26 2.12 0.0
   217:0
+    Footing
+      half_extent 0.62 0.35 6.0
+      surface Timber
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 24.0 0.0 -12.0 1.0
     Mesh
@@ -3898,6 +3920,9 @@ entities
       scale 1.0 1.0 1.0
       translation -2.26 2.12 0.0
   264:0
+    Footing
+      half_extent 0.62 0.35 6.0
+      surface Timber
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 24.0 0.0 0.0 1.0
     Mesh
@@ -4603,6 +4628,9 @@ entities
       scale 1.0 1.0 1.0
       translation -2.26 2.12 0.0
   313:0
+    Footing
+      half_extent 0.62 0.35 6.0
+      surface Timber
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 36.0 0.0 0.0 1.0
     Mesh
@@ -5413,6 +5441,9 @@ entities
       scale 1.0 1.0 1.0
       translation -2.26 2.12 0.0
   367:0
+    Footing
+      half_extent 0.62 0.35 6.0
+      surface Timber
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 48.0 0.0 0.0 1.0
     Mesh
@@ -6261,6 +6292,9 @@ entities
       scale 1.0 1.0 1.0
       translation -2.26 2.12 0.0
   421:0
+    Footing
+      half_extent 0.62 0.35 6.0
+      surface Timber
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 0.0 0.0 1.0
     Mesh
@@ -6764,6 +6798,9 @@ entities
       scale 1.0 1.0 1.0
       translation 60.0 0.0 0.0
   456:0
+    Footing
+      half_extent 2.3 0.4 6.0
+      surface Water
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 0.05 0.0 1.0
     Mesh
@@ -6810,6 +6847,9 @@ entities
       scale 1.0 1.0 1.0
       translation -2.26 2.12 0.0
   460:0
+    Footing
+      half_extent 0.62 0.35 6.0
+      surface Timber
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 0.0 12.0 1.0
     Mesh
@@ -7381,6 +7421,9 @@ entities
       scale 1.0 1.0 1.0
       translation -2.26 2.12 0.0
   500:0
+    Footing
+      half_extent 0.62 0.35 6.0
+      surface Timber
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 60.0 0.0 24.0 1.0
     Mesh
@@ -8118,6 +8161,9 @@ entities
       scale 1.0 1.0 1.0
       translation -2.26 2.12 0.0
   551:0
+    Footing
+      half_extent 0.62 0.35 6.0
+      surface Timber
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 72.0 0.0 12.0 1.0
     Mesh
@@ -8823,6 +8869,9 @@ entities
       scale 1.0 1.0 1.0
       translation -2.26 2.12 0.0
   600:0
+    Footing
+      half_extent 0.62 0.35 6.0
+      surface Timber
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 72.0 0.0 24.0 1.0
     Mesh
@@ -9839,9 +9888,10 @@ entities
       bus Effects
       gain 1.0
       looping true
+      occlusion 1.0
       pitch 1.0
       playing true
-      sound "warden_breath"
+      sound "warden_tread"
       spatial true
     Behaviour
       elapsed 2.2166653
@@ -9968,8 +10018,9 @@ entities
   669:0
     AudioSource
       bus Music
-      gain 1.0
+      gain 0.55
       looping true
+      occlusion 0.0
       pitch 1.0
       playing true
       sound "warren_tone"

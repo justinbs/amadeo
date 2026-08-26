@@ -212,9 +212,24 @@ calls set dressing"* — and that items 1–7 are cheap enough that no version o
 
 #### What was applied in session 26
 
-**Decision 5 only**, because it bears on **F2**, which was being built in the same session: the
-warden's lamp is `0.62 0.76 1.0` at a 21° outer cone against the fittings' green. Everything else is
-recorded here and lands in F1, F3, F5 and F6, which are later in the critic's order.
+**Decisions 5 and 10.**
+
+**Decision 5** bears on **F2**, built in the same session: the warden's lamp left the fittings' colour
+family. Engine gate review 29 ruled that this *"was never the designer's to grant"* — `docs/11` §4
+already specifies *"a cold, narrow, downward beam, deliberately unlike the player's warm one"*, and the
+shipped green flood met **neither word**, so what the designer identified was **a violation of a passed
+design rather than a new direction**. It also corrected the implementation: the change was described as
+a reduction and was not — peak channel went `11.0 × 0.72 = 7.92` **up** to `9.0 × 1.0`, which is why the
+coat blew out. Renormalised on peak channel, and taken to a cyan-leaning white rather than blue on the
+review's non-blocking note that `0.62 0.76 1.0` read as a modern LED work light.
+
+**Decision 10** landed with **F6**: the warden **treads** rather than breathing until it sees you.
+`warden_breath` had looped in every state forever, which reads as an animal where `docs/11` §3 says
+institution, and which makes §9's near-silence unhearable when §3a's most important tell is an
+*absence* of sound. A new `warden_tread` clip loops at range; the breath is pursuit only — so the
+change of sound **is** the moment of being noticed, with nothing on screen having to say so.
+
+Everything else is recorded here and lands in F1, F3 and F5, which are later in the critic's order.
 
 **No disagreement with the critic arose.** Nothing above contradicts a review's ordered change, and
 decision 1 in particular runs the same way as the critic's own F5(d), which requires that no

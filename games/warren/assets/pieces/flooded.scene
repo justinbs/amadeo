@@ -14,6 +14,9 @@ entity flooded "A section the water got into"
     translation 0.0 0.0 0.0
 
   entity water "Standing water"
+    Footing
+      half_extent 2.3 0.4 6.0
+      surface Water
     Mesh
       material "flood"
       mesh "flood_plane"

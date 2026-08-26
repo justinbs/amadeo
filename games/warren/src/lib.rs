@@ -320,6 +320,8 @@ pub fn build_from_scene(scene: &str) -> anyhow::Result<App> {
     // This game's own marks, and the one thing it can end as.
     app.register_component::<WayOut>()?;
     app.register_component::<Warden>()?;
+    // What the floor is made of, so a step on timber does not sound like a step on concrete (F6 b).
+    app.register_component::<Footing>()?;
     app.register_component::<Socket>()?;
     app.register_component::<PromptLine>()?;
     app.register_component::<Reticle>()?;
@@ -464,6 +466,12 @@ pub fn build_from_scene(scene: &str) -> anyhow::Result<App> {
             .after(amadeo_behaviour::RUN_BEHAVIOURS)
             .after(amadeo_physics::STEP_PHYSICS),
     );
+    // What it sounds like follows from what its machine settled into, so this runs after the machine
+    // and after the thing that moves it.
+    app.add_system(
+        Stage::Simulation,
+        system(VOICE_THE_WARDEN, voice_the_warden).after(MOVE_THE_WARDEN),
+    );
     // Last, so it judges where everything actually ended up this tick rather than where it was.
     app.add_system(
         Stage::PostSimulation,
@@ -513,6 +521,25 @@ pub fn build_from_scene(scene: &str) -> anyhow::Result<App> {
         system(PLAY_THE_RUN, play_the_run)
             .after(SETTLE_THE_RUN)
             .after(TAKE_WHAT_YOU_USED),
+    );
+
+    // **How blocked each sound is, written before the frame is collected** (ADR 0086). `docs/11` §9
+    // makes this a gameplay requirement rather than polish — *"a warden exactly as loud through a
+    // wall as through a doorway makes the whole mechanic a lie"* — and this game is made of
+    // corridors.
+    //
+    // **`PostSimulation`, which is after `step_physics` by STAGE rather than by label.** `cast_shape`
+    // answers from an index the step builds, so casting earlier reports every path clear -- the defect
+    // itself, restored silently. An `.after(STEP_PHYSICS)` cannot express it: that label is registered
+    // in `Simulation` and a dependency across stages does not resolve, which fails loudly as
+    // `UnknownLabel` rather than quietly. Stage order is the guarantee here.
+    //
+    // After `propagate_transforms` as well, because a listener on a camera is a child and its world
+    // position is only correct once the chain is composed. `occlusion` is a hashed component field, so
+    // this sits deliberately **inside** the deterministic zone even though what it feeds does not.
+    app.add_system(
+        Stage::PostSimulation,
+        system(amadeo_app::OCCLUDE_VOICES, amadeo_app::occlude_voices).after(PROPAGATE_TRANSFORMS),
     );
 
     // Collected in `Render`, where nothing it does can reach the state hash — `Audio` is a Service,
@@ -891,6 +918,94 @@ pub fn move_the_warden(world: &mut World) {
         if let Some(transform) = world.get_mut::<Transform>(entity) {
             transform.translation = arrived;
             transform.rotation[1] = facing;
+        }
+    }
+}
+
+/// The id of the loop the warden makes when it has not seen you.
+pub const WARDEN_TREAD: &str = "warden_tread";
+
+/// The id of the loop it makes when it has.
+pub const WARDEN_BREATH: &str = "warden_breath";
+
+/// The id of the room tone.
+pub const WARREN_TONE: &str = "warren_tone";
+
+/// The room tone's gain when the warden is as far away as it can see.
+pub const TONE_FAR: f32 = 0.55;
+
+/// The room tone's gain when it is on top of you.
+///
+/// **At least 2:1 against [`TONE_FAR`]**, which is `docs/13` §1b's F6 clause (c). The bed is the one
+/// sound that is always there, so it is the only one that can tell you something without competing
+/// with anything — and `docs/11` §9 wants near-silence as the default, which means the *rise* has to
+/// carry the information rather than the level.
+pub const TONE_NEAR: f32 = 1.2;
+
+/// The label [`voice_the_warden`] is registered under.
+pub const VOICE_THE_WARDEN: &str = "voice_the_warden";
+
+/// Swaps what the warden sounds like, and leans on the room tone as it closes.
+///
+/// # Two things rather than one, because they are one cue
+///
+/// Design direction 1 (`docs/15` §5) took the breath off the warden's constant channel: a thing that
+/// breathes continuously reads as an animal, and `docs/11` §3 says it is an institution. So it treads
+/// while it has not seen you and breathes only while it has — which makes the change of sound itself
+/// the moment you have been noticed, with nothing on screen having to say so.
+///
+/// The bed does the ranged half. `docs/11` §9 wants near-silence as the default *"so that a single
+/// sound is an event"*, and a bed that leans up as the warden closes is the cheapest way to be told
+/// something is coming without being told where — which is the tension the whole game is built on.
+///
+/// **Both are written into hashed component fields**, so a save restores the state of the chase
+/// rather than resetting it to calm, and a replay reproduces it.
+pub fn voice_the_warden(world: &mut World) {
+    let mut nearest = f32::INFINITY;
+    let wardens: Vec<(Entity, bool, [f32; 3])> = world
+        .query::<(&Warden, &Behaviour, &Transform)>()
+        .map(|(entity, (_, mind, at))| (entity, mind.state == "pursue", at.translation))
+        .collect();
+
+    if let Some(you) = player_at(world) {
+        for (_, _, at) in &wardens {
+            nearest = nearest.min(distance(*at, you));
+        }
+    }
+
+    for (entity, pursuing, _) in wardens {
+        let wanted = if pursuing {
+            WARDEN_BREATH
+        } else {
+            WARDEN_TREAD
+        };
+        if let Some(source) = world.get_mut::<AudioSource>(entity)
+            && source.sound != wanted
+        {
+            // A clip swap is a stop and a start to `VoiceTracker`, never an update — which is what
+            // makes the change audible as a change rather than as a crossfade.
+            source.sound = wanted.to_string();
+        }
+    }
+
+    // Linear between arm's length and the edge of its sight. Outside that the bed sits at `TONE_FAR`,
+    // which is what the game sounds like when nothing is looking for you.
+    let lean = if nearest.is_finite() {
+        let span = (WARDEN_SIGHT - WARDEN_REACH).max(0.001);
+        let along = ((nearest - WARDEN_REACH) / span).clamp(0.0, 1.0);
+        TONE_NEAR + (TONE_FAR - TONE_NEAR) * along
+    } else {
+        TONE_FAR
+    };
+
+    let beds: Vec<Entity> = world
+        .query::<(&AudioSource,)>()
+        .filter(|(_, (source,))| source.sound == WARREN_TONE)
+        .map(|(entity, _)| entity)
+        .collect();
+    for bed in beds {
+        if let Some(source) = world.get_mut::<AudioSource>(bed) {
+            source.gain = lean;
         }
     }
 }
@@ -3073,6 +3188,95 @@ fn restore_from(app: &mut App, text: &str) -> Result<Vec<String>, String> {
 /// it. Shorter than the Atrium's 1.9 because this character moves at half the speed.
 pub const STRIDE: f32 = 0.95;
 
+/// What the floor is made of where a thing stands — `docs/13` §1b's F6 clause (b).
+///
+/// # Why an authored volume rather than a downward cast
+///
+/// The obvious implementation sweeps a shape down and asks what it hit. It cannot work here and the
+/// reason is worth writing down: **the duckboards have no collider.** They are a decorative run laid
+/// over the deck, and the only collider in a bore section is the `slab` the deck sits on — so a cast
+/// downward reports "screed" everywhere, including where a player is audibly walking on timber.
+///
+/// Giving every decorative surface a collider to answer a question about *sound* would put geometry
+/// in the solver for the solver's own sake. A volume authored beside the mesh it describes says the
+/// same thing, costs nothing at runtime, and is visible to `describe` and to a person reading the
+/// piece.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, StableHash, Reflect)]
+pub enum Surface {
+    /// Bare concrete deck. The default, because most of the Warren is.
+    #[default]
+    Screed,
+    /// A duckboard run — the timber walkway down a bore's centreline.
+    Timber,
+    /// Standing water.
+    Water,
+}
+
+impl Surface {
+    /// The clip id a step on this makes.
+    #[must_use]
+    pub fn footstep(self) -> &'static str {
+        match self {
+            Surface::Screed => "step_screed",
+            Surface::Timber => "step_timber",
+            Surface::Water => "step_water",
+        }
+    }
+}
+
+/// A box within which the floor is made of something in particular.
+///
+/// Authored on the entity carrying the surface it describes, so moving a duckboard run moves what it
+/// sounds like with it. Extents are half-widths in the entity's own space, and the test is `y` as
+/// well as `x`/`z`: a walkway on an upper deck must not decide what the deck below sounds like.
+#[derive(Debug, Clone, Copy, PartialEq, StableHash, Reflect)]
+pub struct Footing {
+    /// What a step here sounds like.
+    pub surface: Surface,
+    /// Half-extents of the box, in world units.
+    #[reflect(unit = "world units", default = [1.0, 0.5, 1.0])]
+    pub half_extent: [f32; 3],
+}
+
+impl Default for Footing {
+    fn default() -> Self {
+        Self {
+            surface: Surface::Screed,
+            half_extent: [1.0, 0.5, 1.0],
+        }
+    }
+}
+
+impl Component for Footing {}
+
+/// What the floor is made of under a given place.
+///
+/// **The smallest matching volume wins**, so a duckboard run laid inside a flooded section reads as
+/// timber rather than as whichever the query happened to reach first — query order is reproducible
+/// but it is not a ranking, and "the more specific surface" is what a person means.
+#[must_use]
+pub fn footing_at(world: &World, at: [f32; 3]) -> Surface {
+    let mut best: Option<(f32, Surface)> = None;
+    for (_, (footing, transform, global)) in
+        world.query::<(&Footing, &Transform, Option<&GlobalTransform>)>()
+    {
+        let centre = match global {
+            Some(global) => global.translation(),
+            None => transform.translation,
+        };
+        let inside = (0..3)
+            .all(|axis| (at[axis] - centre[axis]).abs() <= footing.half_extent[axis].max(0.0));
+        if !inside {
+            continue;
+        }
+        let volume = footing.half_extent[0] * footing.half_extent[1] * footing.half_extent[2];
+        if best.is_none_or(|(smallest, _)| volume < smallest) {
+            best = Some((volume, footing.surface));
+        }
+    }
+    best.map_or(Surface::Screed, |(_, surface)| surface)
+}
+
 /// How far the player has walked since the last footstep.
 ///
 /// # A hashed resource rather than a service, and that matters
@@ -3135,7 +3339,13 @@ pub fn play_footsteps(world: &mut World) {
     }
 
     for position in steps {
-        world.send_event(SoundPlayed::at("footstep", position));
+        // **Which clip depends on what is underfoot** (F6 clause b). One `footstep` for a game with
+        // three floor surfaces meant a whole review cycle spent making the duckboards legible while
+        // walking onto them sounded exactly like walking on concrete, and wading sounded like it too.
+        world.send_event(SoundPlayed::at(
+            footing_at(world, position).footstep(),
+            position,
+        ));
     }
 }
 

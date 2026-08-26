@@ -81,6 +81,32 @@ pub struct AudioSource {
     /// which archetype an entity is in — an archetype move is much more expensive than a bool, and
     /// a sound that stops and starts is exactly the case that would do it often.
     pub playing: bool,
+    /// How much solid matter stands between this sound and the listener — ADR 0086.
+    ///
+    /// `0.0` is a clear line and `1.0` is fully blocked. **Nothing in this crate computes it**, and
+    /// that is the whole decision: `amadeo-audio` does not depend on `amadeo-physics`, so it cannot
+    /// ask whether a wall is in the way. It owns the slot and something above both crates fills it,
+    /// which is `Overlay`, `TextureCache`, `MeshCache` and `SkyCache`'s inversion a fifth time.
+    /// `amadeo-app` ships the system that does (`occlude_voices`), registered automatically wherever
+    /// a world has both an `Audio` and a `Physics` service, so no game has to remember it.
+    ///
+    /// # What it means, and why it is not "how much quieter"
+    ///
+    /// **A wall does not make a sound quieter, it makes it dull** — it removes the top of the
+    /// spectrum. A voice attenuated in gain alone tells a player *"that is further away"*, and a game
+    /// whose antagonist is found by ear needs them to distinguish *far* from *behind that bulkhead*.
+    /// So this field says how *blocked* a sound is and leaves what to do about it to the mix: the
+    /// intended consumer is a low-pass cutoff, with gain as a secondary term.
+    ///
+    /// # Hashed, and deliberately not derived
+    ///
+    /// It is ADR 0063's `Focus` call rather than `Looking`'s: nothing recomputes it if it is
+    /// dropped, a save should restore it, and gameplay may legitimately read it — an AI that knows
+    /// it cannot be heard is a real thing to want.
+    ///
+    /// **Defaults to `0.0`**, so a world that installs nothing sounds exactly as it did before.
+    #[reflect(min = 0.0, max = 1.0, default = 0.0)]
+    pub occlusion: f32,
 }
 
 impl Default for AudioSource {
@@ -93,6 +119,7 @@ impl Default for AudioSource {
             looping: false,
             spatial: true,
             playing: true,
+            occlusion: 0.0,
         }
     }
 }

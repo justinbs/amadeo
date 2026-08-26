@@ -4,7 +4,9 @@ version 1
 assets
   caught
   escaped
-  footstep
+  step_screed
+  step_timber
+  step_water
   taken
   warren_gloom
   warren_look

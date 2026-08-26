@@ -114,6 +114,7 @@ fn a_sound_moves_around_the_listener() {
                 pitch: 1.0,
                 looping: true,
                 position: Some([sine * radius, 0.0, -cosine * radius]),
+                occlusion: 0.0,
             }],
         };
 
@@ -180,6 +181,7 @@ fn two_sounds_start_and_stop_independently() {
         pitch: 1.0,
         looping: true,
         position: None,
+        occlusion: 0.0,
     };
 
     let play = |backend: &mut KiraAudio, voices: Vec<Voice>, seconds: f32| {
@@ -318,6 +320,7 @@ fn the_tracker_agrees_with_what_that_procedure_expects() {
         pitch: 1.0,
         looping: true,
         position: None,
+        occlusion: 0.0,
     };
     let frame = |voices| AudioFrame {
         listener: Some(Listener {
