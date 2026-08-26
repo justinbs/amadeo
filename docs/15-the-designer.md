@@ -113,4 +113,110 @@ that is really an aesthetic preference wearing a reason.
 Append-only, like `docs/14` §8. Every consultation is recorded with what was asked, what was decided,
 what was merely suggested, and — if it ever happens — how a disagreement with the critic resolved.
 
-*(No entries yet. The role was created in session 26; its first consultation will be recorded here.)*
+
+### Direction 1 — `games/warren`, session 26 — the first consultation
+
+**Asked:** what the designer can do inside the seven FINISH rows, given the Warren's design is settled
+and the budget is two or three sessions. Specifically the two endings, the section naming scheme, the
+prompts, the title screen, and what the warden *is*.
+
+**Its one-sentence diagnosis, and it is the reason the role exists:** *"This game has a fiction and an
+interface, and they are not speaking to each other yet. The walls are an institution's; the words on
+screen are a video game's."* Nothing it asked for reopens a cut row, needs a new asset type, or needs a
+new font. Most of it is edited strings and paints.
+
+#### The decisions, ranked as it ranked them
+
+1. **The ending line comes off `Accent`, and so does the title heading.** `docs/11` §5a's one colour
+   rule is that safety orange marks what you can act on and nothing else may have it. The ending line
+   is the largest, loudest orange object in the game and it is **not actionable** — it unteaches
+   twenty minutes of that rule at the moment the lesson ends. Both become `Ink`; `Accent` on that
+   screen belongs to the focused button alone.
+2. **`IT FOUND YOU` becomes `ACCOUNTED FOR`.** The old line is a narrator stating a fact you just
+   watched, and its pronoun frames the warden as a monster that hunts. `docs/11` §3 is emphatic that
+   it is not: it is **an institution still performing its function, and the function is counting.**
+   `ACCOUNTED FOR` is that institution's own word for what has happened to you.
+   **`YOU GOT OUT` stays and must not be "fixed" to match** — once its partner speaks in the
+   institution's voice, the asymmetry is the point: *when you escape you get the last word; when you
+   are caught, the shelter does.* It explicitly rejected `UNACCOUNTED FOR` for the escape as one
+   prefix away from its partner.
+3. **The two endings use the game's two typographic registers**, which `docs/11` §8 already names —
+   the interface is signage, the pause menu is a form. **Escaped: the sign speaks** — `Title`,
+   upper-left, over a light ~35% scrim so the frame you escaped through is readable behind it, held
+   2 s. **Caught: the record speaks** — `Body` scale, low and left where a reference number goes on a
+   form, over a deep ~75% scrim, held 3 s. *"A player knows which ending they got before they read a
+   word."*
+4. **The prompts become the label the shelter would have put on the object** — not the verb, never a
+   sentence, and **uppercase**, since every other string in the interface already is.
+   `Torch` → **`HAND LAMP`** (the mesh is already `hand_lamp`; only the word stayed a video-game
+   torch). `Brass key` → **`KEY · T`** ("brass" is a material adjective and says nothing; the tag on a
+   key board says what it opens — which turns the fetch into navigation). `Locked` →
+   **`WAY OUT · SECURED`**. And **`Way out` is already right**: it is London Underground's own phrase
+   for an exit, which is this game's exact typology.
+5. **The warden's lamp must leave the fittings' colour family.** `warden_post.scene` had
+   `colour 0.5 0.72 0.62` against every emergency fitting's `0.58 0.78 0.68` — **the same green, eight
+   percent down.** `docs/11` §4 claims the lamp as the warden's ranged tell, *"you track it through a
+   level by the light crossing a doorway two rooms away"*, and as written it was indistinguishable
+   from a wall fitting at any distance. **Three light sources must mean three things: yours is warm,
+   the building's is green, its is blue-white.** Called non-negotiable; the numbers left to the critic.
+6. **The title screen carries both names**, closing a problem `docs/11` §10 leaves open — *"a title the
+   world never uses is a title that belongs to the box art"*: `THE WARREN` over
+   `SHELTER FOUR · SUB-SURFACE ARCHIVE`. One is what the staff called it, one is what the paperwork
+   did, **and the gap between them is the premise, stated before the player has moved.** Options
+   become a stencilled list with an orange caret rather than filled panels — *"a filled bar behind a
+   word is what makes a menu look like a dialog box; a marked line in a list is what a sign looks
+   like"* — which also satisfies F1(b) by construction.
+7. **BEGIN drops you exactly where the title camera stood**, same position and yaw. One transform, and
+   the opening stops being a cut from a card to a corridor.
+8. **A section is a lettered *stretch*, not a cell.** `manhattan % 5` is a ring — it rises whichever
+   way you walk and repeats every five cells, so it *cannot* say "further in". Fourteen cells becomes
+   five stretches of about three, letters ascending along the spine, no letter twice.
+9. **The spawn's four quarter-turns are a design rule, not a brightness target**: one working fitting
+   ahead and only one thing to walk towards; a closed bulkhead behind, so the first decision is never
+   a false choice; **and no light source placed in either lateral view.** F1(d)'s 36.7% reading is
+   what breaks when that last rule is violated.
+10. **The warden's constant channel is a tread, not a breath.** `warden_post.scene` loops
+    `warden_breath` spatially, forever, in every state — *"a thing that breathes continuously reads as
+    an animal, which is the one thing §3 says it is not"*, and a permanent sound from the antagonist
+    is what makes §9's near-silence unhearable when §3a's most important tell is an **absence** of
+    sound. Breath belongs to pursuit alone. Lands inside **F6**.
+11. **The section names**, four of five taken from the real Clapham South deep shelter, which named its
+    sub-shelters A–P after senior naval officers: **H HARDY · I INGLEFIELD · M MADDEN · O OLDHAM ·
+    T TORRINGTON**. The five existing letter meshes are already alphabetical, so the letters cost
+    nothing; nine new stencil glyphs do. **The gaps are deliberate and must not be explained** — a
+    player who walks H → I → M concludes correctly that this place is far larger than the part they
+    are in, which is the cheapest scale-building available.
+12. **When it reaches you, it stops.** No lunge, no scream. It arrives, it stops, the ending follows —
+    because it is not hunting you, it is counting, *"and the correct beat at the catch is an arrival."*
+    Also the only catch this engine can stage convincingly, which it named as the sign the design fits.
+
+**Its one suggestion rather than a decision, and its own drop-first:** waking on the deck — two seconds
+of the camera rising from floor height before input is accepted, *"which explains why your first input
+is the mouse"*. It flagged that this needs `amadeo-anim` wired into this game and that it could not
+price that from where it sat.
+
+#### What it ruled already right, and told us not to touch
+
+`WAY OUT` as the exit label. `YOU GOT OUT`, **conditional on its partner changing**. The reticle's
+colour logic — dim dot, `Accent` ticks that open on reach — *"the orange rule used exactly as
+intended"*. The warm/cold split between the hand lamp and the building, *"the warden is the only thing
+sitting in the wrong half of it"*. And `docs/11` §8's title-screen layout, which it confirmed rather
+than replaced.
+
+#### Its drop order, since the budget is fixed
+
+14 (waking on the deck), then per-outcome button labels, then `KEY · T` falls back to `KEY`, then the
+five names descope to three (**H HARDY · M MADDEN · O OLDHAM**, six glyphs). It was explicit that
+**the names must not be dropped in favour of letters alone** — *"a letter alone is the thing §5.4
+calls set dressing"* — and that items 1–7 are cheap enough that no version of the budget excludes them.
+
+#### What was applied in session 26
+
+**Decision 5 only**, because it bears on **F2**, which was being built in the same session: the
+warden's lamp is `0.62 0.76 1.0` at a 21° outer cone against the fittings' green. Everything else is
+recorded here and lands in F1, F3, F5 and F6, which are later in the critic's order.
+
+**No disagreement with the critic arose.** Nothing above contradicts a review's ordered change, and
+decision 1 in particular runs the same way as the critic's own F5(d), which requires that no
+non-interactive surface out-saturate `accent`.
+

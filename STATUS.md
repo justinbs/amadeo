@@ -27,10 +27,11 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 ## 📬 For the next session — read this box first, then `docs/14-the-critic.md` §6
 
-> ### Session 26: Justin re-scoped the gate, review 28 re-planned the re-scope, and there are seven rows left
+> ### Session 26: the gate was re-scoped twice, a second agent exists, and the warden stopped being boxes
 >
-> **No code was written this session and that was the point.** `docs/13` **§1b is the binding plan now**
-> and supersedes review 27's order. Read it before §2 and before anything else in this file.
+> `docs/13` **§1b is the binding plan now** and supersedes review 27's order. Read it before §2 and
+> before anything else in this file. **Three things happened, in this order: Justin re-scoped, review 28
+> re-planned the re-scope, and F2 was built against the result.**
 >
 > #### What Justin instructed
 >
@@ -84,6 +85,58 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > or as filtered noise; does `warren_tone` leave silence audible; do `caught` and `escaped` read as two
 > different endings. Any "no" is a row. Nothing else in audio is.
 >
+>
+> #### There is a second agent now, and it is not a second critic
+>
+> `.claude/agents/designer.md`, brief and ledger in **`docs/15-the-designer.md`**. It owns **player
+> experience, story, worldbuilding, theming and UI** — what a thing *means* to a player — and nothing
+> else. **Both agents bind the implementer.** They work independently; they meet only when the critic
+> disagrees with a designer decision, and then **the critic wins**. Only Justin and the critic may
+> decline or stop it. It may not write ✅ and may not say POLISHED.
+>
+> **Its first direction is `docs/15` §5 and it is worth reading in full.** One sentence of it is the
+> reason the role exists: *"This game has a fiction and an interface, and they are not speaking to each
+> other yet. The walls are an institution's; the words on screen are a video game's."* Twelve decisions,
+> ranked, with a drop order, none of which reopens a cut row or needs a new asset type. **Only decision
+> 5 is applied so far** — the warden's lamp was `0.5 0.72 0.62` against every wall fitting's
+> `0.58 0.78 0.68`, *the same green eight percent down*, while `docs/11` §4 claims that lamp as the
+> antagonist's ranged tell. It is blue-white at a 21° cone now. The rest lands in F1, F3, F5 and F6.
+>
+> #### F2 is built, and the control is worth more than the row
+>
+> `warden_figure.mesh` was nine `solid Box` parts, none rotated. It is fourteen parts now — truncated
+> cones from a 0.45 m hem to the hat crown, faceted, with a storm collar the head sits inside so no face
+> shows under the brim. **No Rust: `Part` already carried `rotation` and `CylinderMesh` already had
+> `top_radius`.**
+>
+> **Measured against the old model as a control, three of F2's five sub-clauses do not discriminate:**
+>
+> - **(a) part 2 works** — old model has **5 consecutive samples at x=1048**, new model's longest run is
+>   **2**. It fails the old and passes the new, exactly as designed.
+> - **(a) part 1 does not** — 14 distinct values old, 16 new. Both pass.
+> - **(c) does not, and it is backwards** — the old nine-box model measures **3.92** against the new
+>   model's **3.44** at the same column. **The worse model scores higher**, so the clause would have been
+>   closed on the defect.
+> - **(a) part 3 and (b) are unmeasurable on this frame.** The figure is **darker than its background at
+>   the brim** (luma 8 against 42) and brighter at the hem, so a one-sided edge criterion cannot find
+>   this silhouette at all; and the warden's own lamp plus the bunk behind it run continuously bright to
+>   its right, so there is no right edge to measure.
+>
+> **`moment`'s warden snapshot was the third landmark in that function to be framed wrong, and nobody
+> checked it after the other two.** Review 19 found the exit facing away from the exit; review 20 found
+> the key 61.9° off axis. The warden is the one landmark that **moves** — it had walked **7.6 m** from
+> its start cell by snapshot time, so `at_warden` photographed an empty stretch of bore. It is anchored
+> on the warden's own transform now, and stepped to the other haunch so a bunk frame is not across it.
+>
+> #### Two decisions are still Justin's, and F6 is third in the order
+>
+> **Q44** — may `amadeo-audio` depend on `amadeo-physics`? Nothing in `collect_audio` can currently ask
+> whether a wall is in the way. Three shapes are written up. **Q45** — does the torch beam's scattering
+> come from `fog.density` or a new `Environment` field? Both are P0 and both block a row.
+>
+> **And one thing only Justin can settle**, on headphones, once: does `warden_breath` read as a creature
+> or as filtered noise; does `warren_tone` leave silence audible; do `caught` and `escaped` read as two
+> different endings. Any "no" is a row.
 > #### Four things worth not rediscovering
 >
 > 1. **The handover I was given was two sessions stale** and told me to re-send review 18. It had already
@@ -95,9 +148,11 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > 3. **The submission claimed the game has no music. It has an ambient bed** — `ambience.scene` plays
 >    `warren_tone` on `Bus::Music`, looping, forever. What is absent is anything *reactive*. Check the
 >    assets before writing an absence into a document.
-> 4. **`warden_figure.mesh` is nine `solid Box` parts, none rotated.** `Part` already carries `rotation`
->    and `Solid` already ships `Cylinder`, `Sphere` and `Wedge` — **F2 needs no Rust at all.** The row six
->    review passes could not move is authorable in text.
+> 4. **A close condition can be satisfied by the model it exists to replace, and the only way to know is
+>    to measure the old one.** F2 clause (c) scores the nine-box warden **3.92** and the rebuilt one
+>    **3.44**. Nothing but running the control would have caught that, and `docs/13` item 5 already
+>    requires a `BoxMesh` control inside every shape assertion for exactly this reason. **Run the control
+>    before claiming a clause passes**, in both directions.
 >
 > `gh` is not on PATH: prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
 

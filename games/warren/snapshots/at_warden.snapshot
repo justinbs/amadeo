@@ -1,6 +1,6 @@
 amadeo-snapshot 2
 tick 134
-state-hash f9cd7a14c3d9f4cc
+state-hash 374219379eec9832
 schema-hash c258f27a5519d241
 
 schema
@@ -9423,7 +9423,7 @@ entities
         height 1.2
         radius 0.35
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 37.1 1.0 4.2 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 36.6 1.0 0.0 1.0
     Inventory
       slots 4
     RigidBody
@@ -9435,7 +9435,7 @@ entities
     Transform
       rotation -0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 37.1 1.0 4.2
+      translation 36.6 1.0 0.0
   641:0
     AudioListener ()
     Camera
@@ -9454,7 +9454,7 @@ entities
       max_pitch 85.0
       min_pitch -85.0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.1 1.62 4.2 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 36.6 1.62 0.0 1.0
     Interactor
       radius 0.22
       reach 2.2
@@ -9470,7 +9470,7 @@ entities
       translation 0.0 0.62 0.0
   642:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 0.9781476 -0.20791169 0.0 0.0 0.20791169 0.9781476 0.0 37.219997 1.52 4.2 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 0.9781476 -0.20791169 0.0 0.0 0.20791169 0.9781476 0.0 36.719997 1.52 0.0 1.0
     Parent
       generation 0
       index 641
@@ -9490,7 +9490,7 @@ entities
       translation 0.12 -0.1 0.0
   643:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.519997 1.36 4.2 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.019997 1.36 0.0 1.0
     Parent
       generation 0
       index 641
@@ -9882,18 +9882,18 @@ entities
       known
         sees_you true
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 37.486694 0.93 -3.1470284 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 37.43518 0.93 -3.1551528 1.0
     Mesh
       material "greatcoat"
       mesh "warden_figure"
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 37.486694 0.93 -3.1470284
+      translation 37.43518 0.93 -3.1551528
     Warden ()
   664:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.826694 0.65 -3.2870286 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.77518 0.65 -3.295153 1.0
     Mesh
       material "fittings"
       mesh "warden_lamp"
@@ -9906,14 +9906,14 @@ entities
       translation 0.34 -0.28 -0.14
   665:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.826694 0.63 -2.8070285 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.77518 0.63 -2.815153 1.0
     Parent
       generation 0
       index 663
     PointLight
-      colour 0.5 0.72 0.62
-      intensity 1.15
-      range 2.2
+      colour 0.62 0.76 1.0
+      intensity 0.9
+      range 2.0
       source_radius 0.0
     Transform
       rotation 0.0 0.0 0.0
@@ -9921,16 +9921,16 @@ entities
       translation 0.34 -0.3 0.34
   666:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 0.9702957 -0.2419219 0.0 0.0 0.2419219 0.9702957 0.0 37.826694 0.63 -2.8070285 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 0.9702957 -0.2419219 0.0 0.0 0.2419219 0.9702957 0.0 37.77518 0.63 -2.815153 1.0
     Parent
       generation 0
       index 663
     SpotLight
-      colour 0.5 0.72 0.62
-      inner_angle 15.0
-      intensity 11.0
-      outer_angle 34.0
-      range 9.0
+      colour 0.62 0.76 1.0
+      inner_angle 8.0
+      intensity 9.0
+      outer_angle 21.0
+      range 11.0
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true

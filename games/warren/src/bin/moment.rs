@@ -232,6 +232,9 @@ fn stand_at_landmark(app: &mut amadeo_app::App, name: &str) -> anyhow::Result<()
     let along = match name {
         "exit" => 2.6,
         "key" => warren::BORE_HALF_WIDTH - 2.6,
+        // The warden is anchored on the figure itself now, so this is a real subject distance rather
+        // than an offset from a cell centre: close enough to read the coat, far enough for the bore.
+        "warden" => -3.4,
         _ => -4.2,
     };
     // Level with the key board along the bore, so it is in front of the camera rather than beside it.
@@ -241,15 +244,48 @@ fn stand_at_landmark(app: &mut amadeo_app::App, name: &str) -> anyhow::Result<()
         (0.0, 0.0)
     };
     let across = match name {
-        "warden" => 1.1,
+        // **Negative, and that is the third landmark in this function to need its framing fixed.**
+        // At +1.1 the camera stands on the bunk side of the bore, so the figure it is named after is
+        // photographed through a bunk frame -- reviews 19 and 20 found the same class of defect on the
+        // exit and on the key, and nobody checked this one. Stepping to the other haunch puts the
+        // warden against open lining with the bunks behind the camera.
+        // Stepping to the other haunch puts the warden against open lining rather than behind a
+        // bunk frame, which is what +1.1 did.
+        "warden" => -0.9,
         "key" => 0.55,
         _ => 0.75,
     };
     let you = warren::player(&app.world).ok_or_else(|| anyhow::anyhow!("there is no character"))?;
+    // **The warden is framed from where it IS, not from where it began, and that is the third
+    // landmark in this function to need the same correction.**
+    //
+    // `marks.warden` is the cell the warden is *spawned* in. By the time a snapshot is taken it has
+    // been running for over a hundred ticks in `pursue`, walking at whatever the player's position
+    // was during those ticks — which is the player's start, not the camera position this function is
+    // about to teleport them to. Measured: the warden had moved **7.6 m** from its cell, so the
+    // snapshot named `at_warden` photographed an empty stretch of bore with a small figure at the
+    // far end of it.
+    //
+    // This is exactly what review 19 found on the exit and review 20 found on the key: a landmark
+    // snapshot that does not contain the thing it is named after. The other two were fixed by asking
+    // where the object is rather than assuming; a warden is the one landmark that *moves*, so it has
+    // to be asked every time.
+    let anchor = match name {
+        "warden" => warden_at(&app.world).unwrap_or([
+            cell.0 as f32 * warren::CELL,
+            0.0,
+            cell.1 as f32 * warren::CELL,
+        ]),
+        _ => [
+            cell.0 as f32 * warren::CELL,
+            0.0,
+            cell.1 as f32 * warren::CELL,
+        ],
+    };
     let at = [
-        cell.0 as f32 * warren::CELL + fx * along + ax + (-fz) * across,
+        anchor[0] + fx * along + ax + (-fz) * across,
         warren::PLAYER_STAND,
-        cell.1 as f32 * warren::CELL + fz * along + az + fx * across,
+        anchor[2] + fz * along + az + fx * across,
     ];
     if let Some(transform) = app.world.get_mut::<amadeo_transform::Transform>(you) {
         transform.translation = at;
@@ -298,4 +334,15 @@ fn standing(world: &World) -> String {
 /// This crate's directory, so the binary can be run from anywhere.
 fn manifest_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+/// Where the warden actually is, which is not where it started.
+///
+/// The one landmark in this file that moves under its own power. Returns `None` for a world with no
+/// warden in it, which is a level the generator would not produce but a caller should not assume.
+fn warden_at(world: &World) -> Option<[f32; 3]> {
+    world
+        .query::<(&warren::Warden, &amadeo_transform::Transform)>()
+        .map(|(_, (_, at))| at.translation)
+        .next()
 }

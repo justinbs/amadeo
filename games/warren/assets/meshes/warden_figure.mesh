@@ -1,43 +1,137 @@
 scene warden_figure
 version 1
 
-entity mesh "The warden: a greatcoat, widest at the shoulder, and a hat"
+entity mesh "The warden: a greatcoat over a turned shoulder, flaring to the hem, under a tilted brim"
   CompoundMesh
     parts
-      - position 0.0 -0.62 0.0
+      - position 0.02 -0.77 0.0
+        rotation 0.0 0.0 -2.0
+        solid Cylinder
+          shape
+            capped true
+            flat true
+            height 0.32
+            radius 0.32
+            sides 9
+            top_radius 0.292
+      - position 0.018 -0.46 0.0
+        rotation 0.0 0.0 -1.0
+        solid Cylinder
+          shape
+            capped true
+            flat true
+            height 0.3
+            radius 0.282
+            sides 9
+            top_radius 0.252
+      - position 0.008 -0.195 0.0
+        rotation 0.0 0.0 1.0
+        solid Cylinder
+          shape
+            capped true
+            flat true
+            height 0.23
+            radius 0.25
+            sides 9
+            top_radius 0.233
+      - position 0.0 -0.05 0.0
+        solid Cylinder
+          shape
+            capped true
+            flat true
+            height 0.06
+            radius 0.248
+            sides 9
+            top_radius 0.248
+      - position -0.008 0.12 0.0
+        rotation 0.0 0.0 2.0
+        solid Cylinder
+          shape
+            capped true
+            flat true
+            height 0.28
+            radius 0.233
+            sides 9
+            top_radius 0.252
+      - position -0.045 0.1 -0.225
+        rotation 0.0 0.0 -9.0
         solid Box
           shape
-            size 0.52 0.62 0.36
-      - position 0.0 -0.16 0.0
-        solid Box
+            size 0.15 0.3 0.045
+      - position -0.035 0.26 0.0
+        rotation 0.0 0.0 3.0
+        solid Cylinder
           shape
-            size 0.56 0.34 0.38
-      - position 0.0 0.16 0.0
-        solid Box
+            capped true
+            flat true
+            height 0.2
+            radius 0.29
+            sides 9
+            top_radius 0.225
+      - position -0.05 0.47 0.0
+        rotation 0.0 0.0 3.0
+        solid Cylinder
           shape
-            size 0.62 0.32 0.4
-      - position 0.0 0.36 0.0
-        solid Box
+            capped true
+            flat true
+            height 0.22
+            radius 0.15
+            sides 8
+            top_radius 0.2
+      - position -0.05 0.575 0.008
+        solid Sphere
           shape
-            size 0.72 0.12 0.42
-      - mirror true false false
-        position 0.31 0.04 0.0
-        solid Box
+            flat true
+            radius 0.1
+            rings 5
+            segments 8
+      - position -0.06 0.69 0.012
+        rotation -4.0 0.0 -6.0
+        solid Cylinder
           shape
-            size 0.14 0.52 0.3
-      - position 0.0 0.5 0.0
-        solid Box
+            capped true
+            flat true
+            height 0.03
+            radius 0.215
+            sides 9
+            top_radius 0.2
+      - position -0.07 0.785 0.0
+        rotation 0.0 0.0 -5.0
+        solid Cylinder
           shape
-            size 0.3 0.18 0.28
-      - position 0.0 0.68 0.0
-        solid Box
+            capped true
+            flat true
+            height 0.17
+            radius 0.115
+            sides 8
+            top_radius 0.098
+      - position 0.265 -0.06 -0.03
+        rotation 0.0 0.0 -8.0
+        solid Cylinder
           shape
-            size 0.22 0.22 0.24
-      - position 0.0 0.81 0.0
-        solid Box
+            capped true
+            flat true
+            height 0.5
+            radius 0.075
+            sides 7
+            top_radius 0.065
+      - position 0.3 -0.32 -0.05
+        rotation 0.0 0.0 -5.0
+        solid Cylinder
           shape
-            size 0.26 0.06 0.28
-      - position 0.0 0.86 0.0
-        solid Box
+            capped true
+            flat true
+            height 0.09
+            radius 0.07
+            sides 7
+            top_radius 0.078
+      - position -0.235 -0.08 0.045
+        rotation 6.0 0.0 4.0
+        solid Cylinder
           shape
-            size 0.5 0.035 0.46
+            capped true
+            flat true
+            height 0.46
+            radius 0.072
+            sides 7
+            top_radius 0.062

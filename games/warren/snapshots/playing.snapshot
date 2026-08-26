@@ -1,6 +1,6 @@
 amadeo-snapshot 2
 tick 126
-state-hash 068c99b129cf45a4
+state-hash 0fe32ef057d7b3cd
 schema-hash c258f27a5519d241
 
 schema
@@ -9911,9 +9911,9 @@ entities
       generation 0
       index 663
     PointLight
-      colour 0.5 0.72 0.62
-      intensity 1.15
-      range 2.2
+      colour 0.62 0.76 1.0
+      intensity 0.9
+      range 2.0
       source_radius 0.0
     Transform
       rotation 0.0 0.0 0.0
@@ -9926,11 +9926,11 @@ entities
       generation 0
       index 663
     SpotLight
-      colour 0.5 0.72 0.62
-      inner_angle 15.0
-      intensity 11.0
-      outer_angle 34.0
-      range 9.0
+      colour 0.62 0.76 1.0
+      inner_angle 8.0
+      intensity 9.0
+      outer_angle 21.0
+      range 11.0
       shadow_bias 0.03
       shadow_resolution 1024
       shadows true
