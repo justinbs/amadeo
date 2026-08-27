@@ -323,14 +323,20 @@ fn stand_at_landmark(app: &mut amadeo_app::App, name: &str) -> anyhow::Result<()
         (0.0, 0.0)
     };
     let across = match name {
-        // **Negative, and that is the third landmark in this function to need its framing fixed.**
-        // At +1.1 the camera stands on the bunk side of the bore, so the figure it is named after is
-        // photographed through a bunk frame -- reviews 19 and 20 found the same class of defect on the
-        // exit and on the key, and nobody checked this one. Stepping to the other haunch puts the
-        // warden against open lining with the bunks behind the camera.
-        // Stepping to the other haunch puts the warden against open lining rather than behind a
-        // bunk frame, which is what +1.1 did.
-        "warden" => -1.35,
+        // **Derived from where the figure actually stands, not authored** -- and that is the fourth
+        // framing in this function to need the same correction, after the exit, the key and the
+        // warden's own anchor.
+        //
+        // A hard `-1.35` was right while the warden stood on the east haunch and became a camera
+        // inside the west lining the moment session 27 moved it off the berths' wall. The number that
+        // matters is *which side of the bore the subject is on*, so this asks: step toward the middle,
+        // away from the lining the figure has its back to. A constant cannot answer that, because the
+        // level generator picks the warden's wall from its cell's parity.
+        "warden" => {
+            let centre = cell.0 as f32 * warren::CELL;
+            let stood = warden_at(&app.world).map_or(centre, |at| at[0]);
+            if stood < centre { 1.35 } else { -1.35 }
+        }
         "key" => 0.55,
         _ => 0.75,
     };

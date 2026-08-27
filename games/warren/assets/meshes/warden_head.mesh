@@ -1,13 +1,37 @@
 scene warden_head
 version 1
 
-entity mesh "The warden's head, which is a void under the brim rather than a face"
+entity mesh "The tin hat and the void under it, which are one unbroken dark mass because the same material carries both"
   CompoundMesh
     parts
-      - position 0.0 0.0 0.0
-        solid Sphere
+      - position 0.0 1.09 0.0
+        solid Cylinder
           shape
+            capped true
             flat true
-            radius 0.105
-            rings 5
-            segments 8
+            height 0.045
+            radius 0.3
+            sides 12
+            top_radius 0.3
+      - position 0.0 1.135 0.0
+        solid Cylinder
+          shape
+            capped true
+            flat true
+            height 0.075
+            radius 0.225
+            sides 12
+            top_radius 0.185
+      - position 0.0 1.21 0.0
+        solid Cylinder
+          shape
+            capped true
+            flat true
+            height 0.03
+            radius 0.185
+            sides 12
+            top_radius 0.15
+      - position 0.0 0.98 0.0
+        solid Box
+          shape
+            size 0.24 0.22 0.22

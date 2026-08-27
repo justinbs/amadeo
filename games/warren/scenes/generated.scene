@@ -977,7 +977,7 @@ entity warden "The warden" from warden_post
   override Transform
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
-    translation 37.5 0.93 -3.4
+    translation 34.5 0.93 -3.4
 
 entity ambience "The Warren itself" from ambience
 

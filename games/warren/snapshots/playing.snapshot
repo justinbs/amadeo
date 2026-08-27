@@ -1,6 +1,6 @@
 amadeo-snapshot 2
 tick 126
-state-hash 89d6e22c3a52c668
+state-hash 554aab1055b71400
 schema-hash e774124d7ef84d54
 
 schema
@@ -10269,18 +10269,18 @@ entities
       known
         sees_you false
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 37.5 0.93 -3.4 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 34.5 0.93 -3.4 1.0
     Mesh
       material "greatcoat"
       mesh "warden_figure"
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 37.5 0.93 -3.4
+      translation 34.5 0.93 -3.4
     Warden ()
   683:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.94 0.67 -3.64 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 34.8 0.5 -3.24 1.0
     Mesh
       material "lantern_case"
       mesh "warden_lamp"
@@ -10290,10 +10290,10 @@ entities
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.44 -0.26 -0.24
+      translation 0.3 -0.43 0.16
   684:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.94 0.67 -3.64 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 34.8 0.5 -3.24 1.0
     Mesh
       material "lamp_glass"
       mesh "warden_glass"
@@ -10303,10 +10303,10 @@ entities
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.44 -0.26 -0.24
+      translation 0.3 -0.43 0.16
   685:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.45 1.475 -3.3920002 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 34.5 0.93 -3.4 1.0
     Mesh
       material "shadow"
       mesh "warden_head"
@@ -10316,25 +10316,25 @@ entities
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation -0.05 0.545 0.008
+      translation 0.0 0.0 0.0
   686:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 37.94 0.67 -3.64 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 34.8 0.5 -3.24 1.0
     Parent
       generation 0
       index 682
     PointLight
       colour 0.62 0.82 0.95
       intensity 0.87
-      range 2.0
+      range 0.35
       source_radius 0.0
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.44 -0.26 -0.24
+      translation 0.3 -0.43 0.16
   687:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 0.9702957 -0.2419219 0.0 0.0 0.2419219 0.9702957 0.0 37.94 0.67 -3.64 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 0.8660254 -0.5 0.0 0.0 0.5 0.8660254 0.0 34.8 0.5 -3.24 1.0
     Parent
       generation 0
       index 682
@@ -10349,9 +10349,9 @@ entities
       shadows true
       source_radius 0.0
     Transform
-      rotation -14.0 0.0 0.0
+      rotation -30.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.44 -0.26 -0.24
+      translation 0.3 -0.43 0.16
   688:0
     AudioSource
       bus Music
@@ -11379,7 +11379,7 @@ entities
       grow 0.0
       margin
         bottom 0.0
-        left 258.0
+        left 253.0
         right 0.0
         top 300.0
       padding None
@@ -11431,7 +11431,7 @@ entities
       grow 0.0
       margin
         bottom 90.0
-        left 258.0
+        left 234.0
         right 0.0
         top 0.0
       padding Normal

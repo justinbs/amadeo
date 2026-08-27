@@ -1,6 +1,6 @@
 amadeo-snapshot 2
 tick 140
-state-hash 7e714c87554db0ef
+state-hash 8512550e445e1d54
 schema-hash e774124d7ef84d54
 
 schema
@@ -63,7 +63,7 @@ schema
 
 resources
   EventClock
-    next 3
+    next 4
   Focus
     entity
       generation 0
@@ -9720,7 +9720,7 @@ entities
         height 1.2
         radius 0.35
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 36.15 1.0 2.2999997 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 35.85 1.0 2.2999997 1.0
     Inventory
       slots 4
     RigidBody
@@ -9732,7 +9732,7 @@ entities
     Transform
       rotation -0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 36.15 1.0 2.2999997
+      translation 35.85 1.0 2.2999997
   653:0
     AudioListener ()
     Camera
@@ -9751,7 +9751,7 @@ entities
       max_pitch 85.0
       min_pitch -85.0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 36.15 1.62 2.2999997 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 35.85 1.62 2.2999997 1.0
     Interactor
       radius 0.22
       reach 2.2
@@ -9767,7 +9767,7 @@ entities
       translation 0.0 0.62 0.0
   654:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 0.9781476 -0.20791169 0.0 0.0 0.20791169 0.9781476 0.0 36.27 1.52 2.2999997 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 0.9781476 -0.20791169 0.0 0.0 0.20791169 0.9781476 0.0 35.969997 1.52 2.2999997 1.0
     Parent
       generation 0
       index 653
@@ -9787,7 +9787,7 @@ entities
       translation 0.12 -0.1 0.0
   655:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 36.57 1.36 2.2999997 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 36.269997 1.36 2.2999997 1.0
     Parent
       generation 0
       index 653
@@ -10227,14 +10227,14 @@ entities
       bus Effects
       gain 1.0
       looping true
-      occlusion 1.0
+      occlusion 0.44999987
       pitch 1.0
       playing true
-      sound "warden_tread"
+      sound "warden_breath"
       spatial true
     Behaviour
-      elapsed 2.2666652
-      state "idle"
+      elapsed 0.16666667
+      state "pursue"
     BehaviourMachine
       initial "idle"
       states
@@ -10269,20 +10269,20 @@ entities
               when ""
     Facts
       known
-        sees_you false
+        sees_you true
     GlobalTransform
-      matrix -1.0 0.0 -0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 -1.0 0.0 37.5 0.93 -3.4 1.0
+      matrix -0.97308034 0.0 0.23046626 0.0 0.0 1.0 -0.0 0.0 -0.23046626 -0.0 -0.97308034 0.0 34.580273 0.93 -3.0610693 1.0
     Mesh
       material "greatcoat"
       mesh "warden_figure"
     Transform
-      rotation 0.0 180.0 0.0
+      rotation 0.0 -166.67548 0.0
       scale 1.0 1.0 1.0
-      translation 37.5 0.93 -3.4
+      translation 34.580273 0.93 -3.0610693
     Warden ()
   683:0
     GlobalTransform
-      matrix -1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 -1.0 0.0 37.06 0.67 -3.16 1.0
+      matrix -0.97308034 0.0 0.23046626 0.0 0.0 1.0 0.0 0.0 -0.23046626 0.0 -0.97308034 0.0 34.251472 0.5 -3.147622 1.0
     Mesh
       material "lantern_case"
       mesh "warden_lamp"
@@ -10292,10 +10292,10 @@ entities
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.44 -0.26 -0.24
+      translation 0.3 -0.43 0.16
   684:0
     GlobalTransform
-      matrix -1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 -1.0 0.0 37.06 0.67 -3.16 1.0
+      matrix -0.97308034 0.0 0.23046626 0.0 0.0 1.0 0.0 0.0 -0.23046626 0.0 -0.97308034 0.0 34.251472 0.5 -3.147622 1.0
     Mesh
       material "lamp_glass"
       mesh "warden_glass"
@@ -10305,10 +10305,10 @@ entities
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.44 -0.26 -0.24
+      translation 0.3 -0.43 0.16
   685:0
     GlobalTransform
-      matrix -1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 -1.0 0.0 37.55 1.475 -3.408 1.0
+      matrix -0.97308034 0.0 0.23046626 0.0 0.0 1.0 0.0 0.0 -0.23046626 0.0 -0.97308034 0.0 34.580273 0.93 -3.0610693 1.0
     Mesh
       material "shadow"
       mesh "warden_head"
@@ -10318,25 +10318,25 @@ entities
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation -0.05 0.545 0.008
+      translation 0.0 0.0 0.0
   686:0
     GlobalTransform
-      matrix -1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 -1.0 0.0 37.06 0.67 -3.16 1.0
+      matrix -0.97308034 0.0 0.23046626 0.0 0.0 1.0 0.0 0.0 -0.23046626 0.0 -0.97308034 0.0 34.251472 0.5 -3.147622 1.0
     Parent
       generation 0
       index 682
     PointLight
       colour 0.62 0.82 0.95
       intensity 0.87
-      range 2.0
+      range 0.35
       source_radius 0.0
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.44 -0.26 -0.24
+      translation 0.3 -0.43 0.16
   687:0
     GlobalTransform
-      matrix -1.0 0.0 0.0 0.0 0.0 0.9702957 0.2419219 0.0 0.0 0.2419219 -0.9702957 0.0 37.06 0.67 -3.16 1.0
+      matrix -0.97308034 0.0 0.23046626 0.0 0.11523313 0.8660254 0.48654017 0.0 -0.19958964 0.5 -0.8427123 0.0 34.251472 0.5 -3.147622 1.0
     Parent
       generation 0
       index 682
@@ -10351,13 +10351,13 @@ entities
       shadows true
       source_radius 0.0
     Transform
-      rotation -14.0 0.0 0.0
+      rotation -30.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.44 -0.26 -0.24
+      translation 0.3 -0.43 0.16
   688:0
     AudioSource
       bus Music
-      gain 0.8021274
+      gain 0.83007586
       looping true
       occlusion 0.0
       pitch 1.0

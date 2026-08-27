@@ -718,9 +718,15 @@ pub const WARDEN_REACH: f32 = 0.9;
 
 /// How high the warden's eye sits above its own origin, in metres.
 ///
-/// Its head is at local `0.545` in `warden_post.scene`; this is the same place, and a sight line is
-/// cast from here rather than from the floor so a bunk does not blind it.
-pub const WARDEN_EYE: f32 = 0.55;
+/// The void under the brim is at local `0.98` in `warden_head.mesh`; this is the same place, and a
+/// sight line is cast from here rather than from the floor so a bunk does not blind it.
+///
+/// **It rose from 0.55 when the figure became 2.15 m tall** (designer direction 2, D2). The old
+/// number was the head height of a 1.80 m figure and moving the mesh without moving this would have
+/// left the thing looking out of its own chest -- which nothing would have reported, because a sight
+/// line has no picture. It still cannot see across a bore wall: the lining reaches 2.3 m to the
+/// springing and the eye is at 1.91 m of world height.
+pub const WARDEN_EYE: f32 = 0.98;
 
 /// How high the player's eye sits above their origin, in metres.
 ///
@@ -2661,7 +2667,20 @@ fn write_contents(out: &mut String, layout: &Layout) {
     out.push_str(&format!(
         "entity warden \"The warden\" from {WARDEN_PIECE}\n"
     ));
-    out.push_str(&place(wx + PROP_SIDE, WARDEN_STAND, wz - PROP_OFFSET, 0.0));
+    // **On the wall the berths are NOT on**, which is `woke`'s correction one landmark along and the
+    // third instance of the same defect in this file. `write_condition` picks the berths' wall from
+    // the cell's own parity and this asked for `+PROP_SIDE` unconditionally, so on half of all seeds
+    // the warden stood 0.45 m across and 1.0 m along from a bunk -- and on the shipped level it did:
+    // warden at world (37.5, -3.4) against a berth at (37.95, -2.4).
+    //
+    // It is a picture problem before it is a placement one. F2 measures the figure on twenty sampled
+    // rows and calls a row usable only if its pixels form one unbroken run; the bunk broke seven of
+    // them, session 26 searched five camera framings without reaching sixteen, and engine gate review
+    // 30 ruled it *"a finding about where the level puts the warden, not about the lens."* It is also
+    // simply wrong in the fiction: nobody stands their post in front of a bunk.
+    let berths_east = (marks.warden.0 + marks.warden.1).rem_euclid(2) == 0;
+    let across = if berths_east { PROP_SIDE } else { -PROP_SIDE };
+    out.push_str(&place(wx + across, WARDEN_STAND, wz - PROP_OFFSET, 0.0));
 
     // **Neither of these two is placed anywhere**, so none takes an override — and an override naming
     // a component its prefab does not carry is refused at load, which is what would happen if the

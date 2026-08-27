@@ -1,110 +1,81 @@
 scene warden_figure
 version 1
 
-entity mesh "The warden: a greatcoat with a closure, a vent and a strap, so it is not a solid of revolution"
+entity mesh "The warden: a caped oilskin to the deck, one arm out with the tally board, and no part of it a solid of revolution"
   CompoundMesh
     parts
-      - position 0.02 -0.74 0.0
-        rotation 0.0 0.0 -2.0
-        solid Cylinder
-          shape
-            capped true
-            flat true
-            height 0.38
-            radius 0.36
-            sides 9
-            top_radius 0.315
-      - position 0.016 -0.41 0.0
-        rotation 0.0 0.0 -1.0
-        solid Cylinder
-          shape
-            capped true
-            flat true
-            height 0.34
-            radius 0.322
-            sides 9
-            top_radius 0.278
-      - position 0.004 -0.125 0.0
-        rotation 0.0 0.0 1.0
-        solid Cylinder
-          shape
-            capped true
-            flat true
-            height 0.29
-            radius 0.274
-            sides 9
-            top_radius 0.262
-      - position -0.014 0.115 0.0
-        rotation 0.0 0.0 2.0
-        solid Cylinder
-          shape
-            capped true
-            flat true
-            height 0.25
-            radius 0.259
-            sides 9
-            top_radius 0.3
-      - position -0.03 0.295 0.0
-        rotation 0.0 0.0 3.0
-        solid Cylinder
-          shape
-            capped true
-            flat true
-            height 0.17
-            radius 0.297
-            sides 9
-            top_radius 0.355
-      - position -0.05 0.48 0.0
-        rotation 0.0 0.0 3.0
-        solid Cylinder
-          shape
-            capped true
-            flat true
-            height 0.26
-            radius 0.2
-            sides 8
-            top_radius 0.24
-      - position -0.06 0.685 0.012
-        rotation -4.0 0.0 -6.0
-        solid Cylinder
-          shape
-            capped true
-            flat true
-            height 0.03
-            radius 0.215
-            sides 9
-            top_radius 0.2
-      - position -0.07 0.78 0.0
-        rotation 0.0 0.0 -5.0
-        solid Cylinder
-          shape
-            capped true
-            flat true
-            height 0.17
-            radius 0.115
-            sides 8
-            top_radius 0.098
-      - position -0.075 -0.06 -0.24
-        rotation 0.0 0.0 -4.0
+      - position 0.0 -0.31 0.0
         solid Box
           shape
-            size 0.23 0.86 0.055
-      - position 0.055 -0.09 -0.256
-        rotation 0.0 0.0 3.0
+            size 0.4 1.60 0.34
+      - mirror true false false
+        position 0.20 -0.33 0.0
+        rotation 0.0 90.0 0.0
+        solid Wedge
+          shape
+            depth 0.08
+            height_back 0.82
+            height_front 0.0
+            width 0.34
+      - mirror true false false
+        position 0.30 -1.11 0.0
+        rotation 0.0 90.0 0.0
+        solid Wedge
+          shape
+            depth 0.28
+            height_back 0.78
+            height_front 0.0
+            width 0.44
+      - position 0.0 0.71 0.0
         solid Box
           shape
-            size 0.2 0.82 0.055
-      - position 0.02 -0.72 0.3
+            size 0.68 0.44 0.3
+      - mirror true false false
+        position 0.35 0.93 0.0
+        rotation 0.0 90.0 180.0
+        solid Wedge
+          shape
+            depth 0.10
+            height_back 0.44
+            height_front 0.0
+            width 0.3
+      - mirror true false false
+        position 0.255 0.93 0.0
+        rotation 0.0 90.0 0.0
+        solid Wedge
+          shape
+            depth 0.29
+            height_back 0.14
+            height_front 0.0
+            width 0.26
+      - position 0.0 1.0 0.0
         solid Box
           shape
-            size 0.1 0.42 0.075
-      - position 0.0 0.02 -0.245
-        rotation 0.0 0.0 33.0
+            size 0.3 0.14 0.26
+      - position 0.0 0.35 0.0
         solid Box
           shape
-            size 0.095 0.72 0.045
-      - position 0.238 -0.19 -0.16
-        rotation 0.0 0.0 16.0
+            size 0.42 0.1 0.56
+      - position -0.145 -0.07 0.0
         solid Box
           shape
-            size 0.065 0.34 0.055
+            size 0.26 0.16 0.46
+      - position 0.15 -0.32 0.0
+        solid Box
+          shape
+            size 0.24 0.18 0.48
+      - position -0.4 0.39 0.16
+        rotation 0.0 0.0 20.0
+        solid Box
+          shape
+            size 0.13 0.22 0.15
+      - position -0.34 0.33 0.24
+        rotation 22.0 0.0 30.0
+        solid Box
+          shape
+            size 0.36 0.035 0.28
+      - position 0.02 0.72 -0.02
+        rotation 0.0 0.0 -34.0
+        solid Box
+          shape
+            size 0.07 0.66 0.34
