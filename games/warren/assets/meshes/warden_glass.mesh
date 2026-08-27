@@ -10,6 +10,6 @@ entity mesh "The lantern's glass, which is what makes the lamp readable as a sou
             capped true
             flat false
             height 0.125
-            radius 0.049
+            radius 0.061
             sides 10
-            top_radius 0.049
+            top_radius 0.061

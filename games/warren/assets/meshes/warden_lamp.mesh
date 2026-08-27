@@ -12,8 +12,7 @@ entity mesh "The lamp the warden carries"
             radius 0.055
             sides 10
             top_radius 0.055
-      - mirror false true false
-        position 0.0 0.09 0.0
+      - position 0.0 0.09 0.0
         solid Cylinder
           shape
             height 0.02

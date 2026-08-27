@@ -126,6 +126,16 @@ Read these before forming any theory. Each one cost a real review a real mistake
     This is the review procedure's own §4 #2 turned on the reviewer: the experiment could not
     distinguish "contributes nothing" from "was never applied".
 
+    **The operational rule, added by review 33 because the principle above is not what a reviewer
+    needs at the keyboard: re-run `cargo run -q -p warren --bin moment` between the edit and the
+    capture, for a scene or piece edit exactly as for a component one.** It cost the implementer two
+    full measure-and-iterate cycles in session 27 and the reviewer two more in review 33 — the lamp
+    was moved twice and measured both times where it had not moved. **The tell is a byte-identical
+    capture across a change you know is large**; when you see one, rebuild the snapshot before you
+    believe it. A `.material` edit *does* take effect without a rebuild — materials are assets, not
+    components, and the snapshot holds only the id — so the two behave differently and the difference
+    is not guessable.
+
     Session 23 produced two confident wrong findings this way in ten minutes — that the Warren's
     fittings and its `spill` directional were both dead data — and both were false. Rebuilt properly
     (`cargo run -p warren --bin moment` between the edit and the capture), the fittings move **73% of
@@ -199,6 +209,33 @@ Read these before forming any theory. Each one cost a real review a real mistake
 
     This is the seventh instance of #14 and the first committed *inside* a control demanded to prevent
     exactly it.
+
+18. **A figure that carries a light cannot be matted with the light on.** The matte instrument of
+    §4 #16 sets a figure's materials to `base_colour 0 0 0 / emissive 12 0 12` and calls its pixels
+    `R ≥ 200 ∧ G ≤ 60`. The warden carries a lamp, and its cyan-white spill pushed **G to 74–89** on
+    coat pixels that were otherwise saturated magenta — so four sampled rows split into two runs each
+    and the instrument reported **16 of 20 usable for a figure that is unbroken at 20 of 20**. Review
+    33 reproduced the contaminated reading (15/20) *before* reproducing the fix (19/20), which is the
+    right order. **Dark every light the figure carries before matting it**, and say in the submission
+    that you did.
+
+    The same matte must also clear `metallic_roughness_texture` **and** `normal_texture`, not only
+    `base_colour_texture`: a gloss map survives the flattening and its specular highlights fail the
+    `G ≤ 60` test in exactly the same way, producing a hairline "crack" in a silhouette that has none.
+
+19. **Relief reads because it changes the normal, not because it changes the depth.** Review 30
+    failed a figure for features standing 1.0–1.4 cm proud; session 27 fixed the depth and left the
+    *orientation* alone, standing 6 cm-proud boxes on a coat with their front faces **parallel** to
+    the surface they sat on. A box parallel to its host has the same normal as its host, so under any
+    light — directional or ambient — its front face shades identically and only its edge-on sides
+    differ. The measured result was a clause moving **2.80 → 2.80** for six centimetres of added
+    depth, which is not a null experiment but the correct answer to the question asked.
+
+    The control that proves it is in the same frame: tunnel lining under the same probe, about 1.3×
+    brighter than the coat, reads **3.66–5.64** against the coat's 2.1 — because its relief is plate
+    joints, bolt heads and ribs, which are **faces at angles to each other**. When a surface-incident
+    clause fails, check the angle between the added face and the face it was added to before
+    reaching for more light or more depth.
 
 ---
 

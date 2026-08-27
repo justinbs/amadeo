@@ -452,7 +452,15 @@ fn duck_timber() -> Surface {
 /// `metallic: 0.0` at `face_roughness: 0.97`, about as rough as anything here gets.
 ///
 /// **No lattice**, because cloth has no courses — the whole read comes from the fine grain, the
-/// macro tint and a lot of grime. Dark grey-green rather than black: `docs/11` §3a wants a shape you
+/// macro tint and a lot of grime. **And for four reviews the fine grain was not there.**
+/// `aggregate` was `0.0` under a comment claiming the opposite, which is `shelter_floor`'s F5
+/// clause (a) defect on a second surface. Measured at native, `coat_wool.png` read **6.1–9.0** mean
+/// adjacent |ΔL| against `ring_lining`'s 12.3–18.2 and `shelter_floor`'s 11.6–13.7 — about half the
+/// contrast of every surface the figure stands in front of, and most of why engine gate review 33
+/// measured the warden at a median of 2.1 against a bar of 3.0. Geometry was not the whole answer:
+/// review 33 was right that a box parallel to the surface it sits on cannot shade differently, and
+/// the folds this pass added are the other half, but a garment whose *texture* carries half the
+/// grain of the wall behind it cannot reach the bar however it is lit or shaped. Dark grey-green rather than black: `docs/11` §3a wants a shape you
 /// resolve out of the dark rather than a hole in it, and a true black silhouette carries no
 /// information about which way it is facing.
 fn coat_wool() -> Surface {
@@ -467,7 +475,7 @@ fn coat_wool() -> Surface {
         beneath: [0.14, 0.125, 0.10],
         wear: 0.30,
         grime: 0.62,
-        aggregate: 0.0,
+        aggregate: 0.34,
         face_roughness: 0.97,
         joint_roughness: 0.97,
         metallic: 0.0,
