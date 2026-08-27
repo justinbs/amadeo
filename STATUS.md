@@ -1,9 +1,10 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-27 (session 26)
+**Last updated:** 2026-08-28 (session 27)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE. The engine gate is RE-SCOPED —
-`docs/13` §1b is the binding plan. Of its seven FINISH rows, **two are closed** (F2b, F6), **two are
-built and awaiting a verdict** (F1, F5), and **three are open** (F2, F3, F4).**
+`docs/13` §1b is the binding plan. Of its seven FINISH rows, **three are closed** (F2b, F5, F6), **one
+is rebuilt and awaiting a verdict** (F2), **one is part-built and failed** (F1), and **two are open**
+(F3, F4).**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
 built: ADR 0031 (2D/3D coexistence, camera becomes an entity), 0033 (material and shader model), 0034
@@ -25,6 +26,92 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 4. **Frame time within a declared budget, numbers written down** — `docs/10-frame-budget.md`.
    8.3 µs per simulation tick, 125 µs of CPU-side frame preparation, and 2.7% of a frame at gate 3's
    200-body complexity.
+
+## 📬 For the next session — read this box first, then `docs/14-the-critic.md` §6
+
+> ### Session 27: F5 closed, the warden rebuilt from nothing, and four of F1's seven ordered changes
+>
+> **Everything is pushed through `4f5e707`.** The tree is clean. **Review 33 was in flight on F2 at
+> the end of the session — check `docs/14` §8 for its verdict before touching `games/warren`.**
+>
+> #### Read these first
+>
+> 1. **`docs/13` §1b is still the binding plan.** Order: finish `games/warren` → the editor (M4) →
+>    the first published game (`docs/05` **M4b**). `games/atrium` and `games/scarp` stay frozen.
+> 2. **`docs/14` §8, reviews 32 and 33.** Review 32 **closed F5** and failed F1 with seven ordered
+>    changes; review 33 was sent on F2 and F1's partials.
+> 3. **`docs/15` §5 direction 2** — the designer's ruling on what the warden *is*. The rebuild is
+>    built to it and it is worth reading before touching the figure.
+>
+> #### Where the seven rows stand
+>
+> | row | state |
+> |---|---|
+> | **F1** the opening and the ending | 🟡 **NOT PASSED (r32).** Four of seven ordered changes built. **Open: the yaw-270 spawn at 25.91% against a 12% bar, the title camera on a lit focal object, and the option block bottom-left.** |
+> | **F2** the warden's form | 🟡 **rebuilt from nothing (s27), awaiting review 33.** Five clauses pass; (c) short at 3.13; (d) three real ledges + three terminal rows |
+> | **F2b** the warden respects the level | ✅ r30 |
+> | **F3** wayfinding | 🟡 ordering built, **the names are not** — nine stencil glyphs |
+> | **F4** the torch beam | ⬜ the stretch row, allowed to slip |
+> | **F5** the objects you stop in front of | ✅ **r32 — CLOSED, all seven clauses** |
+> | **F6** the ear | ✅ r30 |
+>
+> #### The order I would take the remainder in
+>
+> 1. **Whatever review 33 orders on F2.**
+> 2. **F1's spawn (ordered change 1)** — 25.91% against 12%, and the fix is where the player is put,
+>    not an exposure knob.
+> 3. **A `stencil` binary, which serves TWO rows at once and is the best-value thing left.** F3 needs
+>    nine glyphs (A D E F G L N R Y) for `H HARDY · I INGLEFIELD · M MADDEN · O OLDHAM · T TORRINGTON`,
+>    and F1's ordered change 4 needs a **lit enamel sign** for the title camera to look at, carrying
+>    `docs/11` §8's `DEEP SHELTER No. 4 · SUB-SURFACE ARCHIVE · NO ADMITTANCE WITHOUT AUTHORITY`.
+>    Build the generator once and both rows get their asset.
+> 4. **F1's title camera**, once there is a sign to aim it at.
+>
+> #### Six findings worth more than the rows they came from
+>
+> 1. **A figure that carries a light cannot be matted with the light on.** The warden's lamp pushed
+>    `G` to 74–89 on saturated-magenta coat pixels, splitting four sampled rows and reporting **16 of
+>    20 usable for a figure that is unbroken at 20 of 20**. The matte must also clear
+>    `metallic_roughness_texture` and `normal_texture`, or specular highlights fail the `G ≤ 60` mask.
+> 2. **Editing a prefab `.scene` does not change an existing `.snapshot`.** A capture taken with
+>    `--from` restores baked transforms, so **mesh** edits appear and **scene** edits silently do not.
+>    This cost two full measure-and-iterate cycles: the lamp was moved twice and measured both times
+>    where it had not moved. **Re-run `moment` after every scene edit.**
+> 3. **The engine's focus paint is unconditional, and that is not a wall.** `amadeo-ui` repaints a
+>    focused `Panel` with `Accent` and its descendant text with `OnAccent` no matter what the scene
+>    says — so a game cannot ask for a caret by *painting* anything. It can by making the focused
+>    thing **smaller**: the focusable node is a 5 × 20 mark and the label is its **sibling** rather
+>    than its descendant. No engine change was needed and the "silent when forgotten" property the
+>    automatic rule exists to protect is untouched.
+> 4. **The 8 px the last session defended to the critic as an inexpressible glyph side-bearing was
+>    `padding Snug`, which is 8.0.** The critic refused the amendment on the ground that `hud.scene`
+>    already carries three different left margins compensating three bearings onto one column; it was
+>    right, and the arithmetic names the number.
+> 5. **The warden's post was placed at a fixed offset while the berths' wall comes from cell parity**,
+>    so on half of all seeds they shared a wall — and on the shipped level they did, 0.45 m apart.
+>    **Third instance of that defect in `lib.rs`**, and `woke`'s own comment already described the fix.
+>    `moment.rs`'s landmark camera had the same shape of bug: a hardcoded `across` that became a
+>    camera inside the lining the moment its subject moved.
+> 6. **Clauses (c) and (e) of F2 are in tension and I did not tune toward either.** Masking the lamp
+>    is what makes (e) pass by sixteen levels; what then lights the coat is ambient IBL, which is
+>    directionless and casts no shadow line on relief. Deepening the belt and standing both pockets
+>    6 cm proud moved (c) by **0.00**. Four columns read 8.6–17.0 and every one contains the lamp's
+>    emissive glass — published, not used.
+>
+> #### Process notes
+>
+> - **Run all four `CLAUDE.md` §4b checks in ONE command immediately before the commit.** Held to this
+>   session; both commits were green.
+> - **Do not edit game content while a review is in flight.** Held to this session.
+> - `gh` is not on PATH: prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
+> - **Both agents were used and both earned it.** The designer answered a question two failed passes
+>   had not asked — *what is the warden* — and the critic independently **agreed with the designer**
+>   on the caret, refusing the implementer's amendment request and saying so explicitly.
+> - Measuring a silhouette clause costs ~130 CLI calls per iteration at 3 px, ~350 at 1 px. Profile
+>   **once into a file** and compute every clause offline from it; do not re-capture per clause.
+
+<details>
+<summary>Session 26's handover box, kept for the findings in it</summary>
 
 ## 📬 For the next session — read this box first, then `docs/14-the-critic.md` §6
 
@@ -135,6 +222,8 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > - `cargo run -q -p warren --bin moment` writes **six** snapshots now — the two endings were
 >   unphotographable until this session.
 
+
+</details>
 
 <details>
 <summary>Session 26's working notes, kept for the six findings in them</summary>
