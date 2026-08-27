@@ -31,8 +31,17 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 > ### Session 27: F5 closed, the warden rebuilt from nothing, and four of F1's seven ordered changes
 >
-> **Everything is pushed through `4f5e707`.** The tree is clean. **Review 33 was in flight on F2 at
-> the end of the session — check `docs/14` §8 for its verdict before touching `games/warren`.**
+> **Everything is pushed through `a205737`.** The tree is clean. **Review 33 has ruled: F2 NOT
+> PASSED, seven ordered changes, four of them addressed this session.** Its full text is not yet in
+> `docs/14` §8 — the F2 row in `docs/13` §1b carries the measurements and the findings.
+>
+> **What review 33 credited and what it caught.** It relaxed (d)'s terminal rows on the submission's
+> own argument, adopted both instrument corrections and the snapshot trap into §4, ruled all four F1
+> items correct with no rework, and **agreed with the designer** rather than overruling it. It also
+> caught a real error: **the (a3) ratios did not reproduce because I computed them from a profile
+> taken before the hem was sunk, then changed the hem and reported the old numbers.** Third pass
+> running that (a3) has not reproduced; the third one was mine. **Publish the max width, the row it
+> came from and the waist median with every submission** — three clauses are percentages of it.
 >
 > #### Read these first
 >
@@ -48,7 +57,7 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > | row | state |
 > |---|---|
 > | **F1** the opening and the ending | 🟡 **NOT PASSED (r32).** Four of seven ordered changes built. **Open: the yaw-270 spawn at 25.91% against a 12% bar, the title camera on a lit focal object, and the option block bottom-left.** |
-> | **F2** the warden's form | 🟡 **rebuilt from nothing (s27), awaiting review 33.** Five clauses pass; (c) short at 3.13; (d) three real ledges + three terminal rows |
+> | **F2** the warden's form | 🟡 **NOT PASSED (r33).** Six clause readings pass — (a3) 1.54/1.41, (b) 13.17, (a1) 12, (a2) 2, usability 19/20, (e) 47 vs 79. **(c) fails at a median of 1.23 and (d) at 7 + 3 terminal.** Ordered change 1 closed: 67 clipped pixels → 1. **Open: ordered changes 2 (partially), 3, 4, 5** |
 > | **F2b** the warden respects the level | ✅ r30 |
 > | **F3** wayfinding | 🟡 ordering built, **the names are not** — nine stencil glyphs |
 > | **F4** the torch beam | ⬜ the stretch row, allowed to slip |
@@ -57,7 +66,15 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 >
 > #### The order I would take the remainder in
 >
-> 1. **Whatever review 33 orders on F2.**
+> 1. **F2's remaining ordered changes, and 3 before 2.** Review 33's own reasoning is that a light
+>    *behind* the warden fixes the outline, the composition and the ending frame at once — the
+>    figure's lower two thirds currently read **8.5 against a background of 8.3**, so it is not
+>    silhouetted, it is unlit in front of unlit. **`Side::South` does not work** (tried and reverted:
+>    the warden stands 3.4 m south of its cell centre, so a south-side camera at 5.7 m is outside the
+>    bore). It wants a **fitting placed behind the post in `lib.rs`**, not a camera turned toward one.
+>    Then (c) — and note that at the frame's derived 4.87 m, per-texel work cannot reach the bar: the
+>    coat's source contrast was doubled this session and the render moved **1.11 → 1.23**. Only
+>    geometry at a scale that survives mipmapping will do it, or a closer frame.
 > 2. **F1's spawn (ordered change 1)** — 25.91% against 12%, and the fix is where the player is put,
 >    not an exposure knob.
 > 3. **A `stencil` binary, which serves TWO rows at once and is the best-value thing left.** F3 needs
