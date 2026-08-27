@@ -337,9 +337,22 @@ pub fn build_from_scene(scene: &str) -> anyhow::Result<App> {
     // In `Simulation`, for the reason `games/atrium` gives: a clip that wrote a `Transform` would be
     // read by physics and `propagate_transforms` in the same tick, and running it later would apply
     // this tick's animation to next tick's physics.
+    //
+    // **And `.while_paused()`, because the first screen a player sees is a paused one.** `Screen`
+    // projects `Title`, `Paused` and `Ended` onto the engine's `Paused`, which by ADR 0065 skips
+    // `Simulation` for every system that has not opted in -- so the fittings were frozen at t=0.02
+    // behind the title, and 6.7 seconds of it changed **zero pixels**. Engine gate review 32
+    // measured `--ticks 5` and `--ticks 400` byte-identical and called the first screen a
+    // photograph; `docs/11` Â§8 asks for exactly one moving thing on it.
+    //
+    // This is the opt-in ADR 0065 exists for, and it is the game's call rather than the engine's:
+    // the only clip in the Warren drives a `SpotLight.intensity`, so what keeps running behind a
+    // pause menu is a failing tube rather than anything a player could act on. **A clip that moved a
+    // `Transform` would not take this line** -- animation is simulation (ADR 0066), so a moving
+    // platform running under a pause menu is a platform you could be carried off by while reading it.
     app.add_system(
         Stage::Simulation,
-        system(amadeo_anim::ANIMATE, amadeo_anim::animate),
+        system(amadeo_anim::ANIMATE, amadeo_anim::animate).while_paused(),
     );
 
     amadeo_behaviour::install(&mut app)?;

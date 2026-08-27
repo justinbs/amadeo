@@ -265,3 +265,111 @@ labels) and the suggestion (waking on the deck) are all open.
 
 **No disagreement with the critic has arisen yet.** Review 29 corrected the *implementation* of
 decision 5 and endorsed the decision itself.
+
+---
+
+### Direction 2 — `games/warren`, session 27 — the warden's form, in silhouette
+
+**Asked:** what the warden *is*, as a shape seen for one second in a dark tunnel at eight metres —
+because F2 had failed twice on **form** rather than on craft, and both passes had been attempts to
+satisfy a measurement rather than to build a thing. The brief offered it the exit that the honest
+answer might be *less* rather than more: smaller, darker, seen only in fragments, on the reading that
+`docs/11` §3's "never clearly seen" meant chasing a legible silhouette at all was the mistake.
+
+**It refused that framing, and the refusal is the most useful thing in the direction:**
+
+> *"A silhouette is by definition a legible outline you cannot resolve the surface of. What that
+> sentence forbids is the surface — a face, a texture, a material read, a detail you could describe if
+> you froze the frame. It does not forbid the outline; it **requires** one, because a shape you cannot
+> resolve at all is not a silhouette, it is a smudge, and a smudge is what the game has now."*
+
+**Decision 0, which governs every later judgement about this object: the player resolves the warden's
+OUTLINE and never its SURFACE.** Review 29 measured the figure at 207–231 against lining at 30–90 and
+called it clearly seen — that is a *surface* being seen, and the cause is that the figure is floodlit
+by the lamp it carries. Anything that makes the outline more legible is correct; anything that makes
+the surface more legible is wrong, **including a light you gave it yourself**.
+
+#### What it is, in one sentence
+
+> *"A shelter marshal on its round: too tall, in a caped oilskin that reaches the deck, under a tin hat
+> with nothing under it, carrying a tally board in the crook of one arm and a masked lamp on a strap
+> over the other shoulder."*
+
+#### The eight decisions
+
+1. **D1 — it is a plate, not a post.** Width : depth **>= 1.9 : 1** at the shoulders and **>= 1.6 : 1**
+   at the hem, and **no part of the body may be a solid of revolution** — `Cylinder` is allowed for the
+   hat and for carried objects and nowhere else. This is the half of review 30's verdict nobody had
+   named: *"a solid of revolution is as wide as it is deep, which means it presents the same shape from
+   every angle — that is what bollard means, and it is a stronger machine-made tell than the missing
+   shoulder edge."* **And it told us to design the patrol to use the consequence:** a figure 0.74 m wide
+   and 0.30 m deep **narrows to almost nothing when it turns to face you**, so F2b's turn-to-face
+   becomes a dramatic beat rather than a correctness fix.
+2. **D2 — 2.15 m, hem on the deck, no legs and no feet.** Two problems, one answer: this engine has no
+   walk cycle, and **a garment that pools on the floor has no feet to fail to move**. Height is the
+   cheapest "this is not a person" signal there is and cannot read as a modelling error.
+3. **D3 — a caped, belted oilskin, not a greatcoat**, because a greatcoat's outline is a tube. The
+   police/ARP/railway pattern's *un-designed* silhouette is flat shoulder top -> cape hem -> belted
+   waist -> skirt flaring to the deck, which is (a3)'s two bands **arriving from a real garment rather
+   than applied to one**. Shoulder **0.74**, waist **0.40**, hem **0.88**, depth <= 0.38 — **1.85x and
+   2.20x** against a 1.35 bar, over-built on purpose because the last two passes cleared it on the model
+   and lost it to projection.
+4. **D4 — three hard steps and no more: the brim, the cape hem, the top of the lamp.** Everything else
+   slopes; *"cloth does not have shelves in it."*
+5. **D5 — a tin hat**, ruling out the hood by name as *"the single most exhausted silhouette in
+   horror"* and because it would throw away the one thing this design has, which is that the threat is
+   **administrative**. Brim 0.58–0.62 m, on the same `shadow` material as the void, so helmet and
+   absence are one unbroken dark mass.
+6. **D6 — the landmark feature is the tally board, and counting must be visible.** Its argument is a
+   story beat rather than a shape: the player has already seen chalked tally boards on the walls, so a
+   figure carrying *the same object* lands the premise with no words — **the boards are not scenery,
+   something is still filling them in.** It also noted that a figure with a clipboard is memorable
+   precisely because it is bureaucratic, where a hooded figure with a lantern is every game ever made.
+   *"The sentence a player says to a friend is: the tall one in the tin hat that carries a board."*
+7. **D7 — it has one arm, and that is where the asymmetry lives.** One arm out holding the board, the
+   other under the cape, *"which is what a cape is for"* — so the two sides are not one object mirrored.
+   The enclosed negative space Playdead's rule wants comes free: a **0.30 x 0.22 m** hole between
+   forearm, board and coat, ~28 x 21 px at eight metres. Plus the lamp shoulder dropped 9 cm and a 6–8°
+   roll, so the figure carries its own weight rather than standing to attention.
+8. **D8 — the lamp stops lighting its carrier.** `bulb.range` 2.0 -> ~0.35 and `glow` pitched to ~-30°.
+   Blackout regulations required a warden's torch to be **masked**; the period rule and the design rule
+   are the same rule, which is the sign it is right.
+
+#### Two things worth keeping beyond this row
+
+**It pre-empted the pathology that produced both previous failures.** It expects clause (d)'s "at most
+three abrupt width changes" to fail on exactly the brim, the shoulder line, the cape hem and the lamp,
+and instructed that the figure be **submitted with those four steps named** rather than having its
+legible features deleted to satisfy a legibility measurement — *"the critic's clause to relax or hold,
+not yours and not mine."* That is the correct division, and it is `docs/14` §6's rule read from the
+other side.
+
+**And it named what not to touch:** the lamp on a strap, the void under the brim, `coat_wool` itself —
+*"the brightness problem was never the material; it was D8's light. Do not darken the coat to chase a
+number the lamp is causing"* — and the lamp's cyan-leaning white, whose *reach* is all that changes.
+
+#### Its drop order
+
+D1, D2, D5 and D3 never. Then the **arm** falls back to the board slung flat on a neck cord standing
+0.16 m proud (*"keeps the landmark, loses the hole — do not drop the board"*); then D7's lean; then D8;
+and a helmet tilted 8° askew is offered as a suggestion rather than a decision and is dropped first.
+
+#### Its one suggestion the implementer could not price
+
+**S1: the frame submitted for F2 should be the frame the design exists to produce** — `docs/11` §4's
+*"the silhouette appears at the pool's edge, passes through, and is gone"* — with a lit fitting behind
+the warden and the figure between camera and pool, rather than the figure photographed against unlit
+lining with its own lamp on its coat.
+
+#### What the implementer verified before building on it
+
+Two load-bearing repository claims, checked rather than taken. **`shadow` is used by nothing outside
+`warden_post.scene`** — confirmed, so the helmet can share it without contaminating F2's matte
+instrument. **The lamp floods the coat** — confirmed and *stronger* than stated: the direction
+estimated 0.5 m, and `bulb` sits at local `0.44` against a coat radius of ~0.28, so it is **~0.16 m off
+the coat surface** at range 2.0. No correction was needed; the conclusion was understated.
+
+**No disagreement with the critic has arisen.** Review 32, running concurrently on other rows, **agreed
+with this office** on the caret: it refused the implementer's request to amend F1's clause (b) and
+recorded that it was *"agreeing with the designer here, not overruling it"* — direction 1's decision 6
+had given the answer and the implementer had shipped the filled bar anyway. That decision is built now.

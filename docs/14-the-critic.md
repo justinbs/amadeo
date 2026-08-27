@@ -1549,3 +1549,103 @@ range in the yaw-270 frame*, which is the one crop of the spawn where the floor 
 and the mip chain has averaged least. The measurements this session took at 1.1 m and 2.32 m are in
 the submission; whatever it was about to look at is not among them, and the honest reading is that it
 had a specific magnification in mind that nobody has run.
+
+---
+
+### Review 32 — engine gate — `f153d66` — F1 and F5, re-sent — **F5 ✅ · F1 NOT PASSED · gate NOT POLISHED**
+
+The re-send review 31 never delivered. Twenty-four captures at 1920 × 1080, three magnified crops with
+stated rectangles, ~60 probes, ~35 profiles including one at full density (39,600 adjacent pairs), five
+texture sources at **native** resolution, both tracked measurements and R2 recounted off the filesystem,
+one number re-derived from the shader chain, and one self-correction.
+
+**It calibrated its instrument before using it**, which no prior review had done: its mean-adjacent-|ΔL|
+helper run on `ring_lining.png` gives **13.343** against review 30's published 12.48/12.67. A helper that
+reproduces a figure a previous review printed is one whose later numbers can be argued with.
+
+#### F5 closes, and clause (a)'s fix is the best-evidenced thing in the submission
+
+Source at native: `shelter_floor.png` **12.750** against the 0.82 that produced §4 #16 and review 30's
+2.82–6.18. On the render, measured **on-object** with every window's min/max published so a reader can
+see it is one surface, at distances derived from eye 1.59 m and focal 771.2:
+
+| row | distance | mean \|ΔL\| | min | max |
+|---|---|---|---|---|
+| 620 | 2.19 m | **3.888** | 147 | 183 |
+| 800 | 1.40 m | **7.266** | 101 | 181 |
+| 1000 | 0.89 m | **8.566** | 27 | 163 |
+
+All clear 3.0, and **the reading rises monotonically as the floor nears** — *"what real per-texel grain
+does under a mip chain and what a blur cannot fake."*
+
+**Review 31's dying lead was run and answered.** The yaw-270 frame does not magnify the screed: what is
+nearest the camera there is unlit timber duckboard reading 1.710 with a **maximum of 48**, and *"a surface
+whose brightest pixel is 48 cannot carry three levels of adjacent contrast and should not be asked to."*
+
+**Two of the row's own named crops are dead and it rewrote them (§4 #17).** `w_pm30` row 600 x1150–1270
+reads 4.412 with min 1 and max 177 — *"not a floor; the silhouette edge where lit screed meets the crate
+stack"* — and the crate patch (1080,470) now lands on lit bunk-and-wall at 108.6. **Both moved off their
+subjects when the spawn moved in the very submission being reviewed**, and taking the 4.412 would have
+closed the row on an edge. A future clause on this row must state a window **and publish its min/max**.
+
+#### F1 does not pass, and three of the submission's four figures do not reproduce
+
+- **(a) credited, but not at either crop the submission named.** Full density over `(700,800,200×200)` —
+  39,600 pairs — gives **1.003**, not 2.48; `(600,850)` gives **1.135**, not 2.84. Neither reproduces on
+  any channel, at any tick count, or at either resolution. *"The only reading near 2.48 anywhere is
+  vertical adjacency, and this project has never measured the metric down a column."* It credited the
+  clause on a crop that does pass — (1000,900,200×180) at **2.895 / 63** — because the hard-edged black
+  rectangle is genuinely gone, while recording that the numbers submitted for it are wrong.
+- **The survey that found that crop found something worse.** Nine of twelve 200×200 crops across the
+  title frame have a luma range of **14 or less**, under the clause's own 25-level bar; one has a range
+  of **2**. Whole frame mean **11.3**, with **89.2% of pixels below luma 16**.
+- **And it derived why, off the shader chain.** `accent` is authored sRGB (232, 80, 31) and renders as
+  (224, 85, 34) — the signature of ACES compression plus `saturation 0.95` — so **the UI is inside the
+  post chain**: the quad pipeline targets `SCENE_FORMAT`, `Rgba16Float`. A panel at alpha 0.65 is a
+  **0.35 multiply in linear light before the tonemapper**, far heavier than "65%" sounds. *"The scrim is
+  in the right place. The picture underneath it needed to be lit, and it is not."*
+- **(b) fails, and it refused the amendment**, on three grounds. There is no marker — row 560 runs solid
+  `(222–224, 84–85, 33–34)` from x=250 to x=493, *"a 244 × 36 px filled `Accent` rectangle, the largest
+  and most saturated object on the screen."* "Not expressible in the layout" is refuted by the file it
+  is claimed about: `hud.scene` carries `margin left` of **46.0, 51.0 and 44.0** on three siblings,
+  *"three different margins that exist precisely to compensate three different side-bearings onto one
+  column."* And the designer had already given the answer — decision 6's caret — which the commit
+  message quotes while shipping the bar. **It recorded that it was agreeing with the designer, not
+  overruling it.** It fails harder on `Ended`: three left edges at 262 / 274 / 282.
+  The half that passes: the label does not move with focus, 259 focused against 258 unfocused.
+- **(c) passes** — centroid 30.6–31.8% of frame width off centre against a 15% bar.
+- **(d) fails by more than double.** 1.07 / 7.10 / 0.15 / **25.91** per cent against a 12% bar, where the
+  submission claimed 0.0 / 0.9 / 0.1 / 6.8. The middle third of the yaw-270 frame is **58.30%**. Robust:
+  byte-identical at ticks 1 and 5, and 1280 × 720 reproduces the histogram.
+- **Neither ending capture contained its ending.** `caught`, `escaped` and `playing` all carried the
+  player's camera at *exactly* the same matrix, because `moment.rs` excluded both from landmark
+  placement. So `YOU GOT OUT` was drawn over the room you woke up in — defeating the light scrim's whole
+  stated reason — and `ACCOUNTED FOR` over a bore with no warden in it. **`moment.rs`'s own documented
+  defect, committed three paragraphs below the comment naming it.** The two *registers* are credited.
+
+#### Two things larger than any clause, neither mentioned in the submission
+
+1. **There is no title camera.** One `Camera` exists in the whole game, in `player_start.scene`, and the
+   title frame's structural edges land on the same pixels as the spawn's. `docs/11` §8's first bullet is
+   still true verbatim, and it is why the frame is mean 11.3 — *"a 65% scrim over an unlit room is a
+   black rectangle reached by a different route."*
+2. **Nothing moves.** `--ticks 5` and `--ticks 400` are **byte-identical** and `amadeo anim` reports all
+   fourteen `fitting_fail` players frozen at **t = 0.02**, because `Screen::Title` projects onto `Paused`
+   and `animate` runs in `Simulation`. *"Zero is a photograph, and it is the first thing a player meets."*
+
+#### §3 #6 — the tracked denominators are stale for the second review running
+
+**0 / 39** box-only meshes and **15 / 20** materials on all three slots, against the file's 0 / 35 and
+14 / 14 of sixteen. The five exemptions are `glow`, `glow_dead`, `flood` and — unnamed until now —
+`lamp_glass` and `shadow`. *"The numerators are honest; both denominators are stale."*
+
+#### Rulings
+
+- **F5 — ✅ CLOSES.** Review 32, artefacts `c_screed_2m.png` (crop 990,620,180×120 at 5×), `w_pm30.png`,
+  `w_auth.png`, `w_spawn_y270.png`. All seven clauses hold.
+- **F1 — 🟡 NOT PASSED.** (a) and (c) pass; (b) fails and the amendment is refused; (d) fails at 25.91%
+  against 12%; the endings' captures do not contain either ending.
+
+**VERDICT: NOT POLISHED.** Seven ordered changes: the yaw-270 spawn, the endings' places, the caret,
+a title camera on a lit focal object, `.while_paused()` on `animate`, the denominators, and — lower
+priority — the option block to the bottom-left per §8.

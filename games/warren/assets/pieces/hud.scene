@@ -297,15 +297,6 @@ entity hud "HUD"
           visible true
 
       entity title_begin "Begin"
-        Focusable
-          enabled true
-          order 0
-        MenuButton
-          choice Begin
-        Panel
-          order 10
-          paint Custom
-            rgba 0.0 0.0 0.0 0.0
         UiNode
           align_children Start
           anchor
@@ -322,6 +313,33 @@ entity hud "HUD"
           padding Snug
           size 0.0 36.0
           visible true
+
+        entity title_begin_mark "The focus mark -- a rule beside the line, not a bar behind it"
+          Focusable
+            enabled true
+            order 0
+          MenuButton
+            choice Begin
+          Panel
+            order 10
+            paint Custom
+              rgba 0.0 0.0 0.0 0.0
+          UiNode
+            align_children Start
+            anchor
+              horizontal Start
+              vertical Centre
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left -34.0
+              right 0.0
+              top 0.0
+            padding None
+            size 5.0 20.0
+            visible true
 
         entity title_begin_label "Begin label"
           Text
@@ -349,15 +367,6 @@ entity hud "HUD"
             visible true
 
       entity title_continue "Continue"
-        Focusable
-          enabled true
-          order 1
-        MenuButton
-          choice Load
-        Panel
-          order 10
-          paint Custom
-            rgba 0.0 0.0 0.0 0.0
         UiNode
           align_children Start
           anchor
@@ -374,6 +383,33 @@ entity hud "HUD"
           padding Snug
           size 0.0 36.0
           visible true
+
+        entity title_continue_mark "The focus mark -- a rule beside the line, not a bar behind it"
+          Focusable
+            enabled true
+            order 1
+          MenuButton
+            choice Load
+          Panel
+            order 10
+            paint Custom
+              rgba 0.0 0.0 0.0 0.0
+          UiNode
+            align_children Start
+            anchor
+              horizontal Start
+              vertical Centre
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left -34.0
+              right 0.0
+              top 0.0
+            padding None
+            size 5.0 20.0
+            visible true
 
         entity title_continue_label "Continue label"
           Text
@@ -401,15 +437,6 @@ entity hud "HUD"
             visible true
 
       entity title_quit "Quit"
-        Focusable
-          enabled true
-          order 2
-        MenuButton
-          choice Quit
-        Panel
-          order 10
-          paint Custom
-            rgba 0.0 0.0 0.0 0.0
         UiNode
           align_children Start
           anchor
@@ -426,6 +453,33 @@ entity hud "HUD"
           padding Snug
           size 0.0 36.0
           visible true
+
+        entity title_quit_mark "The focus mark -- a rule beside the line, not a bar behind it"
+          Focusable
+            enabled true
+            order 2
+          MenuButton
+            choice Quit
+          Panel
+            order 10
+            paint Custom
+              rgba 0.0 0.0 0.0 0.0
+          UiNode
+            align_children Start
+            anchor
+              horizontal Start
+              vertical Centre
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left -34.0
+              right 0.0
+              top 0.0
+            padding None
+            size 5.0 20.0
+            visible true
 
         entity title_quit_label "Quit label"
           Text
@@ -519,14 +573,6 @@ entity hud "HUD"
           visible true
 
       entity pause_resume "Resume"
-        Focusable
-          enabled true
-          order 0
-        MenuButton
-          choice Resume
-        Panel
-          order 10
-          paint Surface
         UiNode
           align_children Start
           anchor
@@ -543,6 +589,32 @@ entity hud "HUD"
           padding Snug
           size 0.0 36.0
           visible true
+
+        entity pause_resume_mark "The focus mark -- a rule beside the line, not a bar behind it"
+          Focusable
+            enabled true
+            order 0
+          MenuButton
+            choice Resume
+          Panel
+            order 10
+            paint Surface
+          UiNode
+            align_children Start
+            anchor
+              horizontal Start
+              vertical Centre
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left -34.0
+              right 0.0
+              top 0.0
+            padding None
+            size 5.0 20.0
+            visible true
 
         entity pause_resume_label "Resume label"
           Text
@@ -570,14 +642,6 @@ entity hud "HUD"
             visible true
 
       entity pause_save "Save"
-        Focusable
-          enabled true
-          order 1
-        MenuButton
-          choice Save
-        Panel
-          order 10
-          paint Surface
         UiNode
           align_children Start
           anchor
@@ -594,6 +658,32 @@ entity hud "HUD"
           padding Snug
           size 0.0 36.0
           visible true
+
+        entity pause_save_mark "The focus mark -- a rule beside the line, not a bar behind it"
+          Focusable
+            enabled true
+            order 1
+          MenuButton
+            choice Save
+          Panel
+            order 10
+            paint Surface
+          UiNode
+            align_children Start
+            anchor
+              horizontal Start
+              vertical Centre
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left -34.0
+              right 0.0
+              top 0.0
+            padding None
+            size 5.0 20.0
+            visible true
 
         entity pause_save_label "Save label"
           Text
@@ -621,14 +711,6 @@ entity hud "HUD"
             visible true
 
       entity pause_load "Load"
-        Focusable
-          enabled true
-          order 2
-        MenuButton
-          choice Load
-        Panel
-          order 10
-          paint Surface
         UiNode
           align_children Start
           anchor
@@ -645,6 +727,32 @@ entity hud "HUD"
           padding Snug
           size 0.0 36.0
           visible true
+
+        entity pause_load_mark "The focus mark -- a rule beside the line, not a bar behind it"
+          Focusable
+            enabled true
+            order 2
+          MenuButton
+            choice Load
+          Panel
+            order 10
+            paint Surface
+          UiNode
+            align_children Start
+            anchor
+              horizontal Start
+              vertical Centre
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left -34.0
+              right 0.0
+              top 0.0
+            padding None
+            size 5.0 20.0
+            visible true
 
         entity pause_load_label "Load label"
           Text
@@ -672,14 +780,6 @@ entity hud "HUD"
             visible true
 
       entity pause_quit "Quit"
-        Focusable
-          enabled true
-          order 3
-        MenuButton
-          choice Quit
-        Panel
-          order 10
-          paint Surface
         UiNode
           align_children Start
           anchor
@@ -696,6 +796,32 @@ entity hud "HUD"
           padding Snug
           size 0.0 36.0
           visible true
+
+        entity pause_quit_mark "The focus mark -- a rule beside the line, not a bar behind it"
+          Focusable
+            enabled true
+            order 3
+          MenuButton
+            choice Quit
+          Panel
+            order 10
+            paint Surface
+          UiNode
+            align_children Start
+            anchor
+              horizontal Start
+              vertical Centre
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left -34.0
+              right 0.0
+              top 0.0
+            padding None
+            size 5.0 20.0
+            visible true
 
         entity pause_quit_label "Quit label"
           Text
@@ -809,7 +935,7 @@ entity hud "HUD"
         grow 0.0
         margin
           bottom 0.0
-          left 258.0
+          left 253.0
           right 0.0
           top 300.0
         padding None
@@ -857,7 +983,7 @@ entity hud "HUD"
         grow 0.0
         margin
           bottom 90.0
-          left 258.0
+          left 234.0
           right 0.0
           top 0.0
         padding Normal
@@ -865,15 +991,6 @@ entity hud "HUD"
         visible true
 
       entity ended_again "Try again"
-        Focusable
-          enabled true
-          order 0
-        MenuButton
-          choice TryAgain
-        Panel
-          order 10
-          paint Custom
-            rgba 0.0 0.0 0.0 0.0
         UiNode
           align_children Start
           anchor
@@ -890,6 +1007,33 @@ entity hud "HUD"
           padding Snug
           size 0.0 36.0
           visible true
+
+        entity ended_again_mark "The focus mark -- a rule beside the line, not a bar behind it"
+          Focusable
+            enabled true
+            order 0
+          MenuButton
+            choice TryAgain
+          Panel
+            order 10
+            paint Custom
+              rgba 0.0 0.0 0.0 0.0
+          UiNode
+            align_children Start
+            anchor
+              horizontal Start
+              vertical Centre
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left -34.0
+              right 0.0
+              top 0.0
+            padding None
+            size 5.0 20.0
+            visible true
 
         entity ended_again_label "Try again label"
           Text
@@ -917,15 +1061,6 @@ entity hud "HUD"
             visible true
 
       entity ended_quit "Quit"
-        Focusable
-          enabled true
-          order 1
-        MenuButton
-          choice Quit
-        Panel
-          order 10
-          paint Custom
-            rgba 0.0 0.0 0.0 0.0
         UiNode
           align_children Start
           anchor
@@ -942,6 +1077,33 @@ entity hud "HUD"
           padding Snug
           size 0.0 36.0
           visible true
+
+        entity ended_quit_mark "The focus mark -- a rule beside the line, not a bar behind it"
+          Focusable
+            enabled true
+            order 1
+          MenuButton
+            choice Quit
+          Panel
+            order 10
+            paint Custom
+              rgba 0.0 0.0 0.0 0.0
+          UiNode
+            align_children Start
+            anchor
+              horizontal Start
+              vertical Centre
+            flow None
+            gap None
+            grow 0.0
+            margin
+              bottom 0.0
+              left -34.0
+              right 0.0
+              top 0.0
+            padding None
+            size 5.0 20.0
+            visible true
 
         entity ended_quit_label "Quit label"
           Text

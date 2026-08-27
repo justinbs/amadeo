@@ -110,6 +110,42 @@ fn main() {
     }
 }
 
+/// Which landmark a moment is photographed from, or `None` for one taken where the player already is.
+///
+/// # The endings were being photographed in the room you woke up in
+///
+/// **An ending is a place as much as it is a line**, and for one review neither of them had one. Both
+/// were excluded from [`stand_at_landmark`] outright, so `caught.snapshot`, `escaped.snapshot` and
+/// `playing.snapshot` all carried the player's camera at exactly the same matrix -- engine gate
+/// review 32 found the three identical and confirmed it on pixels, five probes tracking the spawn
+/// frame at a constant 0.72-0.76 ratio through the scrim.
+///
+/// What that cost is the whole of what each ending was for. `YOU GOT OUT` was drawn over the bore you
+/// started in rather than the door you left through, which defeats the light 0.35 scrim's stated
+/// reason for being light -- that the frame you escaped through is readable behind it. And
+/// `ACCOUNTED FOR` was drawn over an empty stretch of tunnel at the moment the warden reaches you,
+/// with nothing in the picture that arrived.
+///
+/// **This is `moment.rs`'s own documented defect, committed three paragraphs below the comment naming
+/// it**: a landmark snapshot that does not contain the thing it is named after. Reviews 19 and 20
+/// found it on the exit and the key, and [`stand_at_landmark`] carries both corrections in its own
+/// doc comment. So the endings are staged rather than exempted.
+fn staging_landmark(name: &str) -> Option<&'static str> {
+    match name {
+        "key" => Some("key"),
+        "exit" => Some("exit"),
+        "warden" => Some("warden"),
+        // You got out through the door, so the door is what is behind the line.
+        "escaped" => Some("exit"),
+        // It reached you, so it is what is behind the line. `stand_at_landmark` anchors this one on
+        // the figure's live position rather than on its spawn cell, which is what makes that true
+        // after a hundred ticks of pursuit.
+        "caught" => Some("warden"),
+        // The spawn is photographed from the spawn.
+        _ => None,
+    }
+}
+
 /// Builds the level, stands the player at one landmark, and writes that snapshot.
 fn write_moment(name: &str, what: &str, file: &str) {
     let mut app = match warren::build_simulation() {
@@ -150,10 +186,10 @@ fn write_moment(name: &str, what: &str, file: &str) {
     // **Standing where the moment asks for.** Placed rather than walked, and *after* the settle: the
     // character controller rewrites its own `Transform` from `CharacterMotion` every tick, so a write
     // before it has found the floor is undone (Q30).
-    if !matches!(name, "start" | "caught" | "escaped")
-        && let Err(error) = stand_at_landmark(&mut app, name)
+    if let Some(stage) = staging_landmark(name)
+        && let Err(error) = stand_at_landmark(&mut app, stage)
     {
-        eprintln!("could not stand at the {name}: {error}");
+        eprintln!("could not stand at the {stage}: {error}");
         std::process::exit(1);
     }
 
