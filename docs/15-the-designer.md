@@ -235,3 +235,33 @@ Everything else is recorded here and lands in F1, F3 and F5, which are later in 
 decision 1 in particular runs the same way as the critic's own F5(d), which requires that no
 non-interactive surface out-saturate `accent`.
 
+
+#### What direction 1 had produced by the end of session 26
+
+Seven of its fourteen items are built. **Decision 5** (the warden's lamp out of the fittings' colour
+family) landed with F2 and review 29 ruled it *"was never the designer's to grant"* — `docs/11` §4
+already specified a cold narrow beam and the shipped green flood met neither word, so what the
+designer identified was **a violation of a passed design rather than a new direction**.
+
+**Decisions 1, 2 and 4** landed with F1: the ending line and the title heading off `Accent`,
+`IT FOUND YOU` → **`ACCOUNTED FOR`**, and the prompts in the shelter's own voice — `HAND LAMP`,
+`WAY OUT · SECURED`, and `WAY OUT` kept exactly as it was.
+
+**Decision 3** landed as the two registers, and it is the one that changed the game most. Escaped
+speaks as a sign — `Title`, high and left, over a 0.35 scrim, the tunnel measuring 4.44 mean adjacent
+|ΔL| over a range of 65 through it. Caught speaks as a record — `Body`, low and left where a
+reference number goes on a form, over a 0.78 scrim reading 2.07 over 31. **A player knows which
+ending they got before they read a word.**
+
+**Decisions 6 and 10** landed too: both names on the title screen (`THE WARREN` over `SHELTER FOUR ·
+SUB-SURFACE ARCHIVE`), which closes `docs/11` §10's *"a title the world never uses belongs to the box
+art"*; and the warden **treads** rather than breathing until it sees you, so the change of sound is
+the moment of being noticed.
+
+**Still to build:** decision 8's stretch rule is done but **decision 11's names are not** — nine
+stencil glyphs, and the drop-first descope to three sections needs five. Decision 7 (BEGIN dropping
+the player where the title camera stood), decision 12 (`KEY · T`), decision 13 (per-outcome button
+labels) and the suggestion (waking on the deck) are all open.
+
+**No disagreement with the critic has arisen yet.** Review 29 corrected the *implementation* of
+decision 5 and endorsed the decision itself.

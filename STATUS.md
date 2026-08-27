@@ -1,8 +1,9 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-26 (session 26)
+**Last updated:** 2026-08-27 (session 26)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE. The engine gate is RE-SCOPED —
-`docs/13` §1b is the binding plan and seven FINISH rows are what is left of it.**
+`docs/13` §1b is the binding plan. Of its seven FINISH rows, **two are closed** (F2b, F6), **two are
+built and awaiting a verdict** (F1, F5), and **three are open** (F2, F3, F4).**
 
 Every expensive decision in M2 and M2.5 was made before its code, and all twelve are decided *and*
 built: ADR 0031 (2D/3D coexistence, camera becomes an entity), 0033 (material and shader model), 0034
@@ -26,6 +27,117 @@ always on), **0041** (parallelism is deterministic by construction or absent —
    200-body complexity.
 
 ## 📬 For the next session — read this box first, then `docs/14-the-critic.md` §6
+
+> ### Session 26: four rows built, two closed, and the plan cut from thirty-four rows to seven
+>
+> **Everything is pushed through `d1afe9d` and all five CI runs are green.** The tree is clean.
+>
+> #### Read these three things before anything else
+>
+> 1. **`docs/13` §1b is the binding plan.** Justin re-scoped the gate: finish `games/warren` in **two
+>    or three full context windows**, then **the editor (M4)**, then **the first published game** —
+>    a survival game in the Project Zomboid line, isometric, **not a demo** (`docs/05` **M4b**).
+>    Thirty-four open rows became **seven**. `games/atrium` and `games/scarp` are **frozen**.
+> 2. **There are two agents now.** The critic (`docs/14`) is the main agent and its verdict is
+>    binding. The **designer** (`.claude/agents/designer.md`, brief and ledger in **`docs/15`**) owns
+>    player experience, story, worldbuilding, theming and UI — **its decisions bind the implementer
+>    too**, and only Justin and the critic may overrule it. Its first direction is `docs/15` §5 and
+>    about half of it is built.
+> 3. **Review 31 died to a session limit and delivered NO VERDICT.** Its full record is `docs/14` §8.
+>    **Re-send F1 and F5 at `98488c1` as the first act of the next session** — the tree has not moved
+>    since, so the submission in that ledger entry is still accurate.
+>
+> #### Where the seven rows stand
+>
+> | Row | State |
+> |---|---|
+> | **F2b** the warden respects the level | ✅ **closed, review 30** |
+> | **F6** the ear | ✅ **closed, review 30** |
+> | **F5** the objects you stop in front of | 🟡 seven of seven measured; awaiting the verdict review 31 never gave |
+> | **F1** the opening and the ending | 🟡 built; awaiting the same verdict |
+> | **F3** wayfinding | 🟡 the ordering is built and reads `H·3 I·3 M·3 O·3 T·2` ascending; **the names are not** |
+> | **F2** the warden's form | ⬜ **NOT PASSED (r30)** — needs a modelling pass, not an increment |
+> | **F4** the torch beam | ⬜ the stretch, untouched. ADR 0087 is accepted and unbuilt |
+>
+> #### What is left, in the order I would take it
+>
+> 1. **Re-send F1 + F5.** Costs nothing, and two rows may close on it.
+> 2. **F3's names.** `docs/15` §5 decision 11 gives them: **H HARDY · I INGLEFIELD · M MADDEN ·
+>    O OLDHAM · T TORRINGTON**, four of five being real Clapham South sub-shelter names. Needs nine
+>    stencil glyphs (**A D E F G L N R Y**). **Write a `stencil` binary that emits them**, the way
+>    `pix`, `tone`, `sounds` and `finishes` already emit their assets — nine hand-authored meshes is
+>    the wrong shape. The designer's drop-first descope is **three** sections (H M O), needing five.
+> 3. **F2.** See below — it is the one genuinely hard thing left.
+> 4. **F4** if the budget allows. ADR 0087 is accepted; the row is named as the one allowed to slip.
+>
+> #### F2 is the hard one, and I failed at it twice — read this before trying
+>
+> Review 30's structural verdict: *"a stack of coaxial cones cannot produce a shoulder line, because a
+> cone's widest place is a circle and a shoulder is a horizontal edge. That is the structural reason
+> this keeps failing, and it is not fixed by rotating anything."*
+>
+> I tried its ordered changes on the cone body and **made the figure worse twice running** — plackets
+> standing 7–9 cm proud of a cone read as planks bolted on, not as cloth. I then tried a box-and-wedge
+> rebuild and it read as stacked blocks. **Both were reverted**; the committed figure is the one
+> review 30 measured. What stands from those passes: the **hem cap annulus is closed** and the
+> **lantern is outboard at radial 0.50**, which is the figure's first enclosed negative space.
+>
+> **Do not iterate on this with a four-minute capture loop.** It is a modelling problem and it wants
+> one careful pass with the references review 30 named: **Playdead** (silhouettes legible at one bit,
+> because of *enclosed negative space* — a gap you can see the room through), **Tarsier** (mass
+> asymmetric about the vertical — one shoulder dropped, one side heavier), **Frictional** (never
+> fully lit, one landmark feature). And review 30's own ordered changes 1–3 are still the list.
+>
+> #### Two decisions belong to Justin and both are now ADRs
+>
+> **Q44 → ADR 0086** (occlusion is a value written from above) and **Q45 → ADR 0087** (scattering is
+> its own `Environment` field). He chose both and made each conditional on the critic approving too;
+> review 29 approved both **with changes**, which are amendments at the end of each file. 0086 is
+> built. 0087 is F4.
+>
+> **And one thing only Justin can settle**, on headphones, once: does `warden_breath` read as a
+> creature or as filtered noise; does `warren_tone` leave silence audible; do `caught` and `escaped`
+> read as two different endings. Any "no" is a row. Nothing else in audio is.
+>
+> #### Six findings worth not rediscovering
+>
+> 1. **A texture measured from a render is a texture nobody measured.** `games/warren`'s floor was
+>    flagged by reviews 20, 22 and 25 as detail failing to survive to render scale, and each concluded
+>    the texture was right. Opening the PNG settled it: **0.82 mean adjacent |ΔL| at native**, a wash.
+>    `grimy` called `tiling(.., 704)` on a 1024 map under a comment claiming per-texel grain, and
+>    **gradient noise is exactly zero at every lattice point** — 1.45 texels per cell returns nothing.
+>    Now `docs/14` §4 **#16**.
+> 2. **A control is not a control until you have shown it lands on the object.** My F2 control column
+>    was 62% *off* the old model, measuring the wall behind it. `docs/14` §4 **#17**.
+> 3. **I measured width as a COUNT of figure pixels and the clause means EXTENT.** On an occluded row
+>    a count loses the hidden pixels and inflates every ratio dividing by the waist: I reported 1.80
+>    and 1.59, the truth was **1.14 and 1.01**.
+> 4. **A cast to the ears hits the listener's own body just before arriving**, so every voice reads as
+>    fully occluded — and it presents as *the whole game getting quieter*, indistinguishable from the
+>    feature working. `modules/amadeo-interaction` hit the same thing from the other end in s18.
+> 5. **A green test can enforce the defect.** F3's old test required two cells sharing a door to carry
+>    different letters — which forces a change every twelve metres, and the only scheme that does that
+>    *is* the distance ring the row exists to remove.
+> 6. **Two pieces in one footprint is invisible to the generator that placed them.** `WOKE_ASIDE` 2.0
+>    against `BUNK_SIDE` 1.95, with the crate's wall chosen by the way the player happened to be
+>    *facing*. Two reviews found a bunk's leg on a crate lid.
+>
+> #### Process notes
+>
+> - **Run all four `CLAUDE.md` §4b checks in one command immediately before the commit.** CI went red
+>   on `00bb4c9` over a fmt diff my own check had passed, because I ran the check before the edits
+>   that broke it. A green check on a tree you then changed is a green check on a different tree.
+> - **Do not edit game content while a review is in flight.** I broke this once this session and
+>   caught it one command later — the prompts and HUD paints I was editing appear in the frames the
+>   critic was capturing. Stash and wait.
+> - `gh` is not on PATH: prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
+> - Regenerating textures takes ~4 minutes: use `cargo run --release -p warren --bin finishes`.
+> - `cargo run -q -p warren --bin moment` writes **six** snapshots now — the two endings were
+>   unphotographable until this session.
+
+
+<details>
+<summary>Session 26's working notes, kept for the six findings in them</summary>
 
 > ### Session 26: re-scoped twice, a second agent, and the warden stopped being boxes and started respecting walls
 >
@@ -270,6 +382,9 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 >
 > `gh` is not on PATH: prefix with `$env:PATH = "C:\Program Files\GitHub CLI;$env:PATH"`.
 
+
+
+</details>
 
 <details>
 <summary>Session 25's box, kept for the gate state it handed over</summary>

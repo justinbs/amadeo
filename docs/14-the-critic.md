@@ -1528,3 +1528,24 @@ row — but the ledger says so.
 *"Fifteen seconds of game time changes not one pixel."* No `.anim` file anywhere in `games/warren`,
 while `games/atrium` has had `lamp_flicker.anim` since M2. *"A horror interior in which nothing
 whatever moves is a still life, and the engine has had the system for four milestones."*
+
+---
+
+### Review 31 — engine gate — `98488c1` — F1 and F5 — **NO VERDICT (session limit)**
+
+The third review lost this way, after the two before review 19. It was submitted at a clean tree with
+F5's clause (a) fixed and F1 built for the first time, and it stopped mid-evidence. Its last line is
+the whole of what it delivered:
+
+> *"One check before I credit F5: the same grain at close range, where the yaw-270 frame magnifies it
+> most."*
+
+**That is not a verdict and it is not recorded as one.** F1 and F5 both stay 🟡 **built, awaiting
+verdict**, and the next session re-sends the same submission at the same commit. `docs/13` §1b's status
+column says the same.
+
+**Read the last line as a lead, not as a finding.** It was about to check the screed's grain *at close
+range in the yaw-270 frame*, which is the one crop of the spawn where the floor is nearest the camera
+and the mip chain has averaged least. The measurements this session took at 1.1 m and 2.32 m are in
+the submission; whatever it was about to look at is not among them, and the honest reading is that it
+had a specific magnification in mind that nobody has run.

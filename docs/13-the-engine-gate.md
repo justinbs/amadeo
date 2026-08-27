@@ -19,7 +19,7 @@
 
 ## 1. Status at a glance
 
-**Gate verdict: NOT POLISHED (review 27).** **Item 24 is CLOSED** — ✅ written by review 27 on
+**Gate verdict: NOT POLISHED (review 30).** **F2b and F6 are ✅ closed**; F1, F5 are 🟡 built and awaiting a verdict that **review 31 did not deliver — it died to a session limit and a blank is not a verdict**; F2 and F3 are open. Re-send F1 and F5 at `98488c1` first. **Item 24 is CLOSED** — ✅ written by review 27 on
 clause (g) alone, after twelve delivered reviews and two that died to session limits. **The remainder
 is fourteen open rows below rather than a list attached to one item**, which is review 25's scope
 ruling: *"everything else is a specific object, not a property of the game, and specific objects belong
