@@ -75,7 +75,7 @@ entity warden "The warden"
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.40 -0.43 0.20
+      translation 0.40 0.12 0.20
 
   entity glass "The lit glass INSIDE the lantern -- engine gate review 29 measured the lamp body at ten levels above the coat beside it, which is not a light source, and docs/11 §4 makes this object the ranged tell the whole warden mechanic runs on"
     Mesh
@@ -84,7 +84,7 @@ entity warden "The warden"
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.40 -0.43 0.20
+      translation 0.40 0.12 0.20
 
   entity head "The tin hat and the void under it -- one dark mass, because a helmet and an absence sharing a material is what makes the brim the only edge"
     Mesh
@@ -98,12 +98,12 @@ entity warden "The warden"
   entity bulb "The bulb itself, which is what lights the coat carrying it"
     PointLight
       colour 0.62 0.82 0.95
-      intensity 0.04
-      range 0.14
+      intensity 0.03
+      range 0.06
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.40 -0.43 0.20
+      translation 0.40 0.12 0.20
 
   entity glow "What the lamp throws"
     SpotLight
@@ -118,4 +118,4 @@ entity warden "The warden"
     Transform
       rotation -62.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.40 -0.43 0.20
+      translation 0.40 -0.05 0.20

@@ -1686,3 +1686,43 @@ closed the row on an edge. A future clause on this row must state a window **and
 **VERDICT: NOT POLISHED.** Seven ordered changes: the yaw-270 spawn, the endings' places, the caret,
 a title camera on a lit focal object, `.while_paused()` on `animate`, the denominators, and — lower
 priority — the option block to the bottom-left per §8.
+
+---
+
+### Review 33 — engine gate — `4f5e707` — F2 rebuilt, plus four of review 32's seven — **F2 NOT PASSED; the four F1 items correct**
+
+Twenty-four captures, four crops, ~60 probes, a **341-row 1-pixel silhouette scan**, three controlled A/Bs with byte-identical restores, and the projection re-derived (focal 771.2; the figure is 2.155 m over 341 px, so the frame is at **4.87 m**).
+
+**It reproduced the contaminated instrument before it reproduced the fix.** Matted with the warden's lamp **on** it got 15/20 usable; with `bulb` and `glow` darked, **19/20**. Both of the submission's instrument corrections were adopted into §4 as **#18**, and the `moment`-after-a-scene-edit rule into **#11**.
+
+**The correction:** *"Your max width is 144 and mine is 134, and every ratio and threshold in the table depends on it."* Nothing in the figure measured 144 — the submission had computed (a3) from a profile taken **before the hem was sunk**, then changed the hem and reported the old numbers. **Third submission running whose (a3) did not reproduce**, and it ordered the max width, its row and the waist median published with every future one.
+
+**(d) passed on the submission's own argument**, checked rather than taken: *"for any object standing on a floor seen from above, the silhouette's base is an arc that turns horizontal at its lowest point, so width goes as √k from the bottom by construction."* Rows within 8 px of the lowest are excluded; the remaining three were the brim, the cape hem and the board — *"exactly the three direction 2 allotted in advance."*
+
+**(c) held at a median of ≈ 2.1**, and its diagnosis is the durable part: *"a box parallel to the surface it sits on has the same normal as that surface, so under any light its front face shades identically and only its edge-on sides differ."* Six centimetres of added pocket depth moved the reading **2.80 → 2.80** — *"not a null experiment but the correct answer to the question asked."* Filed as §4 **#19**.
+
+**All four F1 items were ruled correct with no rework**, including one self-correction: it diffed ticks 5 and 400, got byte-identical, and was about to file `.while_paused()` as not landed — 400 ticks is 6.667 s against a 5.4 s clip, landing inside its flat region. At ticks **181** and **191** the title changes by **28%** of pixels. *"Pick the tick from the clip's key times, not from a round number."*
+
+Seven ordered changes; the lamp clipping its own carrier was *"the one item I would not ship past."*
+
+---
+
+### Review 34 — engine gate — `7ee14be` — F2, third delivered pass — **NOT POLISHED; (d) passes, (c) amended and fails**
+
+Fifteen captures, **two mattes**, a 14-capture tick sweep, five crops, ~45 probes, **404- and 815-window control scans** on the lining, and one authored number re-derived from `bloom.wgsl`. Its helper reproduces `games/atrium` at **96.11** against reviews 19/20/25/29's 96.11–96.17, and its pixel dump reproduces `amadeo image row` exactly before it was used.
+
+**Everything the submission published reproduced, for the first time in four passes** — span, brim underside, H, max width 266 at y594, waist median 168, hem 256, shoulder 254 at y480, (a3) 1.524/1.512, usability 18/20, (d)'s ten rows, row-600 asymmetry 42.91. *"Owning the third failure rather than defending it is the behaviour this process exists to produce."*
+
+**(c): the submission's argument upheld, its control refuted, the clause amended, and it still fails.** Running the control across the whole wall instead of two columns: at the coat's own brightness **the lining itself fails 3.0** (1.56–2.26 at patch mean 8–23), so *"a clause the game's best-executed surface cannot clear at the subject's required value is not a clause about the subject."* **But** the submission's two columns did not reproduce — 3.492 and 3.237 at mean 27, not 0.68 and 1.29 at mean 17, *"two columns with no published window is §4 #17 exactly"* — and normalised, the lining is **flat at 0.088–0.108 from luma 8 to 150** against the coat's **0.0525**. The coat carries **half** the local relief of the wall at every brightness. Amended to a brightness-invariant ratio ≥ 0.085. **And it named the mechanism neither party had:** the coat's range is fine and its *adjacency* is not, because its relief is **20–40 px facets** — per-texel grain is mipped away at 4 m and 40-px wedges are invisible to a row-adjacency metric. What is missing is **3–10 px features at an angle**: seams, a buckle, a keeper, a flap.
+
+**(d) passes.** *"The clause was measuring 'has attachments', not 'is a stack'."* Two steps per named feature are excluded; six named plus the terminal crown leaves three. It recorded that it was **upholding D4 rather than overruling the designer**.
+
+**Why the row still fails, and the largest finding is not a clause.** The figure is **not backlit**: figure median 16.9 against background 21.2 left and **10.0 right** — five levels, with the sign inverted on one side — and *"there is no fixture in the frame at all."* Session 27 had moved the post in front of the section's near fitting to get this and it changed nothing, for a reason neither party had checked: **both fittings in the warden's section are `room_lamp_dead`.** It upheld the designer's S1 explicitly.
+
+**The `caught` ending contains no antagonist**: on-figure mean **5.2** against background **4.7**, half a level out of 255, with the option column drawn on top of the figure. *"The frame I would not show anyone, and it is the one the game ends on half the time."*
+
+**The lantern was a white sticker and could not bloom**, derived from `bloom.wgsl` rather than observed: `over = max(brightness − threshold, 0)` with emissive 0.83 against a 1.1 threshold is **zero, always**, while the exit's glow at 2.05 haloes measurably. It also found the case *inside* the glass (radius 0.055 against 0.061) — the review-33 defect had been fixed *by deleting the lantern* — and the lamp at world **0.50 m**, a shin, under a comment saying "at the hip". And a fourth mis-sourced number: the submission's "glass reads 216–231" was the **beam's puddle on the deck**; the lantern face is 205–209.
+
+**One withdrawal and one aliasing finding.** It withdrew a claim that 83.5% of rows repeat the row above, on realising antialiasing of a 0.13 px/row taper produces the same figure. What survived: **40 consecutive rows at exactly `L330 R549`** and **58 rows with the left edge pinned at x=378** — while (a1) scores 16 and (a2) scores 2, because the samples are 32 px apart and the runs are 36–58. *"The clauses are aliased against the object."*
+
+Seven ordered changes, led by building S1 with a **≥ 35-level** separation condition per side.

@@ -979,6 +979,12 @@ entity warden "The warden" from warden_post
     scale 1.0 1.0 1.0
     translation 34.5 0.93 -1.5
 
+entity post_lamp_3_0 "The light over the post" from room_lamp
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 33.6 0.0 -2.8
+
 entity ambience "The Warren itself" from ambience
 
 entity hud "HUD" from hud

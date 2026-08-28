@@ -1,30 +1,43 @@
 scene warden_lamp
 version 1
 
-entity mesh "The lamp the warden carries"
+entity mesh "The warden's lamp: a hood, a base and four guard bars OUTSIDE the glass, so the case reads as a case at forty pixels"
   CompoundMesh
     parts
-      - position 0.0 0.0 0.0
+      - position 0.0 0.105 0.0
         solid Cylinder
           shape
-            capped false
-            height 0.16
-            radius 0.055
+            capped true
+            flat true
+            height 0.035
+            radius 0.082
             sides 10
             top_radius 0.055
-      - position 0.0 0.09 0.0
+      - position 0.0 -0.104 0.0
         solid Cylinder
           shape
-            height 0.02
-            radius 0.06
+            capped true
+            flat true
+            height 0.028
+            radius 0.082
             sides 10
-            top_radius 0.045
-      - position 0.0 0.145 0.0
+            top_radius 0.07
+      - mirror true false false
+        position 0.072 0.0 0.0
+        solid Box
+          shape
+            size 0.016 0.19 0.032
+      - mirror false false true
+        position 0.0 0.0 0.072
+        solid Box
+          shape
+            size 0.032 0.19 0.016
+      - position 0.0 0.165 0.0
         rotation 0.0 0.0 90.0
         solid Cylinder
           shape
             capped false
-            height 0.09
+            height 0.1
             radius 0.05
             sides 10
             top_radius 0.05

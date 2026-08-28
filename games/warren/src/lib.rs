@@ -2703,6 +2703,43 @@ fn write_contents(out: &mut String, layout: &Layout) {
     let across = if berths_east { PROP_SIDE } else { -PROP_SIDE };
     out.push_str(&place(wx + across, WARDEN_STAND, wz - WARDEN_ALONG, 0.0));
 
+    // **The post is lit, and the light is BEHIND the figure rather than on it.**
+    //
+    // `docs/11` §3 wants a shape you resolve out of the dark, and that needs something behind it to
+    // be dark *against*. Engine gate review 34 measured what the game actually had: the figure at a
+    // median of 16.9 against a background of 21.2 on one side and 10.0 on the other -- **five levels
+    // of separation, with the sign inverted on the right** -- and found *no fixture in the frame at
+    // all*. Session 27 had already moved the post in front of the section's near fitting to get this
+    // and it changed nothing, for a reason neither party checked until now: **both fittings in this
+    // section are `room_lamp_dead`.** [`light_the_sections`] darkens a section that failed
+    // structurally, the warden's happened to be one, and a backlight that does not exist cannot be
+    // stood in front of.
+    //
+    // So the station carries its own working fitting, on the **opposite haunch** and set back behind
+    // the post, aimed across the bore so its pool falls on the lining the camera sees *past* the
+    // figure. That is the designer's S1, which review 34 upheld, and it buys the separation without
+    // adding a single level to the coat -- which is what clause (e) and §3 both want.
+    //
+    // **It does not break [`light_the_sections`]'s rule**, which is that a *section*'s emergency
+    // circuit fails where the section failed. This is not that circuit: a warden's post is a place
+    // somebody chose to stand, and the one thing such a place has is a working light.
+    let post_side = if berths_east {
+        BORE_HALF_WIDTH
+    } else {
+        -BORE_HALF_WIDTH
+    };
+    let post_turn = if berths_east { 0.0 } else { 180.0 };
+    out.push_str(&format!(
+        "entity {} \"The light over the post\" from {LAMP_PIECE}\n",
+        cell_id("post_lamp", marks.warden)
+    ));
+    out.push_str(&place(
+        wx + post_side,
+        0.0,
+        wz - WARDEN_ALONG - 1.3,
+        post_turn,
+    ));
+
     // **Neither of these two is placed anywhere**, so none takes an override — and an override naming
     // a component its prefab does not carry is refused at load, which is what would happen if the
     // HUD were handed a `Transform` (ADR 0029). A blank line after each keeps the file's shape
