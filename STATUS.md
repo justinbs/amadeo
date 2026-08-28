@@ -57,7 +57,7 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > | row | state |
 > |---|---|
 > | **F1** the opening and the ending | 🟡 **NOT PASSED (r32).** Four of seven ordered changes built. **Open: the yaw-270 spawn at 25.91% against a 12% bar, the title camera on a lit focal object, and the option block bottom-left.** |
-> | **F2** the warden's form | 🟡 **NOT PASSED (r34), third delivered pass.** **Everything published reproduced on the reviewer's grid — first time in four passes.** **(d) PASSES** on its amendment. **(c) amended to a brightness-invariant ratio and fails at 0.0525 against 0.085.** (a3) 1.52/1.51, (b) 39.13 vs 15.96, usability 18/20, (e) 63 vs 79, **zero clipped pixels**. **Open: r34's 2 (the `caught` ending has no antagonist — 5.2 against 4.7), 4 (coat features 3–10 px at an angle), 5 (two straight runs, 40 and 58 rows), 6 (light the board), 7 (`fitting_fail` invisible in every capture).** **And 1 is half-built and structurally blocked — see below.** |
+> | **F2** the warden's form | 🟡 **NOT PASSED (r34), third delivered pass.** **Everything published reproduced on the reviewer's grid — first time in four passes.** **(d) PASSES** on its amendment. **(c) amended to a brightness-invariant ratio and fails at 0.0525 against 0.085.** (a3) 1.52/1.51, (b) 39.13 vs 15.96, usability 18/20, (e) 63 vs 79, **zero clipped pixels**. **Built since: r34's 2, 3 and 7, and 1 in part.** **(2) the `caught` ending contains its antagonist** — it has its own framing now instead of borrowing the warden's, at 2.5 m so the figure's own lamp reaches it and mirrored so the text column is clear: separation **0.5 → 16.6 / 23.8**, and the warden is plainly visible. **(3) the lantern**. **(7) the fittings no longer flicker in unison.** **Open: 4 (coat features 3–10 px at an angle), 5 (two straight runs, 40 and 58 rows), 6 (light the board), and 1's remainder.** |
 > | **F2b** the warden respects the level | ✅ r30 |
 > | **F3** wayfinding | 🟡 ordering built, **the names are not** — nine stencil glyphs |
 > | **F4** the torch beam | ⬜ the stretch row, allowed to slip |
@@ -66,18 +66,27 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 >
 > #### The order I would take the remainder in
 >
-> 0. **THE ONE STRUCTURAL BLOCKER, and it is bigger than F2.** **Every fixture in this game pools on
->    the DECK** — `room_lamp`'s spot is pitched **−52°** — so nothing in the Warren lights a *wall* at
->    1.5 m. That is why the warden cannot be silhouetted: its lower third separates from the
->    background by 37–124 levels and its chest and head by nothing. Review 34's close condition is a
->    median ≥ 35 per side; four placements were tried and measured and the best reaches **12.7 / 11.8**.
->    **Reaching it wants a fixture aimed at the lining rather than at the floor — a new piece, and a
->    new fixture type in the world, so it is the designer's and the critic's before it is code.** Do
->    not spend another session hunting placements for the fixture that exists.
+> 0. **The Warren has TWO lighting circuits now, and that is the session's largest change.** Designer
+>    **direction 3** (`docs/15` §5) answered *"what lights a wall in this place"* with research rather
+>    than invention: Clapham South was lit by cast-iron bulkheads bolted into the tunnelling rings,
+>    and **every fourth fitting stayed lit through the night** so shelterers could find the
+>    lavatories. So: **the emergency circuit lights the floor so you can work; the night circuit
+>    lights the wall so you can find your way.** `room_lamp` is pitched −52° and pools on the deck,
+>    which is right and stays. `night_light` is new — a ribbed cast bulkhead grazing along the lining,
+>    on the **standby ring**, so `light_the_sections` does not touch it and **no section is ever
+>    without a light source again**. Every second cell, guaranteed at the warden's post.
 >
->    Also found while getting there, and worth as much: **both fittings in the warden's own section
->    are `room_lamp_dead`**, because `light_the_sections` darkens a section that failed structurally
->    and the warden's is one. The post carries its own working fitting now.
+>    **It is not yet enough for F2.** Separation goes **5 / −7** (r34) → **12.7 / 11.8** (a working
+>    lamp at the post) → **16.4 / 14.3** (the night light), against a bar of **35**. What the
+>    measurement says is that the figure stands 0.9 m off its wall while the camera at 4 m sees mostly
+>    deck and far tunnel behind it, so a near-wall patch is not yet *behind* the silhouette. **The
+>    designer's own refinement is the untried lead and is where I would start: a specific lit OBJECT
+>    behind the figure rather than a lit wall** — *"a uniformly lit wall behind a figure is a studio;
+>    a lit board with a shape in front of it is a scene"* — which is D6's tally board, placed where
+>    the camera sees it past the warden.
+>
+>    Found while getting there: **both fittings in the warden's own section were `room_lamp_dead`**,
+>    which is why four placements of the existing fitting had achieved nothing.
 >
 > 1. **F2's remaining ordered changes.** Review 33's own reasoning is that a light
 >    *behind* the warden fixes the outline, the composition and the ending frame at once — the
