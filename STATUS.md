@@ -57,7 +57,7 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > | row | state |
 > |---|---|
 > | **F1** the opening and the ending | 🟡 **NOT PASSED (r32).** Four of seven ordered changes built. **Open: the yaw-270 spawn at 25.91% against a 12% bar, the title camera on a lit focal object, and the option block bottom-left.** |
-> | **F2** the warden's form | 🟡 **NOT PASSED (r33).** Six clause readings pass — (a3) 1.54/1.41, (b) 13.17, (a1) 12, (a2) 2, usability 19/20, (e) 47 vs 79. **(c) fails at a median of 1.23 and (d) at 7 + 3 terminal.** Ordered change 1 closed: 67 clipped pixels → 1. **Open: ordered changes 2 (partially), 3, 4, 5** |
+> | **F2** the warden's form | 🟡 **NOT PASSED (r34), third delivered pass.** **Everything published reproduced on the reviewer's grid — first time in four passes.** **(d) PASSES** on its amendment. **(c) amended to a brightness-invariant ratio and fails at 0.0525 against 0.085.** (a3) 1.52/1.51, (b) 39.13 vs 15.96, usability 18/20, (e) 63 vs 79, **zero clipped pixels**. **Open: r34's 2 (the `caught` ending has no antagonist — 5.2 against 4.7), 4 (coat features 3–10 px at an angle), 5 (two straight runs, 40 and 58 rows), 6 (light the board), 7 (`fitting_fail` invisible in every capture).** **And 1 is half-built and structurally blocked — see below.** |
 > | **F2b** the warden respects the level | ✅ r30 |
 > | **F3** wayfinding | 🟡 ordering built, **the names are not** — nine stencil glyphs |
 > | **F4** the torch beam | ⬜ the stretch row, allowed to slip |
@@ -66,7 +66,20 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 >
 > #### The order I would take the remainder in
 >
-> 1. **F2's remaining ordered changes, and 3 before 2.** Review 33's own reasoning is that a light
+> 0. **THE ONE STRUCTURAL BLOCKER, and it is bigger than F2.** **Every fixture in this game pools on
+>    the DECK** — `room_lamp`'s spot is pitched **−52°** — so nothing in the Warren lights a *wall* at
+>    1.5 m. That is why the warden cannot be silhouetted: its lower third separates from the
+>    background by 37–124 levels and its chest and head by nothing. Review 34's close condition is a
+>    median ≥ 35 per side; four placements were tried and measured and the best reaches **12.7 / 11.8**.
+>    **Reaching it wants a fixture aimed at the lining rather than at the floor — a new piece, and a
+>    new fixture type in the world, so it is the designer's and the critic's before it is code.** Do
+>    not spend another session hunting placements for the fixture that exists.
+>
+>    Also found while getting there, and worth as much: **both fittings in the warden's own section
+>    are `room_lamp_dead`**, because `light_the_sections` darkens a section that failed structurally
+>    and the warden's is one. The post carries its own working fitting now.
+>
+> 1. **F2's remaining ordered changes.** Review 33's own reasoning is that a light
 >    *behind* the warden fixes the outline, the composition and the ending frame at once — the
 >    figure's lower two thirds currently read **8.5 against a background of 8.3**, so it is not
 >    silhouetted, it is unlit in front of unlit. **`Side::South` does not work** (tried and reverted:
