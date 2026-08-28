@@ -1,0 +1,50 @@
+scene night_light
+version 1
+
+assets
+  fitting_steel
+  fitting_steel_normal
+  fitting_steel_surface
+  fittings
+  glow
+  night_light_case
+  night_light_glass
+
+entity night_light "A night light on the standby ring -- one of the fittings nobody ever switched off"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+  entity case "The cast bulkhead"
+    Mesh
+      material "fittings"
+      mesh "night_light_case"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.25 0.0
+
+  entity glass "The glass behind the ribs"
+    Mesh
+      material "glow"
+      mesh "night_light_glass"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.25 0.0
+
+  entity wash "What it throws ALONG the lining, which is the whole point of it"
+    SpotLight
+      colour 0.58 0.78 0.68
+      inner_angle 26.0
+      intensity 5.2
+      outer_angle 62.0
+      range 3.4
+      shadow_bias 0.03
+      shadow_resolution 1024
+      shadows false
+    Transform
+      rotation -9.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -0.12 2.2 0.0

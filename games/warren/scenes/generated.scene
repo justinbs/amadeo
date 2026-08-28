@@ -18,6 +18,7 @@ assets
   flooded
   hud
   lost_key
+  night_light
   player_start
   room_lamp
   room_lamp_dead
@@ -90,6 +91,12 @@ entity letter_0_0 "Section letter" from section_letter_h
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 2.4 0.0 3.2
+
+entity night_0_0 "Night light" from night_light
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 2.4 0.0 1.6
 
 entity berth0_0_0 "Berth" from bunk_rolled
   override Transform
@@ -217,6 +224,12 @@ entity letter_1_n1 "Section letter" from section_letter_h
     scale 1.0 1.0 1.0
     translation 14.4 0.0 -8.8
 
+entity night_1_n1 "Night light" from night_light
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 14.4 0.0 -10.4
+
 entity condition_1_n1 "Stores" from stores
   override Transform
     rotation 0.0 0.0 0.0
@@ -337,6 +350,12 @@ entity letter_2_n2 "Section letter" from section_letter_m
     scale 1.0 1.0 1.0
     translation 26.4 0.0 -20.8
 
+entity night_2_n2 "Night light" from night_light
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 26.4 0.0 -22.4
+
 entity condition_2_n2 "A fall" from collapsed
   override Transform
     rotation 0.0 0.0 0.0
@@ -456,6 +475,12 @@ entity letter_2_0 "Section letter" from section_letter_i
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 26.4 0.0 3.2
+
+entity night_2_0 "Night light" from night_light
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 26.4 0.0 1.6
 
 entity berth0_2_0 "Berth" from bunk_rolled
   override Transform
@@ -613,6 +638,12 @@ entity letter_4_0 "Section letter" from section_letter_m
     scale 1.0 1.0 1.0
     translation 50.4 0.0 3.2
 
+entity night_4_0 "Night light" from night_light
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 50.4 0.0 1.6
+
 entity condition_4_0 "Stores" from stores
   override Transform
     rotation 0.0 0.0 0.0
@@ -732,6 +763,12 @@ entity letter_5_1 "Section letter" from section_letter_o
     rotation 0.0 0.0 0.0
     scale 1.0 1.0 1.0
     translation 62.4 0.0 15.2
+
+entity night_5_1 "Night light" from night_light
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 62.4 0.0 13.6
 
 entity condition_5_1 "A fall" from collapsed
   override Transform
@@ -931,6 +968,12 @@ entity letter_6_2 "Section letter" from section_letter_t
     scale 1.0 1.0 1.0
     translation 74.4 0.0 27.2
 
+entity night_6_2 "Night light" from night_light
+  override Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 74.4 0.0 25.6
+
 entity berth0_6_2 "Berth" from bunk_stripped
   override Transform
     rotation 0.0 0.0 0.0
@@ -984,6 +1027,12 @@ entity post_lamp_3_0 "The light over the post" from room_lamp
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
     translation 33.6 0.0 -2.8
+
+entity post_night_3_0 "The night light over the post" from night_light
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 33.6 0.0 -4.1
 
 entity ambience "The Warren itself" from ambience
 

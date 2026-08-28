@@ -140,7 +140,7 @@ fn staging_landmark(name: &str) -> Option<&'static str> {
         // It reached you, so it is what is behind the line. `stand_at_landmark` anchors this one on
         // the figure's live position rather than on its spawn cell, which is what makes that true
         // after a hundred ticks of pursuit.
-        "caught" => Some("warden"),
+        "caught" => Some("caught"),
         // The spawn is photographed from the spawn.
         _ => None,
     }
@@ -263,7 +263,7 @@ fn stand_at_landmark(app: &mut amadeo_app::App, name: &str) -> anyhow::Result<()
     let cell = match name {
         "key" => marks.key,
         "exit" => marks.exit,
-        "warden" => marks.warden,
+        "warden" | "caught" => marks.warden,
         other => anyhow::bail!("no landmark called `{other}`"),
     };
 
@@ -314,6 +314,19 @@ fn stand_at_landmark(app: &mut amadeo_app::App, name: &str) -> anyhow::Result<()
         // The warden is anchored on the figure itself now, so this is a real subject distance rather
         // than an offset from a cell centre: close enough to read the coat, far enough for the bore.
         "warden" => -4.0,
+        // **Closer, and on the other side, because this is the frame the game ends on.**
+        //
+        // Engine gate review 34 measured the `caught` screen at an on-figure mean of **5.2 against a
+        // background of 4.7** -- half a level out of 255 -- and called it *"the frame I would not show
+        // anyone, and it is the one the game ends on half the time"*. The antagonist filled a sixth of
+        // it and could not be seen, and the option column was drawn on top of it, so making the figure
+        // visible without moving the frame would have traded one failure for the other.
+        //
+        // Two and a half metres is close enough that the warden's own lamp reaches its coat, which is
+        // the review's own second option and the one that needs no change to the scrim the designer
+        // specified. The mirrored `across` puts the figure right of centre, which clears the left
+        // column `docs/15` decision 3 puts the reference number in.
+        "caught" => -2.5,
         _ => -4.2,
     };
     // Level with the key board along the bore, so it is in front of the camera rather than beside it.
@@ -332,7 +345,7 @@ fn stand_at_landmark(app: &mut amadeo_app::App, name: &str) -> anyhow::Result<()
         // matters is *which side of the bore the subject is on*, so this asks: step toward the middle,
         // away from the lining the figure has its back to. A constant cannot answer that, because the
         // level generator picks the warden's wall from its cell's parity.
-        "warden" => {
+        "warden" | "caught" => {
             let centre = cell.0 as f32 * warren::CELL;
             let stood = warden_at(&app.world).map_or(centre, |at| at[0]);
             if stood < centre { 1.35 } else { -1.35 }
@@ -356,7 +369,7 @@ fn stand_at_landmark(app: &mut amadeo_app::App, name: &str) -> anyhow::Result<()
     // where the object is rather than assuming; a warden is the one landmark that *moves*, so it has
     // to be asked every time.
     let anchor = match name {
-        "warden" => warden_at(&app.world).unwrap_or([
+        "warden" | "caught" => warden_at(&app.world).unwrap_or([
             cell.0 as f32 * warren::CELL,
             0.0,
             cell.1 as f32 * warren::CELL,
@@ -386,7 +399,12 @@ fn stand_at_landmark(app: &mut amadeo_app::App, name: &str) -> anyhow::Result<()
     // suggested, which scores 71 -- keeps the subject clear of the frame edge where a silhouette
     // clause cannot measure it. Backlighting alone did **not** move this number: standing the post in
     // front of a fitting rather than past it left the asymmetry at 17.01.
-    let turn = warren::facing(side) + if name == "warden" { -15.0 } else { 0.0 };
+    let turn = warren::facing(side)
+        + match name {
+            "warden" => -15.0,
+            "caught" => 15.0,
+            _ => 0.0,
+        };
     if let Some(transform) = app.world.get_mut::<amadeo_transform::Transform>(you) {
         transform.translation = at;
         transform.rotation = [0.0, turn, 0.0];
@@ -405,7 +423,7 @@ fn stand_at_landmark(app: &mut amadeo_app::App, name: &str) -> anyhow::Result<()
     // their hand, all so the photograph is of the game rather than of a menu. Turning the subject to
     // face the lens is the same act: it changes no rule and no reachable state, and the alternative
     // is a portrait of a coat from behind.
-    if name == "warden" {
+    if name == "warden" || name == "caught" {
         let wardens: Vec<amadeo_ecs::Entity> = app
             .world
             .query::<(&warren::Warden,)>()

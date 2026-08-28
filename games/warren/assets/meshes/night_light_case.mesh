@@ -1,0 +1,37 @@
+scene night_light_case
+version 1
+
+entity mesh "A cast night-light bulkhead, bolted flat into the ring -- ribs across the glass so the source is never a bright blob"
+  CompoundMesh
+    parts
+      - position -0.025 0.0 0.0
+        solid Box
+          shape
+            size 0.05 0.34 0.26
+      - position -0.095 0.0 0.0
+        rotation 0.0 0.0 90.0
+        solid Cylinder
+          shape
+            capped true
+            flat true
+            height 0.09
+            radius 0.13
+            sides 8
+            top_radius 0.1
+      - position -0.12 -0.085 0.0
+        repeat
+          - count 3
+            step 0.0 0.085 0.0
+        solid Box
+          shape
+            size 0.09 0.022 0.24
+      - mirror false true false
+        position -0.02 0.15 0.1
+        solid Cylinder
+          shape
+            capped true
+            flat true
+            height 0.03
+            radius 0.018
+            sides 6
+            top_radius 0.014

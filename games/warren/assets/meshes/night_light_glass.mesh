@@ -1,0 +1,10 @@
+scene night_light_glass
+version 1
+
+entity mesh "The night light's glass, behind the ribs"
+  CompoundMesh
+    parts
+      - position -0.105 0.0 0.0
+        solid Box
+          shape
+            size 0.06 0.24 0.19

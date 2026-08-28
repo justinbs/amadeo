@@ -264,6 +264,60 @@ pub fn build_simulation() -> anyhow::Result<App> {
     build_from_scene(GENERATED_SCENE)
 }
 
+/// Puts every failing fitting at a different point in its own flicker.
+///
+/// # Fifteen tubes flickering in unison is a brightness pulse, not a failing circuit
+///
+/// `fitting_fail.anim` is 5.4 s long and its flicker occupies **0.44 s of it** — 8% — with one
+/// further dip at 4.72. Every instance of `room_lamp` carries the same `AnimationPlayer` at
+/// `time 0.0`, so all fifteen in the shipped level ran in lockstep: `amadeo anim` reported all of
+/// them at exactly 2.10. The level was therefore either wholly steady or wholly flickering, and 92%
+/// of the time it was steady.
+///
+/// That is why engine gate review 34 swept 300 ticks and found *"the largest luminance change
+/// anywhere in the frame is 5 levels"*, and why review 33 diffed ticks 5 and 400 and got a
+/// byte-identical frame. **The clip was never the problem.** `docs/11` §8 asks for *one* moving thing
+/// in a still frame and says two is a screensaver; fifteen at once is neither, and fifteen at once
+/// 8% of the time is nothing at all.
+///
+/// Staggered, some fitting is always mid-flicker, so the world is never a photograph — and no two
+/// tubes fail together, which is what a circuit that has been unattended for forty years looks like.
+///
+/// # The phase comes from the fitting's own position, not from a die or from an entity id
+///
+/// It has to be **reproducible**, because `AnimationPlayer::time` is hashed simulation state
+/// (ADR 0066) — two machines loading the same level must get the same phases or their state hashes
+/// diverge on tick one. A position is authored data and is identical everywhere; an entity id would
+/// be reproducible today and would silently change the moment anything altered spawn order.
+///
+/// It runs here rather than as a system because it is a property of *loading*: a system would have
+/// to decide whether each player had already been staggered, and the only cheap test for that —
+/// `time == 0.0` — is a value a looping clip can legitimately return to.
+fn stagger_the_fittings(world: &mut World) {
+    let placed: Vec<(amadeo_ecs::Entity, [f32; 3])> = world
+        .query::<(&amadeo_anim::AnimationPlayer, &GlobalTransform)>()
+        .filter(|(_, (player, _))| player.clip == "fitting_fail")
+        .map(|(entity, (_, at))| (entity, at.translation()))
+        .collect();
+
+    for (entity, at) in placed {
+        // FNV-1a over the position's bits, which is `StableHasher`'s own mixing function — the
+        // point is only that two fittings a bore apart land far from each other in the loop, and
+        // that the same fitting lands in the same place on every machine.
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        for value in at {
+            for byte in value.to_bits().to_be_bytes() {
+                hash ^= u64::from(byte);
+                hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+        }
+        let phase = (hash % 5400) as f32 / 1000.0;
+        if let Some(player) = world.get_mut::<amadeo_anim::AnimationPlayer>(entity) {
+            player.time = phase;
+        }
+    }
+}
+
 /// The one handcrafted room instead, for tests about the *rules* rather than about the level.
 ///
 /// # Errors
@@ -438,6 +492,7 @@ pub fn build_from_scene(scene: &str) -> anyhow::Result<App> {
     let document = amadeo_scene::parse(scene)
         .map_err(|error| anyhow::anyhow!("games/warren/scenes/: {error}"))?;
     app.load_scene(&document)?;
+    stagger_the_fittings(&mut app.world);
 
     // **`InputState` before the snapshot below, and this line is load-bearing.**
     //
@@ -2095,6 +2150,35 @@ pub const TORCH_PIECE: &str = "dropped_torch";
 /// The prefab a working ceiling lamp comes from.
 pub const LAMP_PIECE: &str = "room_lamp";
 
+/// The prefab a night light comes from — the fitting nobody ever switched off.
+///
+/// # There were two lighting systems down here, and this game only had one
+///
+/// Clapham South was lit by cast-iron bulkhead fittings bolted into the tunnelling rings, and
+/// **every fourth one stayed lit through the night** so people could find the lavatories. That is a
+/// second circuit with a real reason, and `docs/11` §4 already established it — *"the panels are on
+/// the standby ring and have always been live; the lights are what the isolator brings up."*
+///
+/// Designer direction 3 states the split in one line, and it is the sentence to keep when the
+/// numbers change: **the emergency circuit lights the floor so you can work; the night circuit
+/// lights the wall so you can find your way.** [`LAMP_PIECE`] is pitched −52° and pools on the deck,
+/// which is right and must not be re-aimed — `docs/11` §4's silhouette appears at that pool's edge.
+/// This one grazes **along the lining** instead.
+///
+/// # It is not a workaround for one dark section, and it fixes a real fault
+///
+/// Engine gate review 34 failed the warden's silhouette because *"there is no fixture in the frame
+/// at all"*, and the reason turned out to be that `light_the_sections` had darkened the warden's
+/// whole section. But that rule governs the **emergency** circuit only. A night light is on the
+/// standby ring, so it is unaffected by flood or collapse — which means no section is ever without a
+/// light source, an isolator's promise is legible because you can see the dark fittings it would
+/// bring up, and the ring lining's normal map finally gets the one thing that makes cast iron read:
+/// light along it rather than at it. A downlight at −52° shows a normal map nothing.
+///
+/// **Every second cell**, which is the historical every-fourth-fitting rule at this generator's two
+/// fittings per cell, so a visible run holds the same number of fixtures it always did.
+pub const NIGHT_LIGHT_PIECE: &str = "night_light";
+
 /// The prefab a fitting that is **not** on the circuit comes from — the same housing and tube, dark.
 ///
 /// # Why a dead fitting is a piece rather than an absence
@@ -2124,7 +2208,7 @@ pub const AMBIENCE_PIECE: &str = "ambience";
 /// here: the two orders are not the same, and hand-maintaining a sorted list of ids whose names are
 /// spelled differently from their constants is exactly the sort of thing that goes quietly wrong.
 /// `amadeo fmt --check` on the output is what would have caught it, and did.
-pub const PIECES: [&str; 28] = [
+pub const PIECES: [&str; 29] = [
     AMBIENCE_PIECE,
     BUNK_MADE_PIECE,
     BUNK_ROLLED_PIECE,
@@ -2136,6 +2220,7 @@ pub const PIECES: [&str; 28] = [
     KEY_PIECE,
     LAMP_PIECE,
     DEAD_LAMP_PIECE,
+    NIGHT_LIGHT_PIECE,
     PASSAGE_PIECE,
     PLAYER_PIECE,
     ROOM_PIECE,
@@ -2450,6 +2535,23 @@ pub fn to_scene(layout: &Layout) -> String {
             out.push_str(&place(x + BORE_HALF_WIDTH, 0.0, z + SIGN_OFFSET, 0.0));
         }
 
+        // **A night light every second cell, on the standby ring.** Designer direction 3's D3: the
+        // real rule was every fourth *fitting* and this generator writes two per cell, so this is
+        // the same density. It goes on the haunch the berths are not on, at the cell's own end, so
+        // its patch of raked iron is a landmark along the bore rather than a wash over everything.
+        if (room.cell.0 + room.cell.1).rem_euclid(2) == 0 {
+            let (nx, nturn) = if east {
+                (x + BORE_HALF_WIDTH, 0.0)
+            } else {
+                (x - BORE_HALF_WIDTH, 180.0)
+            };
+            out.push_str(&format!(
+                "entity {} \"Night light\" from {NIGHT_LIGHT_PIECE}\n",
+                cell_id("night", room.cell)
+            ));
+            out.push_str(&place(nx, 0.0, z + 1.6, nturn));
+        }
+
         write_condition(&mut out, room, x, z);
     }
 
@@ -2738,6 +2840,30 @@ fn write_contents(out: &mut String, layout: &Layout) {
         0.0,
         wz - WARDEN_ALONG - 1.3,
         post_turn,
+    ));
+
+    // **And a night light on the warden's own wall, behind it.** Designer direction 3's D6, and it
+    // is a story beat rather than a placement: **you cannot chalk a number in the dark.** `docs/11`
+    // §3a has the boards still being kept up to date and a check sounding like chalk on a board, so
+    // the board is beside a night light because the count has to be readable at night — and the
+    // warden stands there because that is where the board is.
+    //
+    // The two lights do different halves of the same job and neither replaces the other: the
+    // working lamp above pools on the **deck**, which is where the figure's lower third gets its
+    // separation, and this one grazes the **lining**, which is the only thing behind its chest and
+    // head. Engine gate review 34 failed the silhouette at five levels because the second half did
+    // not exist.
+    let night_side = post_side;
+    let night_turn = post_turn;
+    out.push_str(&format!(
+        "entity {} \"The night light over the post\" from {NIGHT_LIGHT_PIECE}\n",
+        cell_id("post_night", marks.warden)
+    ));
+    out.push_str(&place(
+        wx + night_side,
+        0.0,
+        wz - WARDEN_ALONG - 2.6,
+        night_turn,
     ));
 
     // **Neither of these two is placed anywhere**, so none takes an override — and an override naming

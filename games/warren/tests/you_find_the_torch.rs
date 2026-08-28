@@ -317,12 +317,24 @@ fn the_torch_lights_its_own_beam_and_nothing_else() {
         "a fitting on the circuit is lit before anybody picks anything up: {before:?}"
     );
 
+    // **The control runs the same two ticks WITHOUT the pickup**, and it has to since session 27:
+    // `stagger_the_fittings` starts every fitting at a different point in `fitting_fail`, so some of
+    // them are mid-flicker at any moment and two ticks changes their intensity all on its own. Before
+    // that they all sat at `time 0.0`, which is inside the clip's flat opening, and the animation was
+    // invisible to this test the same way it was invisible to every capture anybody took of the game.
+    //
+    // Comparing against a control rather than against `before` is what makes this test about the
+    // torch again instead of about whether anything else in the world moves.
+    let mut control = room();
+    control.run_ticks(2).expect("ticks run");
+    let untouched = fittings(&control);
+
     amadeo_inventory::store(&mut app.world, torch, player).expect("the bag has room");
     app.run_ticks(2).expect("ticks run");
 
     assert_eq!(
         fittings(&app),
-        before,
+        untouched,
         "picking up the torch must not touch the emergency circuit"
     );
 }

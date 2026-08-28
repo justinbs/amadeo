@@ -373,3 +373,108 @@ the coat surface** at range 2.0. No correction was needed; the conclusion was un
 with this office** on the caret: it refused the implementer's request to amend F1's clause (b) and
 recorded that it was *"agreeing with the designer here, not overruling it"* — direction 1's decision 6
 had given the answer and the implementer had shipped the filled bar anyway. That decision is built now.
+
+---
+
+### Direction 3 — `games/warren`, session 27 — what lights a wall
+
+**Asked:** engine gate review 34 failed the warden's silhouette because *"there is no fixture in the
+frame at all"*, and four measured placements of the existing fitting could not reach its 35-level
+separation bar. The cause is structural: **`room_lamp`'s spot is pitched −52°, so every fixture in
+this game pools on the deck** and nothing lights a vertical surface at standing height. I asked what
+a wall light is *in this place*, rather than invent one and have it read as a spotlight in a bunker.
+
+**Its answer, and it is research rather than invention:**
+
+> **The thing that lights a wall in this place is the fitting that was never switched off — and it is
+> not a new invention, it is the fitting the real building had, on the circuit the real building ran
+> it on.**
+
+Clapham South's tunnels were lit by cast-iron bulkhead fittings **bolted into the tunnelling rings**,
+and the operational fact that decides everything: **every fourth fitting stayed lit through the night
+so shelterers could find the lavatories.** So the shelter had **two** lighting systems, and this game
+had only one.
+
+| | what it is | what it lights | circuit |
+|---|---|---|---|
+| `room_lamp` | the **working** light | the **deck**, so you can do a job on it | emergency, off until an isolator is thrown |
+| **the night light** | the light left on **for people asleep** | the **lining**, so you can find your way | the standby ring, always live, never switched |
+
+`docs/11` §4 had already established the standby ring — *"the panels are on the standby ring and have
+always been live"* — so this is not a second system needing a justification. **It is the first one,
+and the emergency circuit is the other.**
+
+#### The decisions
+
+1. **D1 — it is on the standby ring, so `light_the_sections` does not touch it.** A section that
+   flooded or collapsed still has its night lights. *"This is not a workaround for the warden's dead
+   section — it fixes a real design fault"*: `docs/11` §6 forbids pitch black, and a section with no
+   light source cannot be navigated, cannot show a silhouette, and cannot show the player the dark
+   fittings an isolator would bring up.
+2. **D2 — the sentence to keep when the numbers change:** *"The emergency circuit lights the floor so
+   you can work. The night circuit lights the wall so you can find your way."* Mounted at ~2.25 m,
+   raking up and along the iron, dying inside ~1.8 m so it is a **patch and not room lighting**.
+   **Do not re-aim `room_lamp`** — its deck pool is load-bearing in three places, including §4's
+   *"the silhouette appears at the pool's edge, passes through, and is gone"*. It also noted a payoff
+   nothing to do with the warden: §5a calls the lining's normal map *"the engine's most under-used
+   feature"*, and **a light at −52° on a vertical wall shows a normal map nothing.** Grazing light is
+   what makes cast iron read as cast iron.
+3. **D3 — it replaces a fitting position rather than adding one.** Every fourth *fitting* on the
+   standby ring, which at this generator's two per cell is **one night light every second cell**, so
+   a visible run holds the same number of fixtures it always did and §6's light budget is untouched.
+4. **D4 — the building's green, exactly `0.58 0.78 0.68`, and no hue of its own.** Three light
+   sources must still mean three things. The player separates this from the reflector by **shape** —
+   a soft vertical patch against a hard ellipse on the deck — *"a stronger and cheaper distinction
+   than hue, and it does not cost you the one colour rule the game runs on."*
+5. **D5 — the source sits behind a cast guard and never reads as a bright blob.** Ribs break the
+   glass into small pieces, *"which is why this fixture can sit in frame without producing the
+   clipping reviews 33 and 34 spent two passes killing."* Put it **in** the F2 frame: a lit wall with
+   no visible cause is a photographic light, not a place.
+6. **D6 — the warden's post is guaranteed one, and the tally board goes with it.** A story beat
+   rather than a placement: **you cannot chalk a number in the dark.** §3a has the boards still being
+   kept up to date and a check sounding like chalk on a board — *"the board is beside a night light
+   because the count has to be readable at night, and the warden stands there because that is where
+   the board is."*
+
+**On whether the critic's 35-level condition asks for the wrong picture, which I offered it: no.**
+*"Backlighting is the only lighting that gives you an outline without a surface — every front-lit
+alternative makes the surface more legible, which is the thing I forbade."* It upheld the critic and
+sent nothing to arbitration. Its one refinement: **the lit thing behind the warden should be a
+specific readable object with a visible fixture, not a lit wall** — *"a uniformly lit wall behind a
+figure is a studio; a lit board with a shape in front of it is a scene."*
+
+#### What the fixture says, which is why it earns its place beyond the measurement
+
+> *"Every fourth light was left on all night so that people could find the lavatories. Nobody ever
+> turned them off. They are still on."*
+
+The building is still running its night routine forty years after the last person left — **the
+warden's own sentence, stated by the architecture before the warden arrives.** And it splits the two
+circuits along a cold line: the light you switch on to do a job, and the light left on for the people
+who are asleep. **The player gets control of the first and never of the second.**
+
+#### Build order and drop order
+
+Build **D2, D1, D6, D3, D5, D4**. Drop first the junction plates (a suggestion, not a decision); then
+the every-second-cell rule, falling back to one at each tally board; then **warden's post only**,
+which it accepts *for one review* and says **must not ship that way**, because a fixture existing in
+exactly one place is set dressing. **Never drop:** that it lights the **wall** and not the deck, and
+that it is on the **always-live** circuit. *"Those two clauses are the entire answer; everything else
+is placement."*
+
+#### What session 27 built from it
+
+**D1, D2, D3, D4, D5 and D6.** `night_light.scene` — a ribbed cast bulkhead with an emissive glass
+behind the ribs and a spot grazing along the lining, in the building's green, on the standby ring —
+placed **every second cell** and **guaranteed at the warden's post**, where it stands on the warden's
+own wall behind the figure. Its naming note is taken: the file is `night_light` because *bulkhead* is
+already spent twice in this project, on the lead-grey material and on `HEAD_PIECE`.
+
+**Measured: separation medians 5 / −7 (r34) → 12.7 / 11.8 (post lamp) → 16.4 / 14.3 (night light),
+against a bar of 35.** The direction is right and the numbers are still short; what the measurement
+says is that the figure stands 0.9 m off its wall and the camera at 4.0 m sees mostly deck and far
+tunnel behind it, so a near-wall patch is not yet *behind* the silhouette. **Its own refinement is
+the untried lead** — a specific lit object behind the figure rather than a lit wall, which is D6's
+tally board placed where the camera sees it past the warden.
+
+**No disagreement with the critic arose; it upheld the 35-level condition explicitly.**
