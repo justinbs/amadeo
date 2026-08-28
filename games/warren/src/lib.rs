@@ -716,6 +716,27 @@ pub const WARDEN_SPEED: f32 = 1.9;
 /// How close it has to get to catch you, in metres.
 pub const WARDEN_REACH: f32 = 0.9;
 
+/// How far along the bore, from its centre, the warden's post stands.
+///
+/// # It is 1.5 and not [`PROP_OFFSET`], so that a fitting is BEHIND it
+///
+/// A section's two fittings sit at `FITTING_OFFSET` of ±3.0 along the bore, and the landmark
+/// camera stands back along the same axis. At the old 3.4 the warden was *past* the near fitting, so
+/// that fitting sat between the camera and the figure and lit the side facing the lens — engine gate
+/// review 33 measured the result and it is the whole of why the outline fails: the lower two thirds
+/// of the warden read **8.5 against a background of 8.3**, *"not silhouetted, unlit in front of
+/// unlit"*.
+///
+/// At 1.5 the figure stands **1.5 m in front of** the fitting at `-3.0`, on the same haunch, so the
+/// light is behind it and the coat is a shape against a lit wall. That is `docs/11` §4's own frame —
+/// *the silhouette appears at the pool's edge, passes through, and is gone* — and it is the
+/// designer's suggestion S1, which review 33 endorsed rather than overruled.
+///
+/// **Turning the camera cannot substitute for this and `Side::South` is not the answer**: the post is
+/// south of its cell centre, so a south-side camera at the landmark distance stands beyond the
+/// bulkhead and photographs the level from outside it. Tried, reverted, recorded.
+pub const WARDEN_ALONG: f32 = 1.5;
+
 /// How high the warden's eye sits above its own origin, in metres.
 ///
 /// The void under the brim is at local `0.98` in `warden_head.mesh`; this is the same place, and a
@@ -2680,7 +2701,7 @@ fn write_contents(out: &mut String, layout: &Layout) {
     // simply wrong in the fiction: nobody stands their post in front of a bunk.
     let berths_east = (marks.warden.0 + marks.warden.1).rem_euclid(2) == 0;
     let across = if berths_east { PROP_SIDE } else { -PROP_SIDE };
-    out.push_str(&place(wx + across, WARDEN_STAND, wz - PROP_OFFSET, 0.0));
+    out.push_str(&place(wx + across, WARDEN_STAND, wz - WARDEN_ALONG, 0.0));
 
     // **Neither of these two is placed anywhere**, so none takes an override — and an override naming
     // a component its prefab does not carry is refused at load, which is what would happen if the

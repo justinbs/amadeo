@@ -313,7 +313,7 @@ fn stand_at_landmark(app: &mut amadeo_app::App, name: &str) -> anyhow::Result<()
         "key" => warren::BORE_HALF_WIDTH - 2.6,
         // The warden is anchored on the figure itself now, so this is a real subject distance rather
         // than an offset from a cell centre: close enough to read the coat, far enough for the bore.
-        "warden" => -5.7,
+        "warden" => -4.0,
         _ => -4.2,
     };
     // Level with the key board along the bore, so it is in front of the camera rather than beside it.
@@ -372,9 +372,24 @@ fn stand_at_landmark(app: &mut amadeo_app::App, name: &str) -> anyhow::Result<()
         warren::PLAYER_STAND,
         anchor[2] + fz * along + az + fx * across,
     ];
+    // **The warden's frame is turned off the bore's axis, and that is composition rather than taste.**
+    //
+    // A camera on the axis of a symmetrical tube makes both halves of the picture the same picture.
+    // Engine gate review 33 measured `at_warden` at a row-600 mirror asymmetry of **17.04**, against
+    // 111 in reviews 23 to 27 and `games/atrium`'s 96 on the same helper, and pointed out that review
+    // 19 had condemned a frame at 4.87 and review 20 one at 28.4 -- so this frame had become the most
+    // symmetric thing the project has photographed. `docs/11` §5.3's one prohibition is a straight run
+    // seen end to end.
+    //
+    // Fifteen degrees takes it to **43.96** measured on the same row, puts the receding bore and the
+    // bunks in the right half against the figure in the left, and -- unlike the -25 the review
+    // suggested, which scores 71 -- keeps the subject clear of the frame edge where a silhouette
+    // clause cannot measure it. Backlighting alone did **not** move this number: standing the post in
+    // front of a fitting rather than past it left the asymmetry at 17.01.
+    let turn = warren::facing(side) + if name == "warden" { -15.0 } else { 0.0 };
     if let Some(transform) = app.world.get_mut::<amadeo_transform::Transform>(you) {
         transform.translation = at;
-        transform.rotation = [0.0, warren::facing(side), 0.0];
+        transform.rotation = [0.0, turn, 0.0];
     }
     app.run_ticks(8)?;
 
