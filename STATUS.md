@@ -1,6 +1,6 @@
 # Amadeo — Current Status
 
-**Last updated:** 2026-08-28 (session 27)
+**Last updated:** 2026-09-03 (session 27)
 **Current phase:** **M0 complete. M1 closed. M2 COMPLETE. M2.5 COMPLETE. The engine gate is RE-SCOPED —
 `docs/13` §1b is the binding plan. Of its seven FINISH rows, **three are closed** (F2b, F5, F6), **one
 is rebuilt and awaiting a verdict** (F2), **one is part-built and failed** (F1), and **two are open**
@@ -29,7 +29,9 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 
 ## 📬 For the next session — read this box first, then `docs/14-the-critic.md` §6
 
-> ### Session 27: F5 closed, the warden rebuilt from nothing, and four of F1's seven ordered changes
+> ### ⏳ BUDGET: TWO of Justin's four sessions remain for `games/warren`. Then it ships as-is and the project moves to the editor (M4) and then M4b, the first published game. **Do not spend a session polishing one object.**
+>
+> ### Session 27: F5 closed, the warden rebuilt from nothing, four reviews delivered, and the shelter gained a second lighting circuit
 >
 > **Everything is pushed through `a205737`.** The tree is clean. **Review 33 has ruled: F2 NOT
 > PASSED, seven ordered changes, four of them addressed this session.** Its full text is not yet in
@@ -57,7 +59,7 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 > | row | state |
 > |---|---|
 > | **F1** the opening and the ending | 🟡 **NOT PASSED (r32).** Four of seven ordered changes built. **Open: the yaw-270 spawn at 25.91% against a 12% bar, the title camera on a lit focal object, and the option block bottom-left.** |
-> | **F2** the warden's form | 🟡 **NOT PASSED (r34), third delivered pass.** **Everything published reproduced on the reviewer's grid — first time in four passes.** **(d) PASSES** on its amendment. **(c) amended to a brightness-invariant ratio and fails at 0.0525 against 0.085.** (a3) 1.52/1.51, (b) 39.13 vs 15.96, usability 18/20, (e) 63 vs 79, **zero clipped pixels**. **Built since: r34's 2, 3 and 7, and 1 in part.** **(2) the `caught` ending contains its antagonist** — it has its own framing now instead of borrowing the warden's, at 2.5 m so the figure's own lamp reaches it and mirrored so the text column is clear: separation **0.5 → 16.6 / 23.8**, and the warden is plainly visible. **(3) the lantern**. **(7) the fittings no longer flicker in unison.** **Open: 4 (coat features 3–10 px at an angle), 5 (two straight runs, 40 and 58 rows), 6 (light the board), and 1's remainder.** |
+> | **F2** the warden's form | 🟡 **NOT PASSED (r35), fourth delivered pass.** **(d) PASSES** on its amendment; **(a3) 1.54 / 1.40**, usability **18/20**, **zero clipped pixels**, and every published figure reproduced on the reviewer's grid. **(c) fails at 0.033 against an amended 0.085** — the coat's 3–10 px detail is built and did not move it, see `docs/13`. **(f) — the new outline clause — is 18.9 against 25**, from a 9.0 baseline. **Open: the straight runs (40/50 against 12/30), `caught`'s clause (e) inversion (figure p90 51 vs lining 30), and D3's light-budget correction.** *Superseded record below:* **NOT PASSED (r34), third delivered pass.** **Everything published reproduced on the reviewer's grid — first time in four passes.** **(d) PASSES** on its amendment. **(c) amended to a brightness-invariant ratio and fails at 0.0525 against 0.085.** (a3) 1.52/1.51, (b) 39.13 vs 15.96, usability 18/20, (e) 63 vs 79, **zero clipped pixels**. **Built since: r34's 2, 3 and 7, and 1 in part.** **(2) the `caught` ending contains its antagonist** — it has its own framing now instead of borrowing the warden's, at 2.5 m so the figure's own lamp reaches it and mirrored so the text column is clear: separation **0.5 → 16.6 / 23.8**, and the warden is plainly visible. **(3) the lantern**. **(7) the fittings no longer flicker in unison.** **Open: 4 (coat features 3–10 px at an angle), 5 (two straight runs, 40 and 58 rows), 6 (light the board), and 1's remainder.** |
 > | **F2b** the warden respects the level | ✅ r30 |
 > | **F3** wayfinding | 🟡 ordering built, **the names are not** — nine stencil glyphs |
 > | **F4** the torch beam | ⬜ the stretch row, allowed to slip |

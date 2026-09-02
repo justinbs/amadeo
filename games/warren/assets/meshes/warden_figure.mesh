@@ -117,3 +117,44 @@ entity mesh "The warden: a caped oilskin to the deck, folds down the skirt, and 
         solid Box
           shape
             size 0.07 0.66 0.34
+      - position 0.075 -0.55 0.175
+        repeat
+          - count 7
+            step 0.0 0.115 0.0
+        rotation 0.0 38.0 0.0
+        solid Box
+          shape
+            size 0.032 0.028 0.026
+      - position 0.03 0.35 0.235
+        solid Box
+          shape
+            size 0.075 0.055 0.03
+      - position 0.118 0.35 0.232
+        rotation 0.0 22.0 0.0
+        solid Box
+          shape
+            size 0.022 0.062 0.028
+      - position -0.195 0.71 0.152
+        repeat
+          - count 4
+            step 0.13 0.0 0.0
+        rotation 0.0 24.0 0.0
+        solid Box
+          shape
+            size 0.016 0.42 0.022
+      - position 0.4 -0.8 0.03
+        repeat
+          - count 5
+            step -0.045 0.105 0.0
+        rotation 0.0 30.0 0.0
+        solid Box
+          shape
+            size 0.05 0.024 0.1
+      - position -0.38 -0.74 0.03
+        repeat
+          - count 5
+            step 0.045 0.105 0.0
+        rotation 0.0 -30.0 0.0
+        solid Box
+          shape
+            size 0.05 0.024 0.1

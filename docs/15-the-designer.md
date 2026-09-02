@@ -478,3 +478,22 @@ the untried lead** — a specific lit object behind the figure rather than a lit
 tally board placed where the camera sees it past the warden.
 
 **No disagreement with the critic arose; it upheld the 35-level condition explicitly.**
+
+#### Correction to D3, ordered by engine gate review 35
+
+**D3 says the night light "replaces a fitting position rather than adding one", and the code does the
+opposite.** The two emergency fittings are written unconditionally at ±3.0 along the bore; the night
+light is written **in addition** on every even cell, and the warden's post carries a third light on
+top of its working lamp. Review 35 found the claim repeated in a doc comment above the code that
+contradicts it.
+
+**`docs/11` §6's budget is real and the engine enforces it silently.** Session 27 then hit the
+enforcement from the other side: `MAX_PUNCTUAL_LIGHTS` is **8**, `games/warren` now holds **29**, and
+the cull is sorted by *distance minus range* with no warning. The tally board's reading light rendered
+**nothing at intensity 40** until its `range` went 2.4 → 7.0 — a short reach sorts last and is
+dropped. **So the "replaces rather than adds" rule is not bookkeeping; it is the only thing keeping
+the fixtures a player can see inside the eight the renderer will draw.**
+
+The rule stands and the implementation must be brought to it: either the night light takes an
+emergency fitting's slot on the cells it appears in, or the run's total is counted and published.
+**Not yet done** — recorded here so it is not rediscovered as new.

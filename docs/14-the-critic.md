@@ -1726,3 +1726,43 @@ Fifteen captures, **two mattes**, a 14-capture tick sweep, five crops, ~45 probe
 **One withdrawal and one aliasing finding.** It withdrew a claim that 83.5% of rows repeat the row above, on realising antialiasing of a 0.13 px/row taper produces the same figure. What survived: **40 consecutive rows at exactly `L330 R549`** and **58 rows with the left edge pinned at x=378** — while (a1) scores 16 and (a2) scores 2, because the samples are 32 px apart and the runs are 36–58. *"The clauses are aliased against the object."*
 
 Seven ordered changes, led by building S1 with a **≥ 35-level** separation condition per side.
+
+---
+
+### Review 35 — engine gate — `17ff713` — F2, fourth delivered pass — **NOT POLISHED; (d) passes, (c) amended and fails**
+
+Twelve captures, **two mattes** built to §4 #18, a 14-capture tick sweep, a **606-row 1-pixel scan**, **four controlled A/Bs** each restored and verified byte-identical, and **404- and 815-window control scans** on the lining. Its row-600 helper reproduces `games/atrium` at **96.16** against reviews 19/20/25/29.
+
+**Every figure the submission published reproduced on its own grid — the first time in four passes**, and it credited the volunteered (a3) correction by name: *"owning the third failure rather than defending it is the behaviour this process exists to produce."*
+
+#### Three things earned
+
+**The lantern.** Credited without reservation, and it verified the bloom *by derivation* rather than by eye: at emissive 1.30/1.71/1.99 against a 1.1 threshold, `over = 0.89` and **44.7% of the glass feeds the bloom chain**, against `over = 0` at the old 0.83. It also noted, unclaimed, that the lantern is now a **separate magenta run** on the matte — 26 px of background between lamp and coat, which is the enclosed negative space review 30 asked for.
+
+**The phases**, as specified — fifteen distinct, position-derived. **The `caught` ending contains its antagonist**, and the text column is clear of it.
+
+#### (d) passes; the clause was measuring the wrong thing
+
+*"The clause was measuring 'has attachments', not 'is a stack'."* Two steps per **named** feature are excluded; six named plus the terminal crown leaves three. It recorded that it was **upholding the designer's D4 rather than overruling it**, and that the count would have been 10 under the old wording on a figure that plainly does not read as a stack.
+
+#### (c): the argument upheld, the control refuted, the clause replaced
+
+**Upheld:** 404 windows on one lining and 815 on the other show that **at the coat's own brightness the lining itself fails 3.0** (1.56–2.26 at patch mean 8–23). *"A clause the game's best-executed surface cannot clear at the subject's required value is not a clause about the subject."*
+
+**Refuted:** the submission's two columns did not reproduce — 3.492 and 3.237 at mean 27, not 0.68 and 1.29 at mean 17 — and *"two columns with no published window is §4 #17 exactly."* Normalised, the lining is **flat at 0.088–0.108 from luma 8 to 150** against the coat's **0.0525**. The coat carries half the wall's relief at every brightness.
+
+**Replaced** with a brightness-invariant ratio ≥ **0.085**, published beside a named control. **And it named the mechanism neither party had:** the coat's *range* is fine and its *adjacency* is not, because its relief is **20–40 px facets** — per-texel grain is mipped away and 40-px wedges are invisible to a row-adjacency metric. What is missing is **3–10 px features at an angle**.
+
+#### The findings that failed the row
+
+**The night light was invisible and delivering +1.7 levels.** `glow`'s emissive set to `20 0 0` gave a **byte-identical** capture: *"no object wearing `glow` renders one pixel of the F2 frame."* And the wash sat 0.12 m off the lining shining along it, so `N·L` delivered **12% of the beam at 1 m** — *"a light lying on a plane and shining down it delivers almost nothing to that plane."* Its only visible contribution was hard-edged slivers on the vault, and *"on the only part of the frame the night light measurably changes, the picture without it is the better picture."*
+
+**The premise about the frame was wrong, and it proved it.** Raising `exposure` to 7.0 showed a **plated bulkhead 4.5 m behind the figure** at mean luma 11, fog costing 13.8% — not forty metres of tunnel. So it refused the "better side" reading: *"a figure with one edge you cannot trace is not a silhouette, it is a smudge with a good side."* Clause **(f)** replaces the ≥ 35 side medians: pooled median ≥ 25 with no more than 3 of 2N below 10. Baseline **9.0** and **20 of 38**.
+
+**`caught` fails (e) in the opposite direction**: figure p90 **51** against the brightest lit lining at **30** — the antagonist is the brightest large object on screen. *"The game now has one frame where you cannot see the warden at all and one where you can read its stitching."*
+
+**The silhouette contains an exact rectangle**: 40 consecutive rows at `L330 R549` and 58 with one edge pinned, while (a1) scores 16 and (a2) scores 2 — *"the clauses are aliased against the object."* One withdrawal, recorded: an 83.5% repeat claim it retracted on realising antialiasing of a 0.13 px/row taper produces the same figure.
+
+**And D3's budget claim is wrong**: the night light is written *in addition* to the two emergency fittings, not in place of one, under a doc comment saying the opposite.
+
+Seven ordered changes, led by lighting the bulkhead and building the coat's 3–10 px features.
