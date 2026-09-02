@@ -66,7 +66,16 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 >
 > #### The order I would take the remainder in
 >
-> 0. **The Warren has TWO lighting circuits now, and that is the session's largest change.** Designer
+> 0a. **THE BINDING CONSTRAINT, and it is an engine limit rather than a placement.**
+>    `MAX_PUNCTUAL_LIGHTS` is **8**. `games/warren` now holds **29** punctual lights, and the cut is
+>    **silent** and sorted by *distance minus range* (`crates/amadeo-render/src/lib.rs`, ~line 500).
+>    The tally board's reading light rendered **nothing at intensity 40** until its `range` went from
+>    2.4 to 7.0 — not because it was dim, but because a short reach sorts last and is dropped.
+>    **Adding fixtures cannot solve F2**, and review 35's ordered change 5 says the same from the
+>    budget side: `docs/11` §6 allows five in a visible run and two lit cells now carry six. **Count
+>    what a run holds before adding anything, and prefer removing a light to adding one.**
+>
+> 0b. **The Warren has TWO lighting circuits now, and that is the session's largest change.** Designer
 >    **direction 3** (`docs/15` §5) answered *"what lights a wall in this place"* with research rather
 >    than invention: Clapham South was lit by cast-iron bulkheads bolted into the tunnelling rings,
 >    and **every fourth fitting stayed lit through the night** so shelterers could find the
@@ -76,14 +85,22 @@ always on), **0041** (parallelism is deterministic by construction or absent —
 >    on the **standby ring**, so `light_the_sections` does not touch it and **no section is ever
 >    without a light source again**. Every second cell, guaranteed at the warden's post.
 >
->    **It is not yet enough for F2.** Separation goes **5 / −7** (r34) → **12.7 / 11.8** (a working
->    lamp at the post) → **16.4 / 14.3** (the night light), against a bar of **35**. What the
->    measurement says is that the figure stands 0.9 m off its wall while the camera at 4 m sees mostly
->    deck and far tunnel behind it, so a near-wall patch is not yet *behind* the silhouette. **The
->    designer's own refinement is the untried lead and is where I would start: a specific lit OBJECT
->    behind the figure rather than a lit wall** — *"a uniformly lit wall behind a figure is a studio;
->    a lit board with a shape in front of it is a scene"* — which is D6's tally board, placed where
->    the camera sees it past the warden.
+>    **Review 35 then found the night light was invisible and delivering +1.7 levels**, and derived
+>    why: the wash sat 0.12 m off the lining and shone *along* it, so the wall got 12% of the beam at
+>    1 m. It is on a **cast bracket** now, 0.36 m off the ring, pitched −34° into the iron: the lining
+>    goes **22.2 → 53.0** against a +12 bar, the vault's slivers are gone (max 59 against ≤120), and
+>    the fitting is in frame at last.
+>
+>    **And the tally board is built** — the designer's D6 and review 35's first ordered change from
+>    opposite ends. On the bulkhead 4.5 m behind the post, straddling the figure's open edge, with its
+>    own reading light. Outside that edge: mean **11 → 75.5**. **Clause (f) (r35's replacement for the
+>    ≥35 side medians): pooled median 9.0 → 18.9 against a bar of 25, rows below 10 from 20/38 → 6/28.**
+>    Short. The weak samples are named in `docs/13`: the crown, the cape hem's right, the lower skirt.
+>
+>    **Trap that cost three placements: the board rendered NOTHING in its first two positions because
+>    it was buried inside the bulkhead plate.** An `accent`-material A/B found it in one capture;
+>    aiming its light would never have. **When a new object does not appear, prove it renders before
+>    you tune anything about it.**
 >
 >    Found while getting there: **both fittings in the warden's own section were `room_lamp_dead`**,
 >    which is why four placements of the existing fitting had achieved nothing.
