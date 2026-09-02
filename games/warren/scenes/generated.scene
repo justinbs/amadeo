@@ -29,6 +29,7 @@ assets
   section_letter_t
   section_sign
   stores
+  tally_board_piece
   warden_post
   way_out
 
@@ -1028,11 +1029,17 @@ entity post_lamp_3_0 "The light over the post" from room_lamp
     scale 1.0 1.0 1.0
     translation 33.6 0.0 -2.8
 
+entity tally_3_0 "The tally board" from tally_board_piece
+  override Transform
+    rotation 0.0 180.0 0.0
+    scale 1.0 1.0 1.0
+    translation 34.275 0.0 -5.475
+
 entity post_night_3_0 "The night light over the post" from night_light
   override Transform
     rotation 0.0 180.0 0.0
     scale 1.0 1.0 1.0
-    translation 33.6 0.0 -4.1
+    translation 33.6 0.0 -2.5
 
 entity ambience "The Warren itself" from ambience
 

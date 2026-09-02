@@ -1,0 +1,10 @@
+scene tally_face
+version 1
+
+entity mesh "The chalked face of the board -- pale, so a shape in front of it is a shape"
+  CompoundMesh
+    parts
+      - position 0.0 0.0 -0.048
+        solid Box
+          shape
+            size 0.94 0.64 0.012

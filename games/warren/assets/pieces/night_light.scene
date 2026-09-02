@@ -37,14 +37,14 @@ entity night_light "A night light on the standby ring -- one of the fittings nob
   entity wash "What it throws ALONG the lining, which is the whole point of it"
     SpotLight
       colour 0.58 0.78 0.68
-      inner_angle 26.0
-      intensity 5.2
-      outer_angle 62.0
-      range 3.4
+      inner_angle 20.0
+      intensity 3.4
+      outer_angle 52.0
+      range 4.6
       shadow_bias 0.03
       shadow_resolution 1024
       shadows false
     Transform
-      rotation -9.0 0.0 0.0
+      rotation -34.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation -0.12 2.2 0.0
+      translation -0.36 2.16 0.0

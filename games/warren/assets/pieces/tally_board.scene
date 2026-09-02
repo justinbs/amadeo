@@ -1,0 +1,53 @@
+scene tally_board_piece
+version 1
+
+assets
+  fitting_steel
+  fitting_steel_normal
+  fitting_steel_surface
+  fittings
+  sign_enamel
+  sign_enamel_normal
+  sign_enamel_surface
+  signage
+  tally_board
+  tally_face
+
+entity tally_board "The board the count is kept on"
+  Transform
+    rotation 0.0 0.0 0.0
+    scale 1.0 1.0 1.0
+    translation 0.0 0.0 0.0
+
+  entity frame "The slate and its frame"
+    Mesh
+      material "fittings"
+      mesh "tally_board"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.02 0.0
+
+  entity face "The chalked face"
+    Mesh
+      material "signage"
+      mesh "tally_face"
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.02 0.0
+
+  entity reading_light "The light you keep the count by -- docs/15 direction 3's D6: you cannot chalk a number in the dark"
+    SpotLight
+      colour 0.58 0.78 0.68
+      inner_angle 30.0
+      intensity 1.5
+      outer_angle 64.0
+      range 7.0
+      shadow_bias 0.03
+      shadow_resolution 1024
+      shadows false
+    Transform
+      rotation -26.0 180.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.95 -1.05

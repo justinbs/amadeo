@@ -2150,6 +2150,23 @@ pub const TORCH_PIECE: &str = "dropped_torch";
 /// The prefab a working ceiling lamp comes from.
 pub const LAMP_PIECE: &str = "room_lamp";
 
+/// The prefab the warden's tally board comes from — a slate, a chalk ledge, and the light you keep
+/// the count by.
+///
+/// # It is the thing the figure is seen against, and that is why it exists
+///
+/// Designer direction 3's D6 puts it here as fiction — *"you cannot chalk a number in the dark"*,
+/// so the board is beside a light and the warden stands there because that is where the board is.
+/// Engine gate review 35 arrived at the same object from the other end and made it the row's first
+/// ordered change: the warden's open side is seen against a plated bulkhead **4.5 m** behind it at a
+/// mean luma of **11**, and *"a uniformly lit wall behind a figure is a studio; a lit board with a
+/// shape in front of it is a scene."*
+///
+/// So it goes on the bulkhead the camera looks at past the figure, and it carries its own reading
+/// light rather than borrowing one — which is what stops it being a lit patch with no cause, and
+/// what lets it be placed anywhere a section keeps a count.
+pub const TALLY_BOARD_PIECE: &str = "tally_board_piece";
+
 /// The prefab a night light comes from — the fitting nobody ever switched off.
 ///
 /// # There were two lighting systems down here, and this game only had one
@@ -2208,7 +2225,7 @@ pub const AMBIENCE_PIECE: &str = "ambience";
 /// here: the two orders are not the same, and hand-maintaining a sorted list of ids whose names are
 /// spelled differently from their constants is exactly the sort of thing that goes quietly wrong.
 /// `amadeo fmt --check` on the output is what would have caught it, and did.
-pub const PIECES: [&str; 29] = [
+pub const PIECES: [&str; 30] = [
     AMBIENCE_PIECE,
     BUNK_MADE_PIECE,
     BUNK_ROLLED_PIECE,
@@ -2221,6 +2238,7 @@ pub const PIECES: [&str; 29] = [
     LAMP_PIECE,
     DEAD_LAMP_PIECE,
     NIGHT_LIGHT_PIECE,
+    TALLY_BOARD_PIECE,
     PASSAGE_PIECE,
     PLAYER_PIECE,
     ROOM_PIECE,
@@ -2853,6 +2871,21 @@ fn write_contents(out: &mut String, layout: &Layout) {
     // separation, and this one grazes the **lining**, which is the only thing behind its chest and
     // head. Engine gate review 34 failed the silhouette at five levels because the second half did
     // not exist.
+    // **The board goes on the bulkhead the camera looks at past the figure.** A north bulkhead sits
+    // at `CELL / 2 - HEAD_INSET` from its cell's centre and faces back into the bore, so the board
+    // is authored projecting along its own `-z` and takes the same turn. Offset toward the warden's
+    // side so it lands behind the figure's open edge rather than beside it.
+    out.push_str(&format!(
+        "entity {} \"The tally board\" from {TALLY_BOARD_PIECE}\n",
+        cell_id("tally", marks.warden)
+    ));
+    out.push_str(&place(
+        wx + across * 1.15,
+        0.0,
+        wz - CELL / 2.0 + HEAD_INSET + 0.4,
+        180.0,
+    ));
+
     let night_side = post_side;
     let night_turn = post_turn;
     out.push_str(&format!(
@@ -2862,7 +2895,7 @@ fn write_contents(out: &mut String, layout: &Layout) {
     out.push_str(&place(
         wx + night_side,
         0.0,
-        wz - WARDEN_ALONG - 2.6,
+        wz - WARDEN_ALONG - 1.0,
         night_turn,
     ));
 

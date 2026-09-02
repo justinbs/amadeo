@@ -1,6 +1,6 @@
 amadeo-snapshot 2
 tick 136
-state-hash 6919bdd9d1e16b46
+state-hash 9e188d10dbcb0f32
 schema-hash e774124d7ef84d54
 
 schema
@@ -760,24 +760,24 @@ entities
       translation 0.0 2.25 0.0
   44:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 0.98768836 -0.15643446 0.0 0.0 0.15643446 0.98768836 0.0 2.2800002 2.2 1.6 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 0.82903755 -0.5591929 0.0 0.0 0.5591929 0.82903755 0.0 2.04 2.16 1.6 1.0
     Parent
       generation 0
       index 41
     SpotLight
       colour 0.58 0.78 0.68
-      inner_angle 26.0
-      intensity 5.2
-      outer_angle 62.0
-      range 3.4
+      inner_angle 20.0
+      intensity 3.4
+      outer_angle 52.0
+      range 4.6
       shadow_bias 0.03
       shadow_resolution 1024
       shadows false
       source_radius 0.0
     Transform
-      rotation -9.0 0.0 0.0
+      rotation -34.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation -0.12 2.2 0.0
+      translation -0.36 2.16 0.0
   45:0
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 -1.95 0.0 -2.4 1.0
@@ -2117,24 +2117,24 @@ entities
       translation 0.0 2.25 0.0
   138:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 0.98768836 -0.15643446 0.0 0.0 0.15643446 0.98768836 0.0 14.28 2.2 -10.4 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 0.82903755 -0.5591929 0.0 0.0 0.5591929 0.82903755 0.0 14.04 2.16 -10.4 1.0
     Parent
       generation 0
       index 135
     SpotLight
       colour 0.58 0.78 0.68
-      inner_angle 26.0
-      intensity 5.2
-      outer_angle 62.0
-      range 3.4
+      inner_angle 20.0
+      intensity 3.4
+      outer_angle 52.0
+      range 4.6
       shadow_bias 0.03
       shadow_resolution 1024
       shadows false
       source_radius 0.0
     Transform
-      rotation -9.0 0.0 0.0
+      rotation -34.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation -0.12 2.2 0.0
+      translation -0.36 2.16 0.0
   139:0
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 10.05 0.0 -14.2 1.0
@@ -3417,24 +3417,24 @@ entities
       translation 0.0 2.25 0.0
   228:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 0.98768836 -0.15643446 0.0 0.0 0.15643446 0.98768836 0.0 26.279999 2.2 -22.4 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 0.82903755 -0.5591929 0.0 0.0 0.5591929 0.82903755 0.0 26.039999 2.16 -22.4 1.0
     Parent
       generation 0
       index 225
     SpotLight
       colour 0.58 0.78 0.68
-      inner_angle 26.0
-      intensity 5.2
-      outer_angle 62.0
-      range 3.4
+      inner_angle 20.0
+      intensity 3.4
+      outer_angle 52.0
+      range 4.6
       shadow_bias 0.03
       shadow_resolution 1024
       shadows false
       source_radius 0.0
     Transform
-      rotation -9.0 0.0 0.0
+      rotation -34.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation -0.12 2.2 0.0
+      translation -0.36 2.16 0.0
   229:0
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 23.1225 0.0 -22.6 1.0
@@ -4784,24 +4784,24 @@ entities
       translation 0.0 2.25 0.0
   321:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 0.98768836 -0.15643446 0.0 0.0 0.15643446 0.98768836 0.0 26.279999 2.2 1.6 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 0.82903755 -0.5591929 0.0 0.0 0.5591929 0.82903755 0.0 26.039999 2.16 1.6 1.0
     Parent
       generation 0
       index 318
     SpotLight
       colour 0.58 0.78 0.68
-      inner_angle 26.0
-      intensity 5.2
-      outer_angle 62.0
-      range 3.4
+      inner_angle 20.0
+      intensity 3.4
+      outer_angle 52.0
+      range 4.6
       shadow_bias 0.03
       shadow_resolution 1024
       shadows false
       source_radius 0.0
     Transform
-      rotation -9.0 0.0 0.0
+      rotation -34.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation -0.12 2.2 0.0
+      translation -0.36 2.16 0.0
   322:0
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 22.05 0.0 -2.4 1.0
@@ -6567,24 +6567,24 @@ entities
       translation 0.0 2.25 0.0
   439:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 0.98768836 -0.15643446 0.0 0.0 0.15643446 0.98768836 0.0 50.280003 2.2 1.6 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 0.82903755 -0.5591929 0.0 0.0 0.5591929 0.82903755 0.0 50.04 2.16 1.6 1.0
     Parent
       generation 0
       index 436
     SpotLight
       colour 0.58 0.78 0.68
-      inner_angle 26.0
-      intensity 5.2
-      outer_angle 62.0
-      range 3.4
+      inner_angle 20.0
+      intensity 3.4
+      outer_angle 52.0
+      range 4.6
       shadow_bias 0.03
       shadow_resolution 1024
       shadows false
       source_radius 0.0
     Transform
-      rotation -9.0 0.0 0.0
+      rotation -34.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation -0.12 2.2 0.0
+      translation -0.36 2.16 0.0
   440:0
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 46.05 0.0 -2.2 1.0
@@ -7867,24 +7867,24 @@ entities
       translation 0.0 2.25 0.0
   529:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 0.98768836 -0.15643446 0.0 0.0 0.15643446 0.98768836 0.0 62.280003 2.2 13.6 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 0.82903755 -0.5591929 0.0 0.0 0.5591929 0.82903755 0.0 62.04 2.16 13.6 1.0
     Parent
       generation 0
       index 526
     SpotLight
       colour 0.58 0.78 0.68
-      inner_angle 26.0
-      intensity 5.2
-      outer_angle 62.0
-      range 3.4
+      inner_angle 20.0
+      intensity 3.4
+      outer_angle 52.0
+      range 4.6
       shadow_bias 0.03
       shadow_resolution 1024
       shadows false
       source_radius 0.0
     Transform
-      rotation -9.0 0.0 0.0
+      rotation -34.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation -0.12 2.2 0.0
+      translation -0.36 2.16 0.0
   530:0
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 59.1225 0.0 13.4 1.0
@@ -9966,24 +9966,24 @@ entities
       translation 0.0 2.25 0.0
   673:0
     GlobalTransform
-      matrix 1.0 0.0 0.0 0.0 0.0 0.98768836 -0.15643446 0.0 0.0 0.15643446 0.98768836 0.0 74.28 2.2 25.6 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 0.82903755 -0.5591929 0.0 0.0 0.5591929 0.82903755 0.0 74.04 2.16 25.6 1.0
     Parent
       generation 0
       index 670
     SpotLight
       colour 0.58 0.78 0.68
-      inner_angle 26.0
-      intensity 5.2
-      outer_angle 62.0
-      range 3.4
+      inner_angle 20.0
+      intensity 3.4
+      outer_angle 52.0
+      range 4.6
       shadow_bias 0.03
       shadow_resolution 1024
       shadows false
       source_radius 0.0
     Transform
-      rotation -9.0 0.0 0.0
+      rotation -34.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation -0.12 2.2 0.0
+      translation -0.36 2.16 0.0
   674:0
     GlobalTransform
       matrix 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 1.0 0.0 70.05 0.0 21.6 1.0
@@ -10784,58 +10784,111 @@ entities
       translation -0.3 1.86 0.0
   720:0
     GlobalTransform
-      matrix -1.0 0.0 -0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 -1.0 0.0 33.6 0.0 -4.1 1.0
+      matrix -1.0 0.0 -0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 -1.0 0.0 34.275 0.0 -5.475 1.0
     Transform
       rotation 0.0 180.0 0.0
       scale 1.0 1.0 1.0
-      translation 33.6 0.0 -4.1
+      translation 34.275 0.0 -5.475
   721:0
     GlobalTransform
-      matrix -1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 -1.0 0.0 33.6 2.25 -4.1 1.0
+      matrix -1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 -1.0 0.0 34.275 2.02 -5.475 1.0
     Mesh
       material "fittings"
-      mesh "night_light_case"
+      mesh "tally_board"
     Parent
       generation 0
       index 720
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.0 2.25 0.0
+      translation 0.0 2.02 0.0
   722:0
     GlobalTransform
-      matrix -1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 -1.0 0.0 33.6 2.25 -4.1 1.0
+      matrix -1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 -1.0 0.0 34.275 2.02 -5.475 1.0
     Mesh
-      material "glow"
-      mesh "night_light_glass"
+      material "signage"
+      mesh "tally_face"
     Parent
       generation 0
       index 720
     Transform
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
-      translation 0.0 2.25 0.0
+      translation 0.0 2.02 0.0
   723:0
     GlobalTransform
-      matrix -1.0 0.0 0.0 0.0 0.0 0.98768836 0.15643446 0.0 0.0 0.15643446 -0.98768836 0.0 33.719997 2.2 -4.1 1.0
+      matrix 1.0 0.0 0.0 0.0 0.0 0.89879405 -0.43837115 0.0 0.0 0.43837115 0.89879405 0.0 34.275 2.95 -4.425 1.0
     Parent
       generation 0
       index 720
     SpotLight
       colour 0.58 0.78 0.68
-      inner_angle 26.0
-      intensity 5.2
-      outer_angle 62.0
-      range 3.4
+      inner_angle 30.0
+      intensity 1.5
+      outer_angle 64.0
+      range 7.0
       shadow_bias 0.03
       shadow_resolution 1024
       shadows false
       source_radius 0.0
     Transform
-      rotation -9.0 0.0 0.0
+      rotation -26.0 180.0 0.0
       scale 1.0 1.0 1.0
-      translation -0.12 2.2 0.0
+      translation 0.0 2.95 -1.05
   724:0
+    GlobalTransform
+      matrix -1.0 0.0 -0.0 0.0 0.0 1.0 0.0 0.0 0.0 -0.0 -1.0 0.0 33.6 0.0 -2.5 1.0
+    Transform
+      rotation 0.0 180.0 0.0
+      scale 1.0 1.0 1.0
+      translation 33.6 0.0 -2.5
+  725:0
+    GlobalTransform
+      matrix -1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 -1.0 0.0 33.6 2.25 -2.5 1.0
+    Mesh
+      material "fittings"
+      mesh "night_light_case"
+    Parent
+      generation 0
+      index 724
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.25 0.0
+  726:0
+    GlobalTransform
+      matrix -1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 -1.0 0.0 33.6 2.25 -2.5 1.0
+    Mesh
+      material "glow"
+      mesh "night_light_glass"
+    Parent
+      generation 0
+      index 724
+    Transform
+      rotation 0.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation 0.0 2.25 0.0
+  727:0
+    GlobalTransform
+      matrix -1.0 0.0 0.0 0.0 0.0 0.82903755 0.5591929 0.0 0.0 0.5591929 -0.82903755 0.0 33.96 2.16 -2.5 1.0
+    Parent
+      generation 0
+      index 724
+    SpotLight
+      colour 0.58 0.78 0.68
+      inner_angle 20.0
+      intensity 3.4
+      outer_angle 52.0
+      range 4.6
+      shadow_bias 0.03
+      shadow_resolution 1024
+      shadows false
+      source_radius 0.0
+    Transform
+      rotation -34.0 0.0 0.0
+      scale 1.0 1.0 1.0
+      translation -0.36 2.16 0.0
+  728:0
     AudioSource
       bus Music
       gain 0.95880353
@@ -10851,7 +10904,7 @@ entities
       rotation 0.0 0.0 0.0
       scale 1.0 1.0 1.0
       translation 0.0 0.0 0.0
-  725:0
+  729:0
     UiNode
       align_children Centre
       anchor
@@ -10868,13 +10921,13 @@ entities
       padding None
       size 0.0 0.0
       visible true
-  726:0
+  730:0
     Panel
       order 9
       paint Surface
     Parent
       generation 0
-      index 725
+      index 729
     Reticle
       opens false
     UiNode
@@ -10893,13 +10946,13 @@ entities
       padding None
       size 7.0 7.0
       visible true
-  727:0
+  731:0
     Panel
       order 10
       paint Ink
     Parent
       generation 0
-      index 725
+      index 729
     Reticle
       opens false
     UiNode
@@ -10918,13 +10971,13 @@ entities
       padding None
       size 3.0 3.0
       visible true
-  728:0
+  732:0
     Panel
       order 10
       paint Accent
     Parent
       generation 0
-      index 725
+      index 729
     Reticle
       opens true
     UiNode
@@ -10943,13 +10996,13 @@ entities
       padding None
       size 1.0 5.0
       visible false
-  729:0
+  733:0
     Panel
       order 10
       paint Accent
     Parent
       generation 0
-      index 725
+      index 729
     Reticle
       opens true
     UiNode
@@ -10968,13 +11021,13 @@ entities
       padding None
       size 1.0 5.0
       visible false
-  730:0
+  734:0
     Panel
       order 10
       paint Accent
     Parent
       generation 0
-      index 725
+      index 729
     Reticle
       opens true
     UiNode
@@ -10993,13 +11046,13 @@ entities
       padding None
       size 5.0 1.0
       visible false
-  731:0
+  735:0
     Panel
       order 10
       paint Accent
     Parent
       generation 0
-      index 725
+      index 729
     Reticle
       opens true
     UiNode
@@ -11018,10 +11071,10 @@ entities
       padding None
       size 5.0 1.0
       visible false
-  732:0
+  736:0
     Parent
       generation 0
-      index 725
+      index 729
     PromptLine ()
     Text
       content ""
@@ -11046,12 +11099,12 @@ entities
       padding None
       size 520.0 34.0
       visible true
-  733:0
+  737:0
     Menu
       screen Title
     Parent
       generation 0
-      index 725
+      index 729
     UiNode
       align_children Start
       anchor
@@ -11068,14 +11121,14 @@ entities
       padding None
       size 0.0 0.0
       visible false
-  734:0
+  738:0
     Panel
       order 9
       paint Custom
         rgba 0.006 0.007 0.008 0.65
     Parent
       generation 0
-      index 733
+      index 737
     UiNode
       align_children Start
       anchor
@@ -11092,10 +11145,10 @@ entities
       padding None
       size 0.0 0.0
       visible true
-  735:0
+  739:0
     Parent
       generation 0
-      index 733
+      index 737
     UiNode
       align_children Start
       anchor
@@ -11112,10 +11165,10 @@ entities
       padding Normal
       size 320.0 224.0
       visible true
-  736:0
+  740:0
     Parent
       generation 0
-      index 735
+      index 739
     Text
       content "THE WARREN"
       font "BebasNeue-Regular"
@@ -11139,10 +11192,10 @@ entities
       padding None
       size 0.0 60.0
       visible true
-  737:0
+  741:0
     Parent
       generation 0
-      index 735
+      index 739
     Text
       content "SHELTER FOUR · SUB-SURFACE ARCHIVE"
       font "BebasNeue-Regular"
@@ -11166,10 +11219,10 @@ entities
       padding None
       size 0.0 22.0
       visible true
-  738:0
+  742:0
     Parent
       generation 0
-      index 735
+      index 739
     UiNode
       align_children Start
       anchor
@@ -11186,7 +11239,7 @@ entities
       padding Snug
       size 0.0 36.0
       visible true
-  739:0
+  743:0
     Focusable
       enabled true
       order 0
@@ -11198,7 +11251,7 @@ entities
         rgba 0.0 0.0 0.0 0.0
     Parent
       generation 0
-      index 738
+      index 742
     UiNode
       align_children Start
       anchor
@@ -11215,10 +11268,10 @@ entities
       padding None
       size 5.0 20.0
       visible true
-  740:0
+  744:0
     Parent
       generation 0
-      index 738
+      index 742
     Text
       content "BEGIN"
       font "BebasNeue-Regular"
@@ -11242,10 +11295,10 @@ entities
       padding None
       size 0.0 0.0
       visible true
-  741:0
+  745:0
     Parent
       generation 0
-      index 735
+      index 739
     UiNode
       align_children Start
       anchor
@@ -11262,7 +11315,7 @@ entities
       padding Snug
       size 0.0 36.0
       visible true
-  742:0
+  746:0
     Focusable
       enabled true
       order 1
@@ -11274,7 +11327,7 @@ entities
         rgba 0.0 0.0 0.0 0.0
     Parent
       generation 0
-      index 741
+      index 745
     UiNode
       align_children Start
       anchor
@@ -11291,10 +11344,10 @@ entities
       padding None
       size 5.0 20.0
       visible true
-  743:0
+  747:0
     Parent
       generation 0
-      index 741
+      index 745
     Text
       content "CONTINUE"
       font "BebasNeue-Regular"
@@ -11318,10 +11371,10 @@ entities
       padding None
       size 0.0 0.0
       visible true
-  744:0
+  748:0
     Parent
       generation 0
-      index 735
+      index 739
     UiNode
       align_children Start
       anchor
@@ -11338,7 +11391,7 @@ entities
       padding Snug
       size 0.0 36.0
       visible true
-  745:0
+  749:0
     Focusable
       enabled true
       order 2
@@ -11350,7 +11403,7 @@ entities
         rgba 0.0 0.0 0.0 0.0
     Parent
       generation 0
-      index 744
+      index 748
     UiNode
       align_children Start
       anchor
@@ -11367,10 +11420,10 @@ entities
       padding None
       size 5.0 20.0
       visible true
-  746:0
+  750:0
     Parent
       generation 0
-      index 744
+      index 748
     Text
       content "QUIT"
       font "BebasNeue-Regular"
@@ -11394,12 +11447,12 @@ entities
       padding None
       size 0.0 0.0
       visible true
-  747:0
+  751:0
     Menu
       screen Paused
     Parent
       generation 0
-      index 725
+      index 729
     UiNode
       align_children Start
       anchor
@@ -11416,13 +11469,13 @@ entities
       padding None
       size 0.0 0.0
       visible false
-  748:0
+  752:0
     Panel
       order 10
       paint Raised
     Parent
       generation 0
-      index 747
+      index 751
     UiNode
       align_children Stretch
       anchor
@@ -11439,10 +11492,10 @@ entities
       padding Normal
       size 320.0 238.0
       visible true
-  749:0
+  753:0
     Parent
       generation 0
-      index 748
+      index 752
     Text
       content "PAUSED"
       font "BebasNeue-Regular"
@@ -11466,10 +11519,10 @@ entities
       padding None
       size 0.0 30.0
       visible true
-  750:0
+  754:0
     Parent
       generation 0
-      index 748
+      index 752
     UiNode
       align_children Start
       anchor
@@ -11486,7 +11539,7 @@ entities
       padding Snug
       size 0.0 36.0
       visible true
-  751:0
+  755:0
     Focusable
       enabled true
       order 0
@@ -11497,7 +11550,7 @@ entities
       paint Surface
     Parent
       generation 0
-      index 750
+      index 754
     UiNode
       align_children Start
       anchor
@@ -11514,10 +11567,10 @@ entities
       padding None
       size 5.0 20.0
       visible true
-  752:0
+  756:0
     Parent
       generation 0
-      index 750
+      index 754
     Text
       content "RESUME"
       font "BebasNeue-Regular"
@@ -11541,10 +11594,10 @@ entities
       padding None
       size 0.0 0.0
       visible true
-  753:0
+  757:0
     Parent
       generation 0
-      index 748
+      index 752
     UiNode
       align_children Start
       anchor
@@ -11561,7 +11614,7 @@ entities
       padding Snug
       size 0.0 36.0
       visible true
-  754:0
+  758:0
     Focusable
       enabled true
       order 1
@@ -11572,7 +11625,7 @@ entities
       paint Surface
     Parent
       generation 0
-      index 753
+      index 757
     UiNode
       align_children Start
       anchor
@@ -11589,10 +11642,10 @@ entities
       padding None
       size 5.0 20.0
       visible true
-  755:0
+  759:0
     Parent
       generation 0
-      index 753
+      index 757
     Text
       content "SAVE"
       font "BebasNeue-Regular"
@@ -11616,10 +11669,10 @@ entities
       padding None
       size 0.0 0.0
       visible true
-  756:0
+  760:0
     Parent
       generation 0
-      index 748
+      index 752
     UiNode
       align_children Start
       anchor
@@ -11636,7 +11689,7 @@ entities
       padding Snug
       size 0.0 36.0
       visible true
-  757:0
+  761:0
     Focusable
       enabled true
       order 2
@@ -11647,7 +11700,7 @@ entities
       paint Surface
     Parent
       generation 0
-      index 756
+      index 760
     UiNode
       align_children Start
       anchor
@@ -11664,10 +11717,10 @@ entities
       padding None
       size 5.0 20.0
       visible true
-  758:0
+  762:0
     Parent
       generation 0
-      index 756
+      index 760
     Text
       content "LOAD"
       font "BebasNeue-Regular"
@@ -11691,10 +11744,10 @@ entities
       padding None
       size 0.0 0.0
       visible true
-  759:0
+  763:0
     Parent
       generation 0
-      index 748
+      index 752
     UiNode
       align_children Start
       anchor
@@ -11711,7 +11764,7 @@ entities
       padding Snug
       size 0.0 36.0
       visible true
-  760:0
+  764:0
     Focusable
       enabled true
       order 3
@@ -11722,7 +11775,7 @@ entities
       paint Surface
     Parent
       generation 0
-      index 759
+      index 763
     UiNode
       align_children Start
       anchor
@@ -11739,10 +11792,10 @@ entities
       padding None
       size 5.0 20.0
       visible true
-  761:0
+  765:0
     Parent
       generation 0
-      index 759
+      index 763
     Text
       content "QUIT"
       font "BebasNeue-Regular"
@@ -11766,12 +11819,12 @@ entities
       padding None
       size 0.0 0.0
       visible true
-  762:0
+  766:0
     Menu
       screen Ended
     Parent
       generation 0
-      index 725
+      index 729
     UiNode
       align_children Start
       anchor
@@ -11788,14 +11841,14 @@ entities
       padding None
       size 0.0 0.0
       visible false
-  763:0
+  767:0
     Panel
       order 9
       paint Custom
         rgba 0.006 0.007 0.008 0.35
     Parent
       generation 0
-      index 762
+      index 766
     UiNode
       align_children Start
       anchor
@@ -11814,14 +11867,14 @@ entities
       visible true
     Verdict
       caught false
-  764:0
+  768:0
     Panel
       order 9
       paint Custom
         rgba 0.004 0.004 0.005 0.78
     Parent
       generation 0
-      index 762
+      index 766
     UiNode
       align_children Start
       anchor
@@ -11840,11 +11893,11 @@ entities
       visible false
     Verdict
       caught true
-  765:0
+  769:0
     EndingLine ()
     Parent
       generation 0
-      index 762
+      index 766
     Text
       content ""
       font "BebasNeue-Regular"
@@ -11870,11 +11923,11 @@ entities
       visible true
     Verdict
       caught false
-  766:0
+  770:0
     EndingLine ()
     Parent
       generation 0
-      index 762
+      index 766
     Text
       content ""
       font "BebasNeue-Regular"
@@ -11900,10 +11953,10 @@ entities
       visible false
     Verdict
       caught true
-  767:0
+  771:0
     Parent
       generation 0
-      index 762
+      index 766
     UiNode
       align_children Start
       anchor
@@ -11920,10 +11973,10 @@ entities
       padding Normal
       size 320.0 180.0
       visible true
-  768:0
+  772:0
     Parent
       generation 0
-      index 767
+      index 771
     UiNode
       align_children Start
       anchor
@@ -11940,7 +11993,7 @@ entities
       padding Snug
       size 0.0 36.0
       visible true
-  769:0
+  773:0
     Focusable
       enabled true
       order 0
@@ -11952,7 +12005,7 @@ entities
         rgba 0.0 0.0 0.0 0.0
     Parent
       generation 0
-      index 768
+      index 772
     UiNode
       align_children Start
       anchor
@@ -11969,10 +12022,10 @@ entities
       padding None
       size 5.0 20.0
       visible true
-  770:0
+  774:0
     Parent
       generation 0
-      index 768
+      index 772
     Text
       content "TRY AGAIN"
       font "BebasNeue-Regular"
@@ -11996,10 +12049,10 @@ entities
       padding None
       size 0.0 0.0
       visible true
-  771:0
+  775:0
     Parent
       generation 0
-      index 767
+      index 771
     UiNode
       align_children Start
       anchor
@@ -12016,7 +12069,7 @@ entities
       padding Snug
       size 0.0 36.0
       visible true
-  772:0
+  776:0
     Focusable
       enabled true
       order 1
@@ -12028,7 +12081,7 @@ entities
         rgba 0.0 0.0 0.0 0.0
     Parent
       generation 0
-      index 771
+      index 775
     UiNode
       align_children Start
       anchor
@@ -12045,10 +12098,10 @@ entities
       padding None
       size 5.0 20.0
       visible true
-  773:0
+  777:0
     Parent
       generation 0
-      index 771
+      index 775
     Text
       content "QUIT"
       font "BebasNeue-Regular"
